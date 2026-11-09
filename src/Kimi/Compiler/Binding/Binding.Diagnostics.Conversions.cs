@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -28,6 +27,7 @@ public sealed partial class Binding
         Receiver,
         Shape,
         Owned,
+        Dependence, // The result contract depends on the receiver (ResultDependsOnReceiver).
         Condition,
     }
 
@@ -61,6 +61,12 @@ public sealed partial class Binding
             this.ErasureOf(closure, required) is not { } erasure)
         {
             return null;
+        }
+
+        if (erasure.Part == ErasurePart.Dependence)
+        {
+            return "This closure's result retains its call receiver, as a raw layer without an Origin in its result does; " +
+                "a common Function value's result cannot depend on its receiver";
         }
 
         return erasure.Receiver switch
@@ -239,16 +245,4 @@ public sealed partial class Binding
     // An erasure's Owned failure (R4-M161): an Error's held cause, and the explaining member (OwnedMember; -1 none, -2 no work) with its
     // Origin and whether that Origin is Refuted in the forming body.
     private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted);
-
-    // An erasure's two Types compared by reference: both are interned, and a Closure Type holds its whole context (BU-60, BU-71).
-    private sealed class ErasureKey : IEqualityComparer<(BoundType Actual, BoundType Expected)>
-    {
-        internal static readonly ErasureKey Instance = new();
-
-        public bool Equals((BoundType Actual, BoundType Expected) x, (BoundType Actual, BoundType Expected) y)
-            => ReferenceEquals(x.Actual, y.Actual) && ReferenceEquals(x.Expected, y.Expected);
-
-        public int GetHashCode((BoundType Actual, BoundType Expected) obj)
-            => HashCode.Combine(RuntimeHelpers.GetHashCode(obj.Actual), RuntimeHelpers.GetHashCode(obj.Expected));
-    }
 }

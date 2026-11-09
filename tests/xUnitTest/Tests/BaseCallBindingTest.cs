@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -80,19 +81,23 @@ public class BaseCallBindingTest
         ScalarEmissionTest.WriteFixture("BaseCallParenthesized", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
+    // DECISIONS BU-111: the Reason is the closed cause; its explanation is the whole Note, never a bounded Reason value.
     [Theory]
-    [InlineData("func f(self: ref/Self, n: i32 = base.read()) -> i32 => n", "instance body")]
-    [InlineData("func f(self: ref/Self) -> i32 => base.value()", "instance function")]
-    [InlineData("func f(self: ref/Self) -> i32 => base()", "base.name(arguments)")]
-    [InlineData("group Settings\n        computed limit: i32\n            get() -> i32 => base.read()", "derived instance function")]
-    [InlineData("computed again: i32\n        get() -> i32\n            let operation = func() -> i32 => base.read()\n            return operation()", "explicit self capture")]
-    public void HeadersAndNonInstanceTargetsDoNotAcquireBaseValues(string declaration, string expected)
+    [InlineData("func f(self: ref/Self, n: i32 = base.read()) -> i32 => n", "OutsideBody", "instance body")]
+    [InlineData("func f(self: ref/Self) -> i32 => base.value()", "NotInstanceFunction", "use Type qualification for receiverless functions")]
+    [InlineData("func f(self: ref/Self) -> i32 => base()", "NotCall", "base.name(arguments)")]
+    [InlineData("group Settings\n        computed limit: i32\n            get() -> i32 => base.read()", "NoReceiver", "derived instance function")]
+    [InlineData("computed again: i32\n        get() -> i32\n            let operation = func() -> i32 => base.read()\n            return operation()", "NoSelfCapture", "explicit self capture")]
+    public void HeadersAndNonInstanceTargetsDoNotAcquireBaseValues(string declaration, string cause, string expected)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    " + declaration + "\n()");
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "InvalidBaseCall_Kd");
         Assert.Equal("base", error.Text);
-        Assert.Contains(expected, error.Label!, StringComparison.Ordinal);
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == error.Code);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
+        Assert.Null(record.Label);
+        Assert.Contains(expected, record.Note!, StringComparison.Ordinal);
     }
 
     [Theory]

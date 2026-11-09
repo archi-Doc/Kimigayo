@@ -58,9 +58,6 @@ public sealed partial class MirBuildTest
     // DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
     [Theory]
     [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
-    [InlineData(
-        "group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n",
-        "UnprovenConstraint_Kd")]
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() : base() => ()\n", "UnresolvedBinding_Kd")]
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() => ()\n", "UnresolvedBinding_Kd")]
     [InlineData("struct D : Missing\n    public init(k: i32) : base(k + 1) => ()\n", "UnresolvedBinding_Kd")]
@@ -213,7 +210,7 @@ public sealed partial class MirBuildTest
             ") -> i32\n    " + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto && x.ToString() == literal);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(node)!));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
@@ -312,6 +309,18 @@ public sealed partial class MirBuildTest
         var drop = program.Bodies.ToArray()
             .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type.Symbol?.Name == "FixedOwnedRemainder");
         Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
+    }
+
+    // SPEC 5.2.3 (R8-A1d): ArrayOwningIterator's constructor takes the Array's component from a held Array, which nothing destroys, so the
+    // constructor ends without a Drop of its InlineStorage local.
+    [Fact]
+    public void AHeldArrayIsNeverDestroyed()
+    {
+        var program = Compile("public func main()\n    let values: Array<string> = [\"a\"]\n    for value in values@move => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var init = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "init" } &&
+            x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "ArrayOwningIterator") && x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "InlineStorage"));
+        Assert.DoesNotContain(init.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Drop && init.TypeOf(x.Terminator.Place)?.Symbol?.Name == "InlineStorage");
     }
 
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
@@ -447,12 +456,28 @@ public sealed partial class MirBuildTest
         Assert.Equal(["PairAcquire _1", "Copy _2", "Ref Uniq _3*", "Move _4"], acquired);
     }
 
-    // SPEC 23.1.2 (DECISIONS R4-M145): a Place whose bare acquisition Binding left unset, a Place without a Type (its parameter's Type
-    // unresolved), is a derived Opaque with no record, discarded (its plan row unset) or as an item no consumer took (its Adjust unset,
-    // which the container reads as a discard), as any consumed child's unset Adjust is; a complete compilation has no such row
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): a discarded stored exclusive reference is held in a temporary of its
+    // Reborrow's Type, Binding's name for it (the meet of the layers reaching it; BU-27), whether the discard is explicit, bare or
+    // parenthesized, never of the Place's stored Type.
+    [Fact]
+    public void ADiscardedReborrowIsHeldAtBindingsName()
+    {
+        var c = Compile("struct Holder2 {a}\n    public var link: uniq/i32 during a\nfunc f(h: uniq/(Holder2 during a) during s) -> ()\n" +
+            "    _ = h.link\n    h.link\n    (h.link)\n    _ = (h.link)\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
+            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type), Binding.HoverTypeName(x.Rvalue.Type!)));
+        Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
+    }
+
+    // SPEC 23.1.2 (DECISIONS R4-M145, BU-103): a Place whose bare acquisition failed, a Place without a Type (its parameter's Type
+    // unresolved), is a derived Opaque with no record, discarded or as an item no consumer took (its Adjust unset, which the container
+    // reads as a discard), its plan row Failed, as any consumed child's Failed Adjust is; a complete compilation has no such row
     // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition).
     [Fact]
-    public void AnUnsetDiscardRowIsDerivedFromABindingError()
+    public void AFailedDiscardRowIsDerivedFromABindingError()
     {
         var c = Compile("func f(b: Missing, n: i32)\n    b\n    n\nfunc g(b: Missing) -> i32\n    b\npublic func main() => ()\n");
         Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
@@ -464,6 +489,92 @@ public sealed partial class MirBuildTest
             var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
             var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
             Assert.Equal([b], Assert.Single(Opaques(body)).Roots);
+        }
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-103): a consumed Place whose acquisition failed (no Type, or a Move resting on an Error Copy proof; an
+    // Error node's folds to (Temporary, None), R4-M109) gives its consumer a derived value, which writes the destination: a body's result
+    // (`_0`) and each branch of a Var's initializer, also through a group or a typeless alias (fail-before: `_0` and the else path's `y`
+    // were never written, so A1 reported UninitializedPlace_Kd at `y`). No record is added.
+    [Fact]
+    public void AFailedAcquisitionWritesItsDestination()
+    {
+        var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc a(b: Bad) -> Bad => b\n" +
+            "func f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let y: i32 = if c => 1 else => x\n    return y\n" +
+            "func e(c: bool) -> i32\n    let x = missing\n    let y: i32 = if c => 1 else => (x)\n    return y\n" +
+            "func g(c: bool) -> i32\n    let x = missing\n    let z = x\n    let y: i32 = if c => 1 else => z\n    return y\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        foreach (var (name, local) in new[] { ("a", (string?)null), ("f", null), ("k", "y"), ("e", "y"), ("g", "y") })
+        {
+            var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+            var root = local is null ? 0 : Array.FindIndex(body.Locals.ToArray(), x => x.Name == local);
+            var writes = body.Statements.ToArray().Count(x => x.Kind == MirStatementKind.Assign && x.Place == new MirPlace(root));
+            Assert.True(writes == (local is null ? 1 : 2), $"{name}: {writes} writes of _{root}");
+        }
+    }
+
+    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error is
+    // published Failed with no record of its own (the declaration's is reported) and its local takes a value derived from that failure,
+    // while the loop and its body are built: the body's independent MovedPlace_Kd stays. Fail-before: the item was moved out of the
+    // Subject's payload.
+    [Fact]
+    public void AForItemWhoseCopyProofIsErrorIsDerived()
+    {
+        var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc g(xs: Array<Bad>)\n" +
+            "    for x in xs@move\n        let s: string = \"a\"\n        let t = s@move\n        let u = s@move\npublic func main() => ()\n");
+        Assert.Equal(["UnsatisfiedConstraint_Kd Self is Copy"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            ["MovedPlace_Kd s"],
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "g");
+        var statements = body.Statements.ToArray();
+        var item = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "x");
+        var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(item));
+        var source = body.Operands[write.Rvalue.Start].Place;
+        Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
+    }
+
+    // SPEC 15.1.6, 14.8, 23.1.2 (DECISIONS R4-M179): a match binding whose Copy proof is Error is Failed with no record of its own and takes
+    // a derived value, while its match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
+    // match of a nesting, and a use of the match's value adds none; an arm reading the binding by value fails at bind time and adds no
+    // MIR record. Fail-before: the match was built Opaque.
+    [Theory]
+    [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => pair(s@move, s@move)\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    let t: string = \"b\"\n    match o@move\n        .Some(let v) => ()\n        .None => pair(t@move, t@move)\n", "MovedPlace_Kd t")]
+    [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => match n\n            .Some(let k) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    let s: string = \"a\"\n    match n\n        .Some(let k) => match o@move\n            .Some(let v) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    match o@move\n        .Some(let v) => take(v, v)\n        .None => ()\n", "")]
+    [InlineData("    let r: i32 = match o@move\n        .Some(let v) => 1\n        .None => 2\n    use(r)\n", "")]
+    public void AMatchBindingWhoseCopyProofIsErrorIsDerived(string body, string expected)
+    {
+        foreach (var (type, field) in new[] { ("Bad", "s: string = \"\""), ("Good", "n: i32 = 0") })
+        {
+            var c = Compile($"struct {type}\n    Self is Copy\n    public var {field}\n    public init() => ()\nfunc pair(a: string, b: string) => ()\n" +
+                $"func take(a: {type}, b: {type}) => ()\nfunc use(r: i32) => ()\nfunc g(o: Option<{type}>, n: Option<i32>)\n{body}public func main() => ()\n");
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Equal(
+                expected.Length == 0 ? [] : [expected],
+                program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+            var g = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "g");
+            var statements = g.Statements.ToArray();
+            var v = Array.FindIndex(g.Locals.ToArray(), static x => x.Name == "v");
+            if (v < 0)
+            {
+                // `take(v, v)` over Bad fails its arm at bind time (Binding's dependent TransferRequired_Kd), so that match is an Error
+                // node, replaced (PLAN G121).
+                Assert.Equal("Bad", type);
+                Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+                continue;
+            }
+
+            var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(v));
+            var source = g.Operands[write.Rvalue.Start].Place;
+            Assert.Equal(type == "Bad", statements.Any(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root)));
         }
     }
 

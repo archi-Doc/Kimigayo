@@ -37,7 +37,7 @@ public class OwnershipJoinTest
     }
 
     // SPEC 14.9.2, 15.6 (F1): a joined borrow's Type names both Origins and its value carries both Loans, so a write of either owner while
-    // it is live conflicts, on the MIR (A5) as on the old path, which decides until R6-check.
+    // it is live conflicts on the MIR (A5).
     [Theory]
     [InlineData("if c => a@ref else => b@ref")]
     [InlineData("if c => b@ref else => a@ref")]
@@ -72,14 +72,15 @@ public class OwnershipJoinTest
     [Fact]
     public void JoinedBorrowCannotOutliveEitherLocalSource()
     {
-        var c = MinimalEmissionTest.Analyze(Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
-
-        // SPEC 15.6.6, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
-        var conflict = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.Equal((OwnershipRequirement.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
-        Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
+        // SPEC 15.6.6, 16.2.2: one record for the destruction of `local` while the joined Borrow lives, never also at the join or the
+        // later use. Since the MIR decides acceptance (H5, DECISIONS R5-M185) it is A5's record at `local`'s declaration (H3b T44: at the
+        // exit whose cleanup destroys it before, as in BlockEscapeLoanTest.AnUndecidedHoldersExitDestructionsAreOneRecord), relating the
+        // Borrow and the block that retains it.
+        var c = CallReservationTest.AssertMirRecord(
+            Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)",
+            DiagnosticCode.ComparisonLoanConflict_Kd,
+            "let local = Cell.init()",
+            "borrow 8:46 local@ref | loan 6:34 do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref");
         Assert.False(c.Generate(TextWriter.Null));
     }
 

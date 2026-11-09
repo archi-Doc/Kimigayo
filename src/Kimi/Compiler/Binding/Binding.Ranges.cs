@@ -46,14 +46,6 @@ public sealed partial class Binding
     /// <returns>Whether the selection is a resolved range selection.</returns>
     internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
 
-    private static void ResetSynthetic(Koto node)
-    {
-        node.BindingState = BindingState.Unvisited;
-        node.BoundType = null;
-        node.BoundSymbol = null;
-        node.BindingFailure = BindingFailure.None;
-    }
-
     // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
 
@@ -100,48 +92,57 @@ public sealed partial class Binding
         _ => false,
     };
 
+    private void ResetSynthetic(Koto node)
+    {
+        node.BindingState = BindingState.Unvisited;
+        node.BoundType = null;
+        node.BoundSymbol = null;
+        this.ClearFailure(node);
+    }
+
     // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
     // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
     private void ResetSyntheticCalls()
     {
+        this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
         foreach (var call in this.propertyCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.indexerCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.viewRangeCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.rangeCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.resolvedKeys.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var projection in this.storageProjections.Values)
         {
-            ResetSynthetic(projection);
+            this.ResetSynthetic(projection);
         }
 
         foreach (var storage in this.propertyUpdateStorage.Values)
         {
-            ResetSynthetic(storage);
+            this.ResetSynthetic(storage);
         }
 
         foreach (var input in this.propertyUpdateInputs.Values)
         {
-            ResetSynthetic(input);
+            this.ResetSynthetic(input);
         }
 
         this.resolvedSlices.Clear();
@@ -224,7 +225,7 @@ public sealed partial class Binding
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
-            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange", ComparisonFailure.Shape);
+            this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);
             result = Complete(source, null);
             return true;
         }
@@ -282,12 +283,12 @@ public sealed partial class Binding
         var lengthArgument = (MemberAccessKoto)call.ArgumentNodes[1];
         ((SyntheticKoto)generic.Identifier!).Resolve(this.PositionSyntaxMember(range ? "resolvedRange" : "resolved"), null, null);
         ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, key, null);
-        ResetSynthetic(call);
-        ResetSynthetic(generic);
-        ResetSynthetic(lengthArgument);
-        ResetSynthetic(lengthArgument.Left);
-        ResetSynthetic(lengthArgument.Right);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        this.ResetSynthetic(call);
+        this.ResetSynthetic(generic);
+        this.ResetSynthetic(lengthArgument);
+        this.ResetSynthetic(lengthArgument.Left);
+        this.ResetSynthetic(lengthArgument.Right);
+        return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
     }
 
     // SPEC 4.6.3: a range key whose written boundaries are integers of any PrimitiveInteger Type, read through references,
@@ -429,7 +430,7 @@ public sealed partial class Binding
             : range.Start is not null ? this.PositionSyntaxCall(range, "from", start, null, range.Start, null)
             : range.End is not null ? this.PositionSyntaxCall(range, "to", end, null, range.End, null)
             : this.PositionSyntaxCall(range, "all", null, null, null, null);
-        return this.BindCall(call, scope, null) is null ? Complete(range, null) : Complete(range, type);
+        return this.BindSynthesizedCall(range, call, scope) is null ? Complete(range, null) : Complete(range, type);
     }
 
     // The Type of a written range boundary known independently of the context, read through references; null for an
@@ -486,7 +487,7 @@ public sealed partial class Binding
         }
 
         var call = this.PositionSyntaxCall(node, "fromEnd", offset, null, node.Operand, null);
-        return this.BindCall(call, scope, null) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
+        return this.BindSynthesizedCall(node, call, scope) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
     }
 
     // The T of `^x`: a literal-only operand takes the T of an expected FromEnd<T>, else i32 (SPEC 4.6.2).
@@ -527,10 +528,10 @@ public sealed partial class Binding
                 ((SyntheticKoto)generic.TypeArguments[1]).Resolve(null, secondType, null);
             }
 
-            ResetSynthetic(generic);
+            this.ResetSynthetic(generic);
         }
 
-        ResetSynthetic(call);
+        this.ResetSynthetic(call);
         return call;
     }
 

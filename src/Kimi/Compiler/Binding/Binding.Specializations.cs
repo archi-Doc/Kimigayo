@@ -8,26 +8,6 @@ public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
 
-    // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
-    // Each template call retains its shape; one shared buffer reallocates when get and set alternate.
-    private readonly Dictionary<CallPlan, CallPlan> forwardedRequirements = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(CallPlan Inner, CallPlan Outer), CallPlan> defaultCalls = new();
-
-    // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
-    // unlike a syntax-keyed table, this distinguishes two instantiations of the same default in one caller.
-    internal CallPlan? InstantiateDefaultCall(CallPlan inner, CallPlan outer)
-    {
-        var key = (inner, outer);
-        this.defaultCalls.TryGetValue(key, out var previous);
-        var call = this.InstantiateForwardedCall(inner, outer, previous);
-        if (call is not null)
-        {
-            this.defaultCalls[key] = call;
-        }
-
-        return call;
-    }
-
     // SPEC 8.13.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
     // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.
@@ -36,158 +16,6 @@ public sealed partial class Binding
 
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
-
-    // SPEC 8.3.3: generic dispatch reaches a verified implementation without a direct call, so a use of `type` as a Type
-    // argument needs every implementation that its verified conformances map a requirement to.
-    internal void CollectWitnesses(BindingSymbol type, List<FunctionKoto> destination)
-    {
-        if (!this.conformancesByType.TryGetValue(type, out var identities))
-        {
-            return;
-        }
-
-        for (var i = 0; i < identities.Count; i++)
-        {
-            var paths = identities[i].PathStorage;
-            for (var p = 0; p < paths.Count; p++)
-            {
-                if (!paths[p].IsVerified)
-                {
-                    continue;
-                }
-
-                var witnesses = paths[p].WitnessStorage;
-                for (var w = 0; w < witnesses.Count; w++)
-                {
-                    if (witnesses[w].Implementation.Declaration is FunctionKoto function && !destination.Contains(function))
-                    {
-                        destination.Add(function);
-                    }
-                }
-
-                var properties = paths[p].PropertyWitnessStorage;
-                for (var w = 0; w < properties.Count; w++)
-                {
-                    if (this.PropertyWitnessFunction(paths[p], properties[w]) is { } accessor && !destination.Contains(accessor))
-                    {
-                        destination.Add(accessor);
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>Instantiates a call forwarded by a generic body under the closed context of its caller.</summary>
-    /// <param name="inner">The call in the generic body.</param>
-    /// <param name="outer">The closed call context.</param>
-    /// <param name="destination">A call to overwrite, such as the previous emission's result for the same position, or null.</param>
-    /// <returns>The concrete call, or null when the context has no complete instantiation.</returns>
-    internal CallPlan? InstantiateForwardedCall(CallPlan inner, CallPlan outer, CallPlan? destination = null)
-    {
-        var types = this.typeScratch.Rent(inner.TypeArguments.Length);
-        var lengths = this.lengthScratch.Rent(inner.LengthArguments.Length);
-        var origins = this.originScratch.Rent(inner.Origins.Length);
-        var inputs = this.originScratch.Rent(inner.InputOrigins.Length);
-        var defaults = this.defaultArgumentScratch.Rent(inner.DefaultArguments.Length);
-        var operations = this.argumentOperationScratch.Rent(inner.ArgumentOperations.Length);
-        try
-        {
-            for (var i = 0; i < inner.TypeArguments.Length; i++)
-            {
-                if (inner.TypeArguments[i] is { } type && (types[i] = this.InstantiateStorageType(type, outer)) is null)
-                {
-                    return null;
-                }
-            }
-
-            for (var i = 0; i < inner.LengthArguments.Length; i++)
-            {
-                if (inner.LengthArguments[i] is { } length && (lengths[i] = this.SubstituteLength(length, outer.Target.Declaration, outer.LengthArguments)) is null)
-                {
-                    return null;
-                }
-            }
-
-            var result = this.InstantiateStorageType(inner.ReturnType, outer);
-            var declaring = inner.DeclaringType is { } owner ? this.InstantiateStorageType(owner, outer) : null;
-            if (result is null || (inner.DeclaringType is not null && declaring is null))
-            {
-                return null;
-            }
-
-            for (var i = 0; i < inner.DefaultArguments.Length; i++)
-            {
-                var omitted = inner.DefaultArguments[i];
-                if (this.InstantiateStorageType(omitted.ParameterType, outer) is not { } parameterType)
-                {
-                    return null;
-                }
-
-                defaults[i] = omitted with { ParameterType = parameterType };
-            }
-
-            Origins(inner.Origins, origins);
-            Origins(inner.InputOrigins, inputs);
-            for (var i = 0; i < inner.ArgumentOperations.Length; i++)
-            {
-                if (!Operation(inner.ArgumentOperations[i], out operations[i]))
-                {
-                    return null;
-                }
-            }
-
-            if (!Operation(inner.ReceiverOperation, out var receiver))
-            {
-                return null;
-            }
-
-            // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
-            var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
-            CallPlan call;
-            if (requirement)
-            {
-                if (!this.forwardedRequirements.TryGetValue(inner, out call!))
-                {
-                    this.forwardedRequirements.Add(inner, call = new());
-                }
-            }
-            else
-            {
-                call = destination ?? new CallPlan();
-            }
-
-            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: operations.AsSpan(0, inner.ArgumentOperations.Length), receiverOperation: receiver, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
-            call.TupleOperator = inner.TupleOperator;
-            call.RequirementContract = inner.RequirementContract;
-            return requirement ? this.InstantiateRequirementCall(call, outer, destination) : call;
-        }
-        finally
-        {
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.defaultArgumentScratch.Return(defaults, clearArray: true);
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.lengthScratch.Return(lengths, clearArray: true);
-            this.typeScratch.Return(types, clearArray: true);
-        }
-
-        bool Operation(BoundArgumentOperation original, out BoundArgumentOperation concrete)
-        {
-            // Keep the source/Loan anchor and selected acquisition; close both Types under the same context as the result.
-            var source = original.SourceType is { } sourceType ? this.InstantiateStorageType(sourceType, outer) : null;
-            var parameter = original.ParameterType is { } parameterType ? this.InstantiateStorageType(parameterType, outer) : null;
-            concrete = original with { SourceType = source, ParameterType = parameter };
-            return (original.SourceType is null || source is not null) && (original.ParameterType is null || parameter is not null);
-        }
-
-        void Origins(ReadOnlySpan<BoundOrigin> source, Span<BoundOrigin> values)
-        {
-            for (var i = 0; i < source.Length; i++)
-            {
-                values[i] = source[i] is { } origin ? this.ForwardOrigin(origin, outer.Target, outer.DeclaringType, outer.Origins, outer.InputOrigins, outer.TypeArguments) : null!;
-            }
-        }
-    }
 
     /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): through the stored
     /// Origins of the Type declaring the callee, then the call's Origins and inputs and the pair Origins its Type arguments bind.</summary>
@@ -379,16 +207,16 @@ public sealed partial class Binding
             // Do not accept their syntax by merely erasing the generic header. Written binder names
             // are inherited by CompleteImplementationOrigins (SPEC 8.13.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.13.1).
-            if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
+            if (function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
             // SPEC 8.13.2: a specialization header inherits the original's access, boundary, defaults and
-            // Constraints; it redeclares none of them.
-            if (function.Modifier != ModifierKind.NoModifier || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 ||
-                HasParameterDefaults(function))
+            // Constraints; it redeclares none of them. The parser judges its modifiers, publishing none (ParseFuncDeclaration),
+            // and its `!` boundary (TryParseParameterList).
+            if (function.TypeConstraints.Count != 0 || HasParameterDefaults(function))
             {
                 this.Fail(function, BindingFailure.IncompatibleImplementation);
                 continue;

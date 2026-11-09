@@ -52,9 +52,7 @@ public class PatternBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.PendingBinding);
-        Assert.True(flow.Issues.Count == 0, string.Join("\n", flow.Issues.Select(x => x.Message)));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.All(Matches(c), m => Assert.True(c.Binding.TryGetMatch(m, out _)));
     }
 
@@ -76,8 +74,30 @@ public class PatternBindingTest
         var plan = Plan(c);
         Assert.Equal(MatchCoverageState.Invalid, plan.Coverage.State);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        var flow = c.AnalyzeControlFlow();
-        Assert.DoesNotContain(flow.Issues, x => x.Message.Contains("exhaustive", StringComparison.Ordinal));
+    }
+
+    // SPEC 14.8.4, 15.1.6, 23.1.2 (DECISIONS R4-M179): coverage is proved from the Patterns, never from an acquisition, so a binding whose
+    // Copy proof is Error leaves its match's coverage, its NonExhaustiveMatch_Kd, a failed guard's record and an unreachable arm's Warning
+    // as over the Copy twin, beside the declaration's failure. Fail-before: the binding made the coverage Invalid.
+    [Theory]
+    [InlineData(".Some(let v) => ()\n    .None => ()", MatchCoverageState.Exhaustive, "", "")]
+    [InlineData(".Some(let v) => ()", MatchCoverageState.NonExhaustive, "NonExhaustiveMatch_Kd", "")]
+    [InlineData(".Some(let v) if 1 => ()\n    .None => ()", MatchCoverageState.NonExhaustive, "NonExhaustiveMatch_Kd TypeMismatch_Kd", "")]
+    [InlineData(".Some(let v) => ()\n    _ => ()\n    .None => ()", MatchCoverageState.Exhaustive, "", ".None 1")]
+    public void ABindingWhoseCopyProofIsErrorKeepsItsMatchCoverage(string arms, MatchCoverageState state, string codes, string warnings)
+    {
+        var good = Facts("Good", "n: i32 = 0");
+        Assert.Equal((state, codes, warnings), (good.Coverage.State, good.Codes, good.Warnings));
+        Assert.Equal(good, Facts("Bad", "s: string = \"\""));
+
+        (MatchCoverage Coverage, string Codes, string Warnings) Facts(string type, string field)
+        {
+            var c = Parse($"struct {type}\n    Self is Copy\n    public var {field}\n    public init() => ()\nfunc f(o: Option<{type}>) => match o@move\n    {arms}");
+            c.Bind();
+            var issues = c.Binding.Issues.Select(static x => $"{x.Code}").Order(StringComparer.Ordinal).ToList();
+            Assert.Equal(type == "Bad", issues.Remove(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd)));
+            return (Plan(c).Coverage, string.Join(" ", issues), string.Join(" ", c.Binding.PatternWarnings.Select(static x => $"{x.Pattern} {x.CoveringArm}")));
+        }
     }
 
     [Theory]
@@ -232,13 +252,14 @@ public class PatternBindingTest
     }
 
     [Theory]
-    [InlineData("isize", "2147483647", true)]
-    [InlineData("isize", "2147483648", false)]
-    [InlineData("isize", "-2147483648", true)]
-    [InlineData("isize", "-2147483649", false)]
-    [InlineData("usize", "4294967295", true)]
-    [InlineData("usize", "4294967296", false)]
-    public void PointerSizedPatternsUsePreparedTarget(string type, string literal, bool valid)
+    [InlineData("isize", "2147483648", true)]
+    [InlineData("isize", "9223372036854775807", true)]
+    [InlineData("isize", "9223372036854775808", false)]
+    [InlineData("isize", "-9223372036854775808", true)]
+    [InlineData("isize", "-9223372036854775809", false)]
+    [InlineData("usize", "18446744073709551615", true)]
+    [InlineData("usize", "18446744073709551616", false)]
+    public void PointerSizedPatternsUseTheProfileWidth(string type, string literal, bool valid)
     {
         var c = Parse($"func f(x: {type}) => match x\n    {literal} => ()\n    _ => ()", "i686-unknown-linux-gnu");
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -334,6 +355,52 @@ public class PatternBindingTest
         Assert.Equal(twin, Records(Head + body.Replace("SUBJECT", subject, StringComparison.Ordinal).Replace("OTHER", other, StringComparison.Ordinal)));
     }
 
+    // SPEC 14.8.1, 15.1.6, 14.10.3 (DECISIONS R4-M175): a Pattern binding of a Never payload is no Never form, so it initializes its
+    // local from the selected Place, and each read of the local is the Never form (fail-before: UninitializedPlace_Kd at each read); the
+    // twin Moves it twice, one MovedPlace_Kd (fail-before: also UninitializedPlace_Kd at the first). A labeled do whose exits both deliver
+    // gets no completion from its body's end arrival, as it is no Never form (fail-before: UninitializedPlace_Kd at `result`); the twin's
+    // exit of a Never value is assumed delivered and places nothing.
+    [Theory]
+    [InlineData("func run() -> Result<(), i32>\n    match source()\n        .Ok(let v) => v@move\n        .Err(let e) => return .Err(e)\n", "")]
+    [InlineData(
+        "func use(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            use(v)\n            use(v)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "")]
+    [InlineData(
+        "func take(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            take(v@move)\n            take(v@move)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "MovedPlace_Kd v")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work 3\n    return result\n",
+        "")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work (return 3)\n    return result\n",
+        "UninitializedPlace_Kd result")]
+    public void ANeverPayloadBindingInitializesItsLocal(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.10.3 per part, 15.1.6 (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a match acquires its whole Subject, so a Case value
+    // constructed with a Never payload part, in unreachable code, is UninitializedPlace_Kd at the match whichever part the arm binds
+    // (fail-before: accepted). The real-path twins of NeverContinuationTest's per-part rows, a loop's and a do's, read only what their
+    // completing exit placed and are accepted.
+    [Theory]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(let x, _) => return x\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(_, let y) => return y\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0\n", "")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1\n", "")]
+    public void ASubjectWithANeverPartIsAcquiredWhole(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
@@ -407,18 +474,16 @@ public class PatternBindingTest
         var c = Parse(source);
         c.Bind();
         Assert.Equal(expected, Plan(c).Coverage.State);
-        var flow = c.AnalyzeControlFlow();
-        Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
     }
 
     [Fact]
     public void GuardReturnTargetsFunctionAndChecksUnsafeOperations()
     {
-        var c = Parse("func f(x: bool) -> i32 => match x\n    true if return 1 => 2\n    false => 3");
-        c.Bind();
-        var flow = c.AnalyzeControlFlow();
-        Assert.IsType<FunctionKoto>(Assert.Single(flow.Targets, t => t.Key is ReturnKoto).Value);
-        Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
+        var c = Parse("func f(x: bool) -> i32 => match x\n    true if return 1 => 2\n    true => 4\n    false => 3");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.IsType<FunctionKoto>(HirTables.PlanOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ReturnKoto>().Single()).Plan);
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(Matches(c)[0].Arms[0].Guard!));
         var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
         unsafeGuard.Bind();
         Assert.Contains(unsafeGuard.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
@@ -426,17 +491,19 @@ public class PatternBindingTest
         Assert.Contains(TestDiagnostics.Of(unsafeGuard), x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd) && x.Text == "*p");
     }
 
+    // The HIR publishes the guard's exit to the do and neither the match nor the do completing; the MIR's verdict on the program is
+    // ANeverPayloadBindingInitializesItsLocal's F3 row (DECISIONS R4-M175).
     [Fact]
     public void AbruptSubjectDoesNotPropagateGuardTransfers()
     {
         var c = Parse("func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n        exit to work 3\n    return result");
-        c.Bind();
-        var flow = c.AnalyzeControlFlow();
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        HirTables.Publish(c);
         var match = Matches(c)[0];
         var guardExit = Assert.IsType<ExitKoto>(KotoHelper.UnwrapParentheses(match.Arms[0].Guard!));
-        var target = Assert.IsType<DoKoto>(flow.Targets[guardExit]);
-        Assert.False(flow.Nodes[match].CanCompleteNormally);
-        Assert.False(flow.Nodes[target].CanCompleteNormally);
+        var target = Assert.IsType<DoKoto>(HirTables.PlanOf(guardExit).Plan);
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(match));
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(target));
     }
 
     [Fact]
@@ -467,6 +534,22 @@ public class PatternBindingTest
         Assert.Equal(acquisition, binding.Acquisition);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
         Assert.Equal(0, binding.ImplicitFollows);
+    }
+
+    // SPEC 15.1.6, 8.14, 8.15.2 (G642): an owned part is bound by its complete stored Type in each Semantics case, so `value`,
+    // `(s/T, i32)`, Copies where every case Copies (owner or ref, T is Copy: `(T, i32)`, `(ref/T, i32)`) and is as the 8.3 proof gives
+    // otherwise (`(uniq/T, i32)` is no Copy: CopyOrMove, which HIR lowers to Move). Both programs are valid. A part that is itself a
+    // pair layer is no owned part (its mode is never ByValue), so it stays a borrow.
+    [Theory]
+    [InlineData("owner or ref", PatternAcquisition.Copy)]
+    [InlineData("owner or uniq", PatternAcquisition.CopyOrMove)]
+    public void AnOwnedPairPartCopiesWhereEveryCaseCopies(string admitted, PatternAcquisition acquisition)
+    {
+        var c = Parse($"func f<s/T>(x: s/T) -> ()\n    s is {admitted}\n    T is Copy\n    match ((x@move, 1), 2)\n        (let value, _) => ()\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
+        Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
+        Assert.Equal(acquisition, binding.Acquisition);
     }
 
     // SPEC 6.5.2 (G381): a stored Property's inferred Closure matches Cases, which are prepared before the headers that bind it (the Field
@@ -540,13 +623,13 @@ public class PatternBindingTest
             Assert.True(c.Binding.TryGetMatch(match, out var plan));
             var positions = plan!.Positions;
             var symbol = positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol;
-            var flow = c.AnalyzeControlFlow();
-            Assert.Empty(flow.PendingBinding);
+            var valid = c.Analyze().IsVerified;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
-                flow.Reanalyze(c.Kotonoha.RootKoto);
+                valid &= c.Analyze().IsVerified;
             }));
+            Assert.True(valid, MinimalEmissionTest.Describe(c));
             Assert.True(c.Binding.Result.IsComplete, Describe(c));
             Assert.True(c.Binding.TryGetMatch(match, out var rebound));
             Assert.Same(plan, rebound);

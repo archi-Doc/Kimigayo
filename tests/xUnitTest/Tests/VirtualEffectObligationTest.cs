@@ -11,8 +11,8 @@ namespace XunitTest;
 
 public class VirtualEffectObligationTest(ITestOutputHelper output)
 {
-    // The unrelated mutable group storage is still outside generation (P42): the collector's StaticStorage record at check, on every
-    // pipeline (DECISIONS R5-M82, R5-M156); P42 reverts it.
+    // The unrelated mutable group storage is still outside generation (P42): the collector's StaticStorage record at check
+    // (DECISIONS R5-M82, R5-M156); P42 reverts it.
     private const string Storage = "Unsupported_Kd public var count: i32 = 0";
 
     // SPEC 8.11.3 on MIR (H0b §5.4): A4 records the slot's bound at each implementation that breaks it, and Binding reports no effect issue.
@@ -131,7 +131,7 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
     // `State.inspect()`, its "confined: a mutable static access" label, the "including unused declarations" text and the original slot's,
     // bound and effect roles are lost until A4 publishes them.
     [Fact]
-    public void TransitiveFailureRelatesTheOriginalSlotAndItsBoundInCliAndLsp()
+    public void TransitiveFailuresReachCliAndLspWithoutEvidence()
     {
         const string Source = "group State\n    public var count: i32 = 0\n    public func inspect() -> i32 => State.count\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => State.inspect()\nlet independent = missing";
         var path = Path.GetFullPath("virtual-effect-obligation.kimi");

@@ -32,6 +32,10 @@ public sealed partial class RetentionTest
     // Bad beside a Field of height 65; G growing beside a failed Field.
     internal const string Bad = "struct Bad\n    public var m: MISSING\n";
 
+    internal const string Phantom = "struct Ph<T>\n";
+
+    internal const string CappedRaw = "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    public var b: raw/(raw/u8) during s\n";
+
     internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
 
     internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
@@ -74,6 +78,27 @@ public sealed partial class RetentionTest
     private const string Slot = "struct Slot<T> {source}\n    var data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func put(self: uniq/Self, value: ref/T during source) => self.data = value\n" +
         "    public func item(self: uniq/Self) -> ref/T during self.source => self.data\n";
+
+    // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
+    private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
+
+    // A holder whose slot an exclusive Loan Field keeps (PLAN G148 (1)'s review B-1: its raw layers stating `s` are exclusive).
+    private const string SlotKept = "struct HS {s}\n    let loan: Loan<uniq/(raw/u8) during s>\n";
+
+    // ACallReadsARawLayerByItsPosition's View: its slot kept by a `ref` or a `uniq` Loan, a caller binding it to a `var` local's slot, and
+    // a method relaying a Type argument's layer stating the slot to a generic of a group.
+    private const string ViewRef = "struct View {source}\n    let loan: Loan<ref/(raw/u8) during source>\n    public init(t: ref/(raw/u8) during source) => self.loan = Loan.init(t)\n";
+
+    private const string ViewUniq = "struct View {source}\n    let loan: Loan<uniq/(raw/u8) during source>\n    public init(t: uniq/(raw/u8) during source) => self.loan = Loan.init(t)\n";
+
+    private const string ViewCall = "func caller(r: ref/(raw/u8), v: raw/u8)\n    var vw = View.init(r)\n    var q = r@follow@raw\n    vw.put(q@uniq, v)\n";
+
+    private const string ViewUniqCall = "func caller(r: uniq/(raw/u8), v: raw/u8)\n    var q = r@follow@raw\n    var vw = View.init(r)\n    vw.put(q@uniq, v)\n";
+
+    private const string ViewGet = "func caller(r: ref/(raw/u8), v: raw/u8)\n    var vw = View.init(r)\n    var q = r@follow@raw\n    let p = vw.get(q@uniq, v)\n    return\n";
+
+    private const string ViewRelay = "    public func relay(self: uniq/Self, h: uniq/Wrap<raw/(raw/u8) during source>, v: raw/u8) => Keep.keep(h, v)\n" +
+        "struct Wrap<E>\n    internal var value: E\ngroup Keep\n    public func keep<U>(w: uniq/U, v: raw/u8) => ()\n";
 
     // A slot kept by an exclusive Loan Field (design review A-B3: a raw parameter during `v.source` may store what the Dictionary admits).
     private const string KeptView = "struct View<K, V> {source}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during source>\n" +
@@ -159,6 +184,30 @@ public sealed partial class RetentionTest
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 15.8.2, 7.7.2, PLAN G553: a Closure over a `var` local reads as one over a `let` binding or a stated Origin: its environment keeps
+    // the local region, which reaches the meet of its sources as of the literal, what its signature names, so a source assigned after the
+    // capture is neither's. An exclusive capture's result keeps the receiver's own value, a shared one's what a read through the receiver
+    // carries, tied.
+    [Theory]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v: uniq/i32 during q = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during p, other: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n    v = other@move\n", "result {0 Value}")]
+    [InlineData("func f(value: ref/i32 during q)\n    var v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    [InlineData("func f(value: ref/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    public void ACapturedLocalRegionReadsAsItsSources(string source, string expected)
+        => Assert.Equal([expected], ValueCalls(Bind(source)));
+
+    // PLAN G553: a generic callee's Callable input is such a Closure too: `R` takes the Closure's published result, which reaches its region.
+    [Fact]
+    public void ACallableInputReadsItsCapturedRegion()
+        => Assert.Equal(
+            ["result {0 Content}"],
+            Calls(
+                Bind("func apply<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\nfunc t()\n    var x: i32 = 1\n    var r = x@ref\n" +
+                    "    let get = func [r] () => r\n    let v: ref/i32 during r = apply(get@ref)\n"),
+                "apply"));
+
     // SPEC 15.6.4, 15.6.1, 15.3.4: a nested function or closure is read under the premises its body is checked under, its enclosing
     // function's included: an input's well-formedness (c outlives o) there makes `value` reach the result, through a direct call, a
     // Closure called by its declared signature (C8; its parameter after its call receiver at input 0, DECISIONS R4-M148) and an enclosing
@@ -237,8 +286,112 @@ public sealed partial class RetentionTest
     [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
+    [InlineData(Phantom + "func f(dst: uniq/Ph<ref/i32 during q>, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Content}, reached {}")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()", "store 0: own {1 Value}, reached {}")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, v: ref/u8) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 4.9, 15.6.4 (G416 row 9): `(K, V)` is a Dictionary's stored entry, so a borrow of it or a Slice of them holds within the Dictionary,
+    // and clearing it under a live one conflicts; dev's acceptance was the false one. Each valid twin uses it first.
+    [Theory]
+    [InlineData("-> ref/(i32, i64) during d", "let k = r@follow\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> ref/(i32, i64) during d", "d.clear()\n    let k = r@follow", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    [InlineData("-> Slice<(i32, i64)> during d", "let k = r.length\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> Slice<(i32, i64)> during d", "d.clear()\n    let k = r.length", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    public void ADictionarysEntryHoldsWithinIt(string result, string use, string row, string records)
+    {
+        var entry = $"func entry(d: ref/Dictionary<i32, i64>) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(entry), "entry"));
+        var form = entry + $"func g()\n    var d: Dictionary<i32, i64> = [:]\n    let r = entry(d@ref)\n    {use}\npublic func main() => ()\n";
+        Assert.Equal(records, MirBorrowsTest.Records(form));
+    }
+
+    // Binding's bound counts entries, 32 of them, a Dictionary level counting two (the owner's O-47 (b)). A Tuple level is one, so dev's edge
+    // stands: n = 32 keeps the conflict, n = 33 is past it. A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 are past it.
+    [Theory]
+    [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 17, "")]
+    [InlineData("Dictionary<i32, ", ">", 32, "")]
+    [InlineData("Dictionary<i32, ", ">", 33, "")]
+    [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 33, "")]
+    public void TheBoundCountsEntries(string open, string close, int levels, string records)
+        => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
+
+    // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
+    // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
+    // limit and no contract: the 32-entry twin of each keeps the conflict.
+    [Theory]
+    [InlineData(1, 31, "")]
+    [InlineData(16, 1, "")]
+    [InlineData(1, 30, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData(16, 0, "ComparisonLoanConflict_Kd x = 3")]
+    public void AMixedNestPastTheBoundIsTheRecordedLimit(int dictionaries, int tuples, string records)
+    {
+        var leaf = string.Concat(Enumerable.Repeat("(i32, ", tuples)) + "ref/i32 during q" + new string(')', tuples);
+        Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat("Dictionary<i32, ", dictionaries)) + leaf + new string('>', dictionaries)));
+    }
+
+    // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
+    // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
+    // twin's write conflicts while h lives.
+    [Theory]
+    [InlineData(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(
+        "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    let b: raw/(raw/u8 during static) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()",
+        "store 0: own {0 Content, 1 Value}, reached {} untied")]
+    public void ACapStepsOnlyTheLayerItsDeclarationStates(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    [Fact]
+    public void ACappedHoldersPointeeKeepsWhatARuleAStoreBrings()
+    {
+        const string Init = "    public init(l: ref/u8 during s)\n        self.loan = Loan.init(l)\n        self.b = null\n";
+        const string Form = "func put(h: uniq/HS, v: raw/u8, w: ref/i32) => ()\nfunc g()\n    var x = 1\n    var y: u8 = 2\n    var h = HS.init(y@ref)\n" +
+            "    put(h@uniq, null, x@ref)\n    x = 3\n    let k = h@ref\n";
+        Assert.Equal("ComparisonLoanConflict_Kd x = 3", MirBorrowsTest.Records(CappedRaw + Init + Form + "public func main() => ()\n"));
+        var result = Bind(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) -> HS => $abort(\"x\")\n");
+        Assert.StartsWith("result {0 Value, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
+    }
+
+    // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
+    // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
+    [Theory]
+    [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
+    [InlineData(
+        "storedBad",
+        "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
+        "ComparisonLoanConflict_Kd x = 3")]
+    public void ATypeArgumentAFieldLessGenericDoesNotStoreKeepsNoLoan(string name, string form, string expected)
+        => Assert.Equal(expected, name.Length == 0 ? string.Empty : HoldingRecords(form));
+
+    // Guards of dev's answer at a HeapBuffer, which takes its declared Fields until G-1 judges SPEC 22.9 (G416): a call may store a raw input
+    // there as in a raw Field (heapRawKept beside slotBad; SPEC 5.2.1: a value moved into raw storage keeps its Loans), and the buffer's own
+    // borrow conflicts (heapBytesBad).
+    [Theory]
+    [InlineData("func heapRawKept()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func heapBytesBad()\n    var h = Text.heap(8)\n    let b = h.bytes()\n    h.clear()\n    let n = b.length\n", "CallActivationConflict_Kd h.clear()")]
+    public void AHeapBufferHoldsByItsDeclaredFields(string form, string expected)
+        => Assert.Equal(expected, HoldingRecords(form));
+
+    // SPEC 15.6.4 (G416 C): Start, End, BufferFull and InvalidUtf8 declare no storage, so no borrow forms within them and a result during one
+    // holds no part of it. Dev's false rejection goes; a struct with a Field keeps its conflict.
+    [Theory]
+    [InlineData("End", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("End", "-> Slice<i32> during dst", "w.length", "result {0 Content}", "")]
+    [InlineData("Start", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("BufferFull", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Text.InvalidUtf8", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Mark", "-> ref/i32 during dst", "w@follow", "result {0 Value}", "ComparisonLoanConflict_Kd v = m")]
+    public void AnEmptyStructHoldsNothing(string type, string result, string use, string row, string records)
+    {
+        var form = "struct Mark\n    Self is Copy\n    public var n: i32\n    public init() => self.n = 0\n" +
+            $"func f(dst: ref/{type}) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(form), "f"));
+        Assert.Equal(records, MirBorrowsTest.Records(form + $"func g(m: {type})\n    var v = m\n    let w = f(v@ref)\n    v = m\n    let k = {use}\npublic func main() => ()\n"));
+    }
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
     // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
@@ -592,15 +745,39 @@ public sealed partial class RetentionTest
     // DECISIONS R4-M154, Revision 10: a source's fit is the conjunction over the layers of its path, but those the premise catalog's
     // well-formedness relates to the layer above, so a borrow formed through `x`'s raw layer lists one pair per layer the position's
     // closure misses: into `*w`, `p`, `r` (the raw layer's, which no well-formedness relates to `p`) and `a` (none relates it to `r`);
-    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`.
-    [Fact]
-    public void ASourcesPairsAreOneConjunctionOverItsPath()
+    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`. x's raw layer is a Type argument's, judged where `r` is bound (SPEC
+    // 5.7 Authority, 5.2.1 condition 3; DECISIONS BU-113): g states `r` by `zr: uniq` (and by `zr: ref` with `zu: uniq`), so f may write
+    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`).
+    [Theory]
+    [InlineData("zr: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
+    [InlineData("zr: ref/i32 during r", "reached {}")]
+    [InlineData("zr: ref/i32 during r, zu: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
+    public void ASourcesPairsAreOneConjunctionOverItsPath(string statements, string reached)
     {
         var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
             "func f<T, E>(x: T, w: uniq/E) => ()\n" +
-            "func g(zr: ref/i32 during r, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
-        Assert.Equal(["store 0: own {0 Content} if {0 Value: p > r}, reached {0 Content} if {0 Value: p > a & 0 Value: r > a}, store 1: own {1 Content} if {0 Value: p > s & 0 Value: r > s & 0 Value: a > s}, reached {}"], Calls(c, "f"));
+            $"func g({statements}, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
+        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}} if {{0 Value: p > s & 0 Value: r > s & 0 Value: a > s}}, reached {{}}"], Calls(c, "f"));
     }
+
+    // SPEC 5.2.1 condition 3, 5.7 Authority (DECISIONS BU-113): a call's contract reads a raw layer by its position. A View method's own
+    // layer (`during source`) is capped by `self`'s `ref`-kept slot, a result layer too, whatever the receiver binds the slot to; a
+    // `uniq`-kept slot is not. In a Type's own body a Type argument's layer stating its slot is judged by that slot's Loan requirement:
+    // `ref` stores nothing past it, `uniq` may. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
+    // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5).
+    [Theory]
+    [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
+    [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "    public func put(self: uniq/Self, p: raw/(ref/i32 during q) during a, v: ref/i32 during q) => ()\n" +
+        "func g(r: ref/(ref/i32 during q), h: uniq/(Holder<ref/(ref/i32 during q) during r> during o), p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => h.put(p, v)\n",
+        "put",
+        "store 0: own {0 Content, 1 Content}, reached {}, store 1: own {0 Content, 1 Content, 2 Value}, reached {}")]
+    public void ACallReadsARawLayerByItsPosition(string source, string callee, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), callee));
 
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
     // `I is Iterator`, `next`'s item is `I.Item`, which names no `step`, so it descends from the receiver's referent (Content) and two
@@ -627,6 +804,10 @@ public sealed partial class RetentionTest
     // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
     // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and only that
     // into the storage the raw layer addresses, whose `ref/i32` members cannot hold its value (`1 Content` at store 2; DECISIONS R4-M154).
+    // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same inputs (DECISIONS BU-108): with `b` a `ref` input
+    // the call writes nothing past it (`reached {}`), with a `uniq` one, or a `ref` and a `uniq` one, its referent; and a holder's method
+    // reads a layer stating its slot `s`, which an exclusive Loan Field keeps, as exclusive, declared (`b: raw/…`) or supplied
+    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1).
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
@@ -652,6 +833,18 @@ public sealed partial class RetentionTest
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
         "")]
+    [InlineData(
+        Wrap + "func f(b: ref/(ref/i32 during q), w: uniq/Wrap<raw/(ref/i32 during q) during b>, v: ref/i32 during q) => ()",
+        "store 1: own {0 Value, 1 Content, 2 Content}, reached {}")]
+    [InlineData(
+        Wrap + "func f(b: uniq/(ref/i32 during q), w: uniq/Wrap<raw/(ref/i32 during q) during b>, v: ref/i32 during q) => ()",
+        "store 0: own {0 Content, 1 Content, 2 Value}, reached {}, store 1: own {0 Value, 1 Content, 2 Content}, reached {0 Content, 1 Content, 2 Value}")]
+    [InlineData(Wrap + "func f(b: ref/(raw/u8), w: uniq/Wrap<raw/(raw/u8) during b>, v: raw/u8) => ()", "store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(
+        Wrap + "func f(b: ref/(ref/i32 during q) during o, u: uniq/(ref/i32 during q) during o, w: uniq/Wrap<raw/(ref/i32 during q) during o>, v: ref/i32 during q) => ()",
+        "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Value, 1 Value, 2 Content, 3 Content}, reached {0 Content, 1 Content, 2 Content, 3 Value}")]
+    [InlineData(SlotKept + "    let b: raw/(raw/u8) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct Box2<E>\n    public var value: E\n" + SlotKept + "    var b: Box2<raw/(raw/u8) during s>\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -765,15 +958,14 @@ public sealed partial class RetentionTest
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): placeEntry's handle `raw/Dictionary<K, V>` admits K and V, so the call stores its key and value
-    // in the Dictionary the handle addresses, and the handle as a read through it, never its own value (DECISIONS R4-M116); the earlier
-    // `raw/u8` handle admitted nothing. keyAt's raw result states no Origin, so it retains its slot as a value and by its chain (rule A,
-    // DECISIONS BU-40).
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 4.9.6): DictionaryStorage.placeEntry takes the Dictionary's exclusive borrow, so the call stores
+    // its key and value in the Dictionary it borrows, and the borrow as a read through it, never its own value (DECISIONS R4-M116): an
+    // insertion's published effect. A raw result that states no
+    // Origin retains its input as a value and by its chain (rule A, DECISIONS BU-40) is `allocate`'s row above.
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.StorageKeyAt, "result {0 Value Chain}, untied")]
+    [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
     [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
     public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
@@ -1011,21 +1203,15 @@ public sealed partial class RetentionTest
 
     // PLAN G255's C1 (SPEC 5.7 Calls, 15.6.4's R′, 5.2.1; DECISIONS BU-40): a result raw layer stating an input borrow's Origin retains
     // as that borrow would, so what it addresses is that borrow's storage and the unstated layers there are lent, not written by the
-    // result: dictionaryStorage's handle over a V holding one, as the MIR's Dictionary literal calls it, and a user function of its
-    // shape, are not untied (fail-before: untied, so each such literal's entries reached storage the body does not own on the MIR); the
-    // input's own storage stays an untied store, written by rule A. The input holds raw layers past its exclusive borrow, a raw source whose
-    // chain the stated layer keeps (DECISIONS BU-66, A2; before `0 Value`).
+    // result: a function returning a handle over a Dictionary whose V holds one is not untied (fail-before: untied); the input's own
+    // storage stays an untied store, written by rule A. The input holds raw layers past its exclusive borrow, a raw source whose chain the
+    // stated layer keeps (DECISIONS BU-66, A2; before `0 Value`).
     [Theory]
     [InlineData("raw/u8")]
     [InlineData("(raw/u8, i32)")]
     public void AStatedResultLayerLendsWhatItAddresses(string value)
     {
-        var c = Bind($"func lit(q: raw/u8) -> Dictionary<i32, {value}> => [1: {(value == "raw/u8" ? "q" : "(q, 1)")}]\n" +
-            $"func f(value: uniq/Dictionary<i32, {value}>) -> (raw/Dictionary<i32, {value}> during value, isize) => (null, 0)\n");
-        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "lit");
-        var call = body.Blocks.ToArray().Select(static x => x.Terminator)
-            .Single(static x => x is { Kind: MirTerminatorKind.Call } && x.Callee.Symbol?.LibraryDeclaration == KimiDeclarationId.StorageDictionaryLayout);
-        Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
+        var c = Bind($"func f(value: uniq/Dictionary<i32, {value}>) -> (raw/Dictionary<i32, {value}> during value, isize) => (null, 0)\n");
         Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "f"));
     }
 
@@ -1150,7 +1336,7 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
-    // iterators' remainders store through the raw handles their receivers' storage holds (Content), HeapBuffer's release nothing; none
+    // iterators store through the raw handles their receivers' storage holds (Content), HeapBuffer's release nothing; none
     // has a Value row. Fail-before: no row.
     [Fact]
     public void LibraryDropsRetainOverTheirReceivers()
@@ -1159,7 +1345,7 @@ public sealed partial class RetentionTest
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
             .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
         Assert.Equal(
-            ["HeapBuffer: ", "OwnedRemainder: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
+            ["HeapBuffer: ", "ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
             drops);
     }
 
@@ -1417,6 +1603,27 @@ public sealed partial class RetentionTest
         }
     }
 
+    // A function's own contract, with no call substitution.
+    internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
+
+    // The records of a call that may store what a `nest` value holds by value, then a write under the stored borrow (SPEC 15.6.4).
+    private static string NestRecords(string nest)
+        => MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n    x = 3\n    let k = slot@follow\n" +
+            "public func main() => ()\n");
+
+    // The shapes of a storing call, then a form and `main`: its published Error records.
+    private static string HoldingRecords(string form)
+    {
+        var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
+            "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
+            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n" +
+            "func put(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()\n" +
+            "struct Slot\n    var data: raw/u8\n    public init() => self.data = null\n    public func put(self: uniq/Self, p: raw/u8) => self.data = p\n";
+        return MirBorrowsTest.Records(shapes + form + "public func main() => ()\n");
+    }
+
     private static Compilation Bind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -1468,9 +1675,6 @@ public sealed partial class RetentionTest
 
         return null;
     }
-
-    // A function's own contract, with no call substitution.
-    private static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
 
     // Each call of a named callee under its substitution, in its definition, in source order.
     private static string[] Calls(Compilation c, string name)

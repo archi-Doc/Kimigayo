@@ -41,14 +41,16 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceCopy" + name, source, string.Empty);
     }
 
+    // SPEC 15.6.2, 3.5.1: a `uniq` Element reached through `ref` grants no exclusive access: a write through it is SharedPathAccess_Kd, and
+    // its bare acquisition at a `uniq/i32` parameter has no Reborrow, so it is TransferRequired_Kd at the Place (PLAN G262).
     [Theory]
-    [InlineData("values[1].0@follow += 2")]
-    [InlineData("change(values[1].0)")]
-    public void SharedLayersStillRejectExclusiveAcquisition(string use)
+    [InlineData("values[1].0@follow += 2", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("change(values[1].0)", DiagnosticCode.TransferRequired_Kd)]
+    public void SharedLayersStillRejectExclusiveAcquisition(string use, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Header + "func run(values: ref/Dictionary<i32, (uniq/i32 during a, i32)>)\n    " + use);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, static x => x.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.NoApplicableOverload_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
     [Theory]
@@ -141,8 +143,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredLayer", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (the owner's whitelist, until R6-check): an exclusive use of a part below a user index's element storing one
-    // reference layer generates on the default pipeline where the index's receiver path is a local's stored Field, a Field or Tuple
+    // DECISIONS BU-10 (the owner's whitelist of the old paths, deleted at R6-check H10b): an exclusive use of a part below a user
+    // index's element storing one reference layer generates where the index's receiver path is a local's stored Field, a Field or Tuple
     // element reached through a `uniq/` parameter, another user index's element or a capture.
     [Fact]
     public void WhitelistedReceiverPathsReachTheReferent()
@@ -190,8 +192,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredPaths", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (the owner's whitelist, until R6-check): a shared read of a part below a built-in element storing one reference
-    // layer generates on the default pipeline where the sequence is a local or a parameter: a for loop over a part's Array and a
+    // DECISIONS BU-10 (the owner's whitelist of the old paths, deleted at R6-check H10b): a shared read of a part below a built-in
+    // element storing one reference layer generates where the sequence is a local or a parameter: a for loop over a part's Array and a
     // comparison of a nested part through a `ref/Array` parameter.
     [Fact]
     public void SharedReadsBelowANamedSequenceReachTheReferent()
@@ -222,7 +224,7 @@ public class PublishedPlaceProjectionTest
     }
 
     // DECISIONS BU-10: the guard applies to element roots only; a string compared below a Field or a Tuple element that stores
-    // `uniq/Point`, reached through a shared parameter, is read in place and generates on the default pipeline, as before G147 (2b).
+    // `uniq/Point`, reached through a shared parameter, is read in place and generates, as before G147 (2b).
     [Fact]
     public void ComparedPartsBelowAStoredFieldReferenceGenerate()
     {
@@ -249,8 +251,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredField", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (until R6-check): the old paths reached the referent of the reference an element stores only one layer deep and
-    // only on the whitelisted paths, so the old analysis reported any other use through an element's stored layers, a comparison's
+    // DECISIONS BU-10 (the old paths, deleted at R6-check H10b): they reached the referent of the reference an element stores only one
+    // layer deep and only on the whitelisted paths, so the old analysis reported any other use through an element's stored layers, a comparison's
     // included, as the located Unsupported_Kd at the element. Binding accepts these programs and the MIR builds them in place, so since
     // the MIR decides acceptance (H5; 1a, the owner 2026-11-03) each has no record, and a Library build (every root, K11) generates its
     // function.

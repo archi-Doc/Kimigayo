@@ -12,7 +12,7 @@ public sealed partial class Binding
     private readonly List<PropertyKoto> storedFields = new();
     private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<BoundType> enumPayloadTypes = new();
-    private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<BoundType, BoundType?> completedParts = new(); // CompleteProjections' results.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
@@ -45,6 +45,44 @@ public sealed partial class Binding
     // producer's Type (KeptType, its projections completed); null where it does not substitute.
     internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
+    // SPEC 15.3.2, 5.7: the struct or enum whose storage contains a node: a stored Field's Type, an enum Case's payload or a base
+    // clause, read from OriginOwner and the owners' published members; null for any other position, such as an accessor signature or
+    // an attached relation. The one storage predicate: the raw `self` test and the storage Origin checks read it.
+    private static DeclarationContainerKoto? StorageType(Koto use)
+    {
+        var owner = OriginOwner(use);
+        if (owner is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, Parent: StructKoto structure } property)
+        {
+            return IsWithin(use, property.TypeKoto) ? structure : null;
+        }
+
+        // A Case's payload list is an inner form of the same kind as the Case.
+        while (owner is { Akind: KotoKind.EnumCase, Parent: { Akind: KotoKind.EnumCase } outer })
+        {
+            owner = outer;
+        }
+
+        if (owner is { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration })
+        {
+            return enumeration;
+        }
+
+        return owner is StructKoto { BaseClause: { } clause } declared && IsWithin(use, clause) ? declared : null;
+
+        static bool IsWithin(Koto node, Koto? root)
+        {
+            for (var current = node; current is not null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, root))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
     private static BoundType? WrittenType(Koto? declaration) => declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
 
@@ -67,7 +105,7 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.Bases.Count == 1 ? this.KeptType(declaration.Bases[0], type) : null;
+            instance.PartsBase = declaration.BaseClause is { } clause ? this.KeptType(clause, type) : null;
             instance.Base = this.WithoutRawOrigins(instance.PartsBase);
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
@@ -436,7 +474,8 @@ public sealed partial class Binding
             this.storedFields.Clear();
             this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
-            if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
+            // An `open` on an enum is the parser's (ModifierKind.Judged), kept only for recovery: no check here judges it again (SPEC 23.1.2).
+            if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0))
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
@@ -473,11 +512,6 @@ public sealed partial class Binding
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
-                    if (member.AttributeChain is not null)
-                    {
-                        this.Fail(member, BindingFailure.InvalidTypeFormation);
-                    }
-
                     // The Case and its payload Types were prepared before the headers (PrepareCases).
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
@@ -517,29 +551,43 @@ public sealed partial class Binding
         this.ValidateEnumProjections();
     }
 
+    // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
+    // occurrence's arguments in one pass (SubstituteType); a clause's form (StoredConstraint) uses the same images.
     private BoundType? StoredType(BoundType field, BoundType owner)
     {
-        var binder = owner.Symbol!.Declaration;
-        var substituted = this.SubstituteType(field, binder, (BoundType[])owner.Components);
-        if (substituted is null)
-        {
-            return null;
-        }
-
-        if (owner.Kind == BoundTypeKind.Slice && owner.Origin is { } origin)
-        {
-            // The one Slice slot is passed on the stack: a conditional with an array branch would allocate it per call.
-            ReadOnlySpan<BoundOrigin> single = [origin];
-            return this.SubstituteStoredOrigins(substituted, binder, single);
-        }
-
-        return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
+        Span<BoundOrigin> single = [BoundOrigin.Static];
+        return this.SubstituteType(field, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
     }
 
-    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative
-    // slot of its binder, is bound through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages): each atom becomes its SlotImage, a meet
+    // the meet of its operands' images, and an atom without an image is kept.
     private BoundOrigin SubstituteStoredOrigin(
         BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
+    {
+        if (this.SlotImage(origin, binder, arguments, images, types) is { } image)
+        {
+            return image;
+        }
+
+        if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
+        {
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
+            for (var i = 1; i < origin.Operands.Count; i++)
+            {
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
+            }
+
+            return result;
+        }
+
+        return origin;
+    }
+
+    // SPEC 15.3.6, 15.6.4: an atom's image under a substitution of `binder`'s slots, null where it has none. A declared slot takes its
+    // argument, a pair's outer Origin `o` (a negative slot) its Type argument's when they are given (SPEC 8.1.1, 8.1.2), an input or a
+    // reserved atom its per-call image. Whether an atom is substituted is this image's existence, never what the image names: in the
+    // binder's own body an image is often one of the binder's own atoms (PLAN G458).
+    private BoundOrigin? SlotImage(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images, ReadOnlySpan<BoundType?> types)
     {
         if (images.Argument(origin) is { } valueArgument)
         {
@@ -581,18 +629,30 @@ public sealed partial class Binding
             return input;
         }
 
-        if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
+        return null;
+    }
+
+    // Whether substituting `type` (SubstituteStoredOrigins with these images) keeps a slot of `binder`, an Origin parameter or an input,
+    // for want of its SlotImage: a test of the Type before substitution, through its Origin summary, its raw layers' included, since the
+    // result cannot tell a kept slot from an image that names the binder's own slot (PLAN G458).
+    private bool LacksImage(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default)
+    {
+        var summary = this.SummaryOf(type);
+        return Lacks(this, summary.Nodes, binder, arguments, images) || Lacks(this, summary.RawNodes, binder, arguments, images);
+
+        static bool Lacks(Binding binding, BoundOrigin[] nodes, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
-            for (var i = 1; i < origin.Operands.Count; i++)
+            for (var i = 0; i < nodes.Length; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
+                if (nodes[i].Kind is OriginKind.Parameter or OriginKind.Input && ReferenceEquals(nodes[i].Binder, binder) &&
+                    binding.SlotImage(nodes[i], binder, arguments, images, default) is null)
+                {
+                    return true;
+                }
             }
 
-            return result;
+            return false;
         }
-
-        return origin;
     }
 
     // One call is one query of rewrittenParts, its binder, arguments, images and corresponding binder fixed: a part's result depends on the

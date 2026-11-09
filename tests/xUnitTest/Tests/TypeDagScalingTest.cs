@@ -16,6 +16,22 @@ namespace XunitTest;
 /// does.</summary>
 public partial class TypeDagScalingTest
 {
+    // PLAN G375: a kept Proven is read, so a signature is walked once however many calls read it.
+    [Fact]
+    public void EachProvenSignatureIsWalkedOnce()
+    {
+        Assert.Equal(Walks(2), Walks(40));
+
+        static int Walks(int calls)
+        {
+            var source = "struct Box<T>\n    T is Copy\n    public init() => ()\nfunc take(b: ref/Box<i32>) -> i32 => 1\n" +
+                string.Concat(Enumerable.Range(0, calls).Select(static i => $"func c{i}(b: ref/Box<i32>) -> i32 => take(b)\n")) + "let present = 1";
+            var c = MinimalEmissionTest.Analyze(source);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.SignatureWalkWork;
+        }
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]
@@ -35,6 +51,43 @@ public partial class TypeDagScalingTest
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
             Assert.Equal(size + 1, Instances(set, "f"));
+        }
+    }
+
+    // SPEC 9.6 (R7-N2c): member lookup's walk is linear in the layers it reads, on a chain and on a cycle, where its test may go three times round.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MemberWalksAreLinearInTheLayers(bool cycle)
+    {
+        var work = new[] { 100, 200, 400 }.Select(Work).ToArray();
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 400, string.Join(' ', work));
+
+        int Work(int layers)
+        {
+            var chain = string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"open struct C{i}: C{i - 1}\n"));
+            var misses = string.Concat(Enumerable.Repeat("    v.none()\n", 10));
+            var head = cycle ? $"open struct C0: C{layers - 1}" : "open struct C0";
+            var c = CompilationTestHelper.ParseSuccess($"{head}\n    public func top(self) -> i32 => 1\n{chain}func f(v: ref/C{layers - 1}) -> i32\n{misses}    return v.top()\n");
+            c.Bind();
+            return c.Binding.MemberWalkWork;
+        }
+    }
+
+    // SPEC 9.4, 9.6 (R7-N2d): a protected read tests its derivation over BaseLayers, so the walks' steps per read are linear in the layers.
+    [Fact]
+    public void ProtectedReadsAreLinearInTheLayers()
+    {
+        var work = new[] { 10, 20, 40 }.Select(static layers => Work(layers, 20) - Work(layers, 10)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 40, string.Join(' ', work));
+
+        static int Work(int layers, int reads)
+        {
+            var chain = string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"open struct C{i}: C{i - 1}\n"));
+            var body = string.Concat(Enumerable.Range(0, reads).Select(static i => $"        let a{i} = self.pm()\n"));
+            var c = MinimalEmissionTest.Analyze($"open struct C0\n    protected func pm(self) -> i32 => 1\n{chain}struct D: C{layers - 1}\n    func f(self) -> i32\n{body}        return 1\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.BaseLayerWork;
         }
     }
 
@@ -122,9 +175,9 @@ public partial class TypeDagScalingTest
         Assert.Equal(["UnresolvedBinding_Kd", "UnprovenConstraint_Kd"], DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code));
     }
 
-    // The old analysis's walks (the owner's D5 exception): whether a cleanup observes Loans over shared struct, enum and Tuple parts,
-    // generic ones too, Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for
-    // the instance chains also their collection and code generation.
+    // The MIR's walks: A5's cleanup observation (whether a cleanup observes Loans) over shared struct, enum and Tuple parts, generic ones
+    // too, the Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for the
+    // instance chains also their collection and code generation.
     [Theory]
     [InlineData("structs", 28)]
     [InlineData("structUses", 24)]
@@ -134,12 +187,12 @@ public partial class TypeDagScalingTest
     [InlineData("originLets", 28)]
     [InlineData("chain", 26)]
     [InlineData("chainValues", 26)]
-    public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
+    public void WalksAreLinearInDistinctParts(string shape, int size)
     {
         var c = Checked(Source(shape, size));
 
         // originLets' last Tuple holds 2^28 references, 2^31 bytes, past the layout size bound: check's one record, at the local's
-        // declaration (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+        // declaration (DECISIONS R5-M44, R5-M156).
         var bound = shape == "originLets" ? "GenerationResourceLimit_Kd let a27 = (a26, a26)" : string.Empty;
         Assert.Equal(bound, MinimalEmissionTest.Problems(c));
         Assert.Equal(bound.Length == 0, c.Analysis.IsVerified);
@@ -152,7 +205,7 @@ public partial class TypeDagScalingTest
     // SPEC 15.6.6: a part shared at depth 0 and 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later write
     // meets A5's depth bound, a located OwnershipDepthLimit_Kd at `let d` (DECISIONS R4-M153), where the old analysis's bound retained the
     // Loan and the write conflicted with it (R6-check H5; H3b T48, class 3); without the write there is none. At 70 each Tuple more than
-    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44, R5-M156).
     [Theory]
     [InlineData(70, false, false, "")]
     [InlineData(70, false, true, "OwnershipDepthLimit_Kd")]
@@ -188,7 +241,7 @@ public partial class TypeDagScalingTest
         Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
-    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
+    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (the MIR's Loan).
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "ComparisonLoanConflict_Kd")]
@@ -242,7 +295,7 @@ public partial class TypeDagScalingTest
         Assert.Empty(Problems(Checked(Source)));
     }
 
-    // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
+    // A warm Analyze of a program whose Types share parts allocates nothing: the MIR's analyses keep their storage.
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmAnalyzeOfSharedTypesAllocatesNothing()
@@ -334,6 +387,19 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // A deep-heir chain (valid, SPEC 8.6.2: every level inherits C with Item = Option<i32>): L0 conforms, L(k) : L(k-1), D : L(depth-1),
+    // and a use of D.(C).Item.
+    private static string HeirChain(int depth)
+    {
+        var text = new System.Text.StringBuilder("contract C\n    associate Item\nopen struct L0<X>\n    Self is C\n    associate C.Item is X\n");
+        for (var i = 1; i < depth; i++)
+        {
+            text.Append($"open struct L{i}<X> : L{i - 1}<X>\n");
+        }
+
+        return text.Append($"struct D : L{depth - 1}<Option<i32>>\nfunc use(x: D.(C).Item) -> i32 => 1\n").ToString();
+    }
+
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
     // A main sharing `value@ref` at depth 0 of a Tuple 10 levels high and of one `depth` levels high, in either order, then maybe writing it.
@@ -344,12 +410,12 @@ public partial class TypeDagScalingTest
         return "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
     }
 
-    // A checked compilation: the old analysis's rows judge its walks, the checked set's records publish at check (DECISIONS R5-M156), and
-    // the chain shapes generate through MIR code generation, the old generator's instance analyses having left with its selection at G4
-    // (DECISIONS R5-M160).
+    // A checked compilation: the MIR's analyses judge its walks (R6-check H5, DECISIONS R5-M185), the checked set's records publish at
+    // check (DECISIONS R5-M156), and the chain shapes generate through MIR code generation, the old generator's instance analyses having
+    // left with its selection at G4 (DECISIONS R5-M160).
     private static Compilation Checked(string source) => MinimalEmissionTest.Analyze(source);
 
-    // The codes of the analysis's problems: the old path's, then the MIR's records.
+    // The codes of the analysis's problems, the MIR's.
     private static string[] Problems(Compilation c) => [.. c.Problems.Select(static x => x.Code.ToString())];
 
     // The body instances of the functions whose name starts with a prefix.
@@ -362,5 +428,27 @@ public partial class TypeDagScalingTest
         }
 
         return count;
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // SPEC 6.2, 8.6.2 (PLAN G631): every inherited path's binding is a node of the inline-layout judge, one per heir, so a cold Bind of a
+        // deep inheritance chain allocates linearly in its depth: three depths, each double the one before, within factor 3, as
+        // InferenceSlotScalingTest's rows define it.
+        [Fact]
+        public void AColdBindOfAnInheritanceChainIsLinear()
+        {
+            int[] depths = [64, 128, 256];
+            var compilations = new Compilation[depths.Length];
+            var bytes = AllocationMeasurement.MeasureSeries(depths.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(HeirChain(depths[i]));
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+        }
     }
 }

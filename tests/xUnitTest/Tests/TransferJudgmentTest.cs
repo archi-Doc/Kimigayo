@@ -13,10 +13,12 @@ public sealed class TransferJudgmentTest
 {
     [Theory]
     [InlineData("public func main()\n    let text = Text.toString(1)\n    text\n    Console.writeLine(text)\n", "TransferRequired_Kd text repair")]
-    [InlineData("public func main()\n    let text = Text.toString(1)\n    let f = func () -> string => text\n    Console.writeLine(f())\n", "TransferRequired_Kd func () -> string => text | The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd text repair")]
+    [InlineData("public func main()\n    let text = Text.toString(1)\n    let f = func () -> string => text\n    Console.writeLine(f())\n", "TransferRequired_Kd func () -> string => text | The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd text repair; TransferRequired_Kd f repair")]
     [InlineData("func g(r: uniq/i32)\n    let f = func () -> i32 => r@follow\n    _ = f()\npublic func main()\n    var x = 1\n    g(x@uniq)\n", "TransferRequired_Kd func () -> i32 => r@follow | The omitted capture list captures r only by Copy; it never infers a Move, a borrow or a Reborrow")]
+    [InlineData("func use(p: uniq/i32) -> i32\n    let a = func [p@move] () -> i32\n        var b = func () -> i32\n            p@follow = 5\n            return 0\n        return b()\n    return a()\npublic func main() => ()\n", "TransferRequired_Kd func () -> i32\n            p@follow = 5\n            return 0 | The omitted capture list captures p only by Copy; it never infers a Move, a borrow or a Reborrow")]
+    [InlineData("func use(n: i32) -> i32\n    let a = func [n] () -> i32\n        let b = func () -> i32\n            return n + 1\n        return b()\n    return a()\npublic func main() => ()\n", "")]
     [InlineData("public func main()\n    let text = Text.toString(1)\n    let b = text\n    Console.writeLine(b)\n", "TransferRequired_Kd text repair")]
-    [InlineData("func f<T>(value: T)\n    let g = func () -> T => value\n    _ = g()\npublic func main()\n    f(1)\n", "TransferRequired_Kd func () -> T => value | The omitted capture list captures value only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd value repair")]
+    [InlineData("func f<T>(value: T)\n    let g = func () -> T => value\n    _ = g()\npublic func main()\n    f(1)\n", "TransferRequired_Kd func () -> T => value | The omitted capture list captures value only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd value repair; TransferRequired_Kd g repair")]
     [InlineData("func f<T>(value: T)\n    value\npublic func main()\n    f(1)\n", "TransferRequired_Kd value repair")]
     [InlineData("func k(a: string, b: string = a) => ()\npublic func main()\n    k(Text.toString(1))\n", "DefaultArgumentMove_Kd a")]
     [InlineData("func bad(x: string, y: string = x) => ()\npublic func main()\n    bad(Text.toString(1))\n", "DefaultArgumentMove_Kd x")]
@@ -31,6 +33,17 @@ public sealed class TransferJudgmentTest
     [InlineData("func k<s/T>(a: s/T, b: s/T = a) -> ()\n    s is owner or ref\npublic func main() => ()\n", "DefaultArgumentMove_Kd a | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
+
+    // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and
+    // `E@follow` selects the referent, Copying and Moving nothing, so a write and then a read through an exclusive path's element record
+    // nothing (the old analysis's ComparisonLoanConflict_Kd and TransferRequired_Kd). A borrow of the element or its referent kept past
+    // the write conflicts at the write, and a write through a shared path is SharedPathAccess_Kd.
+    [Theory]
+    [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    items[0]@follow = 7\n    let r = items[0]@follow\n", "")]
+    [InlineData("func run(b: uniq/i32) -> i32\n    var items = [b@move]\n    let r = items[0]@follow@ref\n    items[0]@follow = 7\n    return r@follow\n", "ComparisonLoanConflict_Kd items[0]@follow = 7")]
+    [InlineData("func run(b: uniq/i32) -> i32\n    var items = [b@move]\n    let r = items[0]@ref\n    items[0]@follow = 7\n    return r@follow@follow\n", "ComparisonLoanConflict_Kd items[0]@follow = 7")]
+    [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    let s = items@ref\n    s[0]@follow = 7\n", "SharedPathAccess_Kd s[0]@follow")]
+    public void AnElementIsWrittenAndReadInPlace(string source, string expected) => Assert.Equal(expected, Records(source));
 
     // The old analysis's report sites that H1 deleted, one row per family (R5's condition (b)); the rows above cover a local, the omitted
     // capture list, a default's bare read of a preceding parameter (also parenthesized) and a pair layer, and the shared-layer rows below
@@ -71,11 +84,11 @@ public sealed class TransferJudgmentTest
     [InlineData("func f<t/U, s/T>(value: s/t/U)\n    s is owner or uniq\n    t is owner or rc\n    U is Copy\n    let local = value\n    _ = local@move\n", "TransferRequired_Kd value repair case=t = rc, s = owner | Found under the Semantics case t = rc, s = owner (SPEC 8.15)")]
     public void AnOwnerCaseWithoutATargetPlanIsTheMoveRowsError(string source, string expected) => Assert.Equal(expected, Records(source));
 
-    // The transfer records of a source: code, located text, whether a repair is offered, the case fact and the Note.
+    // The transfer, loan and path access records of a source: code, located text, whether a repair is offered, the case fact and the Note.
     private static string Records(string source)
     {
         var records = DiagnosticCorpus.Check(source).Diagnostics
-            .Where(static x => x.Code is "TransferRequired_Kd" or "DefaultArgumentMove_Kd" or "MovedPlace_Kd")
+            .Where(static x => x.Code is "TransferRequired_Kd" or "DefaultArgumentMove_Kd" or "MovedPlace_Kd" or "ComparisonLoanConflict_Kd" or "SharedPathAccess_Kd")
             .Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}" + (x.Repairs is { Length: > 0 } ? " repair" : string.Empty) +
                 string.Concat((x.Reason ?? []).Where(static y => y.Name == "case").Select(static y => " case=" + y.Value)) + (x.Note is { } note ? $" | {note}" : string.Empty));
         return string.Join("; ", records);

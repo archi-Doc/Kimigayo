@@ -10,13 +10,13 @@ namespace XunitTest;
 /// Loan-stratum Work on writes that store through a raw layer whose state carries Φ_E (SPEC 15.6.4's Writer, its q addressing a w
 /// derived from a parameter). Such a write may store y's Loan in storage the body does not own, where a value "may be used after every
 /// point" (SPEC 15.6 Holders), so every Loan_j stays live from w_j on and A5's output, the active Loans per location, is Θ(N²)
-/// (DECISIONS R4-M57's Bound). On dev, W's targets past E each receive a copy of the replicated chain, and the Work is Θ(N³). The
-/// scaling rows fail on dev by design until G342; the verdict pins, the control and the warm row hold on dev and must hold after (the
-/// fix is a representation change, so a record that moves is a defect).</summary>
+/// (DECISIONS R4-M57's Bound). Before G342, W's targets past E each received a copy of the replicated chain, and the Work was Θ(N³). The
+/// scaling rows pass since R4-M160 (G342); the verdict pins, the control and the warm row held before and must hold after (the fix is a
+/// representation change, so a record that moves is a defect).</summary>
 public sealed partial class MirBorrowsTest
 {
     // The forms' callees and Types: WriterF holds SPEC 15.6.4's Writer Fields without a drop, and its flush stores q through p as
-    // Writer's drop does, through a `uniq/Self` receiver; Lf is PLAN G298 (3)'s leaf (WK's review 2, R2-N2).
+    // Writer's drop does, through a `uniq/Self` receiver; Lf is the leaf of WK's review 2 (R2-N2).
     private const string UnownedShapes = """
         func usep<T>(p: raw/T) => ()
         struct WriterF
@@ -39,7 +39,7 @@ public sealed partial class MirBorrowsTest
     // does not own (callNoSlot), or inline in the body (inline). Every Loan_j stays live from w_j on (SPEC 15.6.4's example; 15.6
     // Holders), so the output is Θ(N²), and A5's Work and bytes may grow with the Loans live at each point, but no faster: the class's
     // precedent for values whose Loans are live together, 5 (R4's G273 decision K6, DECISIONS R4-M159); quadratic is 4, cubic 8.
-    // writingPlaces is PLAN G298 (3)'s shape (WK's R2-N2 probe): one call whose W walk reaches N holders past one holder, each of which
+    // writingPlaces is WK's R2-N2 probe's shape: one call whose W walk reaches N holders past one holder, each of which
     // may retain what a read through the argument carries, Θ(N) Loans each at one point, so Θ(N²) again. callLocalQ, the control, has q
     // address a fresh local v_i, so no chain grows past E. twoHop (review 1's N2) chains through two raw hops past E: q addresses hop_i,
     // which addresses w_i, and E holds both levels' addresses, so a fix that flattens one level leaves it cubic. Sensitivity (review 1's
@@ -61,7 +61,7 @@ public sealed partial class MirBorrowsTest
         var (sizes, work, bytes) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
         for (var i = 0; i < sizes.Length; i++)
         {
-            (work[i], bytes[i]) = this.Measured(UnownedShapes + UnownedForm(form, sizes[i]) + "public func main() => ()\n");
+            (work[i], bytes[i]) = Measured(UnownedShapes + UnownedForm(form, sizes[i]) + "public func main() => ()\n");
         }
 
         output.WriteLine($"{form} N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");

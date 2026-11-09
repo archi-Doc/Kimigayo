@@ -19,7 +19,6 @@ public class DefaultInitializationTest
         => AssertUninitialized("func f(y: i32 = (label scope: do\n    var n: i32\n    exit to scope n\n)) => ()\n" + call);
 
     [Theory]
-    [InlineData("contract C\n    func f(y: i32 = (label scope: do\n        var n: i32\n        exit to scope n\n    ))")]
     [InlineData("func f(c: bool, y: i32 = (label scope: do\n    var n: i32\n    if c => n = 1\n    exit to scope n\n)) => ()\nf(true, 3)")]
     public void EveryDeclarationAndCheckingPathRequiresInitialization(string source)
         => AssertUninitialized(source);

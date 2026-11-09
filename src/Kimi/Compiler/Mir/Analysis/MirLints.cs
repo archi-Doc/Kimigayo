@@ -13,13 +13,13 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A3, the runtime lints (plan P9): a require whose failure body a runtime path takes from its entry to its end, so the code after
-/// the require may continue (SPEC 14.11), is a <c>RequireFallthrough_Kd</c> problem at the failure body, in every view (it depends on no
-/// Semantics case), resting on the sites Binding guessed its completion rests on. Its walks and facts keep their storage, so a warm run
-/// allocates nothing.</summary>
+/// the require may continue (SPEC 14.11), is a <c>RequireFallthrough_Kd</c> problem at the failure body, in every view
+/// (<see cref="MirCases.Every"/>: it depends on no Semantics case), resting on the sites Binding guessed its completion rests on. Its walks
+/// and facts keep their storage, so a warm run allocates nothing.</summary>
 /// <param name="reach">The one reachability walk, which the analyses share.</param>
 internal sealed class MirLints(MirReach reach)
 {
-    private readonly List<MirFact> causes = []; // A problem's Cause facts.
+    private readonly List<ProblemFact> causes = []; // A problem's Cause facts.
 
     /// <summary>Reports each failure body of a body whose end a runtime path from its entry reaches.</summary>
     /// <param name="body">A validated body.</param>
@@ -45,10 +45,11 @@ internal sealed class MirLints(MirReach reach)
                 this.causes.Clear();
                 foreach (var site in body.GuessedSites.Slice(rows[i].Start, rows[i].Count))
                 {
-                    this.causes.Add(new(MirFactKind.Cause, site, -1)); // A Binding cause at the site.
+                    this.causes.Add(new(ProblemFactKind.Cause, site, -1)); // A Binding cause at the site.
                 }
 
-                var problem = new MirProblem(DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow, rows[i].Subject, body.Ordinal, ulong.MaxValue);
+                var problem = new MirProblem(
+                    DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow, rows[i].Subject, body.Ordinal, MirCases.Every(body));
                 report.Add(problem, CollectionsMarshal.AsSpan(this.causes));
             }
         }

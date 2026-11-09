@@ -11,7 +11,7 @@
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
 // GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
 // causes a check resting on one of them rests on.
-// LintErrors counts the Error records for the old analysis, which rejects the program with them until H10.
+// LintErrorRecords lists the Error records, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
 // Must not re-run inference or a proof to explain a record, lint the library's bodies or record from a Provisional pass.
@@ -80,26 +80,9 @@ public sealed partial class Binding
         Target,
     }
 
-    /// <summary>Gets the number of the pass's lint records whose code is an Error, which the old analysis counts with its own errors
-    /// until H10.</summary>
-    [Transitional("R6", Reason = "The old analysis's read of the lint Errors; H10 deletes it with the old analysis.")]
-    internal int LintErrors
-    {
-        get
-        {
-            var count = 0;
-            foreach (var lint in this.lints)
-            {
-                count += IsError(lint.Row) ? 1 : 0;
-            }
-
-            return count;
-        }
-    }
-
-    /// <summary>Gets the pass's lint records whose code is an Error, in walk order until ReportDiagnostics sorts them, which tests list
-    /// with the old path's records (LegacyRecords) until H10.</summary>
-    [Transitional("R6", Reason = "LegacyRecords' read of the lint Errors; H10 deletes it with the old path.")]
+    /// <summary>Gets the pass's HIR lint records of Error severity, derived ones included, in walk order before <c>ReportDiagnostics</c>
+    /// sorts them; with <c>Issues</c>, Binding's Error records before finalization. Readers: tests only (the test MIR side and R5-M32's
+    /// derived-record test); no compiler path reads it, publication reads the lint list itself.</summary>
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 
@@ -110,8 +93,10 @@ public sealed partial class Binding
     internal long GuessCompletionWork => this.guessedCompletion?.Composed ?? 0;
 
     /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
-    /// nodes whose completion Binding did not establish: a body the parser supplied for a missing one (docs/dev/DIAGNOSTICS.md §4.4)
-    /// or an unresolved expression. Written, resolved syntax reaching the same completion keeps the check direct. Its work is the
+    /// nodes whose completion StructuralCompletion cannot know from what it reads: a body the parser supplied for a missing one
+    /// (docs/dev/DIAGNOSTICS.md §4.4), or an evaluated expression Binding did not resolve and gave no Type, its Never evidence. A
+    /// form composed from its parts is judged by them whatever Binding's verdict on it, so written syntax reaching the same
+    /// completion keeps the check direct. Its work is the
     /// structural walk over the node's evaluation, so a caller asks only where the syntax can complete. The span is Binding's
     /// scratch, valid until the next guess query, so a caller copies it at once.</summary>
     /// <param name="node">The checked syntax.</param>
@@ -182,11 +167,14 @@ public sealed partial class Binding
     private static DiagnosticKey? SuppliedCause(Koto node)
         => node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node)) ? node.CodeContext.RecoveryCause(node) : null;
 
-    // An expression whose completion Binding did not establish: unresolved, neither an Error nor a recovery.
+    // An evaluated expression whose Never evidence Binding did not establish: not resolved and without a Type, Invalid or Unresolved
+    // alike, neither an Error nor a recovery (DECISIONS R5-M186, amended by G47). A block is composed from its items, which only a
+    // supplied one stands for (SuppliedCause); a typed node's Type is its evidence.
     private static bool IsUnresolvedGuess(Koto node)
-        => node.BindingState != BindingState.Resolved && node is ExpressionKoto and not ErrorKoto && node.CodeContext.RecoveryCause(node) is null;
+        => node.BindingState != BindingState.Resolved && node.BoundType is null && node is ExpressionKoto and not (ErrorKoto or CodeBlockKoto) &&
+            node.CodeContext.RecoveryCause(node) is null;
 
-    // A node whose completion Binding did not establish, assumed not to complete: a supplied body or an unresolved expression.
+    // A node whose completion the composition cannot read, assumed not to complete: a supplied body or an unresolved expression.
     private static bool IsGuess(Koto node) => SuppliedCause(node) is not null || IsUnresolvedGuess(node);
 
     // A Type whose value a discard loses: neither Unit nor Never.
@@ -479,9 +467,9 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.StaticWhileTrue, null));
         }
-        else if (node is JumpKoto jump && KotoHelper.ResolveTransferTarget(jump) is var target && !KotoHelper.IsValidTransfer(jump, target))
+        else if (node is JumpKoto jump && TransferTarget(jump) is null)
         {
-            this.lints.Add((node, target is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
+            this.lints.Add((node, KotoHelper.ResolveTransferTarget(jump) is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
         }
         else if (node is LabeledKoto label && Overlaps(label))
         {
@@ -498,7 +486,7 @@ public sealed partial class Binding
             }
         }
 
-        if (node is ExpressionKoto && node.Parent is not ParenthesizedKoto && !KotoHelper.IsValueContext(node))
+        if (node is ExpressionKoto && node.Parent is not ParenthesizedKoto && !IsValueContext(node))
         {
             var value = KotoHelper.UnwrapParentheses(node);
             var row = this.DiscardRow(value);

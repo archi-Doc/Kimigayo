@@ -5,10 +5,10 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Bare acquisition (SPEC 3.5, 3.5.1, 10.2, 14.2.2): a position without a fixed expected Type acquires its operand by bare acquisition.
-// - Responsibility: the positions that do (IsBareAcquisitionPosition, a Place in Discard Context among them) and the Reborrow of a Place
+// - Responsibility: the positions that do (IsBareAcquisitionPosition, a discarded node among them: Discards) and the Reborrow of a Place
 //   storing an exclusive reference there (StoredReborrow), recorded as the node's one adaptation, exactly as an annotation of the same
 //   complete Type would record it.
-// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (KotoHelper.IsValueContext), and the
+// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (IsValueContext), and the
 //   common adaptation (ExpectedAdaptation), which names the Reborrow.
 // - Outputs: the recorded adaptation and its Type; the bare entries of pair layers per Semantics case are Binding.PairCases'; how a
 //   consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
@@ -22,24 +22,28 @@ public sealed partial class Binding
     // assignment sources and results take their expected Type from the declaration and adapt there instead. A result source
     // (SPEC 14.9.1, 14.9.2) without a fixed Target Result Type is one: an anonymous function's expression body without a written or
     // expected result Type, a jump's operand, and a selection's or `do`'s body when its value is used (ResultTarget); the join's
-    // common Type is chosen from the Types its sources take here. A Place in Discard Context (SPEC 14.2.2: a standalone expression, an
-    // indented body's direct expression, a discarding single-item body) is acquired as at a value position, and discarded.
+    // common Type is chosen from the Types its sources take here. A discarded node (Discards) is acquired as at a value position.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
         var target = Grouped(node);
         return target.Parent switch
         {
             VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
-            DiscardKoto discard => ReferenceEquals(discard.Operand, target),
             TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto => true,
             FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
             JumpKoto jump => ReferenceEquals(jump.Expression, target),
-            _ => !KotoHelper.IsValueContext(target) || (ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target)),
+            _ => Discards(target) || (ResultTarget(target) is IfKoto or MatchKoto or DoKoto && IsValueContext(target)),
         };
     }
 
+    // SPEC 14.2.2, 14.2.4: whether a container or an explicit discard discards the value of `target`, the node it takes (Grouped): an
+    // explicit discard's operand, or a node in Discard Context (a standalone expression, an indented body's direct expression, a
+    // discarding single-item body). IsBareAcquisitionPosition and the HIR publisher's discarded Type (PlanRow.DiscardedType) read it.
+    private static bool Discards(Koto target)
+        => target.Parent is DiscardKoto discard ? ReferenceEquals(discard.Operand, target) : !IsValueContext(target);
+
     // The outermost group around `node`, the node its consumer takes (DECISIONS R4-M145): IsBareAcquisitionPosition, ClosureEffects'
-    // ConsumedByValue and the HIR publisher's discard rows read this one rule.
+    // TakenByCase and the HIR publisher's discard rows read this one rule.
     private static Koto Grouped(Koto node)
     {
         while (IsGroup(node.Parent))

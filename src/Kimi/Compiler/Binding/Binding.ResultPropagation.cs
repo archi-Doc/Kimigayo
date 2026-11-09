@@ -515,6 +515,7 @@ public sealed partial class Binding
                 else if (!awaits)
                 {
                     types.Add(source);
+                    context.HasTyped = true;
                 }
             }
         }
@@ -565,9 +566,10 @@ public sealed partial class Binding
                 // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
                 // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is. A
                 // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
-                // (ErasePart, R4-M161).
+                // (ErasePart, R4-M161). A resting join's bound parts keep their records (DecideWaiting's contract, rule W: DECISIONS
+                // BU-79, G368 (1)); a Conflict join's own record stands for its sources.
                 fits = this.TryPropagate(source, type!, node);
-                if (!fits && !awaits && !rests)
+                if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
                     {
@@ -682,10 +684,10 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2, 7.7.4: a bound part takes the Type at its position as a Tuple argument's part does: a Closure or Function Item by its
-    // erasure, judged now as at a selected call (ErasePart), any other part by its one implicit operation (ExpectedAdaptation).
+    // erasure, decided once, now, as at a selected call (ErasePart), any other part by its one implicit operation (ExpectedAdaptation).
     private void AdaptAtPosition(Koto part, BoundType actual, BoundType type)
     {
-        if (this.ErasureSignatureFits(actual, type, part, out _))
+        if (actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type.Kind == BoundTypeKind.Function)
         {
             this.ErasePart(part, actual, type);
         }
@@ -764,8 +766,9 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 10.2 (DECISIONS BU-43): a bound part that does not await keeps its own Type where that fits the target, and
-    // otherwise takes the target as a Tuple argument's part does, by its erasure's signature or its one implicit operation, written
-    // when the whole fits (AdaptAtPosition).
+    // otherwise takes the target as a Tuple argument's part does, by its erasure's receiver and signature under the use's premises (the
+    // part of ErasesToFunction's decision that ErasureFits shares, PLAN G504) or its one implicit operation, written when the whole fits
+    // (AdaptAtPosition).
     private BoundType? LateAdaptation(Koto node, BoundType target)
     {
         if (this.SuppliedType(node) is not { } actual || node.ErasedFunctionType is not null || this.adaptations.ContainsKey(node) ||
@@ -774,7 +777,7 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureSignatureFits(actual, target, node, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
+        var adapted = this.ErasureFits(actual, target, node, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
         if (adapted is null)
         {
             return actual;

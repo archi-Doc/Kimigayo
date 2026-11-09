@@ -43,77 +43,42 @@ public sealed class ChildMoveActivationTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call.
+    // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call. Since the MIR
+    // decides acceptance (H5, DECISIONS R5-M185) the record is A5's Loan conflict at the write's statement (H3b T44: at `p@follow`
+    // before), relating the Reborrow `let c = p` and the holder's later use: the holder's next use in the access's chain is the witness
+    // (DIAGNOSTICS A6's `Use`; DECISIONS R4-M57 and its U-T2 amendment: the declaration only where that use lies past the chain).
     [Theory]
-    [InlineData(Keep + Child + "let k = keep(c@move)\np@follow = 2\n_ = k@follow", "let k = keep(c@move)")]
-    [InlineData(Keep2 + Child + "let k = keep2(c@move)\np@follow = 2\n_ = k@follow", "let k = keep2(c@move)")]
-    [InlineData(Child + "var pair = (c@move, 1)\np@follow = 2\n_ = pair.0@follow", "var pair = (c@move, 1)")]
-    [InlineData(Keep + "func g<T>(p: uniq/T, x: T) -> ()\n    T is Copy\n    let c = p\n    let k = keep(c@move)\n    p@follow = x\n    _ = k@follow\nvar n: i32 = 1\ng(n@uniq, 2)", "let k = keep(c@move)")]
-    public void AParentUsedWhileTheMovedChildsLoanIsHeldIsRejectedAtTheUse(string source, string holder)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
-        Assert.False(issue.Activation);
-        Assert.Equal(source.IndexOf("p@follow", StringComparison.Ordinal), issue.Source.Span.Start);
-        Assert.Equal(holder, issue.LoanSource!.ToString());
-    }
+    [InlineData(Keep + Child + "let k = keep(c@move)\np@follow = 2\n_ = k@follow", "p@follow = 2", "borrow 4:9 p | loan 7:5 k@follow")]
+    [InlineData(Keep2 + Child + "let k = keep2(c@move)\np@follow = 2\n_ = k@follow", "p@follow = 2", "borrow 4:9 p | loan 7:5 k@follow")]
+    [InlineData(Child + "var pair = (c@move, 1)\np@follow = 2\n_ = pair.0@follow", "p@follow = 2", "borrow 3:9 p | loan 6:5 pair.0@follow")]
+    [InlineData(Keep + "func g<T>(p: uniq/T, x: T) -> ()\n    T is Copy\n    let c = p\n    let k = keep(c@move)\n    p@follow = x\n    _ = k@follow\nvar n: i32 = 1\ng(n@uniq, 2)", "p@follow = x", "borrow 4:13 p | loan 7:9 k@follow")]
+    public void AParentUsedWhileTheMovedChildsLoanIsHeldIsRejectedAtTheUse(string source, string write, string related)
+        => CallReservationTest.AssertMirRecord(source, DiagnosticCode.ComparisonLoanConflict_Kd, write, related);
 
-    // Moving the child while its own Reborrow child is live is the call activation's conflict.
+    // Moving the child while its own Reborrow child is live is a Loan conflict at the moved operand (H5; H3b T46: the call activation's
+    // conflict before), relating the Reborrow `let d = c` and its later use.
     [Fact]
     public void MovingAChildWhileItsOwnChildIsLiveIsRejected()
-    {
-        var c = MinimalEmissionTest.Analyze(Take + Child + "let d = c\ntake(c@move)\n_ = d@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
-        Assert.True(issue.Activation);
-        Assert.Equal("let d = c", issue.LoanSource!.ToString());
-    }
+        => CallReservationTest.AssertMirRecord(Take + Child + "let d = c\ntake(c@move)\n_ = d@follow", DiagnosticCode.ComparisonLoanConflict_Kd, "c", "borrow 5:9 c | loan 7:5 d@follow", "c@move)");
 
-    // SPEC 15.6.3, 15.6.7 (PLAN G53): a parent placed into a literal while its child is live there, whichever is placed first.
+    // SPEC 15.6.3, 15.6.7 (PLAN G53): a parent placed into a literal while its child is live there, whichever is placed first. The MIR's
+    // record (H5) is a Loan conflict at the placed parent `p` (H3b T46: PlacementActivationConflict_Kd before); it relates the Reborrow
+    // `let c = p` and the literal, or the placed child, that holds the child's Loan, with no Note: the MIR reads the placed parent as an
+    // ordinary access (H3b T46), and A6 has no acquisition fact for the placement Note ("acquired exclusively where the literal places
+    // it"; PLAN G433).
     [Theory]
-    [InlineData("var pair = (c@move, p@move)\n_ = pair.0@follow", "c@move")]
-    [InlineData("var pair = (p@move, c@move)\n_ = pair.1@follow", "let c = p")]
-    [InlineData("let items: [2 of uniq/i32] = [c@move, p@move]\n_ = items[0]", "c@move")]
-    public void AParentPlacedWhileItsChildIsLiveInTheLiteralIsRejected(string body, string loan)
-    {
-        var c = MinimalEmissionTest.Analyze(Child + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.Equal(DiagnosticCode.PlacementActivationConflict_Kd, issue.Code);
-        Assert.Equal(loan, issue.LoanSource!.ToString());
-    }
+    [InlineData("var pair = (c@move, p@move)\n_ = pair.0@follow", "borrow 3:9 p | loan 4:12 (c@move, p@move)")]
+    [InlineData("var pair = (p@move, c@move)\n_ = pair.1@follow", "borrow 3:9 p | loan 4:21 c")]
+    [InlineData("let items: [2 of uniq/i32] = [c@move, p@move]\n_ = items[0]", "borrow 3:9 p | loan 4:30 [c@move, p@move]")]
+    public void AParentPlacedWhileItsChildIsLiveInTheLiteralIsRejected(string body, string related)
+        => CallReservationTest.AssertMirRecord(Child + body, DiagnosticCode.ComparisonLoanConflict_Kd, "p", related, "p@move");
 
-    // A placed child holds its Loan until the literal completes: the parent is neither borrowed exclusively again nor read.
+    // A placed child holds its Loan until the literal completes: the parent is neither borrowed exclusively again nor read. The record
+    // (H5) relates the placed child's Borrow and the literal; the read's is at the literal (H3b T44: at `p@follow` before), which is then
+    // the value retaining the Loan (DIAGNOSTICS A6's `Store` witness).
     [Theory]
-    [InlineData("let q = (p@uniq, p@uniq)\n_ = q.0@follow")]
-    [InlineData("let q = (p@uniq, p@follow)\n_ = q.0@follow")]
-    public void AParentUsedWhileItsPlacedChildIsLiveInTheLiteralIsRejected(string body)
-    {
-        var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nvar p = n@uniq\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
-        Assert.False(issue.Activation);
-        Assert.Equal("p@uniq", issue.LoanSource!.ToString());
-    }
-
-    // The MIR's record (H5) is a ComparisonLoanConflict_Kd at the placed parent `p`; it relates the Reborrow `let c = p` and the literal
-    // that holds the placed child, with no Note: the placement Note ("acquired exclusively where the literal places it") is a fact A6
-    // publishes later.
-    [Fact]
-    public void TheChildFirstPlacementNamesThePlacedChild()
-    {
-        const string Source = "public func main()\n    var n: i32 = 1\n    var p = n@uniq\n    let c = p\n    var pair = (c@move, p@move)\n    _ = pair.0@follow\n";
-        var result = DiagnosticCorpus.Check(Source);
-        var record = Assert.Single(result.Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Source.IndexOf("p@move", StringComparison.Ordinal), 1), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
-        Assert.Null(record.Note);
-        Assert.Equal(
-            [("borrow", Source.IndexOf("c = p", StringComparison.Ordinal) + 4, 1, "borrow that created the loan"),
-                ("loan", Source.IndexOf("(c@move", StringComparison.Ordinal), 16, "later use of the value retaining the conflicting loan")],
-            record.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
-    }
+    [InlineData("let q = (p@uniq, p@uniq)\n_ = q.0@follow", "p@uniq", "p@uniq)", "borrow 3:10 p@uniq | loan 3:9 (p@uniq, p@uniq)")]
+    [InlineData("let q = (p@uniq, p@follow)\n_ = q.0@follow", "(p@uniq, p@follow)", null, "borrow 3:10 p@uniq | loan 3:9 (p@uniq, p@follow)" + CallReservationTest.Retaining)]
+    public void AParentUsedWhileItsPlacedChildIsLiveInTheLiteralIsRejected(string body, string text, string? at, string related)
+        => CallReservationTest.AssertMirRecord("var n: i32 = 1\nvar p = n@uniq\n" + body, DiagnosticCode.ComparisonLoanConflict_Kd, text, related, at);
 }

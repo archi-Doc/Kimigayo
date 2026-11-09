@@ -115,41 +115,14 @@ public sealed partial class Binding
     private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
         => literal.IsInteger ? type.HasIntegerArithmetic : type.IsFloatingPoint;
 
-    private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
+    private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative)
     {
         if (type.IsFloatingPoint)
         {
             return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
         }
 
-        return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
-    }
-
-    // SPEC 3.1.1: a wrapping integer Type fits literals by the range of its integer argument.
-    private static bool FitsIntegerMagnitude(UInt128 magnitude, BoundType type, bool negative, int pointerWidth)
-    {
-        if (!type.HasIntegerArithmetic)
-        {
-            return false;
-        }
-
-        var name = type.Underlying.Name;
-        var signed = name[0] == 'i';
-        var bits = name is "isize" or "usize" ? pointerWidth : int.Parse(name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
-        if (bits == 0)
-        {
-            // A target-independent literal must fit even the smallest integer
-            // storage width. Larger native-sized literals still require a target.
-            bits = 8;
-        }
-
-        if (negative && !signed)
-        {
-            return magnitude == 0;
-        }
-
-        var max = signed ? ((UInt128)1 << (bits - 1)) - (negative ? (UInt128)0 : 1) : bits == 128 ? UInt128.MaxValue : ((UInt128)1 << bits) - 1;
-        return magnitude <= max;
+        return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
     }
 
     // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
@@ -158,8 +131,40 @@ public sealed partial class Binding
     private static BoundType LiteralInputType(BoundType parameter)
         => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
+    private static BoundType? Complete(Koto node, BoundType? type)
+    {
+        node.BoundType = type;
+        if (node.BindingState != BindingState.Invalid)
+        {
+            node.BindingState = type is null ? BindingState.Unresolved : BindingState.Resolved;
+        }
+
+        return type;
+    }
+
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+
+    // SPEC 12.3.2, 8.7.4: whether a direct integer literal (its number and sign) fits an integer or wrapping integer Type, concrete or
+    // generic, and its constant (DECISIONS BU-133): a Type with a width holds its N-bit sign-extended payload; a Type whose literals are
+    // the generic 0 through 127 holds the value, which is every instance's payload. Literal Patterns and literal keys (SPEC 14.8.1,
+    // 12.4.3) and input fitting read this one rule.
+    private bool TryIntegerLiteral(NumberLiteralKoto number, bool negative, BoundType type, BindingScope scope, out Int128 bits)
+    {
+        bits = 0;
+        if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude))
+        {
+            return false;
+        }
+
+        if (this.TakesGenericLiterals(type, scope))
+        {
+            bits = (Int128)magnitude;
+            return FitsGenericInteger(number, negative);
+        }
+
+        return ScalarTypes.TryLiteral(type, magnitude, negative, out bits);
+    }
 
     // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
     private BoundType? LiteralDefault(Koto node)
@@ -179,9 +184,9 @@ public sealed partial class Binding
         }
 
         var number = KotoHelper.SignedNumber(node, out var negative);
-        if (number is not null && this.TakesGenericLiterals(type, scope))
+        if (number is { IsInteger: true })
         {
-            return FitsGenericInteger(number, negative);
+            return this.TryIntegerLiteral(number, negative, type, scope, out _);
         }
 
         if (number is null && IsLiteralOnlyOperation(node))
@@ -202,7 +207,7 @@ public sealed partial class Binding
 
         if (number is not null)
         {
-            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative, this.compilation.PointerWidth);
+            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative);
         }
 
         return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
@@ -217,7 +222,7 @@ public sealed partial class Binding
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
-        var type = this.BindAndAdaptNode(node, scope, expected);
+        var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
         this.EndConsultation(node, parent);
         this.Consulted(node);
         return type;
@@ -391,26 +396,7 @@ public sealed partial class Binding
                     this.BindNode(container.ConstraintNodes[i], scope);
                 }
 
-                for (var i = 0; i < container.Members.Count; i++)
-                {
-                    this.BindNode(container.Members[i], scope);
-                }
-
-                for (var i = 0; i < container.NestedContainers.Count; i++)
-                {
-                    this.BindNode(container.NestedContainers[i], scope);
-                }
-
-                if (container.IsRoot && container.Kotonoha.GeneratedFunction is { } generated)
-                {
-                    this.BindNode(generated, scope);
-                }
-
-                if (container is StructKoto { ImplicitConstructor: { } constructor })
-                {
-                    this.BindNode(constructor, scope);
-                }
-
+                this.BindContainedDeclarations(container, scope);
                 if (LengthSlot(container) is { } slot)
                 {
                     this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
@@ -434,8 +420,8 @@ public sealed partial class Binding
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
                 {
-                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && KotoHelper.IsValueContext(block) ? expected : null);
-                    if (block.HasTrailingExpression && KotoHelper.IsValueContext(block))
+                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && IsValueContext(block) ? expected : null);
+                    if (block.HasTrailingExpression && IsValueContext(block))
                     {
                         blockType = type;
                     }
@@ -466,11 +452,11 @@ public sealed partial class Binding
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
                     // The Type keeps a generic default's parameter (SPEC 7.2.3).
-                    var found = number.IsInteger ? "integer literal" : "floating-point literal";
-                    return this.RecordMismatch(node, node, found, numberType, ComparisonFailure.Shape);
+                    var found = number.IsInteger ? MismatchForm.IntegerLiteral : MismatchForm.FloatingPointLiteral;
+                    return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
-                return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
+                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
                 return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
             case BaseReferenceKoto baseReference:
@@ -501,7 +487,7 @@ public sealed partial class Binding
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
-                    return this.Fail(member, this.MissingFailure(member, scope, BindingFailure.MissingName), true);
+                    return this.FailMissing(member, scope, BindingFailure.MissingName);
                 }
 
                 return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
@@ -582,8 +568,8 @@ public sealed partial class Binding
                         targetResult?.Add(jump.Expression, actual);
                     }
 
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node, out var failure) &&
-                        !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
+                    if (actual is not null && resultType is not null &&
+                        !this.FitsValueAt(actual, resultType, node, jump.Expression ?? jump, out var failure))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType, failure);
                     }
@@ -629,8 +615,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node, out var failure) &&
-            !this.CheckLocalTypeUse(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
         }

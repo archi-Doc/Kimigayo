@@ -298,6 +298,19 @@ public class MinimalEmissionTest
         c.Bind();
         c.Binding.CheckStartup(output);
         c.Analyze();
+        Assert.Equal(0, c.Binding.IdlessFactSites); // R7-E1: a fact site is a node the check read, so a semantic write numbered it.
+        return c;
+    }
+
+    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published.
+    internal static Compilation Check(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = output;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(path, source));
+        c.Check();
+        Assert.Equal(0, c.Binding.IdlessFactSites);
         return c;
     }
 
@@ -309,9 +322,7 @@ public class MinimalEmissionTest
     // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
     internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
     {
-        var c = Analyze(source, output: output);
-        c.Binding.ReportDiagnostics();
-        c.ReportAnalysis();
+        var c = Check(source, output: output);
         var generated = c.Generate(TextWriter.Null);
         Assert.True(c.Accepts == accepted && generated == accepted && (!accepted || c.Problems.Count == 0), Describe(c));
         if (!generated)
@@ -329,8 +340,8 @@ public class MinimalEmissionTest
     }
 
     // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
-    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b), on every pipeline and under
-    // either code generator (DECISIONS R5-M156), and generation adds nothing.
+    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b; DECISIONS R5-M156), and
+    // generation adds nothing.
     internal static void AssertGenerationResourceLimit(string source, string at)
     {
         var c = Analyze(source);
@@ -345,7 +356,7 @@ public class MinimalEmissionTest
     }
 
     // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the MIR's rows in the
-    // publisher's order, which check publishes on every pipeline (DECISIONS R5-M185).
+    // publisher's order, which check publishes (DECISIONS R5-M185).
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
@@ -354,7 +365,7 @@ public class MinimalEmissionTest
     // only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c)
         => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {CompilationTestHelper.Location(x.Node)}")) + "; " +
             string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
             string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
                 .Select(static x => $"{x.Code} {x.Span}"));

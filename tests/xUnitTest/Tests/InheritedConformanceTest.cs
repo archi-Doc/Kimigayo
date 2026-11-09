@@ -12,6 +12,192 @@ namespace XunitTest;
 
 public class InheritedConformanceTest
 {
+    private const string InheritedNamesItsBase = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<B>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<B>) -> i32 => 1
+        struct D : B
+            public init() => ()
+        func need<T>(t: ref/T, b: ref/Box<B>) -> i32
+            T is C
+            return t.m(b)
+        func use(d: ref/D, b: ref/Box<B>) -> i32 => need(d, b)
+        """;
+
+    private const string InheritedNamedByItsDerived = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<B>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<B>) -> i32 => 1
+        struct D : B
+            public init() => ()
+            public func n(self: ref/Self, other: ref/Box<D>) -> i32 => 1
+        """;
+
+    private const string InheritedPathFails = """
+        contract C
+            func m(self: ref/Self, other: ref/Self) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Self) -> i32 => 1
+        struct D : B
+            public init() => ()
+            public func n(self: ref/Self, other: ref/Box<D>) -> i32 => 1
+        """;
+
+    private const string LimitOneCall = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        func peek(b: ref/Box<Leaf>) -> () => ()
+        func a(b: ref/Box<Leaf>) -> () => peek(b)
+        """;
+
+    private const string LimitTwoCalls = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        func peek(b: ref/Box<Leaf>) -> () => ()
+        func a(b: ref/Box<Leaf>) -> () => peek(b)
+        func c(b: ref/Box<Leaf>) -> () => peek(b)
+        """;
+
+    private const string LimitCallThenReference = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        func peek(b: ref/Box<Leaf>) -> () => ()
+        func a(b: ref/Box<Leaf>) -> () => peek(b)
+        func c(b: ref/Box<Leaf>) -> ()
+            let f: (ref/Box<Leaf>) -> () = peek
+            f(b)
+        """;
+
+    private const string LimitExplicit = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            public var count: i32 = 1
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            Self is Bumps
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        func peek(b: ref/Box<Leaf>) -> () => ()
+        func a(b: ref/Box<Leaf>) -> () => peek(b)
+        func c(b: ref/Box<Leaf>) -> () => peek(b)
+        """;
+
+    private const string LimitConformance = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        contract D
+            func n(self: ref/Self, b: ref/Box<Leaf>) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, b: ref/Box<Leaf>) -> i32 => 1
+        func use(u: ref/U, b: ref/Box<Leaf>) -> i32 => u.n(b)
+        """;
+
+    private const string LimitConformanceTwoCalls = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        contract D
+            func n(self: ref/Self, b: ref/Box<Leaf>) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, b: ref/Box<Leaf>) -> i32 => 1
+        func use(u: ref/U, b: ref/Box<Leaf>) -> i32 => u.n(b)
+        func use2(u: ref/U, b: ref/Box<Leaf>) -> i32 => u.n(b)
+        """;
+
+    private const string LimitConformanceNoCall = """
+        contract Bumps
+            func bump(self: uniq/Self) -> ()
+        open struct Base
+            Self is Bumps
+            public var count: i32 = 1
+            public init() => ()
+            public func bump(self: uniq/Self) -> () => self.count += 1
+        struct Leaf: Base
+            public init() => ()
+        struct Box<T>
+            T is Bumps
+            var item: T
+        contract D
+            func n(self: ref/Self, b: ref/Box<Leaf>) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, b: ref/Box<Leaf>) -> i32 => 1
+        """;
+
     private const string Arithmetic = """
         open struct Base<T>
             T is PrimitiveInteger
@@ -69,6 +255,31 @@ public class InheritedConformanceTest
             associate HasMore.Elem is i32
 
         """;
+
+    // PLAN G375: a failed signature is computed at each read, so the channel's cause (SPEC 23.1.1) reaches every reader, a call or a reference.
+    // An explicit Constraint's proof names the failed conformance it read, so its readers rest on the Unsupported_Kd too (DECISIONS Q13,
+    // rule W; R7-C8 U-D2 fix 2: LimitExplicit's three InvalidConstraint_Kd at Box<Leaf> are dependents).
+    [Theory]
+    [InlineData(LimitOneCall, "1*Unsupported_Kd")]
+    [InlineData(LimitTwoCalls, "1*Unsupported_Kd")]
+    [InlineData(LimitCallThenReference, "1*Unsupported_Kd")]
+    [InlineData(LimitExplicit, "1*Unsupported_Kd")]
+    public void ALimitsCauseReachesEveryReaderOfASignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G375: a limited signature's answer depends on who asks, so none is stored. The conformance reads no signature (the owner's O-44), so the
+    // limit's one record stands alone, DECISIONS Q13.
+    [Theory]
+    [InlineData(LimitConformance, "1*Unsupported_Kd")]
+    [InlineData(LimitConformanceTwoCalls, "1*Unsupported_Kd")]
+    [InlineData(LimitConformanceNoCall, "1*Unsupported_Kd")]
+    public void ALimitedSignaturesAnswerIsNotStored(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // The owner's O-44, SPEC 8.6.2: an inherited conformance's mapping forms no signature either: Box<B> and Box<D> are judged where they are written.
+    [Theory]
+    [InlineData(InheritedNamesItsBase, "clean")]
+    [InlineData(InheritedNamedByItsDerived, "clean")]
+    [InlineData(InheritedPathFails, "1*UnsatisfiedConstraint_Kd")]
+    public void AnInheritedConformanceFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 12.7, 23.1.1, 23.1.2: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
     // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base

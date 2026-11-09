@@ -92,7 +92,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     // A4's record at the virtual function (H0b §5.4) has no label, Note or related location yet (H0a §4.1): Binding's "confined" label
     // and message text and its bound role are lost until A4 publishes them.
     [Fact]
-    public void CleanupFailuresClearAfterAnEditAndKeepTheirPublicEvidence()
+    public void CleanupFailuresPublishWithoutEvidenceAndClearAfterAnEdit()
     {
         const string Source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Noisy.init()\n        return 1\n()";
         var path = Path.GetFullPath("virtual-cleanup-bound.kimi");

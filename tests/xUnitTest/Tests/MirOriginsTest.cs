@@ -4,6 +4,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -103,9 +104,17 @@ public sealed partial class MirOriginsTest
     // A Property's storage passed to a `during static` parameter: an accessor's Borrow of static storage (2a0-D §3 rows 7 and 7').
     private const string Storage = "group Util\n    public func keepStatic(r: ref/i32 during static) -> i32 => r@follow\ngroup Api\n";
 
-    // A callee's meet of its own Origins, whose Parameter atoms appear in its caller's rows (2a0-D's rv/meet-trans, I-1).
+    // A callee's meet of its own Origins (2a0-D's rv/meet-trans, I-1): the call's Origins are call regions of mt's body (SPEC 15.6.4
+    // step 1; U3-design.md's twelfth amendment), so t's inferred region is bounded by x alone and the program is valid.
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
+
+    // MeetTrans' call in a constructor and in its struct's Field initializer, one call's regions in each part of the constructor's slice
+    // (DECISIONS BU-102; be85b19e2 threw at `t@uniq` when they were the callee's Parameter atoms, dev added an InternalInvariant_Kd).
+    private const string MeetTransBothParts = "group Util\n    public func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n" +
+        "        slot@follow = v\nstruct S\n    public var n: i32 = if true\n        let x = 1\n        let y = 5\n        var t = x@ref\n" +
+        "        Util.put(t@uniq, v: y@ref)\n        yield 0\n    else => 0\n    public init()\n        let x = 1\n        let y = 5\n" +
+        "        var t = x@ref\n        Util.put(t@uniq, v: y@ref)\n";
 
     // Field initializers forming layer rows (PLAN G215's probes): a local's Borrow annotated into the layer's Origin `a` (Refuted), the
     // same through an exclusive layer (a Reborrow), and a written Type well formed only when `b outlives a` (Unknown without the clause).
@@ -155,10 +164,16 @@ public sealed partial class MirOriginsTest
     // SPEC 15.6.5 and MeetNode's rule (2a0-D D15): a non-fixed meet at a row's longer end is a node of its own beside an edge per operand,
     // so what reaches the meet itself is judged at the shorter end: a local's Borrow annotated `during (p and x)` and returned `during x`,
     // and the meet of two local regions read into a `during x` local (where the operand y is also Unknown); the valid counterpart names x.
+    // The meet is also at the initializer's shorter end: the meet law's derived edge from the finite initializer into the meet's bound is
+    // Refuted at that in-edge's site too (SPEC 15.3.6; one record per edge into a Fixed node and failing source, as at the use).
     [Theory]
-    [InlineData(MeetHead + "    let m: ref/i32 during (p and x) = local@ref\n    return m\n", "UnsatisfiedOriginRelation_Kd m")]
+    [InlineData(
+        MeetHead + "    let m: ref/i32 during (p and x) = local@ref\n    return m\n",
+        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and x) = local@ref",
+        "UnsatisfiedOriginRelation_Kd m")]
     [InlineData(
         MeetHead + "    let m: ref/i32 during (p and q) = local@ref\n    let n: ref/i32 during x = m\n    return n\n",
+        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and q) = local@ref",
         "UnsatisfiedOriginRelation_Kd let n: ref/i32 during x = m",
         "UnprovenOriginRelation_Kd let n: ref/i32 during x = m")]
     [InlineData(MeetHead + "    let m: ref/i32 during (p and x) = x\n    return m\n")]
@@ -225,7 +240,8 @@ public sealed partial class MirOriginsTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.Equal(expected, Found(program).Select(x => $"{x.Problem.Code} {Line(c, x.Problem.Subject)}" +
-            string.Concat(program.Problems.Facts(x.Index).ToArray().Where(static f => f.Kind == MirFactKind.Anchor).Select(f => $" <- {Line(c, f.Site)}"))));
+            string.Concat(
+                program.Problems.Facts(x.Index).ToArray().Where(static f => f.Kind == ProblemFactKind.Anchor).Select(f => $" <- {Line(c, f.Site)}"))));
     }
 
     // 2a0-D §3: the builder's own Refs, a synthesized input's borrow, an update's writeback reservation and a selection's raw pointer,
@@ -244,24 +260,27 @@ public sealed partial class MirOriginsTest
         Assert.Empty(Origins(c));
     }
 
-    // audit-origins rows 7, 9c and 19 with their twins (2a0-D §10): the MIR's Origin problem of a body chain is the one Binding's twin or the
-    // old reporter records at the same site, so the ledger pairs them: an invariant `==` one direction of which the clause proves (row 7),
-    // a Reborrow through two exclusive layers and a stored exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a
-    // local's Borrow through locals with no candidate, each a local region (row 19), returned or read into a local. The twins are the old
-    // path's records (LegacyRecords, until H10b): since the flip a compilation's Problems are the MIR's own (DECISIONS R5-M185; R6-check H5).
+    // audit-origins rows 7, 9c and 19 (2a0-D §10): the MIR's Origin problems of a body chain, at the sites where the old reporter recorded
+    // their twins: an invariant `==` one direction of which the clause proves (row 7), a Reborrow through two exclusive layers and a stored
+    // exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a local's Borrow through locals with no candidate, a
+    // local region (row 19), returned. With the old reporter gone (R6-check H8a D4) the rows pin the MIR's lines.
     [Theory]
-    [InlineData(R7Inv)]
-    [InlineData(Layers)]
-    [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n")]
-    [InlineData("func f(y: ref/i32) -> Option<ref/i32 during y>\n    let l = 1\n    let a: Option<ref/i32> = .Some(l@ref)\n" +
-        "    let b: Option<ref/i32> = a\n    return b\n")]
-    [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n")]
-    public void AnAuditRowsChainPairsItsTwin(string source)
+    [InlineData(R7Inv, "UnprovenOriginRelation_Kd let z: uniq/(ref/i32 during a) = y; UnprovenOriginRelation_Kd uniq/(ref/i32 during a)")]
+    [InlineData(Layers, "UnsatisfiedOriginRelation_Kd rr@follow@follow@ref; UnsatisfiedOriginRelation_Kd rr@follow@follow@ref")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n", "UnsatisfiedOriginRelation_Kd r")]
+    [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n", "UnsatisfiedOriginRelation_Kd b")]
+    public void AnAuditRowsChainHasItsOriginProblems(string source, string origins)
+        => Assert.Equal(origins, string.Join("; ", Origins(MirBuildTest.Compile(source + Main)).Order(StringComparer.Ordinal)));
+
+    // audit-origins row 19 read into a local Option: the MIR's Origin problem is the one Binding's twin records at the same site, so the
+    // ledger paired them (DECISIONS R4-M108; R7 removes the twins).
+    [Fact]
+    public void AnAuditRowsChainPairsBindingsTwin()
     {
-        var c = MirBuildTest.Compile(source + Main);
-        var old = MinimalEmissionTest.Analyze(source + Main, "Program.kimi");
+        var c = MirBuildTest.Compile("func f(y: ref/i32) -> Option<ref/i32 during y>\n    let l = 1\n    let a: Option<ref/i32> = .Some(l@ref)\n" +
+            "    let b: Option<ref/i32> = a\n    return b\n" + Main);
         var codes = new[] { DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd };
-        string[] twins = [.. LegacyRecords.Of(old).Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
+        string[] twins = [.. c.Binding.Issues.Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
         Assert.NotEmpty(twins);
         Assert.Equal(twins.Order(StringComparer.Ordinal), Origins(c).Order(StringComparer.Ordinal));
     }
@@ -269,14 +288,17 @@ public sealed partial class MirOriginsTest
     // SPEC 15.6.5 and 15.6.3: valid counterparts form no Refuted chain: a parameter's Borrow passed on, a Field's Borrow read through its
     // binder, a Reborrow through shared and exclusive layers whose Origins the result names, a Slice element's Borrow (E6), a raw Deref,
     // which stops containment (a-wf), a local region holding only a local's Borrow, an immutable static's storage passed to a
-    // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
+    // `during static` parameter (row 7', Inferred; SPEC 11.8), which check rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
     // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
     // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
     // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
-    // declaration (SPEC 14.10.3, 15.3.4; PLAN G410).
+    // declaration (SPEC 14.10.3, 15.3.4; PLAN G410); and MeetTrans in a function and in both parts of a constructor's slice, whose call
+    // regions satisfy every row (U3-design.md's twelfth amendment: valid, the located limit before).
     [Theory]
+    [InlineData(MeetTrans)]
+    [InlineData(MeetTransBothParts)]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
     [InlineData("func shallow(x: ref/(ref/i32 during a)) -> ref/i32 during a\n    return x@follow\n")]
@@ -313,12 +335,12 @@ public sealed partial class MirOriginsTest
     }
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
-    // completeness (DECISIONS R4-M113): a callee's own Parameter atoms in a caller's rows (I-1, PLAN G195; meet-trans, which Binding rejects
-    // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested result's row with a
-    // per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
-    // 15.3.4, R4-M162: the invalid ones are Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front, R7-O3).
+    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, PLAN G195: a call's Origins
+    // are its call regions, AValidChainHasNoOriginProblem). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested
+    // result's row with a per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
+    // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
+    // R7-O3).
     [Theory]
-    [InlineData(MeetTrans, "t@uniq")]
     [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(NestedResult + "ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(
@@ -435,6 +457,29 @@ public sealed partial class MirOriginsTest
         Assert.True(work[2] - work[1] <= (3 * (work[1] - work[0])) + 64, $"work {string.Join(", ", work)}");
     }
 
+    // V16 "F4" (2a0-D §6.4) under MeetNode's rule (D15): a non-Fixed meet at the shorter end gets its operands' edges once per class, so on
+    // fixed-roots, a class of N + 1 rows into one meet of N + 1 Origins, the stratum's work over the program's bodies stays within
+    // c·(N_o + E_o·⌈Fin/64⌉) (the factor 3 of TheRefutedWorkScalesWithTheChain; quadratic before), without an Origin problem.
+    [Fact]
+    public void AShorterMeetsOperandEdgesFormOncePerClass()
+    {
+        long[] work = [.. new[] { 32, 64, 128 }.Select(static n =>
+        {
+            var c = MirBuildTest.Compile(VerificationWorkloads.CallableRegions("fixed-roots", n));
+            var origins = new MirOrigins(c.Types, new MirCases(c.Types));
+            var total = 0L;
+            foreach (var body in c.BuildMir().Bodies.ToArray())
+            {
+                origins.Judge(body, MirCases.Count(body), new MirReport());
+                total += origins.Work;
+            }
+
+            Assert.Empty(Origins(c));
+            return total;
+        })];
+        Assert.True(MirBorrowsTest.Grows(work, 3), $"work {string.Join(", ", work)}");
+    }
+
     // V16 "F4 containment" (SPEC 15.6.3): a Reborrow through N exclusive layers and then M shared ones is contained in each exclusive layer
     // and the first shared one only: N + 1 edges, whatever M.
     [Theory]
@@ -463,7 +508,7 @@ public sealed partial class MirOriginsTest
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
     // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
-    // initializer's layer oracle and Dependent ends (FailedClause); and the program's findings, a constructorless layer's limit included.
+    // initializer's layer oracle and Dependent ends (FailedClause); and Findings, a constructorless layer's limit.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()

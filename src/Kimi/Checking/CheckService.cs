@@ -27,6 +27,13 @@ internal static class CheckService
     /// <exception cref="OperationCanceledException">The check was cancelled; a cancelled check has no output (SPEC 23.2.2).</exception>
     public static CheckOutput Run(Project project, string target, CheckMode mode, bool debug, CheckInputSource inputs, CancellationToken cancellationToken, bool collectHover = false)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run(
+                (project, target, mode, debug, inputs, cancellationToken, collectHover),
+                static s => Run(s.project, s.target, s.mode, s.debug, s.inputs, s.cancellationToken, s.collectHover));
+        }
+
         var context = new CheckContext(inputs, collectHover);
         var location = project.FilePath;
         project.KimiOptions = new KimiOptions { Target = target, Debug = debug };

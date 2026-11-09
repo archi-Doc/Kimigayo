@@ -24,9 +24,6 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 23.3: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
-    private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
-
     // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
     private Dictionary<Koto, OriginRelationFact>? originRelations;
 
@@ -53,9 +50,6 @@ public sealed partial class Binding
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    // SPEC 23.1.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
-    private Dictionary<Koto, SourceSpan>? unsupportedSpans;
 
     // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
     // the generic container that declares it (Outer), with the declared and the written counts.
@@ -135,11 +129,11 @@ public sealed partial class Binding
             : [node.Edit(new(place.Span.End, 0), "@move")];
         var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
         var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
-        return [new(RepairKind.Transfer, [place.ToString(), TransferTarget(place)], edits, verified, required)];
+        return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
     }
 
     // The destination a Place is acquired for, as the Transfer title names it.
-    internal static string TransferTarget(Koto place)
+    internal static string TransferDestination(Koto place)
         => Destination(place) switch
         {
             InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
@@ -427,24 +421,25 @@ public sealed partial class Binding
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
     // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
-    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
+    private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
-        // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
-            actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+        // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch; the
+        // erasure recorded it at this value (DECISIONS BU-107), so this reader only checks that an outcome exists.
+        if (expected.Type is { Kind: BoundTypeKind.Function } owner &&
+            actual.Type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
         {
             return null;
         }
 
-        var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
         if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
+                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
         }
 
-        return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+        return this.RecordTypeMismatch(node, at, actual, expected);
     }
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
@@ -488,11 +483,12 @@ public sealed partial class Binding
     private DiagnosticCode OriginRelationCode(Koto node)
         => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
 
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
-    // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
+    // Fails a node with the facts that explain the failure. A node keeps its first failure only, or one taking its own clause's resting
+    // InvalidOrigin (SlotTaken), so the facts are recorded only with the failure the slot takes: a fact in a publication table always
+    // explains the failure of its node, whatever the failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (node.BindingFailure == BindingFailure.None)
+        if (!this.SlotTaken(node))
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }
@@ -552,11 +548,11 @@ public sealed partial class Binding
         var plan = BoundClosure.Of(callee);
         var consuming = call && target.BoundType is { } calleeType && this.TryCallable(calleeType, this.ConstraintScope(node), out _, out var calleeReceiver) && calleeReceiver == SemanticsKind.Owner;
         var callNote = !call ? null : consuming ? objectCallee
-            ? "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"
-            : "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)"
+            ? "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"
+            : "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)"
             : plan is { ExclusiveReborrow: true, ExclusiveUse: { } use }
             ? $"The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference {use} exclusively"
-            : "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent";
+            : "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
@@ -624,14 +620,14 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.caseBinders?.Clear();
-        this.mismatches?.Clear();
+        this.report.Clear();
+        this.nameSteps.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
-        this.unsupportedSpans?.Clear();
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
@@ -639,7 +635,6 @@ public sealed partial class Binding
         this.callableConstraints?.Clear();
         this.clauseConstraints?.Clear();
         this.pendingJudgments?.Clear();
-        this.operatorOperands?.Clear();
         this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();
@@ -678,21 +673,22 @@ public sealed partial class Binding
         {
             MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
             MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
-                ReferenceEquals(this.TypeName(member.Left, scope, false)?.Declaration, this.Library.Intrinsics),
+                ReferenceEquals(this.TypeName(member.Left, scope, LookupRole.Any)?.Declaration, this.Library.Intrinsics),
             _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
         };
         return limit ? BindingFailure.Unsupported : missing;
     }
 
-    // A Type position names a Type: an inaccessible qualifier explains the miss, otherwise the Name is missing.
-    private BoundType? FailMissingType(Koto name, BindingScope scope)
+    // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
+    // explains the miss, otherwise the Name is missing.
+    private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, scope, BindingFailure.MissingType), true);
+            : this.Fail(name, this.MissingFailure(name, scope, missing), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
-    // Returns the inaccessible qualifier it failed, which explains the failed lookup.
+    // Returns the inaccessible qualifier it failed, which explains the failed lookup; binds the qualifier of an inaccessible or a missing member.
     private Koto? ReportUnavailableQualifier(Koto syntax, BindingScope scope)
     {
         if (syntax is GenericsKoto generic)
@@ -710,11 +706,14 @@ public sealed partial class Binding
             return inner;
         }
 
-        if (this.TypeName(member.Left, scope, false) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
-            TypeSpelling(member.Right) is not { } name || !members.Types.TryGetValue(name, out var first))
+        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
+            TypeSpelling(member.Right) is not { } name)
         {
             return null;
         }
+
+        var first = MemberTypes(members, name);
+        var missing = first is null;
 
         for (var candidate = first; candidate is not null; candidate = candidate.Next)
         {
@@ -722,6 +721,22 @@ public sealed partial class Binding
             {
                 return null;
             }
+        }
+
+        // An inaccessible member is still the qualifier's nested declaration (SPEC 9.4), and a missing one selects no other role, so a
+        // qualifier no form has bound (a projection base is bound by its projection) is bound in its container role, as
+        // BindContainerReference binds it for an accessible member, its own failures included (SPEC 9.7.1, 23.1.2; PLAN G250, G481).
+        // Only a group or a struct declares nested Containers (SPEC 6.1's table; an enum has none by 6.5.1, a Contract only
+        // requirements, associated Types and parents), so no other qualifier has that role.
+        if (member.Left.BindingState == BindingState.Unvisited && qualifier.Declaration is GroupKoto { IsRoot: false } or StructKoto)
+        {
+            member.Left.BoundSymbol = qualifier;
+            this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope));
+        }
+
+        if (missing)
+        {
+            return null;
         }
 
         this.Fail(member, BindingFailure.Access);
@@ -831,8 +846,7 @@ public sealed partial class Binding
 
     private Koto? FindMissingConformanceName(IsKoto clause)
     {
-        if (clause.Parent is not (StructKoto or EnumKoto) || !IsSelfConstraint(clause) ||
-            clause.BoundConstraint is null)
+        if (!DeclaresConformance(clause) || clause.BoundConstraint is null)
         {
             return null;
         }
@@ -886,7 +900,8 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node.BoundSymbol is null && node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
+            // A name the requirement could not resolve: missing, or a projection before registration (G621's limit, Unsupported).
+            if (node.BoundSymbol is null && node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
             {
                 this.Cause = node;
                 return;

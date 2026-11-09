@@ -163,6 +163,39 @@ public class ParserOptimizationTest
         Assert.Equal("2", Assert.Single(attribute.Arguments).ToString());
     }
 
+    [Theory]
+    [InlineData("#Layout(\"C\") struct S", AttributeKind.Layout)]
+    [InlineData("#Layout struct S", AttributeKind.Layout)]
+    [InlineData("#Layout(\"D\", 1) func f() => ()", AttributeKind.Layout)]
+    [InlineData("#Test func f() => ()", AttributeKind.Test)]
+    [InlineData("#Test(1) func f() => ()", AttributeKind.Test)]
+    [InlineData("#LibraryImport(\"a\", \"b\") func f()", AttributeKind.LibraryImport)]
+    [InlineData("#Other func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#Layout(\"C\")(1) struct S", AttributeKind.Unknown)]
+    public void ParserClassifiesAnAttributeByItsName(string source, AttributeKind expected)
+    {
+        var kotonoha = Compilation.CreateForTest().Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+        Assert.Equal(expected, Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>()).Kind);
+    }
+
+    [Fact]
+    public void AttributeKindFollowsAReplacedName()
+    {
+        var kotonoha = Compilation.CreateForTest().Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#Layout(\"C\") func Run() => ()");
+        var attribute = Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>());
+        Assert.Equal("C", attribute.LayoutMode);
+        var call = Assert.IsType<InvocationKoto>(attribute.Operand);
+        Assert.True(KotoHelper.Replace(call, call.Method, new IdentifierNameKoto(call, "Test")));
+        Assert.Equal(AttributeKind.Test, attribute.Kind);
+        Assert.Null(attribute.LayoutMode);
+
+        // SyntaxNesting's cut of the operand, which leaves no Name.
+        Assert.True(KotoHelper.Replace(attribute, attribute.Operand, new ErrorKoto(attribute.CodeContext, attribute.Span)));
+        Assert.Equal(AttributeKind.Unknown, attribute.Kind);
+    }
+
     [Fact]
     public void ReplacingTheHeadAttributeKeepsTheRemainingChain()
     {

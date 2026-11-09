@@ -13,9 +13,9 @@ namespace XunitTest;
 /// <summary>Initialization and moves on MIR (A1, SPEC 15.1, 14.10.3; docs/dev/DECISIONS.md R4-M20, R4-M21): each rule with a valid
 /// program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code, the first
 /// line of its subject and its views; and the move paths a body forms, through <see cref="MirMoveData"/> itself.</summary>
-public sealed class MirInitTest(ITestOutputHelper output)
+public sealed class MirInitTest
 {
-    private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
+    private const string Resource = "struct Resource\n    public var name: string = \"r\"\nfunc make() -> Resource => Resource.init()\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
@@ -30,23 +30,26 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["UninitializedPlace_Kd use(number) 1"], Problems(Branches + "    use(number)\n"));
     }
 
-    // SPEC 15.1.1, 15.1.2: a Move leaves its Place Moved until a reinitialization; a use where it may have been moved is MovedPlace. A
-    // Field written into a moved value does not construct it again: the write and a whole use after it are both MovedPlace.
+    // SPEC 15.1.1, 15.1.2, 15.1.4: a Move leaves its Place Moved until a reinitialization, also along a loop's back edge; a use where it
+    // may have been moved is MovedPlace. A Field written into a moved value does not construct it again: the write and a whole use after
+    // it are both MovedPlace. The fixture and the write bind (SPEC 6.3.6: the implicit constructor; the Field is public).
     [Fact]
     public void AMovedPlaceIsUsableAgainOnlyAfterReinitialization()
     {
-        Assert.Empty(Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x = make()\n    consume(x@move)\n"));
+        Assert.Empty(Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x = make()\n    consume(x@move)\n" +
+            "func g(c: bool)\n    var x = make()\n    while c\n        consume(x@move)\n        x = make()\n"));
         Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    inspect(x)\n"));
+        Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func f(c: bool)\n    var x = make()\n    while c\n        consume(x@move)\n"));
         Assert.Equal(
             ["MovedPlace_Kd x 1"],
             Problems(Resource + "func f(flag: bool)\n    var x = make()\n    if flag\n        consume(x@move)\n    inspect(x)\n"));
-        Assert.Equal(
-            ["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"],
-            Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x.name = \"n\"\n    inspect(x)\n"));
+        var written = MirBuildTest.Compile(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x.name = \"n\"\n    inspect(x)\n");
+        Assert.Empty(written.Binding.Issues);
+        Assert.Equal(["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"], Problems(written));
     }
 
-    // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, and neither
-    // a Move nor a destruction resets the first initialization.
+    // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, one outside
+    // the loop does not, and neither a Move nor a destruction resets the first initialization.
     [Fact]
     public void ALetIsInitializedOncePerBindingLifetime()
     {
@@ -54,6 +57,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(
             ["ReassignedLet_Kd resource = make() 1"],
             Problems(Resource + "func f()\n    let resource: Resource\n    resource = make()\n    consume(resource@move)\n    resource = make()\n"));
+        Assert.Equal(["ReassignedLet_Kd s = make() 1"], Problems(Resource + "func f(c: bool)\n    let s: Resource\n    while c\n        s = make()\n"));
     }
 
     // SPEC 15.1.2, 15.1.3: a Partial Move leaves the value incomplete for whole-value uses until the missing path is reinitialized.
@@ -69,8 +73,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
     // SPEC 13.5.3, 15.1.1-15.1.3 (PLAN G228): `@move` marks a Copy-typed part Moved like any part: a read, a second Move or a whole use
     // after it is MovedPlace until the part is written again, also across a loop, and a Type with drop needs the part restored before
     // the drop runs, a `during self` layer's Move restored by null included (SPEC 5.7, DECISIONS R4-M110); Copies of a part move nothing.
-    // The old analysis, which both published pipelines use until R6-check, accepts these forms (OwnershipAnalysis.AcquireElement ignores
-    // the explicit Move); the rows pin the verdicts R6-check publishes.
+    // Before H5 the old analysis accepted these forms; the rows pin the MIR's verdicts.
     [Fact]
     public void AMoveOfACopyTypedPartMarksItMoved()
     {
@@ -138,6 +141,28 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Problems("struct S\n    var value: i32\n    public init(flag: bool)\n        if flag => return\n        self.value = 1\n"));
     }
 
+    // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
+    // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
+    // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
+    // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
+    // an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at the struct or the init for the failed Field).
+    [Theory]
+    [InlineData("struct Node\n    var next = (1 x)\n", "")]
+    [InlineData("struct Node\n    var next = undefinedName\n", "")]
+    [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    init(k: i32) => self.k = k\n", "")]
+    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "")]
+    [InlineData("struct Box<T>\n    var next = (1 x)\nfunc f()\n    let b = Box<i32>.init()\n", "")]
+    [InlineData("struct Outer\n    public let k: i32 = 1\n    struct Inner\n        var next = (1 x)\n", "")]
+    [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    var m: i32\n    init(k: i32) => self.k = k\n", "UninitializedPlace_Kd init(k: i32) => self.k = k 1")]
+    public void AConstructorRequiresNoFieldWithoutAStoredType(string source, string expected)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        c.Bind();
+        var own = TestDiagnostics.Of(c).Select(static x => x.Code).Concat(c.Binding.Issues.Select(static x => x.Code.ToString()));
+        Assert.Contains(own, static x => x is nameof(DiagnosticCode.ExpectedSyntax_Kd) or nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(c));
+    }
+
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
     // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222). A Place a function publishes never offers Take, whatever root
@@ -167,20 +192,24 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: an explicit Move of a preceding parameter or of its owned
-    // contents in the template, parenthesized or not, is DefaultArgumentMove_Kd. Each is the template's check: the calls' inline copies, in a
-    // caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter holds
-    // (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
+    // contents in the template (R4-M69's: a fixed array's element or an Array's, whose element also offers no Take, SPEC 15.1.5),
+    // parenthesized or not, is DefaultArgumentMove_Kd, and an inspection of it is valid. Each is the template's check: the calls' inline
+    // copies, in a caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter
+    // holds (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
     [Fact]
     public void ADefaultCannotMoveItsPreparedSlot()
     {
         var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = (x)@move) => ()\n" +
-            "func part(p: (string, i32), y: string = p.0@move) => ()\n" +
-            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n");
+            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc elem(a: [2 of string], y: string = a[0]@move) => ()\n" +
+            "func dyn(a: Array<string>, y: string = a[0]@move) => ()\nfunc peek(a: [2 of string], y: string = Text.toString(a[0])) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    elem([\"d\", \"e\"])\n" +
+            "    dyn([\"f\"])\n    peek([\"g\", \"h\"])\n");
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(
             [
                 "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd (x) 1",
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd a[0] 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd a[0] 1",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
@@ -272,7 +301,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a
     // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer or assignment diverged is
     // UninitializedPlace where only the checks read it (plan Appendix B C3): the Never value is not placed, nor is the old value dropped
-    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3).
+    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3). A loop head only the
+    // checks reach joins the return's continuation with its back edge, keeping what holds on both, so a Move in the loop is MovedPlace
+    // unless the loop reinitializes it; a back edge from code only the checks reach adds nothing to a head a runtime path reaches.
     [Fact]
     public void CheckOnlyCodeKeepsItsOwnState()
     {
@@ -287,6 +318,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
                 "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
                 "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
+        Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func g(c: bool)\n    var x = make()\n    return\n    while c\n        consume(x@move)\n"));
+        Assert.Empty(Problems(Resource + "func g(c: bool)\n    var x = make()\n    return\n    while c\n        consume(x@move)\n        x = make()\n" +
+            "func f(c: bool)\n    var x = make()\n    while c\n        inspect(x)\n        return\n        consume(x@move)\n"));
     }
 
     // SPEC 17.6.3 (PD22): a verification's records read the temps its comparison's operands were read into once, initialized and not yet
@@ -314,7 +348,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 3.1.3, 14.10.3 (DECISIONS R5-M38, BU-6): a named Place of Type Never takes the acquisition Binding publishes into its node's
     // Never temp, Copy for a bare read (Never is Copy, BU-4) and Move for x@move, which keeps its effect on the assumed path: a Never
-    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not.
+    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not. A MovedPlace's subject is the bare
+    // read, the node that takes Copy.
     [Theory]
     [InlineData(" => g(x, x)\n", "Copy Copy", "")]
     [InlineData(" => g(x@move, x)\n", "Move Copy", "MovedPlace_Kd x 1")]
@@ -330,6 +365,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(acquisitions, string.Join(' ', reads.Select(static x => HirTables.AdjustOf(x).Acquire)));
         var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
         Assert.Equal(acquisitions, string.Join(' ', absurd.Operands.ToArray().Where(static x => x.Place == new MirPlace(1)).Select(static x => x.Kind)));
+        Assert.All(
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code == DiagnosticCode.MovedPlace_Kd),
+            x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(c.SyntaxOf(x.Subject)).Acquire));
         Assert.Equal(problems, string.Join(" | ", Problems(source)));
     }
 
@@ -437,62 +475,6 @@ public sealed class MirInitTest(ITestOutputHelper output)
         => Assert.Empty(Problems("func noinit() -> i32\n    unsafe\n        var values: [4 of i32] = noinit\n        values[1] = 2\n" +
             "        return values[0]\nfunc keep(values: Array<i32>) => ()\nfunc empty()\n    let values: Array<i32> = []\n    keep(values@move)\n"));
 
-    // V16 (plan "New V-checks"): A1 is linear in the body: N 16/32/64 groups of a straight move, a branch that moves on both arms and a loop
-    // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps with A2,
-    // which A1's checks replay feeds; a fresh driver's pools would hold the widest library body) linearly, with no problem; the output gives
-    // the dense arena's words (R4-M20).
-    // MirBuildTest.WarmRebuildAllocatesNothing covers the warm re-analysis, which BuildMir runs.
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData("    let v{0} = text({0})\n    keep(v{0}@move)\n")]
-    [InlineData("    let v{0} = text({0})\n    if flag => keep(v{0}@move) else => other(v{0}@move)\n")]
-    [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
-    public void InitializationScalesLinearly(string group)
-    {
-        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
-            text.Append("func work(flag: bool)\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, group, n);
-            }
-
-            var c = MirBuildTest.Compile(text.ToString());
-            var program = c.BuildMir();
-            Assert.Empty(program.Problems.All.ToArray());
-            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
-            var drops = new MirDrops(moves, cases);
-            var init = new MirInit(flow, moves, cases, drops);
-            analyses[i] = (body, flow, moves, sink);
-            return () =>
-            {
-                flow.Begin(body);
-                moves.Build(body, flow);
-                drops.Begin(body, sink);
-                cases.Select(body, 0);
-                Assert.True(init.Run(body, 0, sink.Problems));
-                drops.Judge(0);
-                drops.End();
-            };
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (body, flow, moves, sink) = analyses[i];
-            Assert.Equal(0, sink.Problems.All.Length);
-            arena[i] = ArenaWords(body, flow, moves);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold analysis allocation {string.Join(", ", allocated)}, " +
-            $"arena words {string.Join(", ", arena)}");
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
-    }
-
     // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
     // body is built wherever its creation stands (discarded, bound by a let, inside a let Binding rejects for its own reason, its Type
     // annotation, or a failed Index's kept operand; a result over the call's
@@ -519,6 +501,16 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), Assert.Single(TestDiagnostics.Of(recovered)).Code);
         recovered.Bind();
         Assert.Equal(slot, Problems(recovered));
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-106): a rejected do's body is built before its derived value, so its moves keep their problems, within
+    // the body and against a use after the do (fail-before: the body was one Opaque and neither problem was found).
+    [Fact]
+    public void ARejectedDoKeepsTheMovesOfItsBody()
+    {
+        const string Head = Take + "func f(s: string) -> i32\n    let y: i32 = do\n        _ = once(s@move)\n";
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Head + "        _ = once(s@move)\n    return 1\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Head + "    _ = once(s@move)\n    return 1\n"));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
@@ -622,6 +614,66 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
         public void Effect(MirEffect effects, int site)
         {
+        }
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16 (plan "New V-checks"): A1 is linear in the body: N 16/32/64 groups of a straight move, a branch that moves on both arms and a loop
+        // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps with A2,
+        // which A1's checks replay feeds; a fresh driver's pools would hold the widest library body) linearly, with no problem; the output gives
+        // the dense arena's words (R4-M20).
+        // MirBuildTest.WarmRebuildAllocatesNothing covers the warm re-analysis, which BuildMir runs.
+        [Theory]
+        [InlineData("    let v{0} = text({0})\n    keep(v{0}@move)\n")]
+        [InlineData("    let v{0} = text({0})\n    if flag => keep(v{0}@move) else => other(v{0}@move)\n")]
+        [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
+        public void InitializationScalesLinearly(string group)
+        {
+            var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+            var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
+                text.Append("func work(flag: bool)\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, group, n);
+                }
+
+                var c = MirBuildTest.Compile(text.ToString());
+                var program = c.BuildMir();
+                Assert.Empty(program.Problems.All.ToArray());
+                var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+                work[i] = body.Blocks.Length + body.Statements.Length;
+                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
+                var drops = new MirDrops(moves, cases);
+                var init = new MirInit(flow, moves, cases, drops);
+                analyses[i] = (body, flow, moves, sink);
+                return () =>
+                {
+                    flow.Begin(body);
+                    moves.Build(body, flow);
+                    drops.Begin(body, sink);
+                    cases.Select(body, 0);
+                    Assert.True(init.Run(body, 0, sink.Problems));
+                    drops.Judge(0);
+                    drops.End();
+                };
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (body, flow, moves, sink) = analyses[i];
+                Assert.Equal(0, sink.Problems.All.Length);
+                arena[i] = ArenaWords(body, flow, moves);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold analysis allocation {string.Join(", ", allocated)}, " +
+                $"arena words {string.Join(", ", arena)}");
+            Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
         }
     }
 }

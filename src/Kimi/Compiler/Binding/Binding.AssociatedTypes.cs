@@ -38,7 +38,7 @@ public sealed partial class Binding
     private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
     {
         var head = AssociatedHead(clause);
-        head = head is OriginApplicationKoto applied ? UnwrapAssociatedHead(applied.Type) : head;
+        head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
         if (head is not MemberAccessKoto { Left.BoundSymbol: { } reference } || !IsBoundContractReference(reference))
         {
             return true;
@@ -124,7 +124,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (type.Symbol is { } symbol && this.conformancesByType.TryGetValue(symbol, out var list))
+            if (type.Symbol is { } symbol && this.impls.OfType(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
@@ -208,7 +208,7 @@ public sealed partial class Binding
             Complete(qualified.Right, BoundType.Unit);
         }
 
-        var receiverSymbol = this.TypeName(receiver, scope, false);
+        var receiverSymbol = this.TypeName(receiver, scope, LookupRole.Any);
         if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol?.Declaration is ContractKoto && TypeSpelling(receiver) != "Self"))
         {
             return null;
@@ -223,6 +223,14 @@ public sealed partial class Binding
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
         if (associated is null)
         {
+            // G621: before the conformance declarations register, an unqualified name over a declared Type has no candidates yet (they
+            // come from the conformance table; a qualified one searches its Contract); the read is judged again once they register
+            // (VerifyEarlyProjections).
+            if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
+            {
+                this.earlyProjections.Add((syntax, type, scope, name, qualifier));
+            }
+
             return null;
         }
 
@@ -288,7 +296,7 @@ public sealed partial class Binding
 
     private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
     {
-        if (syntax.Left is MemberAccessKoto left && this.ProjectionQualifier(left, scope, out receiver) is { Kind: BindingSymbolKind.Container } prefix && this.scopes.TryGetValue(prefix.Declaration, out var members) && TypeSpelling(syntax.Right) is { } name && members.Types.TryGetValue(name, out var target) && this.Accessible(target, scope))
+        if (syntax.Left is MemberAccessKoto left && this.ProjectionQualifier(left, scope, out receiver) is { Kind: BindingSymbolKind.Container } prefix && this.scopes.TryGetValue(prefix.Declaration, out var members) && TypeSpelling(syntax.Right) is { } name && MemberTypes(members, name) is { } target && this.Accessible(target, scope))
         {
             syntax.Right.BoundSymbol = target;
             Complete(syntax.Right, BoundType.Unit);
@@ -296,14 +304,14 @@ public sealed partial class Binding
             return target;
         }
 
-        var symbol = this.TypeName(syntax.Right, scope, false);
+        var symbol = this.TypeName(syntax.Right, scope, LookupRole.Any);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
             referenceSyntax = groupedReference.Type;
         }
 
-        if (symbol?.Declaration is ContractKoto && UnwrapAssociatedHead(referenceSyntax) is GenericsKoto)
+        if (symbol?.Declaration is ContractKoto && UnwrapTransparentType(referenceSyntax) is GenericsKoto)
         {
             symbol = this.BindContractReference(referenceSyntax, symbol, scope);
         }
@@ -345,14 +353,14 @@ public sealed partial class Binding
         var self = this.SelfType(owner ?? scope.Owner.BoundSymbol!);
         var head = AssociatedHead(clause);
         var applied = head as OriginApplicationKoto;
-        head = applied is null ? head : UnwrapAssociatedHead(applied.Type);
+        head = applied is null ? head : UnwrapTransparentType(applied.Type);
         var name = head;
         BindingSymbol? qualifier = null;
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            qualifier = this.TypeName(member.Left, scope, false);
-            if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+            qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
+            if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
             {
                 // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
                 qualifier = this.BindContractReference(member.Left, qualifier, scope);
@@ -415,9 +423,9 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            var path = this.activeConformancePaths[i];
+            var path = this.impls.Paths[i];
             if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
@@ -462,14 +470,18 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            var path = this.activeConformancePaths[i];
+            var path = this.impls.Paths[i];
             var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated, out _) is { } result && !this.PendingAssociatedType(result))
+                // The conformance is the site of a Type its associated binding would form past the height limit (Binding.TypeHeight.cs).
+                var frame = this.BeginConsultation(path.Declaration);
+                var resolved = this.ResolveAssociated(path, associated, out _);
+                this.EndConsultation(path.Declaration, frame);
+                if (resolved is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }
@@ -512,6 +524,12 @@ public sealed partial class Binding
     private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated, out bool pending)
     {
         pending = this.AssociatedEvidencePending;
+        if (this.RefusedConformance(path))
+        {
+            pending = false;
+            return null;
+        }
+
         if (path.InheritedFrom is not null)
         {
             BoundType? inheritedResult = null;
@@ -599,26 +617,27 @@ public sealed partial class Binding
     {
         if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
         {
-            return new(builtin, null, false, null);
+            return new(builtin, null, false, null, default);
         }
 
         var subject = projection.Components[0];
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
         if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } resolved)
         {
-            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }, null); // A projection is itself abstract.
+            // A projection is itself abstract.
+            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }, null, default);
         }
 
         var specified = this.SubstituteStoredOrigins(resolved.Binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments);
-        return new(specified, subject, false, resolved.Path);
+        return new(specified, subject, false, resolved.Path, resolved.Identity);
     }
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
     // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
-    // conditions the receiver meets must agree (PathsAgree), else none. The path the binding comes from is returned with it: its Scope is the
-    // conformance scope (SPEC 8.8.2, D + P) the binding was formed in.
-    private (BoundType Binding, BoundConformancePath Path)? ResolveAssociated(
+    // conditions the receiver meets must agree (PathsAgree), else none. The path the binding comes from is returned with it, its Scope the
+    // conformance scope (SPEC 8.8.2, D + P) the binding was formed in, and the path's associated identity it binds.
+    private (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? ResolveAssociated(
         BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
     {
         pending = this.AssociatedEvidencePending;
@@ -627,7 +646,7 @@ public sealed partial class Binding
             if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
                 this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
             {
-                return this.ResolveAssociated(path, selected, out pending) is { } found ? (found, path) : null;
+                return this.ResolveAssociated(path, selected, out pending) is { } found ? (found, path, selected) : null;
             }
         }
 
@@ -638,8 +657,8 @@ public sealed partial class Binding
             return null;
         }
 
-        (BoundType Binding, BoundConformancePath Path)? available = null;
-        (BoundType Binding, BoundConformancePath Path)? unproven = null;
+        (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? available = null;
+        (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? unproven = null;
         var conflicting = false;
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
@@ -668,11 +687,11 @@ public sealed partial class Binding
                     return null;
                 }
 
-                available = (binding, path);
+                available = (binding, path, selected);
             }
 
             conflicting |= unproven is { } other && !this.PathsAgree(other.Binding, binding, receiver, scope);
-            unproven = (binding, path);
+            unproven = (binding, path, selected);
         }
 
         // Explicit header metadata may normalize a common binding before witnesses are ready.
@@ -693,7 +712,7 @@ public sealed partial class Binding
     // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
     private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
     {
-        if (!this.conformancesByType.TryGetValue(owner, out var identities))
+        if (this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }
@@ -742,9 +761,9 @@ public sealed partial class Binding
     }
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
-    // complete Type), and the conformance path it comes from (its Scope the binding's conformance scope); else Pending (nothing decides it
-    // yet) or none.
-    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path);
+    // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a
+    // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none.
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity);
 
     private sealed class AssociatedBinding
     {

@@ -25,6 +25,10 @@ public class ErasureAfterSelectionTest
 
     private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
 
+    private const string FnK = "func k(g: (i32) -> i32) -> i32\n    return 0\n";
+
+    private const string GenericK = "func k<T>(g: (T) -> T, x: T) -> T\n    return x@move\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -130,12 +134,55 @@ public class ErasureAfterSelectionTest
     public void APayloadErasureLeavesACopySourceUsable(string form, string source, string records)
         => AssertRecords(form, source, records);
 
+    // SPEC 7.7.4, 12.4.1, 10.5.1 (G386; DECISIONS BU-83's rule E): a parenthesized anonymous function at a Function parameter is the
+    // unparenthesized argument, erased once (HirFormsTest.AnErasureIsAdjustedOnceAtTheNodeBindingErased holds the other forms), also at a
+    // parameter holding Origins and in a callee that calls it; an invalid one keeps its record: a header that does not fit
+    // (NoApplicableOverload_Kd, at the call), an environment that is not Owned (UnprovenConstraint_Kd, at the grouping's operand, the
+    // value the erasure converts; DECISIONS BU-107).
+    [Theory]
+    [InlineData("g386", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return 0\nfunc run(a: ref/i32, b: ref/i32) -> i32\n    return k(a, b, (func [] (o) => 0))\n", "")]
+    [InlineData("w6", "func k(g: (i32) -> i32) -> i32\n    return g(1)\nfunc run() -> i32\n    return k((func [] (o) => o))\n", "")]
+    [InlineData("i386a", FnK + "func run() -> i32\n    return k((func [] (o: bool) => 0))\n", "NoApplicableOverload_Kd k((func [] (o: bool) => 0))")]
+    [InlineData("a7", FnK + "func run() -> i32\n    return k(((func [] (o: bool) => 0)))\n", "NoApplicableOverload_Kd k(((func [] (o: bool) => 0)))")]
+    [InlineData("a13", GenericK + "func run() -> i32\n    return k((func [] (o: bool) => o), 1)\n", "NoApplicableOverload_Kd k((func [] (o: bool) => o), 1)")]
+    [InlineData("i386c", FnK + "func run(x: ref/i32) -> i32\n    return k((func [x] (o) => x@follow))\n", "UnprovenConstraint_Kd func [x] (o) => x@follow")]
+    [InlineData("a8", FnK + "func run(x: ref/i32) -> i32\n    return k(((func [x] (o) => x@follow)))\n", "UnprovenConstraint_Kd func [x] (o) => x@follow")]
+    public void AGroupedCallableArgumentIsErasedOnce(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 15.6.4, 5.7 (the owner's O-28 (a), DECISIONS BU-116): a concrete Closure whose result has a raw layer without an
+    // Origin, also as a Tuple element (e04) or an Option payload (e06), retains its call receiver by rule A, so its result contract
+    // depends on the receiver and it is not erased: at an initialization (t09; e02, the result the fixed expected signature gives; e03,
+    // with no capture; e07, a Copy capture and a parameter), a call argument (e01; e08, a waiting Closure at a pair's instantiated
+    // `raw/i32`) or a return (e05), the Type mismatch whose Note names the dependence. A result stating an Origin (w01, w06), a Function
+    // Item (w02), a result with no raw layer (w03) and a raw layer the call writes through a parameter, which 7.7.4 does not name (w05),
+    // still convert.
+    [Theory]
+    [InlineData("t09", "func f(p: raw/i32) -> raw/i32\n    let g: () -> raw/i32 = func () -> raw/i32 => p\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
+    [InlineData("e01", "func run(g: () -> raw/i32) -> i32 => 0\nfunc f(p: raw/i32) -> i32\n    return run(func () -> raw/i32 => p)\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
+    [InlineData("e02", "func f(p: raw/i32) -> raw/i32\n    let g: () -> raw/i32 = func () => p\n    return g()\n", "TypeMismatch_Kd func () => p")]
+    [InlineData("e03", "func f(p: raw/i32) -> raw/i32\n    let g: (raw/i32) -> raw/i32 = func (q: raw/i32) -> raw/i32 => q\n    return g(p)\n", "TypeMismatch_Kd func (q: raw/i32) -> raw/i32 => q")]
+    [InlineData("e04", "func f(p: raw/i32) -> i32\n    let g: () -> (i32, raw/i32) = func () -> (i32, raw/i32) => (1, p)\n    return g().0\n", "TypeMismatch_Kd func () -> (i32, raw/i32) => (1, p)")]
+    [InlineData("e05", "func mk(p: raw/i32) -> (() -> raw/i32)\n    return func () -> raw/i32 => p\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
+    [InlineData("e06", "func f(p: raw/i32) -> raw/i32?\n    let g: () -> raw/i32? = func () -> raw/i32? => .Some(p)\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32? => .Some(p)")]
+    [InlineData("e07", "func f(address: usize) -> raw/u8\n    let concrete = func [address] (offset: isize) -> raw/u8 => address@raw/u8\n    let erased: (isize) -> raw/u8 = concrete\n    return erased(0)\n", "TypeMismatch_Kd concrete")]
+    [InlineData("e08", "func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 => call(p, func (w) => w)\n", "TypeMismatch_Kd func (w) => w")]
+    [InlineData("w01", "func f() -> raw/i32 during static\n    let g: () -> raw/i32 during static = func () -> raw/i32 during static => null\n    return g()\n", "")]
+    [InlineData("w02", "func h(q: raw/i32) -> raw/i32 => q\nfunc f(p: raw/i32) -> raw/i32\n    let g: (raw/i32) -> raw/i32 = h\n    return g(p)\n", "")]
+    [InlineData("w03", "func f(n: i32) -> i32\n    let g: () -> i32 = func () -> i32 => n\n    return g()\n", "")]
+    [InlineData("w05", "func f(p: raw/i32)\n    let g: (uniq/(raw/i32)) -> () = func (s: uniq/(raw/i32)) => s@follow = p\n    var t: raw/i32 = null\n    g(t@uniq)\n", "")]
+    [InlineData("w06", "func f() -> raw/i32\n    let g: () -> raw/i32 = func () -> raw/i32 during static => null\n    return g()\n", "")]
+    public void AClosureWhoseResultRetainsItsReceiverIsNotErased(string form, string source, string records)
+        => Assert.All(AssertRecords(form, source, records), x => Assert.Contains("result retains its call receiver", x.Note, StringComparison.Ordinal));
+
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.
-    private static void AssertRecords(string form, string source, string records)
+    private static CheckDiagnostic[] AssertRecords(string form, string source, string records)
     {
         source += "public func main() -> () => ()\n";
-        var shown = string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"));
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        var shown = string.Join("; ", diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"));
         Assert.True(shown == records, $"{form}: expected [{records}], found [{shown}]");
+        return diagnostics;
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

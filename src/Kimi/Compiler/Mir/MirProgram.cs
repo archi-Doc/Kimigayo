@@ -29,7 +29,7 @@ internal sealed class MirProgram
     internal ulong Version { get; set; }
 
     /// <summary>Gets the validator's findings, which Compilation's <c>PublishMirRecords</c> publishes as <c>InternalInvariant_Kd</c> after
-    /// the merged problems, on every pipeline (DECISIONS R5-M185).</summary>
+    /// the merged problems (DECISIONS R5-M185).</summary>
     internal List<MirFinding> Findings { get; } = [];
 
     /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>) and the
@@ -76,14 +76,14 @@ internal sealed class MirProgram
     /// <summary>Records a construction or collection record at its location, a ControlFlow problem of every view, once per class, code and
     /// location however many bodies or items meet it (MirReport's key).</summary>
     /// <param name="site">The syntax.</param>
-    /// <param name="code">For construction an Unsupported form, the default expansion limit or a broken HIR contract (DECISIONS R4-M61); for
+    /// <param name="code">For construction an Unsupported form, the expansion limit or a broken HIR contract (DECISIONS R4-M61); for
     /// collection a code of the checked set's records (InstanceCollector).</param>
     /// <param name="recordClass">The record's class, its body value.</param>
     internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, MirRecordClass recordClass = MirRecordClass.Construction)
         => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, ulong.MaxValue));
 
     /// <summary>Gets the rows of a record class in the order they were first recorded, the one path to them: the construction records, an
-    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource) and a
+    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the expansion limit's <c>ExpansionLimit_Kd</c> (Resource) and a
     /// broken HIR contract's <c>InternalInvariant_Kd</c>, or the collection records of the checked set; enumerating allocates nothing.</summary>
     /// <param name="recordClass">The class.</param>
     /// <returns>The rows.</returns>

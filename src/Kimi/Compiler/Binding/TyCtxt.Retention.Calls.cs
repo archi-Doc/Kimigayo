@@ -16,7 +16,9 @@ internal sealed partial class TyCtxt
 
     // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
     // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
-    private readonly Dictionary<(object Callee, Subst? Types, object? Scope), CallRetention> retentions = new();
+    // A signature's contract reads its local regions' bounds (Binding.AddRegionMeet), so its key holds the region graph's version: a read while
+    // a body binds (Binding.ResultDependsOnReceiver) is kept apart from the whole-body one A5 reads (DECISIONS: G570).
+    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int Regions), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<Binding.ErasedSignature> retentionBounds = new();
@@ -37,13 +39,13 @@ internal sealed partial class TyCtxt
         // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
         var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
-        if (this.retentions.TryGetValue((callee, types, scope), out var known))
+        if (this.retentions.TryGetValue((callee, types, scope, 0), out var known))
         {
             return known;
         }
 
         var retention = this.InstanceRetention(callee, types, scope, definition) ?? CallRetention.Limit;
-        this.retentions.Add((callee, types, scope), retention);
+        this.retentions.Add((callee, types, scope, 0), retention);
         return retention;
     }
 
@@ -82,8 +84,9 @@ internal sealed partial class TyCtxt
         var closure = Closure(callee);
         var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
         var use = binding.DefinitionUse(definition);
-        (object Callee, Subst? Types, object? Scope) key = closure is null ? (signature, null, owner ?? (object)binding.ConstraintScope(use))
-            : (signature, closure.ClosureContext, owner);
+        (object Callee, Subst? Types, object? Scope, int Regions) key = closure is null
+            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RegionVersion)
+            : (signature, closure.ClosureContext, owner, binding.RegionVersion);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -114,7 +117,7 @@ internal sealed partial class TyCtxt
     {
         var use = binding.DefinitionUse(definition);
         var receiver = this.DestructionReceiver(part);
-        (object Callee, Subst? Types, object? Scope) key = (receiver, null, binding.ConstraintScope(use));
+        (object Callee, Subst? Types, object? Scope, int Regions) key = (receiver, null, binding.ConstraintScope(use), 0);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -129,6 +132,12 @@ internal sealed partial class TyCtxt
     // callee, without its acquisition layer (Binding.CallableCore), is a Closure whose definition is bound. The one predicate Retains and
     // MirBorrows' slot mapping read; a Function value, a function item and a Callable-bounded value have none.
     internal bool HasReceiverInput(BoundType callee) => Closure(callee) is not null;
+
+    // SPEC 7.7.4, 15.6.4 (PLAN G584): the Function Item a Value callee calls, the callee without its acquisition layer
+    // (Binding.CallableCore) where that is the Item of a function declaration; null for a Closure, a Function value or a Callable-bounded
+    // value. Its declaration and Item substitution (SubstOfItem) are the call's, its slots in declared order (7.3.4).
+    internal BoundType? CalledItem(BoundType callee)
+        => Binding.CallableCore(callee) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto } item ? item : null;
 
     // SPEC 15.8.2 (DECISIONS R4-M148): the environment a Closure Type's value holds as its body sees it, the one reading of every Closure
     // part of a contract input (a Closure callee's receiver, Binding.RetentionInput; one nested in an input, RetentionParts): its definition's
@@ -223,7 +232,7 @@ internal sealed partial class TyCtxt
             { IsVirtual: true } or { IsOverride: true } => types?.Declaring,
             _ => null,
         };
-        return self?.HasAbstractPart == true ? callee.Accessor?.Binder ?? callee : null;
+        return self?.HasAbstractPart == true ? callee.OriginBinder : null;
     }
 
     // A callee's declared parameter and result Types, in its own terms.

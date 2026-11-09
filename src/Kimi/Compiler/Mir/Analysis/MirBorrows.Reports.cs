@@ -25,13 +25,15 @@ internal sealed partial class MirBorrows
 {
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
     // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92). One
-    // only the drop tier takes rests on a Drop past the destruction walk's bound: the depth limit at its drop-live holder's declaration.
-    private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, MirFact? effect)
+    // whose outcome is Deep, which only the drop tier takes, rests on a Drop past the destruction walk's bound: the depth limit at its
+    // drop-live holder's declaration.
+    private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, ProblemFact? effect)
     {
         ref readonly var found = ref this.candidates[candidate];
-        if (!found.Tags.Takes(taking))
+        var outcome = found.Outcome(taking);
+        if (outcome.IsDeep)
         {
-            this.Limit(this.Declaration(found.Dropped.Via), MirOutcome.Deep);
+            this.Limit(this.Declaration(found.Dropped.Via), outcome);
             return;
         }
 
@@ -42,7 +44,7 @@ internal sealed partial class MirBorrows
 
     // A Loan problem at a location (A3 6.4): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes'
     // requirement.
-    private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, MirFact? effect)
+    private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, this.CauseFacts(count)));
@@ -50,7 +52,7 @@ internal sealed partial class MirBorrows
 
     // A rejection with its facts (D7, R4-M98): in a view PD13 holds (R4-M126 (iii), R4-M148) the located Unsupported_Kd at its subject
     // instead.
-    private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
+    private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<ProblemFact> facts)
     {
         if (this.held)
         {
@@ -79,7 +81,7 @@ internal sealed partial class MirBorrows
     }
 
     // A problem with its facts in the body's views.
-    private void AddProblem(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
+    private void AddProblem(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<ProblemFact> facts)
         => this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
 
     // A broken contract at a location (G136, R4-M148: a Value call's declared signature does not number its operands): InternalInvariant_Kd

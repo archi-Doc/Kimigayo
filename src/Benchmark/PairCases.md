@@ -4,11 +4,16 @@
 `tests/Workloads/VerificationWorkloads.PairCaseFamilies`: one generic definition with one pair binder
 (`s is owner or uniq`, two cases) whose uniq case Reborrows a local, stores it through an exclusive
 reference, captures it in a closure and passes it bare, one definition with two binders (four cases),
-the closure body and `main`, all valid in every case (SPEC §8.15). The stored-reference workload of
-`Benchmark --borrow-storage` (32 locals, stored) runs beside it as a reference. It measures the first
-ownership-analysis allocation, the bytes of one warm analysis, five samples of eight warm analyses after
-eight fixed warm-ups, and five samples of eight warm rebindings after 32 warm-ups. Parsing is outside the
-measurement. Normal verification asserts warm zero allocation without timing.
+the closure body and `main`, all valid in every case (SPEC §8.15). The stored-reference workload
+`VerificationWorkloads.InspectionLoans(32, true)` runs beside it as a reference. It measures the first
+`Analyze`'s allocation after Binding and startup, the bytes of one warm check (Bind, CheckStartup and
+Analyze), five samples of eight warm checks after 32 fixed warm-ups, and five samples of eight warm
+rebindings after 32 warm-ups, and reports the source's MIR bodies (`mirBodies`) and their Semantics-case
+views (`views`, the sum of `MirCases.Count`). Each workload names the check's expected verdict
+(`verified`) and fails on the other: the MIR rejects `pair-case-families` until PLAN G147 (8).
+Parsing is outside the measurement. Normal verification asserts warm zero allocation without timing.
+From R6-check H9 the warm columns time the check; earlier reports timed the legacy ownership pass and
+listed its bodies, Places and operations.
 
 ## 2026-10-06 (G75 U6)
 

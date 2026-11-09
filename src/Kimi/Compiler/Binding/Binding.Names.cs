@@ -50,7 +50,7 @@ public sealed partial class Binding
 
     private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)
     {
-        var symbol = this.Lookup(node.IdentifierName, scope, node, false);
+        var symbol = this.Lookup(node.IdentifierName, scope, node);
         if (symbol is null)
         {
             return this.Fail(node, BindingFailure.MissingName, true);
@@ -112,7 +112,8 @@ public sealed partial class Binding
             {
                 // Property and storage Types belong to the header. A use never re-enters accessor bodies.
                 var declaration = variable.BoundSymbol!;
-                if (!declaration.HeaderBound && declaration.Resolving)
+                // Interim until R7-D2 d2 (Binding.DeclQuery): the Signature re-entry's cycle record moves into the kind's rule.
+                if (this.QueryState(declaration, DeclQueryKind.Signature) == DeclState.Running)
                 {
                     this.Fail(variable, BindingFailure.Cycle, true);
                 }

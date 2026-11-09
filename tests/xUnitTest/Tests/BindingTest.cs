@@ -10,6 +10,18 @@ namespace XunitTest;
 
 public class BindingTest
 {
+    // PLAN G375: a kept Proven is a state on the symbol, so a warm Bind's reads of a signature allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfSignatureReadsAllocatesNothing()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(
+            "contract C\n    func m(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "struct Box<T>\n    T is C\n    public init() => ()\nfunc take(b: ref/Box<S>) -> i32 => 1\nfunc a(b: ref/Box<S>) -> i32 => take(b)\nfunc c(b: ref/Box<S>) -> i32 => take(b)");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {
@@ -65,7 +77,6 @@ public class BindingTest
     [InlineData("func f(x: i32) => x\nfunc f(y: i32) -> i64 => 1", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T) => x\nfunc f<U>(x: U) => x", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f() -> i32 => 1\nfunc g()\n    let f = 1\n    f()", DiagnosticCode.NotCallable_Kd)]
-    [InlineData("group Values\n    var a = b\n    var b = a", DiagnosticCode.CyclicBinding_Kd)]
     [InlineData("func f() => return 1", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("let x: i8 = 128", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]
@@ -90,6 +101,70 @@ public class BindingTest
         var count = compilation.Binding.Issues.Count;
         Assert.False(compilation.Bind().IsComplete);
         Assert.Equal(count, compilation.Binding.Issues.Count);
+    }
+
+    // SPEC 11.6, 23.1.2 (DECISIONS BU-105): a cycle of inferred Properties is recorded once, at the declaration whose header started
+    // first; each other declaration on it, and a dependent beside it, rests on that record. The query state of a header lives one pass,
+    // so binding again gives the same records.
+    [Theory]
+    [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
+    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b|PrerequisiteUnavailable_Kd var b = a")]
+    [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = c|PrerequisiteUnavailable_Kd var c = a")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a|PrerequisiteUnavailable_Kd var c = a + 1")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = a", "")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "")]
+    public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Equal(records.Length == 0, compilation.Bind().IsComplete);
+            Assert.Equal(records, string.Join('|', CompilationTestHelper.BindingErrors(compilation).OrderBy(static x => x.Span.Start).Select(static x => $"{x.Code} {x.Text}")));
+        }
+    }
+
+    // DECISIONS BU-105: an edit between passes binds every header again, so a declaration added beside a chain sees the chain's Types.
+    [Fact]
+    public void AnEditBindsTheHeadersAgain()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("group Values\n    var a = 1\n    var b = a");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        compilation.Kotonoha.CreateCodeContext().Parse(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), "var c = b\nvar d = d");
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal([DiagnosticCode.CyclicBinding_Kd], compilation.Binding.Issues.Select(static x => x.Code));
+        var c = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.NameKoto.IdentifierName == "c");
+        Assert.Equal("i32", c.TypeOf()!.Name);
+    }
+
+    // DECISIONS BU-105, SPEC 11.6: no query state crosses a pass, so annotating the declaration that carries a cycle's record binds the
+    // corrected program in the next pass.
+    [Fact]
+    public void AnEditThatAnnotatesACycleBindsTheCorrectedProgram()
+    {
+        const string Cycle = "group Values\n    var a = b\n    var b = a";
+        var compilation = CompilationTestHelper.ParseSuccess(Cycle);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Contains(compilation.Binding.Issues, static x => x.Code == DiagnosticCode.CyclicBinding_Kd);
+        var donor = Named(CompilationTestHelper.ParseSuccess(Cycle.Replace("var a = b", "var a: i32 = b", StringComparison.Ordinal)), "a");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), Named(compilation, "a"), donor));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal("i32", Named(compilation, "b").TypeOf()!.Name);
+
+        static PropertyKoto Named(Compilation c, string name)
+            => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name);
+    }
+
+    // DECISIONS BU-105: the declaration query state is inline on the symbol and stamped by the pass, so a warm Bind of Property headers
+    // and a function header allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfHeadersAllocatesNothing()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("group Values\n    var a = 1\n    var b = a\n    var c = b\n    func f(x: i32) -> i32 => x + c");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
     [Theory]

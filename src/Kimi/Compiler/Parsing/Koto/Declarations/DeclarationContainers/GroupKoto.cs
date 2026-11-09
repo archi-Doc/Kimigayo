@@ -63,86 +63,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
     private void ParseRoot(ref TokenReader reader)
     {
         ConsumeBlockStart(ref reader);
-        var state = default(RootParseState);
-        this.ParseRootItems(ref reader, ref state);
-    }
-
-    /// <summary>Parses SourceDocument root items through the end of the current block.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="state">The root state, shared by directive targets and arms.</param>
-    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
-    /// <remarks>
-    /// Root directive targets and arms keep the root item grammar, including aliases and <c>rootgroup</c> (SPEC 6.1.1, 19.1).
-    /// Excluded syntax is parsed into a detached group and contributes no root item (SPEC 19.4).
-    /// </remarks>
-    private void ParseRootItems(ref TokenReader reader, ref RootParseState state, bool stopAtCaseGroupBoundary = false)
-    {
-        while (TryBeginDeclaration(ref reader, stopAtCaseGroupBoundary))
-        {
-            if (reader.IsExcluded)
-            {
-                var owner = this.ExcludedRootOwner(ref reader, ref state);
-                var region = Parser.BeginExcludedRegion(ref reader);
-                owner.ParseRootDirectiveOrItem(ref reader, ref state);
-                Parser.EndExcludedRegion(ref reader, region);
-            }
-            else if (reader.HasCompileTimeIfPrefix || Parser.IsCompileTimeSwitchStart(ref reader))
-            {
-                this.ParseRootDirectiveOrItem(ref reader, ref state);
-            }
-            else
-            {
-                this.ParseRootItem(ref reader, ref state);
-            }
-        }
-    }
-
-    private void ParseRootDirectiveOrItem(ref TokenReader reader, ref RootParseState state)
-    {
-        if (Parser.IsCompileTimeSwitchStart(ref reader))
-        {
-            var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
-            {
-                if (invalidItems)
-                {
-                    var owner = this.ExcludedRootOwner(ref reader, ref state);
-                    var start = Parser.BeginInvalidSwitchItems(ref reader);
-                    owner.ParseRootItems(ref reader, ref state, stopAtCaseGroupBoundary: true);
-                    Parser.EndInvalidSwitchItems(ref reader, start);
-                }
-                else if (selected)
-                {
-                    reader.Advance();
-                    this.ParseRootItems(ref reader, ref state);
-                }
-                else
-                {
-                    var owner = this.ExcludedRootOwner(ref reader, ref state);
-                    var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
-                    reader.Advance();
-                    owner.ParseRootItems(ref reader, ref state);
-                    Parser.EndExcludedRegion(ref reader, region);
-                }
-            }
-
-            if (arms.Unselected(ref reader) is { } unselected)
-            {
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
-            }
-
-            return;
-        }
-
-        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            Parser.RejectDirectiveBlockAttributes(ref reader);
-            reader.Advance();
-            this.ParseRootItems(ref reader, ref state);
-            return;
-        }
-
-        this.ParseRootItem(ref reader, ref state);
+        var list = new RootItems(this);
+        Parser.ParseItems(ref reader, ref list);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -152,7 +74,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
         var tokenKind = token.Kind;
         if (tokenKind == TokenKind.Alias)
         {
-            // An alias takes no modifier or attribute: the pending ones are taken before its target is read, so none lands there.
+            // An alias takes no modifier or attribute (SPEC F.6.1 AliasDeclaration): the prefix's attributes are reported and attach to
+            // nothing, and its modifiers are taken before its target is read, so none lands there.
+            Parser.ReportPendingAttributes(ref reader);
             var context = reader.TakeContext();
             reader.Advance();
             string? aliasName = null;
@@ -163,7 +87,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
 
             reader.TryConsume(TokenKind.ColonColon);
-            var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
+            var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType) : null;
+            if (targetSyntax is not null)
+            {
+                // The line ends after the target, as after a plain path; an attached Origin block may follow.
+                reader.ExpectLineEnd(bodyMayFollow: true);
+            }
+
             var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
             if (qualifiedName is null)
             {
@@ -178,7 +108,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                if (context.ModifierKind.Judged() != default || context.AttributeKoto is not null)
+                if (context.ModifierKind.Judged() != default)
                 {
                     reader.Unexpected(SyntaxForm.Decoration, token.Span);
                 }
@@ -241,20 +171,33 @@ public sealed class GroupKoto : DeclarationContainerKoto
         }
     }
 
-    /// <summary>Gets the owner of excluded root syntax: this group inside excluded syntax, otherwise a detached group.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="state">The root state that keeps the detached group.</param>
-    /// <returns>The group that receives the excluded declarations.</returns>
-    private GroupKoto ExcludedRootOwner(ref TokenReader reader, ref RootParseState state)
-        => reader.InExcludedSyntax ? this : state.Detached ??= (GroupKoto)CreateStandalone(reader.CodeContext, TokenKind.Group, default, this.Span, string.Empty);
+    /// <summary>The SourceDocument root items (SPEC F.6.1): directive targets and arms keep the root item grammar, aliases and
+    /// <c>rootgroup</c> included (SPEC 6.1.1, 19.1); excluded syntax goes to its <see cref="DeclarationContainerKoto.ExcludedOwner{TContainer}"/>
+    /// and contributes no root item (SPEC 19.4).</summary>
+    /// <param name="root">The root group.</param>
+    private struct RootItems(GroupKoto root) : Parser.IItemList
+    {
+        private ExcludedOwner<GroupKoto> owner = new(root);
+
+        private RootParseState state;
+
+        public readonly bool RequiresItem => false;
+
+        public void EnterExcluded(ref TokenReader reader)
+            => this.owner.Enter(ref reader);
+
+        public void ParseItem(ref TokenReader reader)
+            => this.owner.Of(ref reader).ParseRootItem(ref reader, ref this.state);
+
+        // A #switch keeps its marker only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the root.
+        public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
+            => this.owner.Container.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
+    }
 
     /// <summary>The source-order state of SourceDocument root items (SPEC 18.2.1, 19.4).</summary>
     private struct RootParseState
     {
         /// <summary>Whether an ordinary declaration or executable item precedes, so a later alias is misplaced.</summary>
         public bool HasNonAliasDeclaration;
-
-        /// <summary>The detached group that receives excluded root declarations.</summary>
-        public GroupKoto? Detached;
     }
 }

@@ -97,6 +97,7 @@ internal static class MirDescriptors
         MirRvalueKind.Cast => Row(MirAccess.None, MirEffect.Abort),
         MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
+        MirRvalueKind.Storage => Row(MirAccess.Borrows, effects: MirEffect.None), // A raw borrow; no bounds check, no abort.
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
         MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation),
         _ => default,
@@ -164,13 +165,10 @@ internal static class MirDescriptors
         IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 3, retained: 2), // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
-        // Capacity: a handle's view.
-        IntrinsicId.ReinterpretLoan => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
-        IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.DestroyValues => Row(MirAccess.None, MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),
@@ -190,6 +188,12 @@ internal static class MirDescriptors
         IntrinsicId.FormatFinish => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
         _ => default,
     };
+
+    /// <summary>Gets whether an access a walk reports is an Opaque site's root's (G191 N1): only the Opaque row's roots carry Reads with
+    /// Writes, so the predicate is that row's root access, which the validator's static rule and A5's accesses read.</summary>
+    /// <param name="access">The access <see cref="MirUses"/> reports.</param>
+    /// <returns>Whether it is an Opaque site's root's.</returns>
+    internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
 
     private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false, sbyte retained = -1) => new(
         Defined: true,
@@ -308,7 +312,7 @@ internal static class MirUses
         Operands(body, rvalue.Start, rvalue.Count, row.Access & MirAccess.CaseDependent, ref visitor);
         switch (rvalue.Kind)
         {
-            case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len:
+            case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
                 Place(body, rvalue.Place, row.Access, (MirRefKind)rvalue.Op, ref visitor);
                 break;
             case MirRvalueKind.Aggregate when rvalue.Count > 0: // `[]` allocates nothing (SPEC 4.9.5).

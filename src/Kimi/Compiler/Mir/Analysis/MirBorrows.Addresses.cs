@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Mir;
 // whose `during self` layer a Place uses), direct (naming its root) when the owning Place passes no borrow or raw Deref, else carried
 // for the own-step Warning only. Each names its root's holder as a direct Loan does, so the readers of direct Loans read it, and it is
 // never a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
-// A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.RawStep: Own), never by an
+// A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
 // Origin. The untracked rule (PQ-2): a raw value formed with a direct address or exclusive Loan naming a local that is no holder also
 // carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
@@ -120,7 +120,7 @@ internal sealed partial class MirBorrows
     // none, the value being the borrow's parents.
     private int Formation(MirPlace place, int location)
     {
-        var (count, deref, own) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1, -1);
+        var (count, deref, own) = (this.AddressWalk(place, location), -1, -1);
         for (var i = 0; i < count; i++)
         {
             deref = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : deref;
@@ -133,6 +133,15 @@ internal sealed partial class MirBorrows
         }
 
         return deref < 0 ? this.Address(place.Root, -1, direct: true, location, []) : -1;
+    }
+
+    // A raw address's step walk at a location: its Place's steps, and where the location's rvalue is a Storage, the element step that
+    // `&raw P[i]` takes after them (MirSteps.Element), so that a Storage is exactly a raw Ref of an element of its Place (O-92 (a)).
+    private int AddressWalk(MirPlace place, int location)
+    {
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
+        return location < this.body.Statements.Length && this.body.Statements[location] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Storage }
+            ? this.placeSteps.Element(this.body, place, count, ref this.walk) : count;
     }
 
     // The own-step entry of a raw Place that is a `during self` layer (B §5.2 item 2), decided once per view; -1 for another Place.
@@ -149,7 +158,7 @@ internal sealed partial class MirBorrows
         }
 
         entry = this.Owner(layer, out var part, out var length) is var owner and >= 0 &&
-            types.RawStep(cases.Type(this.body.TypeOf(layer with { Projection = owner })!), part, this.positions.AsSpan(0, length)) == RawStep.Own
+            types.StoredStep(cases.Type(this.body.TypeOf(layer with { Projection = owner })!), part, this.positions.AsSpan(0, length)) == HoldStep.Own
             ? this.OwnStep(layer with { Projection = owner }, location) : -1;
         this.ownCount += entry >= 0 ? 1 : 0;
         this.ownAt.Add((layer.Root, layer.Projection), entry);
@@ -206,7 +215,7 @@ internal sealed partial class MirBorrows
         this.loanStepCount += steps.Length;
         if (direct && root >= 0)
         {
-            this.named[root] = true;
+            this.named[root] |= NamedHolder | ExposedHolder;
         }
 
         if (owner >= 0)
@@ -283,7 +292,7 @@ internal sealed partial class MirBorrows
             this.positions[length] = i;
             var component = type.Components[i];
             if (component.Semantics == SemanticsKind.Raw
-                ? types.RawStep(instance, part, this.positions.AsSpan(0, length + 1)) == RawStep.Own
+                ? types.StoredStep(instance, part, this.positions.AsSpan(0, length + 1)) == HoldStep.Own
                 : this.Encloses(instance, part, length + 1, component))
             {
                 return true;

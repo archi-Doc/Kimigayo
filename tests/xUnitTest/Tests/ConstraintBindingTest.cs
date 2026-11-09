@@ -9,10 +9,209 @@ namespace XunitTest;
 
 public class ConstraintBindingTest
 {
+    private const string LateClause = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            i32 is Z
+            public init() => ()
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        """;
+
+    private const string LateClauseValid = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            public init() => ()
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        """;
+
+    private const string LateAfterItsReaders = """
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use1(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        func f(s: ref/S) -> i32 => 1
+        func use2(s: ref/S) -> i32 => f(s)
+        func use3(s: ref/S) -> i32 => f(s)
+        struct S
+            i32 is Z
+            public init() => ()
+        contract Z
+            func z(self: ref/Self) -> i32
+        """;
+
+    private const string LateThroughAClosedClause = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct X
+            i32 is Z
+            public init() => ()
+        struct Box<T>
+            public init() => ()
+        contract C
+            func m(self: ref/Self, b: ref/Box<X>) -> i32
+        struct U
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, b: ref/Box<X>) -> i32 => 1
+        struct W
+            U is C
+            public init() => ()
+        func use(u: ref/U, b: ref/Box<X>, w: ref/W) -> i32 => u.m(b)
+        """;
+
+    private const string LateWithUses = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            i32 is Z
+            public init() => ()
+            public func get(self: ref/Self) -> i32 => 1
+        contract D
+            func n(self: ref/Self, s: ref/S) -> S
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> S => S.init()
+        func use<T>(t: ref/T, s: ref/S) -> i32
+            T is D
+            return t.n(s).get()
+        func use2(u: ref/U, s: ref/S) -> i32
+            let f: (ref/U, ref/S) -> S = U.n
+            return f(u, s).get() + u.n(s).get()
+        """;
+
+    private const string LateAssociated = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct S
+            i32 is Z
+            public init() => ()
+        struct H
+            Self is C
+            associate C.Item is S
+            public init() => ()
+            public func get(self: ref/Self) -> S => S.init()
+        func read<T>(t: ref/T) -> T.Item
+            T is C
+            return t.get()
+        func use(h: ref/H) -> S => read(h)
+        """;
+
+    private const string BoundRequirement = """
+        contract Src<X>
+            associate Item is Copy
+        contract P<E>: Src<E>
+            func read(self: ref/Self, v: ref/Box<Self.(Src<E>).Item>) -> i32
+        struct Box<T>
+            T is Copy
+            public init() => ()
+        struct S
+            Self is P<i32>
+            Self is P<string>
+            associate Src<i32>.Item is i32
+            associate Src<string>.Item is i64
+            public init() => ()
+            public func read(self: ref/Self, v: ref/Box<i32>) -> i32 => 1
+            public func read(self: ref/Self, v: ref/Box<i64>) -> i32 => 2
+        func via<T>(t: ref/T, b: ref/Box<T.(Src<i32>).Item>) -> i32
+            T is P<i32>
+            return t.read(b)
+        func via2<T>(t: ref/T, b: ref/Box<T.(Src<string>).Item>) -> i32
+            T is P<string>
+            return t.read(b)
+        """;
+
+    private const string BoundRequirementNoPremise = """
+        contract P<E>
+            func read(self: ref/Self, v: ref/Box<E>) -> i32
+        struct Box<T>
+            T is Copy
+            public init() => ()
+        struct S
+            Self is P<i32>
+            Self is P<string>
+            public init() => ()
+            public func read(self: ref/Self, v: ref/Box<i32>) -> i32 => 1
+            public func read(self: ref/Self, v: ref/Box<string>) -> i32 => 2
+        func via<T>(t: ref/T, b: ref/Box<i32>) -> i32
+            T is P<i32>
+            return t.read(b)
+        func via2<T>(t: ref/T, b: ref/Box<string>) -> i32
+            T is P<string>
+            return t.read(b)
+        """;
+
     // An owner whose clause its formation decides (PLAN G354 (2)).
     private const string OwnedHolder = "struct H<T>\n    T is Owned\n    public let t: T\n    public init(t: T) => self.t = t@move\n";
     private const string CopyHolder = "struct K<T>\n    T is Copy\n    public let t: T\n";
     private const string CallableHolder = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
+
+    // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
+    // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
+    [Theory]
+    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClauseValid, "clean")]
+    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAssociated, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G375: a requirement's call is proven under its reference, not as its declaration, so it neither reads nor writes the kept Proven: `P<i32>`'s
+    // call must not answer `P<string>`'s.
+    [Theory]
+    [InlineData(BoundRequirement, "clean")]
+    [InlineData(BoundRequirementNoPremise, "1*NoApplicableOverload_Kd 1*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void ARequirementsCallIsOutsideTheKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.
+    [Fact]
+    public void NoKeptProvenCrossesAPass()
+    {
+        const string Valid = "contract C\n    func m(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "struct Box<T>\n    T is C\n    public init() => ()\nfunc take() -> Box<S>\n    return Box<S>.init()\nfunc use() -> i32\n    let b = take()\n    return 1";
+        var failing = Valid.Replace("public func m(", "public func n(", StringComparison.Ordinal);
+        var c = CompilationTestHelper.ParseSuccess(Valid);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Edit(failing, "m", "n");
+        Assert.False(c.Bind().IsComplete);
+        var fresh = CompilationTestHelper.ParseSuccess(failing);
+        fresh.Bind();
+        Assert.Equal(fresh.Binding.Issues.Select(static x => x.Code).Order(), c.Binding.Issues.Select(static x => x.Code).Order());
+        Edit(Valid, "n", "m");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+
+        void Edit(string source, string removed, string added)
+        {
+            var old = Implementation(c, removed);
+            var donor = Implementation(CompilationTestHelper.ParseSuccess(source), added);
+            ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+            Assert.True(KotoHelper.Replace(old.Parent!, old, donor));
+        }
+
+        static FunctionKoto Implementation(Compilation compilation, string name)
+            => KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parent is StructKoto && x.Name == name);
+    }
 
     [Theory]
     [InlineData("T is i32", "i32", ConstraintProof.Proven)]
@@ -229,17 +428,17 @@ public class ConstraintBindingTest
     // SPEC 8.3, 23.1.2 (PLAN G354 (2)): a Type's formation publishes the clause fact it decides on, so a call or a Function Item that
     // rests on an owner's or an argument's formation names that clause (the first at the highest rank) and, for a Type argument's, the
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
-    // explains none until G375 (null Note).
+    // explains none while PLAN G375's sigref1 stays open (null Note).
     [Theory]
-    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")]
-    [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "H.init(f: g@move)", "Call init requires F is Callable<(ref/i32) -> i32>; this condition cannot be proven for (ref/i32) -> i32")]
-    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: u@move)", "Call init requires T is Owned; this condition cannot be proven for U")]
+    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", null)] // G572 U2a (Q13): the Final record without the clause fact (U2a-2)
+    [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "g@move", "F is Callable<(ref/i32) -> i32> compares whole contracts and is not proven: the 1st parameter requires the omitted Origin of ref/i32 outlives static; its Origin part is judged from the premises alone (SPEC 8.10, 10.7, 15.6.1)")] // G572 U2a (Q13): the Callable record at its argument (U2a-2)
+    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "InvalidConstraint_Kd", "H.init(t: u@move)", null)] // G572 U2a (Q13): the call rests on mk's failed H<U>
     [InlineData(CallableHolder + "func use(g: i32) -> i32\n    let h = H.init(f: g)\n    return 0", "NoApplicableOverload_Kd", "H.init(f: g)", "init requires F is Callable<(ref/i32) -> i32>; this condition is refuted for i32")]
     [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id: H requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2: H requires T is Copy; this condition is refuted for string")]
     [InlineData(CopyHolder + "func g<U>() -> i32 => 0\nfunc use() -> i32\n    return g<K<string>>()", "NoApplicableOverload_Kd", "g<K<string>>()", "g: K requires T is Copy; this condition is refuted for string")]
     [InlineData(CopyHolder + "func id<U>(u: i32) -> i32 => 0\nfunc use() -> i32\n    let f: (i32) -> i32 = id<K<string>>\n    return 0", "UnsatisfiedConstraint_Kd", "id<K<string>>", "Function Item id: K requires T is Copy; this condition is refuted for string")]
-    [InlineData(OwnedHolder + "func mk<U>(h: ref/H<U>) -> i32 => 0\nfunc use(h: ref/H<i32>) -> i32\n    return mk(h: h)", "UnprovenConstraint_Kd", "mk(h: h)", null)]
+    [InlineData(OwnedHolder + "func mk<U>(h: ref/H<U>) -> i32 => 0\nfunc use(h: ref/H<i32>) -> i32\n    return mk(h: h)", "UnprovenConstraint_Kd", "H<U>", null)] // G572 U2a (Q13): the declaration's record; the call rests on it (sigref1)
     public void ATypeFormationExplainsTheUseThatRestsOnIt(string source, string code, string use, string? note)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -338,6 +537,93 @@ public class ConstraintBindingTest
         var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
+    }
+
+    // SPEC 10.1, 8.3.3 (DECISIONS: G572 U2a): a field's Type that holds with a judgment held pending does not depend on it. The unproven
+    // tagOf<Entry>() is selected and its result i32 holds, so Entry is Owned is then proven from tag: i32 (entry, and entry-i-two, whose
+    // unproven candidate is strictly best). Entry<T> is Owned needs T is Owned, unproven, so that obligation fails after selection. The
+    // first row was MirBuildTest.ValuesBindingDidNotFormAreDerived's (Q13: a valid program rejected before, a corrected label).
+    [Theory]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func tagOf<T>(extra: i32 = 0) -> i64\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry<T>\n    var tag = Tags.tagOf<Entry<T>>()\n    public let v: T\n", "Tags.tagOf<Entry<T>>()")]
+    public void AFieldTypeHoldingWithItsObligationPendingIsNoCycle(string source, string? rejectedAt)
+    {
+        var check = DiagnosticCorpus.Check(source + "public func main() => ()\n");
+        if (rejectedAt is null)
+        {
+            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+            return;
+        }
+
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+    }
+
+    // SPEC 23.1.2, 14.6.2, 10.1 (DECISIONS: G572 U2a): a loop over a conditional IntoIterable whose condition no premise proves selects its
+    // entry call under the rule, and that call's obligation fails after selection. The loop rests on its entry call, so the one fact is one
+    // record at the loop (it was the loop's own record beside the call's).
+    [Fact]
+    public void ALoopRestsOnItsEntryCallsObligation()
+    {
+        var source = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    var n: i32 = 0\n    public func next(self: uniq/Self) -> Option<i32>\n        require self.n < 3 else => return .None\n        self.n += 1\n        return .Some(self.n)\nstruct Bag<T>\n    let value: T\n    Self is IntoIterable when T is Owned\n        associate IntoIterable.IteratorType is Counter\n        public func intoIterator(self: Self) -> Counter => Counter.init()\nfunc f<U>(b: Bag<U>) -> i32\n    var n: i32 = 0\n    for x in b@move => n += x\n    return n\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source, "Library").Diagnostics);
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+    }
+
+    // SPEC 8.5, 8.6.1, F.5 (G621): a requirement waits for the conformances by what its Types contain, except a conformance declaration,
+    // which binds before they register. So a premise's Contract argument that names a declared Type's projection is resolved (k1-t7),
+    // under every operator, and a qualified projection resolves in a conformance declaration too (q9: the qualifier's Contract is
+    // searched). An unqualified projection over a declared Type in a conformance declaration takes its candidates from the conformance
+    // table, which fills only at registration: an analysis limit, one located Unsupported_Kd (k9, u1), never a missing member. Each
+    // invalid twin keeps dev's records (k2-u1n).
+    [Theory]
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Item>\n    return 0\n", "")] // k1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Item>\n    return 0\n", "")] // k3
+    [InlineData("struct Holder<T, V> {h}\n    origin s.at == h\n    T is Sink<(Cursor{s}).Item>\n    public let w: ref/i32 during s.at\n", "")] // k5
+    [InlineData("struct Holder<T> {h}\n    T is Sink<(Cursor during h).Item>\n    public let w: ref/i32 during h\n", "")] // p2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Item>\n    return 0\n", "")] // t1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Item> or Marker\n    return 0\n", "")] // t2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Item> or Zbox<i32>\n    return 0\n", "")] // t3
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Source and Sink<(Cursor during y).Item>\n    return 0\n", "")] // t7
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).(Source).Item>\n    public let p: ref/i32 during w\n", "")] // q9
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\n", "Unsupported_Kd@(Cursor during w).Item")] // k9
+    [InlineData("struct W\n    Self is Sink<Src.Item>\n", "Unsupported_Kd@Src.Item")] // u1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<Nosuch>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@Nosuch")] // t6
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Nope>\n    public let p: ref/i32 during w\n", "UnresolvedBinding_Kd@(Cursor during w).Nope")] // k9n
+    [InlineData("struct W\n    Self is Sink<Src.Nope>\n", "UnresolvedBinding_Kd@Src.Nope")] // u1n
+    public void AProjectionInARequirementWaitsUnlessItsClauseDeclaresConformance(string declaration, string expected)
+    {
+        const string Prelude = "contract Source\n    associate Item\ncontract Marker\ncontract Sink<E>\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\nstruct Zbox<T>\nstruct Src\n    Self is Source\n    associate Item is i32\n";
+        var records = ContextualCaptureTest.PublishedRecords(Prelude + declaration + "public func main() => ()\n");
+        Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Text is { } text && !text.Contains('\n') ? x.Code + "@" + text : x.Code)));
+    }
+
+    // G621: the limit's early reads belong to one pass (Binding.ResetPass clears them, as it clears the other early reads), so every Bind
+    // of k9, a Provisional one between, reports what a fresh Compilation reports.
+    [Fact]
+    public void EveryBindOfTheProjectionLimitReportsWhatAFreshBindReports()
+    {
+        const string Source = "contract Source\n    associate Item\ncontract Sink<E>\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\nstruct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\npublic func main() => ()\n";
+        var fresh = Records(MinimalEmissionTest.Analyze(Source));
+        Assert.Contains("Unsupported_Kd", fresh);
+        var c = MinimalEmissionTest.Analyze(Source);
+        for (var i = 0; i < 4; i++)
+        {
+            if (i == 2)
+            {
+                c.Binding.Bind(BindingMode.Provisional);
+            }
+
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(fresh, Records(c));
+        }
+
+        static string Records(Compilation c) => string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code}@{x.Node.Akind}").Order());
     }
 
     private static Compilation Parse(string source, bool allowParserErrors = false)

@@ -46,8 +46,7 @@ public class ControlFlowAnalysisTest
     public void AcceptsValidControlFlow(string source)
     {
         var c = Compile(source);
-        var analysis = c.AnalyzeControlFlow();
-        Assert.True(analysis.Issues.Count == 0, string.Join("\n", analysis.Issues.Select(x => x.Message)));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Empty(CompilationTestHelper.BindingErrors(c));
     }
 
@@ -63,17 +62,17 @@ public class ControlFlowAnalysisTest
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    ()", "cannot fall through")]
     public void RejectsInvalidControlFlow(string source, string diagnostic)
     {
-        // The jump target and label checks are Binding's HIR lints; the fallthrough checks are control flow's.
+        // The jump target, label and function fallthrough checks are Binding's HIR lints; the require fallthrough is the MIR's A3.
         var c = Compile(source);
-        var messages = c.AnalyzeControlFlow().Issues.Select(static x => x.Message).Concat(CompilationTestHelper.BindingErrors(c).Select(static x => x.Message));
-        Assert.Contains(messages, x => x.Contains(diagnostic, StringComparison.Ordinal));
+        c.Analyze();
+        Assert.Contains(CompilationTestHelper.PublishedErrors(c), x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
     }
 
-    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
-    // require rows above, a failure body only the checks reach, a require nested after a return in a failure body that the checks alone
-    // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a
-    // single-item failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default
-    // whose failure bodies continue only for the checks.
+    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports each falling failure body once, at that body: the require rows above,
+    // a failure body only the checks reach, a require nested after a return in a failure body that the checks alone leave to its end, a
+    // default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a single-item
+    // failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default whose
+    // failure bodies continue only for the checks. Each row that falls has one require.
     [Theory]
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1", 0)]
     [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1", 0)]
@@ -92,49 +91,64 @@ public class ControlFlowAnalysisTest
     [InlineData(RequireContinuationTest.Default, 0)]
     public void TheMirFindsEveryRequireFallthrough(string source, int count)
     {
-        var (old, mir) = RequireFallthroughs(Compile(source));
+        var c = Compile(source);
+        var mir = RequireFallthroughs(c);
         Assert.Equal(count, mir.Length);
-        Assert.Equal(old, mir);
+        Assert.All(mir, x => Assert.Same(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>()).ElseBody, x));
     }
 
     [Fact]
     public void ResolvesYieldsBeforeClassifyingDiscardedSelections()
     {
+        // SPEC 14.9: a yield in a discarded selection has no target, so its plan row is null and Binding reports it.
         var c = Compile("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
-        var analysis = c.AnalyzeControlFlow();
-        var selections = analysis.Nodes.Keys.OfType<IfKoto>().ToArray();
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[0]));
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[1]));
-        Assert.All(analysis.Targets.Where(x => x.Key is YieldKoto), x => Assert.Same(selections[1], x.Value));
-        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Message.Contains("discarded selection", StringComparison.Ordinal));
+        var selections = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
+        Assert.False(Binding.IsResultRequiringSelection(selections[0]));
+        Assert.False(Binding.IsResultRequiringSelection(selections[1]));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<YieldKoto>(), static x => Assert.Null(HirTables.PlanOf(x).Plan));
+
+        // SPEC 14.9.1, 23.1.2 (DECISIONS BU-101): the invalid yields go to no target, so their operands have no expected Type and no
+        // TypeMismatch_Kd rests on the discarded selection's Unit.
+        var errors = CompilationTestHelper.BindingErrors(c);
+        Assert.Contains(errors, static x => x is { Code: "UnlabeledYieldTarget_Kd", Text: "yield 1" });
+        Assert.Contains(errors, static x => x is { Code: "UnlabeledYieldTarget_Kd", Text: "yield 2" });
+        Assert.Equal(2, errors.Count(x => x.Message.Contains("discarded selection", StringComparison.Ordinal)));
+        Assert.DoesNotContain(errors, static x => x.Code == nameof(Kimi.DiagnosticCode.TypeMismatch_Kd));
     }
 
     [Fact]
     public void KeepsUnresolvedExhaustivenessPendingInsteadOfRejectingEnumPatterns()
     {
-        var analysis = Analyze("let x = match value\n    .A => 1\n    .B => 2");
-        Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is MatchKoto);
+        var c = Compile("let x = match value\n    .A => 1\n    .B => 2");
+        c.Analyze();
+        Assert.Equal(["UnresolvedBinding_Kd value"], CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}"));
     }
 
     [Fact]
     public void EnvironmentDirectivesAreSelectedBeforeControlFlowAnalysis()
     {
-        var analysis = Analyze("func f() -> i32\n    #if false\n    return \"text\"\n    return 1");
-        Assert.Empty(analysis.Issues);
-        Assert.Empty(analysis.PendingBinding);
+        var c = Compile("func f() -> i32\n    #if false\n    return \"text\"\n    return 1");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // R6-check H10b (D11): an unresolved call could have Type Never, so its cause is published and no fallthrough or coverage code rests on
+    // it; the function form publishes the cause alone. The join form's exact set is AJoinPastAnUnresolvedCallPublishesOnlyItsCause's.
     [Fact]
     public void DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever()
     {
-        var analysis = Analyze("func f() -> i32\n    abort()");
-        Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is FunctionKoto { Name: "f" });
-        analysis = Analyze("let x = if true\n    abort()\nelse => 1");
-        Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is IfKoto);
+        Assert.Equal(["UnresolvedBinding_Kd abort"], PublishedErrors("func f() -> i32\n    abort()"));
+        var errors = PublishedErrors("let x = if true\n    abort()\nelse => 1");
+        Assert.Contains("UnresolvedBinding_Kd abort", errors);
+        Assert.DoesNotContain(errors, static x => x.Split(' ')[0] is nameof(Kimi.DiagnosticCode.FunctionFallthrough_Kd)
+            or nameof(Kimi.DiagnosticCode.RequireFallthrough_Kd) or nameof(Kimi.DiagnosticCode.NonExhaustiveMatch_Kd));
     }
+
+    // R6-check H10b (D11): a join past an unresolved call publishes only the call's cause. Today the join also publishes TypeMismatch_Kd at
+    // `1`, resting on the failed call: PLAN G52's join cascade. Explicit until G52 decides it, its expectation unchanged; then a default
+    // test (the kept-apart form of MirBorrowsTest's G264 row).
+    [Fact(Explicit = true)]
+    public void AJoinPastAnUnresolvedCallPublishesOnlyItsCause()
+        => Assert.Equal(["UnresolvedBinding_Kd abort"], PublishedErrors("let x = if true\n    abort()\nelse => 1"));
 
     [Fact]
     public void UsesBoundNeverCallsAndContextualFunctionResultTypes()
@@ -144,22 +158,22 @@ public class ControlFlowAnalysisTest
             compilation.Kotonoha.RootKoto,
             "func stop() -> Never => stop()\nfunc f() -> i32\n    if false\n        return \"text\"\n    stop()");
         compilation.Bind();
-        Assert.Contains(compilation.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
-        Assert.DoesNotContain(compilation.Binding.LintErrorRecords, x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
+        var errors = CompilationTestHelper.BindingErrors(compilation);
+        Assert.Contains(errors, static x => x.Code == nameof(Kimi.DiagnosticCode.TypeMismatch_Kd));
+        Assert.DoesNotContain(errors, static x => x.Code == nameof(Kimi.DiagnosticCode.FunctionFallthrough_Kd));
     }
 
     [Fact]
     public void ResolvesHeadersOutsideTheirOwnBoundary()
     {
-        var analysis = Analyze("let result = label outer: loop\n    while (exit to outer 1)\n        continue");
-        Assert.Empty(analysis.Issues);
-        var exitTarget = analysis.Targets.Single(x => x.Key is ExitKoto).Value;
-        Assert.IsType<LoopKoto>(exitTarget);
-        Assert.IsType<WhileKoto>(analysis.Targets.Single(x => x.Key is ContinueKoto).Value);
+        var c = Compile("let result = label outer: loop\n    while (exit to outer 1)\n        continue");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.IsType<LoopKoto>(HirTables.PlanOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ExitKoto>().Single()).Plan);
+        Assert.IsType<WhileKoto>(HirTables.PlanOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContinueKoto>().Single()).Plan);
     }
 
     [Fact]
-    public void PreservesBodyFormAndAnalysisThroughSerialization()
+    public void PreservesBodyFormThroughSerialization()
     {
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(
@@ -168,9 +182,7 @@ public class ControlFlowAnalysisTest
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(compilation.Kotonoha), ref restored);
         restored!.OnDeserialized(compilation);
-        var analysis = ControlFlowAnalysis.Analyze(restored.RootKoto);
-        Assert.Empty(analysis.Issues);
-        var selection = Assert.Single(analysis.Nodes.Keys.OfType<IfKoto>(), KotoHelper.IsResultRequiringSelection);
+        var selection = Assert.Single(KotoTree.Walk(restored.RootKoto).OfType<IfKoto>(), Binding.IsResultRequiringSelection);
         Assert.True(selection.Branches[0].Body.IsExpressionBody);
         Assert.True(selection.Branches[0].Body.HasTrailingExpression);
         Assert.False(selection.ElseBody!.IsExpressionBody);
@@ -209,14 +221,18 @@ public class ControlFlowAnalysisTest
         Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
-    // The subjects of the old analysis's RequireFallthrough records and of the MIR's A3 problems (DECISIONS R4-M7a), each in source order.
-    internal static (Koto[] Old, Koto[] Mir) RequireFallthroughs(Compilation compilation)
-        => (compilation.AnalyzeControlFlow().Issues.Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd).Select(static x => x.Node)
-                .OrderBy(static x => x.Span.Start).ToArray(),
-            compilation.BuildMir().Problems.All.ToArray().Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd)
-                .Select(x => compilation.SyntaxOf(x.Subject)).OrderBy(static x => x.Span.Start).ToArray());
+    // The subjects of the MIR's A3 RequireFallthrough problems (DECISIONS R4-M7a), in source order.
+    internal static Koto[] RequireFallthroughs(Compilation compilation)
+        => compilation.BuildMir().Problems.All.ToArray().Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd)
+            .Select(x => compilation.SyntaxOf(x.Subject)).OrderBy(static x => x.Span.Start).ToArray();
 
-    private static ControlFlowAnalysis Analyze(string source) => Compile(source).AnalyzeControlFlow();
+    // The published Errors of an analyzed source as code and text (CompilationTestHelper.PublishedErrors asserts that the MIR exists).
+    private static string[] PublishedErrors(string source)
+    {
+        var c = Compile(source);
+        c.Analyze();
+        return [.. CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}")];
+    }
 
     private static Compilation Compile(string source)
     {

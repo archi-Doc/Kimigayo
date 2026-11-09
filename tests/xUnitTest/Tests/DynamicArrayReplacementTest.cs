@@ -39,7 +39,7 @@ public class DynamicArrayReplacementTest
     [InlineData("var values: Array<i32> = [1]\nlet borrow = values@ref\nvalues[0] = 2\nlet n = borrow[0]")]
     [InlineData("var values: Array<i32> = [1]\nlet moved = values@move\nvalues[0] = 2")]
     [InlineData("var values: Array<i32> = [1]\nlet handle = values@ref\nvalues[0] += 2\nlet n = handle.length")]
-    [InlineData("var values: Array<i32> = [1]\nvalues[(label work: do\n    values@uniq.clear()\n    exit to work 0)] = 2")]
+    [InlineData("var values: Array<i32> = [1]\nvalues[(label work: do\n    values@uniq.clear()\n    exit to work 0\n)] = 2")]
     [InlineData("let name = \"owned\"\nvar names: Array<string> = [\"old\"]\nnames[0] = name")]
     public void RejectsInvalidWrites(string source)
     {

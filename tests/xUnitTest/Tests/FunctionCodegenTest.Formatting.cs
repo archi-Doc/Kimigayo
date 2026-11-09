@@ -152,24 +152,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextFixed, CompilerFunctionKind.FixedBufferReserve, CompilerFunctionKind.WindowPush,
+                CompilerFunctionKind.TextFixed, CompilerFunctionKind.WindowPush,
                 CompilerFunctionKind.WindowAppend, CompilerFunctionKind.WindowLimit, CompilerFunctionKind.WindowCommit,
-                CompilerFunctionKind.FixedBufferBytes, CompilerFunctionKind.FixedBufferText, CompilerFunctionKind.FixedBufferValidate,
-                CompilerFunctionKind.FixedBufferClear, CompilerFunctionKind.FixedBufferIntoText,
             ]),
             FormattingCalls(ir, c, "fxRun"));
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextHeap, CompilerFunctionKind.HeapBufferReserve, CompilerFunctionKind.WindowPush,
-                CompilerFunctionKind.WindowCommit, CompilerFunctionKind.HeapBufferBytes, CompilerFunctionKind.HeapBufferText,
-                CompilerFunctionKind.HeapBufferValidate, CompilerFunctionKind.HeapBufferClear, CompilerFunctionKind.HeapBufferIntoString,
+                CompilerFunctionKind.TextHeap, CompilerFunctionKind.WindowPush,
+                CompilerFunctionKind.WindowCommit,
             ]),
             FormattingCalls(ir, c, "hpRun"));
         foreach (var (name, kind, shape) in new[]
         {
             ("fxRun", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 8)"),
-            ("fxRun", CompilerFunctionKind.FixedBufferReserve, $"call void @(ptr %, ptr %, i64 2, ptr @, i64 {Located(Buffers, "(buffer@uniq).reserve(2)")})"),
             ("fxRun", CompilerFunctionKind.WindowPush, "call void @(ptr %, ptr %, i8 65)"),
             ("hpRun", CompilerFunctionKind.TextHeap, $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
             ("vwLength", CompilerFunctionKind.TextUtf8, "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
@@ -181,6 +177,14 @@ public sealed partial class FunctionCodegenTest
         {
             var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == ir.Function(Routines(kind)[0]));
             Assert.Equal(shape, call.Shape);
+        }
+
+        // SPEC 22.5.1 (R8-W1a): each buffer's reserve is a body with a CallerLocation row, so the user's call passes its own location.
+        var reserves = FunctionsOf(ir, c, "reserve").ToArray();
+        foreach (var (name, minimum, site) in new[] { ("fxRun", 2, "(buffer@uniq).reserve(2)"), ("hpRun", 1, "(buffer@uniq).reserve(1)") })
+        {
+            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => reserves.Contains(x.Callee!));
+            Assert.Equal($"call void @(ptr %, ptr %, i64 {minimum}, ptr @, i64 {Located(Buffers, site)})", call.Shape);
         }
 
         var validate = ir.Function(Routines(CompilerFunctionKind.TextValidateUtf8)[0]);
@@ -314,7 +318,7 @@ public sealed partial class FunctionCodegenTest
             CalleesOf(show));
         Assert.Equal(
             [ir.Function(Routines(CompilerFunctionKind.TextFixed)[0]), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
-                ir.Function(Routines(CompilerFunctionKind.FixedBufferBytes)[0])],
+                ir.Function("__kimi_buffer_bytes")],
             CalleesOf(attempt));
         foreach (var (name, wrapper, shape) in new[]
         {

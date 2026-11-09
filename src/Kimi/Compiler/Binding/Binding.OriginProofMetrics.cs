@@ -46,6 +46,9 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the most edges of one environment.</summary>
     internal int MaxEdges { get; private set; }
 
+    /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
+    internal long RegionReads { get; private set; }
+
     /// <summary>Gets the worklist insertions of all closures.</summary>
     internal long Insertions { get; private set; }
 
@@ -61,9 +64,6 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the closures whose work exceeded their graph: insertions over nodes, activations over edges or decrements over
     /// meet incidences (proposal §3.7); always zero.</summary>
     internal long BoundViolations { get; private set; }
-
-    /// <summary>Gets the obligation verdicts computed: one per obligation per analysis of a Binding (PLAN G74 U4).</summary>
-    internal long Verdicts { get; private set; }
 
     /// <summary>Gets the distinct normalized relations proven at a use.</summary>
     internal int DistinctQueries => this.queries.Count;
@@ -88,11 +88,12 @@ internal sealed class OriginProofMetrics
         this.Activations = 0;
         this.Decrements = 0;
         this.BoundViolations = 0;
-        this.Verdicts = 0;
         this.ClosureTicks = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
+
+    internal void RegionRead() => this.RegionReads++;
 
     internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
     {
@@ -104,8 +105,6 @@ internal sealed class OriginProofMetrics
 
         this.queries.Add((longer, shorter, use));
     }
-
-    internal void Verdict() => this.Verdicts++;
 
     internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)
     {

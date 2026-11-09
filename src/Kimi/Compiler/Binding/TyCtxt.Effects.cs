@@ -19,7 +19,7 @@ internal sealed partial class TyCtxt
     {
         { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
         { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
-        { Declaration: FunctionKoto declaration } when Binding.IsLibraryImport(declaration) => CompilerFunctionEffect.Environment,
+        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => CompilerFunctionEffect.Environment,
         _ => CompilerFunctionEffect.Unclassified,
     };
 
@@ -45,8 +45,8 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract under the Contract reference its call recorded (MirCallee.Contract)
     // and that reference in the call's substitution (Subst.Declaring), as Witness reads them (Binding.Witnesses), appended to a caller-owned
-    // list with each target's declaring instance (none for a compiler function); false where none resolves.
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    // list with the instance each target runs at; false where none resolves.
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
         => binding.Witnesses(requirement, self, contract, reference, definition, into);
 
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
@@ -114,7 +114,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven;
+                copy = binding.CopiesInEveryCase(type, premises); // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

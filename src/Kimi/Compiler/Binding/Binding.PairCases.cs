@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Numerics;
 using System.Text;
 using Kimi.Compiler.Parsing;
 
@@ -18,6 +19,7 @@ public sealed partial class Binding
 
     // The binders in scope of one PairSlotCondition query, reused, and whether a query is collecting them.
     private readonly List<PairBinder> pairConditionBinders = new();
+    private readonly List<PairBinder> copyCaseBinders = new(); // The binders of one CopiesInEveryCase query, reused.
     private bool pairConditionActive;
 
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
@@ -104,7 +106,7 @@ public sealed partial class Binding
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
     /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
-    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders"/> at
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders(Koto, List{PairBinder})"/> at
     /// the use when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
     /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
     /// usable, and a relation required under it is judged unconditionally.</summary>
@@ -251,11 +253,83 @@ public sealed partial class Binding
     /// <returns>The admitted cases that neither Copy nor Reborrow; None when every case has a plan.</returns>
     internal SemanticsMask BareAcquisition(BoundType type, Koto node, out SemanticsMask reborrow) => this.BareAcquisition(type, node, [], out reborrow);
 
+    /// <summary>Tells whether a Type Copies in every Semantics case of the pair binders in scope (SPEC 8.14, 8.15.2, 3.5): its
+    /// complete Type in each case (<see cref="CaseType"/>) is proven Copy by SPEC 8.3, which no case adds a premise to. The 8.3 proof
+    /// decides alone where it is not Unknown or the Type holds no pair layer, and where the cases exceed
+    /// <see cref="PairBinder.CaseBound"/> (64 cases are analyzed; 65 are not), whose definition records <c>OwnershipCaseLimit_Kd</c>
+    /// (<c>CheckCaseBound</c>), so no case is answered unchecked. The one Copy evidence of an
+    /// acquisition: BareAcquire, a Consuming call, <c>@copy</c>, a same-Type acquisition, a bare-Place adaptation or object view, a
+    /// Pattern binding, a special receiver's part, and <c>TyCtxt.CopyFacts</c>, which MIR reads (DECISIONS BU-88).</summary>
+    /// <param name="type">The complete Type.</param>
+    /// <param name="scope">The scope whose premises and pair binders apply.</param>
+    /// <returns>Whether every case Copies.</returns>
+    internal bool CopiesInEveryCase(BoundType type, BindingScope scope)
+    {
+        var proof = this.ProveCopy(type, scope);
+        if (proof != ConstraintProof.Unknown || !type.ContainsPairLayer)
+        {
+            return proof == ConstraintProof.Proven;
+        }
+
+        // A query nested in a case's proof takes its own list, as PairSlotCondition's does.
+        var binders = this.copyCaseBinders.Count == 0 ? this.copyCaseBinders : new List<PairBinder>();
+        this.PairBinders(scope, binders);
+        var resolved = 0;
+        var count = 1L;
+        for (var b = 0; b < binders.Count; b++)
+        {
+            if (binders[b].Resolved)
+            {
+                count *= BitOperations.PopCount((uint)binders[b].Admitted);
+                resolved++;
+            }
+        }
+
+        if (resolved == 0 || count > PairBinder.CaseBound)
+        {
+            binders.Clear();
+            return false;
+        }
+
+        Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
+        var scratch = this.caseScratch.Rent(resolved);
+        try
+        {
+            var assignment = scratch.AsSpan(0, resolved);
+            for (var index = 0; index < count; index++)
+            {
+                CaseDigits(binders, index, digits);
+                for (int j = 0, b = 0; b < binders.Count; b++)
+                {
+                    if (binders[b].Resolved)
+                    {
+                        assignment[j] = new(binders[b].Target, digits[j]);
+                        j++;
+                    }
+                }
+
+                if (this.ProveCopy(this.CaseType(type, assignment), scope) != ConstraintProof.Proven)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            this.caseScratch.Return(scratch, clearArray: true);
+            binders.Clear();
+        }
+    }
+
     // PairBinder.Collect.
-    internal void PairBinders(Koto entry, List<PairBinder> binders)
+    internal void PairBinders(Koto entry, List<PairBinder> binders) => this.PairBinders(this.ConstraintScope(entry), binders);
+
+    // The pair binders in scope of a constraint scope, outer to inner in slot order, each with its admitted set (PairBinder.Collect).
+    internal void PairBinders(BindingScope scope, List<PairBinder> binders)
     {
         binders.Clear();
-        var scope = this.ConstraintScope(entry);
         for (var current = scope; current is not null; current = current.Parent)
         {
             // Each scope's binders go to the front, in slot order, so outer scopes precede inner ones.
@@ -314,48 +388,29 @@ public sealed partial class Binding
             ? IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static
             : null;
 
-    /// <summary>Binds every <c>o</c> of <paramref name="binder"/>'s pairs in an Origin, alone or as a meet operand, through the Type
-    /// arguments (SPEC 8.1.1, 8.1.2), keeping the instance when none occurs.</summary>
-    /// <param name="origin">The Origin.</param>
-    /// <param name="binder">The declaration whose Type arguments are given.</param>
-    /// <param name="arguments">The Type arguments by slot.</param>
-    /// <returns>The substituted Origin.</returns>
-    private BoundOrigin SubstitutePairOrigins(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
-    {
-        if (origin.Kind != OriginKind.Intersection)
-        {
-            return this.PairOuterImage(origin, binder, arguments) ?? origin;
-        }
-
-        // A meet's operands are atoms; it is rebuilt only when one of them is bound.
-        var bound = false;
-        for (var i = 0; i < origin.Operands.Count && !bound; i++)
-        {
-            bound = this.PairOuterImage(origin.Operands[i], binder, arguments) is not null;
-        }
-
-        if (!bound)
-        {
-            return origin;
-        }
-
-        var result = BoundOrigin.Static;
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            result = this.Meet(result, this.PairOuterImage(origin.Operands[i], binder, arguments) ?? origin.Operands[i]);
-        }
-
-        return result;
-    }
-
     // BareAcquire's rows under a case assignment, the cases of the enclosing pair layers whose owner case stores this Type (SPEC 8.15.2).
     private HirAcquire BareAcquire(BoundType type, Koto node, ReadOnlySpan<PairCase> assignment, out ConstraintProof proof, out SemanticsMask reborrow)
     {
         reborrow = SemanticsMask.None;
         proof = this.ProveCopy(type, node);
-        return proof == ConstraintProof.Proven ? HirAcquire.Copy
-            : TryPairLayer(type, out _, out _) && this.BareAcquisition(type, node, assignment, out reborrow) == SemanticsMask.None ? HirAcquire.ByCase
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
+        if (proof == ConstraintProof.Proven)
+        {
+            return HirAcquire.Copy;
+        }
+
+        if (TryPairLayer(type, out _, out _))
+        {
+            return this.BareAcquisition(type, node, assignment, out reborrow) == SemanticsMask.None ? HirAcquire.ByCase : HirAcquire.Move;
+        }
+
+        // SPEC 8.14, 8.15.2: a Type that holds a pair layer, not itself one, has one plan in every case, as no case Type of it is a
+        // `uniq` reference: it Copies where every case does.
+        if (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(type, this.ConstraintScope(node)))
+        {
+            return HirAcquire.Copy;
+        }
+
+        return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
                 PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 

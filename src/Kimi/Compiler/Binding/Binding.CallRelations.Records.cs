@@ -8,29 +8,27 @@ namespace Kimi.Compiler;
 // Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems; contract of the concern, the
 // judgment in Binding.CallRelations.cs).
 // - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
-//   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record (PublishCallRelations); and the
-//   one channel of a node's records beyond its first, Origin relation and Origin contract records alike (furtherOriginRecords,
-//   RecordFurtherOriginRecord, also for RecordOriginFitFailure's other chains), reported after the node's first record, whichever its kind,
-//   each with its own condition (ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record (HasCallRelation).
+//   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record or published with its contract
+//   record (FollowsContract; PublishCallRelations); and a node's records beyond its first, Origin relation and Origin contract records
+//   alike, each a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord, also for
+//   RecordOriginFitFailure's other chains; ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record
+//   (HasCallRelation).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
-// - Invariants: callRelationScratch is empty after PublishCallRelations; one kind-agnostic list per node, which excludes the node's first
-//   record and holds no duplicate; each record keeps its kind, subject and location, and the adapter publishes it by its kind; no record
-//   of one kind is dropped, merged or reordered because of another kind's first record (SPEC 23.1.2); furtherOriginRecords is reset with the
-//   pass's Origin records (ResetOriginRecords), its lists kept, empty, for the next pass (furtherOriginLists).
+// - Invariants: callRelationScratch is empty after PublishCallRelations; a node's further records exclude its first record and hold no
+//   duplicate; each record keeps its kind, subject and location, and the adapter publishes it by its kind; no record of one kind is
+//   dropped, merged or reordered because of another kind's first record (SPEC 23.1.2).
 // - Prohibitions: no judgment of a relation or a comparison (CallRelations, OriginFits, OriginClauses and the Type relation judge); no
-//   second list for one kind; no message text.
+//   message text.
 public sealed partial class Binding
 {
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
 
-    // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
-    private Dictionary<Koto, List<OriginRecord>>? furtherOriginRecords;
-
-    // The lists of furtherOriginRecords, kept across passes so that a warm rebind allocates none: the dictionary's i-th node holds the
-    // i-th list, since it only grows within a pass and is cleared at the pass's start (ResetOriginRecords), which empties every list.
-    private List<List<OriginRecord>>? furtherOriginLists;
+    // SPEC 15.6.1, 23.1.2: whether a node's Origin relations are all records beyond its first: its own record is a comparison's
+    // contract (RecordComparisonFacts), and every relation judged at it is published with that record (RecordOriginChains,
+    // PublishCallRelations).
+    private static bool FollowsContract(Koto node) => node.BindingFailure == BindingFailure.OriginContract;
 
     // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
     private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
@@ -56,20 +54,21 @@ public sealed partial class Binding
     // The records of one node beyond the first, each by its kind and with its own condition so that it stays an independent problem.
     private void ReportFurtherOriginRecords(Koto node, DiagnosticRequirement requirement)
     {
-        if (this.furtherOriginRecords?.TryGetValue(node, out var more) != true)
+        for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
         {
-            return;
-        }
-
-        for (var i = 0; i < more!.Count; i++)
-        {
-            if (more[i].Relation is { } relation)
+            if (this.FactOf(i, ProblemFactKind.OriginRecord) is not { } fact)
             {
-                ReportOriginRelation(node, relation, requirement, OriginRelationCode(relation), this.OmittedResultNote(node), (ushort)(i + 1));
+                continue;
+            }
+
+            var problem = this.report.Problem(i);
+            if (this.report.Origin(fact).Relation is { } relation)
+            {
+                ReportOriginRelation(node, relation, requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
             }
             else
             {
-                ReportOriginContract(node, more[i].Contract!.Value, requirement, DiagnosticCode.UnprovenOriginContract_Kd, (ushort)(i + 1));
+                ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, requirement, problem.Code, problem.Condition);
             }
         }
     }
@@ -87,12 +86,18 @@ public sealed partial class Binding
         return false;
     }
 
-    // Fails each node with its first record and keeps the others for publication with it.
+    // Fails each node with its first record and keeps the others for publication with it; beside a contract, each is a further record.
     private void PublishCallRelations()
     {
         for (var i = 0; i < this.callRelationScratch.Count; i++)
         {
             var (node, fact) = this.callRelationScratch[i];
+            if (FollowsContract(node))
+            {
+                this.RecordFurtherOriginRecord(node, new(fact, null));
+                continue;
+            }
+
             var first = true;
             for (var j = 0; j < i; j++)
             {
@@ -112,24 +117,17 @@ public sealed partial class Binding
         this.callRelationScratch.Clear();
     }
 
-    // A record of `node` after its first, of either kind, published with it (ReportFurtherOriginRecords).
-    private void RecordFurtherOriginRecord(Koto node, OriginRecord record)
+    // A record of `node` after its first, of either kind: a problem beside the slot, whose first failure the check sets. A chain walk, as a
+    // list's Contains was: a node's records are its failed chains.
+    private void RecordFurtherOriginRecord(Koto node, in OriginRecord record)
     {
-        var records = this.furtherOriginRecords ??= new(ReferenceEqualityComparer.Instance);
-        if (!records.TryGetValue(node, out var more))
+        var subject = SourceRef.Of(node);
+        if (this.report.OriginCondition(subject, record) is not 0 and var condition)
         {
-            var lists = this.furtherOriginLists ??= new();
-            if (records.Count == lists.Count)
-            {
-                lists.Add(new());
-            }
-
-            records.Add(node, more = lists[records.Count]);
-        }
-
-        if (!more.Contains(record))
-        {
-            more.Add(record);
+            var (code, failure) = record.Relation is { } relation
+                ? (OriginRelationCode(relation), BindingFailure.OriginRelation) : (DiagnosticCode.UnprovenOriginContract_Kd, BindingFailure.OriginContract);
+            ProblemFact fact = new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record));
+            this.report.Add(new(code, DiagnosticRequirement.Binding(failure), subject, condition), [fact]);
         }
     }
 }

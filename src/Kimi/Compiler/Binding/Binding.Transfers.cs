@@ -10,6 +10,7 @@
 // - Invariants: one linear scan of each module, 0 B; the republication creates no new subject (an InternalInvariant_Kd if it does).
 // - Must not: decide an acquisition (the column's writers do) or judge a node Binding failed before (its row is Error).
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -88,7 +89,7 @@ public sealed partial class Binding
 
     // S1: a written Place (not a value, not a formatting plan's storage) in a value Op whose Adjust moves it, unless its parent is the
     // explicit Move (`x@move`). S2: such a Place in Discard Context whose Adjust is Unset and whose bare acquisition moves, with a
-    // proof other than Error (an Error proof is derived from that error).
+    // proof other than Error (an Error proof is derived from that error). A failed acquisition is derived too (DECISIONS BU-103).
     private bool TransferSubject(Koto node)
     {
         if (HirTables.Op(node) is HirOp.Unset or HirOp.Syntax or HirOp.Error || HirTables.PlaceOf(node).Kind is HirPlaceKind.Unset or HirPlaceKind.Value ||
@@ -100,9 +101,11 @@ public sealed partial class Binding
         return HirTables.AdjustOf(node).Acquire switch
         {
             HirAcquire.Move => !ExplicitTransfer(node),
-            HirAcquire.Unset => !KotoHelper.IsValueContext(node) && node.BoundType is { } type &&
+            HirAcquire.Unset => !IsValueContext(node) && node.BoundType is { } type &&
                 this.BareAcquire(type, node, out var proof) == HirAcquire.Move && proof != ConstraintProof.Error,
-            _ => false,
+            HirAcquire.None or HirAcquire.Copy or HirAcquire.Reborrow or HirAcquire.ByCase => false, // Not a Move.
+            HirAcquire.Temporary or HirAcquire.Failed => false, // A value, or one derived from its failure.
+            _ => throw new UnreachableException(),
         };
     }
 

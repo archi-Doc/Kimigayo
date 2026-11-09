@@ -15,9 +15,9 @@ public partial class TypeDagScalingTest
     // The chain through Tuples, fixed arrays and enum payloads, and with raw leaves: the declarations' inline layouts (their summaries,
     // DECISIONS BU-65, and CompleteProjections); a member path to the last instance and a generic callee at it (CheckTypeConstraints, ProveTypeLengths, the
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
-    // capturing it (HasUnsubstitutedInput). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
+    // capturing it (LacksImage). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
-    // the result's Origin (ResultFixedForCall).
+    // the result's Origin.
     [Theory]
     [InlineData("tuple", 40)]
     [InlineData("array", 40)]
@@ -46,6 +46,22 @@ public partial class TypeDagScalingTest
         }
 
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
+    }
+
+    // DECISIONS BU-113: a generic callee's declared input is the chain over its own Type parameter, `fg<T>(d: uniq/D1<T>, …)`, so the
+    // retention walks pair every instantiated part of D1<i32> with its declared part of D1<T>, a Tuple DAG of 2^39 leaves on each side;
+    // each (part, declared part) pair is walked once, and the contract finishes.
+    [Theory]
+    [InlineData("tuple", 40)]
+    [InlineData("raw", 40)]
+    public void ADeclaredDagIsPairedOncePerPart(string form, int size)
+    {
+        var root = form == "raw" ? "raw/i32" : "i32";
+        var c = MirBuildTest.Compile(InstanceChain(form, size) + $"func fg<T>(d: uniq/D1<T>, p: raw/i32) => ()\nfunc gg(d: uniq/D1<{root}>) => fg(d, null)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gg = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gg");
+        var call = KotoTree.Walk(gg).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf()));
     }
 
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each

@@ -213,6 +213,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
         }
+        else if (callee.Arg == (int)IntrinsicId.DestroyValues)
+        {
+            this.Item(cases.Type(callee.Subst!.Types[0]!), Drop); // SPEC 4.9.7: the values of its Type argument.
+        }
     }
 
     private void Function(MirProgram program, in MirCallee call)
@@ -301,8 +305,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and
-    // the destructor rule apply to runtime paths only, SPEC 14.10.3 as R4-M6a reads it), though the check-only statements' own effects
-    // count; a runtime Drop without a row (a body over the analyses' arena limit, R4-M15a) destroys its Place's case Type.
+    // the destructor rule apply to runtime paths only, SPEC 14.10.3 as R4-M6a reads it; its one row, where it has one, is Elide), though the
+    // check-only statements' own effects count; a runtime Drop without a row (a body over the analyses' arena limit, R4-M15a) destroys its
+    // Place's case Type.
     private void Dropped(MirProgram program, MirBody body, int block, long view, BoundType type)
     {
         var group = program.Drops.Group(body.Ordinal, block, view);

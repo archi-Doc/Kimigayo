@@ -11,6 +11,7 @@ namespace XunitTest;
 
 public class CallReservationTest(ITestOutputHelper output)
 {
+    internal const string Retaining = " (value retaining the conflicting loan)"; // A6's `Store` witness: a `loan` at the holder's declaration.
     private const string Cell = "struct Cell\n    public var value: i32 = 1\n    public func set(self: uniq/Self, n: i32) => self.value = n\nfunc set(c: uniq/Cell, n: i32) => c.value = n\nfunc read(c: ref/Cell) -> i32 => c.value\n";
     private const string ObjCell = "struct ObjCell\n    public var value: i32 = 1\n    public func put(self: objuniq/Self, n: i32)\n        let p = self@follow@uniq\n        p.value = n\n";
     private const string Both = "func both(c: uniq/Cell, other: uniq/Cell) => ()\n";
@@ -19,8 +20,8 @@ public class CallReservationTest(ITestOutputHelper output)
     private const string Drain = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\nstruct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n";
     private const string Keeper = "struct Store\n    public var value: i32 = 1\n    public func lend(self: uniq/Self during source) -> Lent during source => Lent.init(self)\nstruct Lent {source}\n    var store: uniq/Store during source\n    public init(store: uniq/Store during source) => self.store = store\nstruct Keeper {source}\n    var inner: Lent during source\n    public init(inner: Lent during source) => self.inner = inner@move\n    public func reset(self: uniq/Self, fresh: Lent during source) => self.inner = fresh@move\n    public func peek(self: ref/Self) -> i32 => 1\n";
     private const string ReservationConflict = "This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation";
+    private const string ActivationConflict = "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live";
     private const string LoanConflict = "This operation conflicts with an active loan";
-    private const string Retaining = " (value retaining the conflicting loan)"; // A6's `Store` witness: a `loan` at the holder's declaration.
     private const string ReservationLabel = "conflicting exclusive call reservation";
     private const string BorrowLabel = "borrow that created the loan";
     private const string LaterUseLabel = "later use of the value retaining the conflicting loan";
@@ -94,7 +95,6 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("func same(c: uniq/Cell) -> uniq/Cell during c => c\nvar c = Cell.init()\nset(same(c@uniq), read(c))")]
     [InlineData("var c = Cell.init()\nset((if true => c@uniq else => c@uniq), read(c))")]
     [InlineData("var c = Cell.init()\nset((do => c@uniq), read(c))")]
-    [InlineData("var c = Cell.init()\nset((match true\n    true => c@uniq\n    false => c@uniq), read(c))")]
     [InlineData("func both(other: ref/Cell, c: uniq/Cell) => ()\nvar c = Cell.init()\nboth(c@ref, c@uniq)")]
     [InlineData("let f = func (c: uniq/Cell, r: ref/Cell) => ()\nvar c = Cell.init()\nf(c@uniq, c@ref)")]
     [InlineData("var c = Cell.init()\nlet r = c@ref\nlet f = func [r] () => read(r)\nset(c@uniq, f())\nlet n = f()")]
@@ -102,8 +102,6 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("var text = \"owned\"\nKimi.Intrinsics.exchange(text@uniq, with: text@move)")]
     [InlineData("func both(o: objuniq/Cell, r: objref/Cell) => ()\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nboth(o@objuniq, o@objref)")]
     [InlineData("func put(o: objuniq/Cell, n: i32) => ()\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nlet u = o@objuniq\nput(u@objuniq, read(o@follow@ref))")]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3))")]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3))")]
     public void RejectsConflictsAndBoundaries(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
@@ -112,6 +110,13 @@ public class CallReservationTest(ITestOutputHelper output)
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.False(c.Generate(TextWriter.Null));
     }
+
+    // A `match` that selects the exclusive argument, with a later argument reading the same Place, is one Loan conflict at the read (H5),
+    // relating the selected Borrow and the call. Its closer is on its own line: on the closing line of the arms it was
+    // OuterCloserInBody_Kd, which the old reads never saw (R6-check H8a commit 8, B3's cause).
+    [Fact]
+    public void AMatchSelectedExclusiveArgumentConflictsWithALaterRead()
+        => this.AssertOneRecord(Cell + "var c = Cell.init()\nset((match true\n    true => c@uniq\n    false => c@uniq\n), read(c))", "ComparisonLoanConflict_Kd", "c", LoanConflict, "borrow 8:13 c@uniq | loan 7:1 set((match true\n    true => c@uniq\n    false => c@uniq\n), read(c))", "c))");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -128,19 +133,19 @@ public class CallReservationTest(ITestOutputHelper output)
     public void AbortDoesNotActivateOrUnwind()
         => ScalarEmissionTest.EmitFixture("CallReservationAbort", Cell + "func run()\n    var c = Cell.init()\n    defer => Console.writeLine(\"unexpected cleanup\")\n    set(c@uniq, $abort(\"stop\"))\nrun()", string.Empty, 1, "Hello.kimi:9:17: abort KIMI_E_ABORT: stop\n");
 
+    // SPEC 15.6.7: a conflict at activation and one during preparation are told apart by their codes (H5; R6-check H8a D2). The
+    // activation's record relates the conflicting Borrow, the call and the reservation. The preparation's is
+    // AnOperationDuringPreparationConflictsOnceWithTheReservation's first row, the same program with its closer on its own line.
     [Theory]
-    [InlineData("func both(c: uniq/Cell, r: ref/Cell) => ()\nvar c = Cell.init()\nboth(c@uniq, c@ref)", true)]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3))", false)]
-    public void DiagnosticsIdentifyPreparationOrActivation(string body, bool activation)
-    {
-        var c = MinimalEmissionTest.Analyze(Cell + body);
-        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Reservation >= 0 && x.Activation == activation);
-    }
+    [InlineData("func both(c: uniq/Cell, r: ref/Cell) => ()\nvar c = Cell.init()\nboth(c@uniq, c@ref)", "CallActivationConflict_Kd", "both(c@uniq, c@ref)", ActivationConflict, "borrow 8:14 c@ref | loan 8:1 both(c@uniq, c@ref) | reservation 8:6 c@uniq")]
+    public void DiagnosticsIdentifyPreparationOrActivation(string body, string code, string text, string message, string related)
+        => this.AssertOneRecord(Cell + body, code, text, message, related);
 
     // SPEC 15.6.7: an exclusive input whose target is still lent to a live exclusive Reborrow is one conflict. The reservation
     // does not conflict with another reservation; the call's exclusive acquisition cannot activate while the Reborrow lives. Since the
     // MIR decides acceptance (H5, DECISIONS R5-M185) the record is A5's Loan conflict at the input (H3b T46: CallActivationConflict_Kd at
-    // the call before), relating the Reborrow and its later use, without the Note naming the implicit acquisition (T49, until A6).
+    // the call before), relating the Reborrow and its later use, without the Note naming the implicit acquisition (A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(3)\nsecond.set(2)", "target", "target.set(3)", "borrow 8:25 target | loan 10:1 second")]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second = target\ntarget.set(3)\nsecond.set(2)", "target", "target.set(3)", "borrow 8:14 target | loan 10:1 second")]
@@ -156,7 +161,7 @@ public class CallReservationTest(ITestOutputHelper output)
 
     // SPEC 15.6.7: when the Reborrow's last use is a later argument, the reserved input meets the active Loan during preparation
     // and the Loan has ended at activation. The input conflicts with that Loan, not with a call reservation. The record relates the
-    // Reborrow and its later use, without the implicit acquisition's Note (H5; H3b T49, until A6 publishes it).
+    // Reborrow and its later use, without the implicit acquisition's Note (H5; A6 has no acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(read(second))", "target", "target.set(read", "borrow 8:25 target | loan 9:17 second")]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nset(target, read(second))", "target", "target, read", "borrow 8:25 target | loan 9:18 second")]
@@ -179,7 +184,8 @@ public class CallReservationTest(ITestOutputHelper output)
     // `drain.reset(values.iterateUniq())`, `values` meets the Loan `drain` keeps, not the reservation of `drain`. A Loan still
     // live at activation is one conflict. Since the MIR decides acceptance (H5, DECISIONS R5-M185) it is A5's Loan conflict at the
     // receiver (H3b T46: CallActivationConflict_Kd at the call before), relating the receiver's earlier Borrow and the later use of a
-    // value retaining its Loan (`first` keeps the item it took from `drain`), without the implicit acquisition's Note (T49, until A6).
+    // value retaining its Loan (`first` keeps the item it took from `drain`), without the implicit acquisition's Note (A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(4)\nlet n = it.next()", "values", "values.append(4)", "borrow 7:10 values | loan 9:9 it")]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\n(values).append(4)\nlet n = it.next()", "(values)", "(values).append(4)", "borrow 7:10 values | loan 9:9 it")]
@@ -196,7 +202,8 @@ public class CallReservationTest(ITestOutputHelper output)
         => this.AssertOneRecord(Cell + body, "ComparisonLoanConflict_Kd", input, LoanConflict, related, at);
 
     // SPEC 15.6.7: when the Loan's last use is a later argument, the receiver meets it during preparation only. The record at the input
-    // relates the receiver's earlier Borrow and the Loan's later use, without the implicit acquisition's Note (H5; H3b T49, until A6).
+    // relates the receiver's earlier Borrow and the Loan's later use, without the implicit acquisition's Note (H5; A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(consume(it@move))", "values", "values.append", "borrow 8:10 values | loan 9:23 it")]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "borrow 8:10 table | loan 9:31 it")]
@@ -228,8 +235,8 @@ public class CallReservationTest(ITestOutputHelper output)
 
     // SPEC 15.6.7: two overlapping exclusive inputs are one problem. Since the MIR decides acceptance (H5, DECISIONS R5-M185) it is A5's
     // one record at the call whose activation meets the overlap (H3b T44: at the later input before), relating the later Borrow, the
-    // later use of the value that retains it (the call) and the reservation it meets, without the implicit acquisitions' Note (T49,
-    // until A6).
+    // later use of the value that retains it (the call) and the reservation it meets, without the implicit acquisitions' Note (A6 has
+    // no acquisition fact, PLAN G433).
     [Theory]
     [InlineData(Both + "var c = Cell.init()\nboth(c@uniq, c@uniq)", "both(c@uniq, c@uniq)", "borrow 8:14 c@uniq | loan 8:1 both(c@uniq, c@uniq) | reservation 8:6 c@uniq")]
     [InlineData("var p: i32 = 1\nKimi.Intrinsics.swap(p@uniq, p@uniq)", "Kimi.Intrinsics.swap(p@uniq, p@uniq)", "borrow 7:30 p@uniq | loan 7:1 Kimi.Intrinsics.swap(p@uniq, p@uniq) | reservation 7:22 p@uniq")]
@@ -247,11 +254,17 @@ public class CallReservationTest(ITestOutputHelper output)
     // SPEC 15.6.7: a write or Move during preparation, here in an argument that catches its own transfer, conflicts with the
     // reservation once, at the operation. Since the MIR decides acceptance (H5, DECISIONS R5-M185) A5's record relates the reserved
     // Borrow and, since the reserved argument's next use, the call, lies past the label block, that argument's declaration as the value
-    // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related or
-    // the implicit acquisition's Note (H3b T49, until A6; the Move below, which no block separates from its call, relates the call).
+    // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related (the
+    // reservation it meets is the Loan, related as `borrow`; A6's `Reservation` is an activation's or a destruction's) or the implicit
+    // acquisition's Note (no A6 fact, PLAN G433; the Move below, which no block separates from its call, relates the call).
+    // From a defer's write the walk follows the exit's drop chain to the call, since the block's body end, no completion of a block
+    // that is no Never form, has no check edge (DECISIONS R4-M175; a record-selection move, Q13), so that row relates the call.
     [Theory]
     [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
+    [InlineData(
+        "var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))",
+        "c.value = 2",
+        "borrow 7:5 c@uniq | loan 7:1 set(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))")]
     [InlineData("func run()\n    var c = Cell.init()\n    set(c@uniq, (label scope: do\n        c.value = 2\n        exit to scope 3\n    ))\nrun()", "c.value = 2", "borrow 8:9 c@uniq | loan 8:9 c@uniq" + Retaining)]
     [InlineData("var c = Cell.init()\nc.set((label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:1 c | loan 7:1 c" + Retaining)]
     [InlineData("var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.0.value = 2\n    exit to scope 3\n))", "pair.0.value = 2", "borrow 7:5 pair.0@uniq | loan 7:5 pair.0@uniq" + Retaining)]
@@ -259,7 +272,8 @@ public class CallReservationTest(ITestOutputHelper output)
         => this.AssertOneRecord(Cell + body, "CallReservationConflict_Kd", operation, ReservationConflict, related);
 
     // SPEC 15.6.7: a Move of the reserved target during preparation is one reservation conflict at the moved operand, relating the
-    // reserved Borrow and the later use of its reservation, the call, without a `reservation` related (H5; H3b T49, until A6).
+    // reserved Borrow and the later use of its reservation, the call, without a `reservation` related (H5; the reservation it meets is
+    // the Loan, related as `borrow`: DIAGNOSTICS A6's `Reservation` is an activation's or a destruction's).
     [Fact]
     public void AMoveDuringPreparationConflictsOnceWithTheReservation()
         => this.AssertOneRecord(Cell + "var text = \"owned\"\nKimi.Intrinsics.exchange(text@uniq, with: text@move)", "CallReservationConflict_Kd", "text", ReservationConflict, "borrow 7:26 text@uniq | loan 7:1 Kimi.Intrinsics.exchange(text@uniq, with: text@move)", "text@move");
@@ -353,13 +367,41 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("var o = Kimi.Intrinsics.makeObj(Cell.init())\nlet r = o@objref\nlet u = r@objuniq")]
     [InlineData("let o = Kimi.Intrinsics.makeObj(Cell.init())\nlet u = o@objuniq")]
     [InlineData("var c = Cell.init()\nlet u = c@objuniq/Cell")]
-    [InlineData("func bad(c: uniq/Cell, n: i32 = (label scope: do\n    c.value = 2\n    exit to scope 3)) => ()\nvar c = Cell.init()\nbad(c)")]
     [InlineData("func bad(c: uniq/Cell, r: ref/Cell = c@ref) => ()\nvar c = Cell.init()\nbad(c)")]
     public void RejectsPermissionAndDefaultEscapes(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // A default that writes its exclusive parameter is DefaultArgumentAccess_Kd at the write, relating the parameter's Borrow, beside the
+    // call's independent ExclusiveBorrowRequired_Kd (SPEC 23.1.2). Its closer is on its own line: on the block's last line it was
+    // OuterCloserInBody_Kd, which the old assertion never saw (R6-check H8a commit 8, B3's cause).
+    [Fact]
+    public void ADefaultWritingItsExclusiveParameterIsRejectedAtTheWrite()
+    {
+        var source = Cell + "func bad(c: uniq/Cell, n: i32 = (label scope: do\n    c.value = 2\n    exit to scope 3\n)) => ()\nvar c = Cell.init()\nbad(c)";
+        var result = DiagnosticCorpus.Check(source);
+        Assert.False(result.Accepted);
+        Assert.Equal(
+            [(nameof(DiagnosticCode.DefaultArgumentAccess_Kd), source.IndexOf("c.value = 2", StringComparison.Ordinal), "c.value = 2", "borrow 6:13 uniq/Cell"),
+                (nameof(DiagnosticCode.ExclusiveBorrowRequired_Kd), source.LastIndexOf("(c)", StringComparison.Ordinal) + 1, "c", string.Empty)],
+            result.Diagnostics.Select(x => (x.Code, x.Span!.Value.Start, Text(source, x.Span), Related(source, x))));
+    }
+
+    // The MIR's one record of a rejected program after final Binding (H5, DECISIONS R5-M185; R6-check H8a D2): one published Error with
+    // `code` at `text`, starting where `at` (by default `text`) first occurs, with no Note and the related locations `related` lists, as
+    // AssertOneRecord states them.
+    internal static Compilation AssertMirRecord(string source, DiagnosticCode code, string text, string related, string? at = null)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        c.ReportAnalysis();
+        var error = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission).Diagnostics);
+        Assert.Equal((code.ToString(), source.IndexOf(at ?? text, StringComparison.Ordinal), text, (string?)null), (error.Code, error.Span!.Value.Start, Text(source, error.Span), error.Note));
+        Assert.Equal(related, Related(source, error));
+        return c;
     }
 
     private static void AssertAccepted(string source)
@@ -371,6 +413,11 @@ public class CallReservationTest(ITestOutputHelper output)
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
+
+    // The related locations of a record, each "role line:column text" (1-based, in the whole source), followed by "(label)" where its
+    // label is not its role's usual one.
+    private static string Related(string source, CheckDiagnostic error)
+        => string.Join(" | ", (error.Related ?? []).Select(x => $"{x.Role} {x.Range!.Value.Start.Line + 1}:{x.Range.Value.Start.Character + 1} {Text(source, x.Span)}{OtherLabel(x)}"));
 
     private static string Text(string source, SourceSpan? span) => source.Substring(span!.Value.Start, span.Value.Length);
 
@@ -403,7 +450,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal((code, DiagnosticSeverity.Error, message, (string?)null), (error.Code, error.Severity, error.Message, error.Note));
         Assert.Equal((source.IndexOf(at ?? text, StringComparison.Ordinal), text), (error.Span!.Value.Start, Text(source, error.Span)));
-        Assert.Equal(related, string.Join(" | ", error.Related!.Select(x => $"{x.Role} {x.Range!.Value.Start.Line + 1}:{x.Range.Value.Start.Character + 1} {Text(source, x.Span)}{OtherLabel(x)}")));
+        Assert.Equal(related, Related(source, error));
         var labels = error.Related!.Select(static x => x.Label!).ToArray();
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);

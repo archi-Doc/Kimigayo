@@ -140,7 +140,7 @@ func sumPair<T>(left: ref/T, right: ref/T) -> T
 
 ### 13.3.4. Route selection
 
-Selection is static. Operand Types come from syntax, explicit context and published premises; safe value-reference layers are followed to the terminal Type ([§3.4.3](03-types-and-values.md#343-reference-path-selection)), keeping their capabilities, Origins and Loans. An unknown Type parameter or associated Type is a terminal; object and raw payloads are not followed. The route is chosen before any conformance is sought:
+Selection is static. Operand Types come from syntax, explicit context and published premises; safe value-reference layers are followed to the terminal Type ([§3.4.3](03-types-and-values.md#343-reference-path-selection)), keeping their capabilities, Origins and Loans. An unknown Type parameter or associated Type is a terminal; object and raw payloads are not followed. The raw-pointer row takes the left operand's own Type, never a raw pointer reached through a layer, since a raw pointer is not a read Type ([§3.5.3](03-types-and-values.md#353-value-read)): for `r: ref/raw/T`, write `r@follow + n`. The route is chosen before any conformance is sought:
 
 | Terminal operand Types | Route |
 | --- | --- |

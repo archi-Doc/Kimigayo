@@ -17,7 +17,7 @@ public enum DiagnosticFault : byte
     /// <summary>A report's arguments do not match its code's definition.</summary>
     InvalidArgument,
 
-    /// <summary>An exception ended the analysis while diagnostic collection stayed intact.</summary>
+    /// <summary>An exception ended a result while diagnostic collection stayed intact.</summary>
     Exception,
 
     /// <summary>Collecting or finalizing diagnostics failed.</summary>

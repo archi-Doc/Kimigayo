@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Owns consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
+// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
 // This concern preserves the existing cause order and performs no diagnostic rendering.
@@ -83,6 +83,49 @@ public sealed partial class Binding
         return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
     }
 
+    private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
+    {
+        if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
+        {
+            failure = BindingFailure.QualificationRequired;
+            (this.qualificationFailures ??= new(ReferenceEqualityComparer.Instance))[node] = qualification;
+            unresolved = false;
+        }
+
+        // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
+        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        {
+            this.consulted.Add(node);
+        }
+
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            if (this.FailedOriginClause(node) is null)
+            {
+                return null;
+            }
+
+            this.partPrerequisites.Remove(node); // The resting InvalidOrigin of the node's own clause yields, with its edge (SlotTaken).
+        }
+
+        if (unresolved)
+        {
+            this.MarkUnresolved(node);
+        }
+        else
+        {
+            node.BindingState = BindingState.Invalid;
+        }
+
+        node.BindingFailure = failure;
+        return null;
+    }
+
+    // DIAGNOSTICS rule 4, SPEC 23.1.2: the node's slot holds a failure a later one leaves, its first, but for the resting InvalidOrigin of
+    // its own failed Origin clause (FailedOriginClause), which a later failure of the node takes with the clause's edge (D-2). A writer that
+    // keeps facts only for the slot's failure reads this, as Fail does.
+    private bool SlotTaken(Koto node) => node.BindingFailure != BindingFailure.None && this.FailedOriginClause(node) is null;
+
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
     private void MarkUnresolved(Koto node)
     {
@@ -131,6 +174,27 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
+    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame): nothing becomes its prerequisite.
+    private void DropConsultation((int Start, Koto? Node) parent)
+    {
+        this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
+        (this.consultationStart, this.consultationNode) = parent;
+    }
+
+    // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
+    // node's prerequisite: a header that a set Type demands is its declaration's (BindType), a part an unselected call binds on its
+    // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
+    // or a Property contains is read by no verdict of it (BindContainedDeclarations, BindVariableCore; DECISIONS G52-1). ResumeConsultation
+    // reopens the frame.
+    private (int Start, Koto? Node) SuspendConsultation()
+    {
+        var parent = (this.consultationStart, this.consultationNode);
+        (this.consultationStart, this.consultationNode) = (-1, null);
+        return parent;
+    }
+
+    private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
+
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>
@@ -160,11 +224,10 @@ public sealed partial class Binding
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part.
     private bool IsDerived(Koto node)
-        => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
+        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
-            (node.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(node, out var declaration) &&
-            declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(node, out var cause) && ReferenceEquals(cause, clause)) ||
+            this.FailedOriginClause(node) is not null ||
             (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||
             (node.BindingFailure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses?.ContainsKey(occurrence) == true) ||
@@ -173,8 +236,11 @@ public sealed partial class Binding
             (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
             this.formationCauses?.ContainsKey(read) == true);
 
-    // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
-    private bool RestsOnRecovery(Koto node)
+    // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
+    // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
+    // other, from that record and adds none; a refusal at its own site stays its own record. The one place of the rule; the walk
+    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
+    private bool RestsOnRecoveryOrLimit(Koto node)
     {
         if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
         {
@@ -186,6 +252,7 @@ public sealed partial class Binding
         visited.Add(node);
         this.PushPrerequisites(node, pending);
         var found = false;
+        var limit = !this.ResourceFailed(node);
         while (pending.TryPop(out var cause))
         {
             if (!visited.Add(cause))
@@ -193,7 +260,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (IsRecovery(cause, out _))
+            if (IsRecovery(cause, out _) || (limit && this.ResourceFailed(cause)))
             {
                 found = true;
                 pending.Clear();
@@ -225,6 +292,11 @@ public sealed partial class Binding
     /// <param name="node">The failed node.</param>
     /// <param name="part">The part its failure rests on when that part fails.</param>
     private void AddPendingPrerequisite(Koto node, Koto part) => this.partPrerequisites.TryAdd(node, part);
+
+    // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
+    private bool ResourceFailed(Koto node)
+        => node.BindingFailure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, node.BindingFailure), out var entry) &&
+            entry.Category == DiagnosticCategory.Resource;
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.

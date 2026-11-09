@@ -182,18 +182,6 @@ public class AbstractCallReachTest
         ["KeyedCells"] = ("(KeyedCells during q)", string.Empty, RequirementIdentityTest.KeyedTake + KeyedCells),
     };
 
-    // The default pipeline's two listed L1 exceptions (PLAN G217), each pinned as the one record its generic does not cover, so the row
-    // fails when the old path changes; the MIR has none. gx9 (G217's N9 fact): the generic body is accepted while its concrete twin's
-    // shared read of the source meets the exclusive item (H: AddType gives a projection's Origin argument the schema's shared mode).
-    // again runs the opposite way: the old path rejects the concrete instance, which SPEC 15.6.3 and 15.6.4 and the MIR accept as they
-    // accept the generic (its over-strictness on concrete code, G217's p4), so no weaker abstract model and no counterexample that the
-    // proposal's 4.3 routes to a restriction of the base rule; its pin fails when p4 is fixed or the old path goes at R6-check.
-    private static readonly Dictionary<string, string> OldPathGaps = new()
-    {
-        ["gx9 Concrete"] = "ComparisonLoanConflict_Kd at inspect(values@ref)",
-        ["again UniqItems"] = "CallActivationConflict_Kd at let second = it.next()",
-    };
-
     /// <summary>Gets L1's pairs: each generic case with each of its instances.</summary>
     public static TheoryData<string, string> Instantiations => [.. Generics.SelectMany(static x => x.Instances.Split(' ').Select(i => (x.Name, i)))];
 
@@ -302,8 +290,7 @@ public class AbstractCallReachTest
 
     // SPEC 8.15.1, 15.3.7 (L1 of the adopted proposal Abstract Calls Reach by Paths, its 4.1): a generic body is checked at least as
     // strictly as each concrete instantiation, so every record an instance reports, its generic reports in the same declaration at the
-    // same or an earlier line (and an accepted generic has accepted instances): on the MIR for every pair, on the default pipeline but
-    // for its listed gaps.
+    // same or an earlier line (and an accepted generic has accepted instances), on the MIR for every pair.
     [Theory]
     [MemberData(nameof(Instantiations))]
     public void AGenericBodyIsAtLeastAsStrictAsItsInstances(string name, string instance)
@@ -312,9 +299,7 @@ public class AbstractCallReachTest
         var (type, item, declarations) = Instances[instance];
         var generic = Records(Source + Opener + text + "\n" + declarations + Main);
         var concrete = Records(Source + Opener + Instantiate(text, parameter, type, item) + "\n" + declarations + Main);
-        Assert.Empty(Uncovered(generic.Mir, concrete.Mir));
-        string[] gaps = OldPathGaps.TryGetValue(name + " " + instance, out var gap) ? [gap] : [];
-        Assert.Equal(gaps, Uncovered(generic.Old, concrete.Old));
+        Assert.Empty(Uncovered(generic, concrete));
     }
 
     // Warm ownership analysis of a body with requirement calls reuses its tables.
@@ -366,21 +351,19 @@ public class AbstractCallReachTest
         return Regex.Replace(text, $@"\b{p}\b", type);
     }
 
-    // A program's Error records in its source as their declaration's line, their line and their code at the line's text, independent of
-    // KIMI_PIPELINE: on the MIR, its construction records and every analysis's problems, with no validator finding; on the default
-    // pipeline, the old path's records.
-    private static ((int Owner, int Line, string Text)[] Mir, (int Owner, int Line, string Text)[] Old) Records(string source)
+    // A program's Error records in its source as their declaration's line, their line and their code at the line's text: the MIR's
+    // construction records and every analysis's problems, with no validator finding.
+    private static (int Owner, int Line, string Text)[] Records(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var old = LegacyRecords.Of(c).Where(static x => x.Node.CodeContext?.SourceDocument?.Path == "Hello.kimi").Select(static x => (x.Code, x.Node));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var mir = program.Records(MirRecordClass.Construction)
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(static x => new Problem(x.Code, x.Subject)))
             .Where(static x => x.Subject.Module == 0).Select(x => (x.Code, c.SyntaxOf(x.Subject)));
         var lines = source.Split('\n');
-        return ([.. Sites(mir)], [.. Sites(old)]);
+        return [.. Sites(mir)];
 
         IEnumerable<(int, int, string)> Sites(IEnumerable<(DiagnosticCode Code, Koto Node)> records)
             => records.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)

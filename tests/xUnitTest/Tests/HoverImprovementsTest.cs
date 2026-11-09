@@ -2,6 +2,7 @@
 
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -175,6 +176,35 @@ public sealed class HoverImprovementsTest
         }
     }
 
+    // SPEC 15.1.6, 3.5.2, 23.1.2 (DECISIONS BU-110): a for or match item whose Copy proof is Error writes no failure on its binding, which
+    // keeps its hover; an edit that makes the item Copy, then a rebind, binds it Copy with its hover and no failure left from the edited
+    // pass. Fail-before (792ee508d): the for loop's binding had no hover in either compilation and kept InvalidConstraint after the edit.
+    [Theory]
+    [InlineData("func g(xs: Array<Bad>)\n    for x in xs@move\n        let y = x@move\n", "x in")]
+    [InlineData("func g(o: Option<Bad>)\n    match o@move\n        .Some(let x) => take(x@move)\n        .None => ()\nfunc take(b: Bad) => ()\n", "x)")]
+    public void AnItemWhoseCopyProofIsErrorKeepsItsBindingAcrossAnEdit(string body, string binding)
+    {
+        var source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\n" + body;
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.CollectHover = true;
+        c.Kotonoha.AddSource(new("main.kimi", source));
+        Assert.False(c.Bind().IsComplete);
+        Assert.NotNull(At(Hover(c), source.IndexOf(binding, StringComparison.Ordinal)).Info.Variable);
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().First();
+        var donor = ParseTestHelper.ParseSuccess(source.Replace("string = \"\"", "i32 = 0", StringComparison.Ordinal));
+        var replacement = KotoTree.Walk(donor.RootKoto).OfType<PropertyKoto>().First();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+        Assert.True(KotoHelper.Replace(field.Parent!, field, replacement));
+        Assert.True(c.Bind().IsComplete);
+        HirTables.Publish(c);
+        var rows = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() is "x" or "let x" && HirTables.Op(x) == HirOp.Syntax)
+            .Select(static x => $"{HirTables.AdjustOf(x).Acquire} {HirTables.Failure(x)}");
+        Assert.Contains("Copy None", rows);
+        Assert.DoesNotContain(rows, static x => !x.EndsWith(" None", StringComparison.Ordinal));
+        Assert.NotNull(At(Hover(c), source.IndexOf(binding, StringComparison.Ordinal)).Info.Variable);
+    }
+
     [Theory]
     [InlineData("(i32, bool)", "Core: (i32, bool)")]
     [InlineData("() -> i32", "Core: () -> i32")]
@@ -204,6 +234,25 @@ public sealed class HoverImprovementsTest
         Assert.Equal(-1, document.Find(source.LastIndexOf("missing", StringComparison.Ordinal)));
         Assert.Equal(-1, document.Find(source.IndexOf("duplicate =", StringComparison.Ordinal)));
         Assert.Equal(-1, document.Find(source.LastIndexOf("duplicate", StringComparison.Ordinal)));
+    }
+
+    // SPEC 9.4.1 (PLAN G250 (4)): a struct qualifier is described as its Type although the member it selects is inaccessible, as when
+    // the member is accessible (the last row), in a call, a value, a Function Item and a Case: Binding binds the qualifier in its
+    // container role where it rejects the member.
+    [Theory]
+    [InlineData("struct T\n    group G\n        public struct Box\n            public init() => ()\n", "T.G.Box.init()", "T", false)]
+    [InlineData("struct T\n    struct Box\n        public init() => ()\n", "T.Box.init()", "T", false)]
+    [InlineData("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\n", "T<i32>.G.Box.init()", "T<i32>", false)]
+    [InlineData("struct T\n    public struct U\n        group G\n            public struct Box\n                public init() => ()\n", "T.U.G.Box.init()", "T", false)]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "T.G.value", "T", false)]
+    [InlineData("struct T\n    group G\n        public func one() -> i32 => 1\n", "T.G.one", "T", false)]
+    [InlineData("struct T\n    enum K\n        A\n", "T.K.A", "T", false)]
+    [InlineData("struct T\n    public group G\n        public struct Box\n            public init() => ()\n", "T.G.Box.init()", "T", true)]
+    public void AStructQualifierOfAnInaccessibleMemberKeepsItsDescription(string declarations, string use, string type, bool accepted)
+    {
+        var source = declarations + "func f()\n    let b = " + use + "\n";
+        var body = Render(At(Project(source, accepted), source.IndexOf("= T", StringComparison.Ordinal) + 2), false);
+        Assert.Contains("\nType: " + type + "\n", body);
     }
 
     [Fact]
@@ -387,6 +436,8 @@ public sealed class HoverImprovementsTest
         Assert.Equal(accepted, result.IsComplete);
         return HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath("main.kimi")];
     }
+
+    private static HoverDocument Hover(Compilation compilation) => HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath("main.kimi")];
 
     private static HoverEntry At(HoverDocument document, int position)
     {

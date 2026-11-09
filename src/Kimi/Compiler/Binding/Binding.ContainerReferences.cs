@@ -145,6 +145,18 @@ public sealed partial class Binding
         return null;
     }
 
+    // A lookup publishes the qualifier it selected. Its Resolved, without a Type, stands only where no binder has decided the node: a
+    // qualifier its binder failed, directly or by resting on a part, keeps that outcome (BindType replaces the lookup's Resolved), so
+    // its record is reported and a consumer rests on it (SPEC 23.1.2; PLAN G481).
+    private static void PublishQualifier(Koto qualifier, BindingSymbol symbol)
+    {
+        qualifier.BoundSymbol = symbol;
+        if (qualifier.BindingState == BindingState.Unvisited)
+        {
+            qualifier.BindingState = BindingState.Resolved;
+        }
+    }
+
     // SPEC 15.4.4, 9.7.2: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
     // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
     // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
@@ -299,7 +311,7 @@ public sealed partial class Binding
 
         if (path is MemberAccessKoto member)
         {
-            var qualifier = this.TypeName(member.Left, scope, false);
+            var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
             {
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
@@ -379,7 +391,11 @@ public sealed partial class Binding
 
         if (symbol.Declaration is GroupKoto)
         {
-            var result = this.BindContainerReference(syntax, symbol, scope, context, []);
+            // SPEC 6.1, 9.7: a group has no own parameters, so written arguments meet the one arity check of written arguments.
+            var result = UnwrapTypeSyntax(syntax) is GenericsKoto generic ? this.BindConstructedType(generic, symbol, scope, context) : this.BindContainerReference(syntax, symbol, scope, context, []);
+
+            // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
+            syntax.BoundSymbol = symbol;
             return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 

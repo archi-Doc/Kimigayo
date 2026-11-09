@@ -10,6 +10,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly List<AliasKoto> aliases = new();
     private readonly Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument = new();
     private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
     private readonly Dictionary<(SourceDocument Document, string Name), AliasImport> namedAliases = new();
@@ -150,7 +151,7 @@ public sealed partial class Binding
             try
             {
                 var originDeclaration = this.BeginOriginDeclaration(alias, scope);
-                var symbol = this.TypeName(targetSyntax, scope, false);
+                var symbol = this.TypeName(targetSyntax, scope, LookupRole.Any);
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
@@ -181,7 +182,7 @@ public sealed partial class Binding
         for (var i = 0; i < alias.QualifiedName.Count; i++)
         {
             var name = alias.QualifiedName[i];
-            var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), declarationScope, alias, false) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
+            var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectQualifier(scope.Types.GetValueOrDefault(name), declarationScope, alias) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
             if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
                 this.Fail(alias, BindingFailure.MissingName, true);

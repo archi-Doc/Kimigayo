@@ -38,7 +38,7 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
     [InlineData("owner.value += 1", "owner.value")]
     [InlineData("owner@follow.value = 9", "owner@follow.value")]
     [InlineData("let old = Kimi.Intrinsics.replace(owner@follow@uniq, with: Item.init(2))", "owner@follow@uniq")]
-    [InlineData("var other = Item.init(2)\nKimi.Intrinsics.exchange(owner@follow@uniq, other@uniq)", "owner@follow@uniq")]
+    [InlineData("var other = Item.init(2)\nlet old = Kimi.Intrinsics.exchange(owner@follow@uniq, with: other@move)", "owner@follow@uniq")]
     public void CountedPayloadsGrantSharedAccessOnly(string operation, string target)
     {
         foreach (var factory in new[] { "makeRc", "makeArc" })

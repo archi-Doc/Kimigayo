@@ -203,7 +203,7 @@ public sealed partial class MirBuildTest
 
     // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
     // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain, at a position, ^x, a key or a range) is one
-    // located Unsupported_Kd at the selection on every pipeline, its Opaque site naming only the receiver's root, decided before anything
+    // located Unsupported_Kd at the selection, its Opaque site naming only the receiver's root, decided before anything
     // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
     // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
     // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). A ^x Binding applied directly (Op Range), a position or a
@@ -224,20 +224,16 @@ public sealed partial class MirBuildTest
     {
         var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
             $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
-        foreach (var pipeline in (CompilerPipeline[])[CompilerPipeline.Legacy, CompilerPipeline.Mir])
-        {
-            var c = Compilation.CreateForTest();
-            c.Pipeline = pipeline;
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            c.Analyze();
-            c.Binding.ReportDiagnostics();
-            c.ReportAnalysis();
-            var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
-            Assert.Equal([("Unsupported_Kd", selection)], errors);
-        }
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
+        Assert.Equal([("Unsupported_Kd", selection)], errors);
 
         var program = Compile(source).BuildMir();
         Assert.Empty(program.Findings);
@@ -461,6 +457,25 @@ public sealed partial class MirBuildTest
         var codes = TestDiagnostics.Of(c).Select(static x => x.Code).ToArray();
         Assert.Contains(nameof(DiagnosticCode.InvalidJumpTarget_Kd), codes);
         Assert.DoesNotContain(nameof(DiagnosticCode.InternalInvariant_Kd), codes);
+    }
+
+    // SPEC 23.1.2 (DECISIONS R5-M63, R5-M84): the Opaque site of a jump Binding rejects names the root of the Place its operand
+    // designates, built already, a parameter's or a static's, and none for a constant (fail-before: a static's root, ~index, was taken for
+    // none and dropped).
+    [Theory]
+    [InlineData("x.b", "_1")]
+    [InlineData("G.s.b", "static0")]
+    [InlineData("1", "")]
+    public void ARejectedJumpsSiteNamesItsOperandsRoot(string operand, string roots)
+    {
+        var program = Compile("struct S\n    public var b: i32 = 2\n    public init() => ()\ngroup G\n    public var s: S = S.init()\n" +
+            $"func f(x: S)\n    if true\n        yield {operand}\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        var site = Assert.Single(Regex.Matches(dump.Split("\nfn ")[0], @"opaque \d+ @\d+:([^\r\n]*)"));
+        Assert.Equal(roots, site.Groups[1].Value.Trim());
     }
 
     // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.

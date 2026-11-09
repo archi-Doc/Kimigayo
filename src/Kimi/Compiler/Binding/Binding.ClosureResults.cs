@@ -7,7 +7,7 @@
 //   the Closure's call result atom where a source was left out and none remains or one rests on a failure (an Unbound one), and static
 //   where the position has no source; FitResultSources, each returned value fitted to it in the Closure's body, so a left-out source is
 //   Refuted at the returned value; CallResultOrigin, that call result atom, which each call substitutes by its Unbound atom (R4-M118).
-// - Inputs: the result Type with its local regions resolved (ResolveLocalResultOrigins), the classified receiver, the Closure's body and
+// - Inputs: the result Type with its own body's regions resolved (ResolveLocalResultOrigins), the classified receiver, the Closure's body and
 //   its result context's sources.
 // - Outputs: the published Type; the fits' records, through the binding-time fit and its recording (RecordOriginFitFailure).
 // - Invariants: an admissible source stays, so its fit holds by the meet law; a region of the Closure's body with no source is no source;
@@ -145,8 +145,8 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var resolved = this.ResolveLocalResultOrigins(source);
-                if (!this.FitsTypeAt(resolved, published, node, out var failure) && !this.CheckLocalTypeUse(resolved, published, node))
+                var resolved = this.ResolveLocalResultOrigins(source, body);
+                if (!this.FitsValueAt(resolved, published, node, node, out var failure))
                 {
                     this.FailMismatch(node.Parent is JumpKoto jump ? jump : node, node, resolved, published, failure);
                 }

@@ -186,7 +186,7 @@ public static partial class Parser
         if (reader.AttributeKoto is not null)
         {
             reader.Expect(SyntaxForm.Declaration);
-            _ = reader.PopAttribute();
+            reader.AttributeKoto = null;
         }
     }
 
@@ -358,10 +358,24 @@ public static partial class Parser
         }
     }
 
+    // A Condition is a header expression: the indented body after it is the directive's target, never part of it (SPEC 19.1).
+    private static Koto ParseRequiredCompileTimeCondition(ref TokenReader reader)
+    {
+        var previous = reader.IsParsingCompileTimeCondition;
+        reader.IsParsingCompileTimeCondition = true;
+        try
+        {
+            return ParseHeaderExpression(ref reader);
+        }
+        finally
+        {
+            reader.IsParsingCompileTimeCondition = previous;
+        }
+    }
+
     private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
     {
         // Every Condition is validated, including inside excluded syntax (SPEC 19.3).
-        var attributes = reader.PopAttribute();
         reader.Advance(2); // The caller saw '#' and 'if'.
         var condition = ParseRequiredCompileTimeCondition(ref reader);
         var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
@@ -369,11 +383,6 @@ public static partial class Parser
         {
             reader.Expect(SyntaxForm.LineEnd);
             SkipCompileTimeHeaderRemainder(ref reader);
-        }
-
-        if (attributes is not null)
-        {
-            reader.PushAttribute(attributes);
         }
 
         var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);

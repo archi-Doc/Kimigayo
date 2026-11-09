@@ -48,14 +48,14 @@ internal sealed partial class MirBuilder
             case HirOp.Literal:
                 this.Use(destination, this.Literal(node), node);
                 break;
-            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.Meaning(node) is BoundType item:
+            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.TypeOf(node) is { } item:
                 this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
                 this.Assign(destination, Child(node), input);
                 break;
             case HirOp.Block:
-                this.Block(destination, (CodeBlockKoto)node);
+                this.CodeBlock(destination, (CodeBlockKoto)node);
                 break;
             case HirOp.Call when HirTables.PlaceOf(node).Kind != HirPlaceKind.CallResult: // A subscript's element is read below as its Place.
                 this.Call(destination, node);
@@ -186,12 +186,20 @@ internal sealed partial class MirBuilder
             return HirTables.Op(node) == HirOp.Literal ? this.Literal(node) : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
-        if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
+        if (adjust.Acquire == HirAcquire.Unset)
+        {
+            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103):
+            // InternalInvariant_Kd, the value a derived Opaque.
+            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+            return MirOperand.Move(this.Unsupported(node, derived: true, expected));
+        }
+
+        if (adjust.Acquire == HirAcquire.Failed || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            // An Error proof or a Place without a Type (Bare) leaves a consumed child's acquisition unset, so its value is derived from
-            // that error (SPEC 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
-            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Unset, expected));
+            // A failed acquisition (HirAcquire.Failed) is derived from that error (SPEC 23.1.2; DECISIONS BU-103); a projected receiver's
+            // storage is its Field's (Member), and the other adaptations are not built yet.
+            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Failed, expected));
         }
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
@@ -270,7 +278,7 @@ internal sealed partial class MirBuilder
     // SPEC 12.2 (A3 E13 (2)): a capture before a later one whose acquisition builds code is secured where it is evaluated.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
-        var captures = closure.ClosureDefinition!.Captures;
+        var captures = BoundClosure.Of(closure)!.Captures;
         var start = this.arguments.Count;
         var last = -1;
         for (var i = 0; i < captures.Count; i++)
@@ -382,7 +390,8 @@ internal sealed partial class MirBuilder
     // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Storage or MirRvalueKind.Discriminant
+            ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);

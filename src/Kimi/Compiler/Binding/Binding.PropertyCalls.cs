@@ -15,10 +15,6 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
             KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
-    internal MemberAccessKoto? PropertyUpdateStorage(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is { BindingState: BindingState.Resolved, BoundSymbol.Property: { } property } target &&
-            (!property.Getter.IsStandard || !property.Setter.IsStandard) && this.propertyUpdateStorage.GetValueOrDefault(target) is { BindingState: BindingState.Resolved } storage ? storage : null;
-
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
         var function = accessor.ExecutionFunction ??= new(accessor);
@@ -299,19 +295,20 @@ public sealed partial class Binding
                     };
                 }
 
-                result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
-                if (this.HasUnsubstitutedOrigin(result, accessor.Binder))
+                if (this.LacksImage(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount)))
                 {
                     this.Fail(node, BindingFailure.Unsupported, true);
                     return false;
                 }
+
+                result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
 
                 call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
                 for (var i = 0; i < count; i++)
                 {
                     // The update's value and the receiver are typed parts: Evidence rows at their operations' parameter Types.
-                    rows[i] = new(i, -1, operations[i].Source!, PartKind.Typed, operations[i].ParameterType, Contribution.Evidence);
+                    rows[i] = new(i, -1, 0, operations[i].Source!, operations[i].ParameterType, operations[i].ParameterType, Contribution.Evidence);
                 }
 
                 var solution = new SlotSolution

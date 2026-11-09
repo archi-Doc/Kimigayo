@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -75,14 +74,19 @@ internal sealed partial class MirBuilder
     // SPEC 13.2, 13.3.1: a built-in binary operator on the operands pushed since start, its check Proven where IMPL 21.3.3 omits it.
     private void Binary(MirPlace destination, BinaryKoto node, MirBinaryOp op, int start, BoundType type)
     {
+        if (this.Witnessed(op, start, node.Left, node.Right) is { } comparison)
+        {
+            this.Compared(destination, comparison, op, start, node);
+            return;
+        }
+
         var proven = this.Proven(op, type, this.arguments[^1]);
         this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
     }
 
     // SPEC 4.7, 4.6.2: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
     // end its length), from Len of the receiver; of a Utf8Slice, the one struct Binding serves as a sequence (SequenceMember), Len of its
-    // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
-    // (owner decision 2026-10-11) until R8's representation structs make it a Field read.
+    // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the call of its library Field read on a shared view of the handle.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
         var form = IntrinsicDisposition.FormOf(member);
@@ -97,7 +101,11 @@ internal sealed partial class MirBuilder
         {
             var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.Ref, sequence, member));
-            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.Capacity), start, member);
+            var collection = this.body.TypeOf(sequence)!;
+            var read = compilation.Library.GetSymbol(
+                collection.Kind == BoundTypeKind.Array ? KimiDeclarationId.StorageArrayCapacity : KimiDeclarationId.DictionaryStorageCapacity)!;
+            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components]);
+            this.Invoke(destination, new MirCallee(MirCalleeKind.Fn, read, subst), start, member);
             return;
         }
 
@@ -147,8 +155,16 @@ internal sealed partial class MirBuilder
     private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type, bool input)
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
-        var binding = (ConversionBinding)row.Mode;
-        if (row.Folded is { } folded)
+        var binding = row.Conversion;
+        if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && ScalarTypes.Width(type) == 0)
+        {
+            // DECISIONS R7-M14 (G658): a folded wrap to a Type whose instance decides its width holds the exact value modulo 2^128
+            // (Binding, ScalarTypes.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
+            // bits, so a widthless Integer constant stays a generic literal, 0 through 127.
+            var wide = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.Primitives["i128"], wrapped))));
+            this.Set(destination, MirRvalue.Cast(MirCastKind.Wrap, wide, type) with { Proven = true }, conversion);
+        }
+        else if (row.Folded is { } folded)
         {
             this.Use(
                 destination,
@@ -240,32 +256,22 @@ internal sealed partial class MirBuilder
             MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
-            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < this.Width(type, out _),
+            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < ScalarTypes.Width(type),
             _ => true,
         };
     }
 
     // IMPL 21.3.3: whether an integer Type's range lies within another's (T and Wrapping<T>, u8 in u32, i8 in i64), so converting between
     // them checks nothing; false where an instance decides a width.
-    private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
-        this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
-
-    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
-    // another Type, such as a Type parameter, whose instance decides it.
-    private int Width(BoundType type, out bool signed)
+    private bool Within(BoundType source, BoundType target)
     {
-        var integer = type.Underlying;
-        signed = !integer.IsUnsignedInteger;
-        if (integer is not { IsInteger: true, Kind: BoundTypeKind.Primitive })
+        var (from, to) = (ScalarTypes.Width(source), ScalarTypes.Width(target));
+        if (from == 0 || to == 0)
         {
-            return 0;
+            return false;
         }
 
-        if (integer.Name is "isize" or "usize")
-        {
-            return compilation.PointerWidth;
-        }
-
-        return int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;
+        var (signed, wide) = (ScalarTypes.Signed(source), ScalarTypes.Signed(target));
+        return (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
     }
 }

@@ -5,6 +5,7 @@
 // Every value has one published meaning; adding a kind requires an approved vocabulary change.
 // Must not introduce a consumer-specific meaning or infer missing Binding decisions.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1402 // The HIR column vocabularies belong together.
@@ -77,7 +78,7 @@ internal enum HirOp : byte
     TestVerification,
 }
 
-/// <summary>What a node's selected symbol names: the Res column of <see cref="HirTables"/>.</summary>
+/// <summary>What a node's selected symbol names: <see cref="HirTables.ResOf"/>, a read of the symbol.</summary>
 internal enum HirRes : byte
 {
     None,
@@ -107,16 +108,26 @@ internal enum HirCompletion : byte
 /// are the one conversion from Binding's acquisition vocabularies.</summary>
 /// <param name="Acquire">What happens to the child's own value or Place.</param>
 /// <param name="Adaptation">The implicit adaptation that gives the parent another Type.</param>
-internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation)
+/// <param name="ExclusiveMode">Whether the operation that takes the child needs exclusive capability of it: its target's mode, whatever
+/// its adaptation (SPEC 4.7.1, 7.3, 10.2; DECISIONS BU-8), which <see cref="HirAdaptation.ReferenceRead"/>,
+/// <see cref="HirAdaptation.BaseBorrow"/> and <see cref="HirAdaptation.PayloadProjection"/> do not state (SPEC 3.4.3, 9.6.1, 13.5.5).
+/// False for a take no operation makes: a use in place forms no reference, and its consumer's use decides its capability (SPEC 3.4.3,
+/// 4.7.1).</param>
+internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation, bool ExclusiveMode = false)
 {
+    /// <summary>Gets a value indicating whether this take is exclusive by its operation's target or by an exclusive borrow.</summary>
+    internal bool Exclusive => this.ExclusiveMode || this.Adaptation == HirAdaptation.ExclusiveBorrow;
+
     // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
-    // transferred, which an instance whose Type is Copy performs as a Copy.
+    // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
+    // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
     internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
     {
         PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
         PatternAcquisition.Move or PatternAcquisition.CopyOrMove => new(HirAcquire.Move, HirAdaptation.None),
         PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
-        _ => default,
+        PatternAcquisition.None or PatternAcquisition.Deferred => new(HirAcquire.Failed, HirAdaptation.None),
+        _ => throw new UnreachableException(),
     };
 
     // A capture entry, as `let x = x` or `let x = x@op` acquires (SPEC 7.7.2).
@@ -129,13 +140,17 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
     };
 
-    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Semantics and the referent,
+    // The adaptation of a call's argument, receiver or payload operation (SPEC 7.3, 10.2), whose target gives the row its mode (the rule's
+    // ChildAdjust, as a recorded read may take the adaptation's place); a Reborrow in the same mode keeps the Semantics and the referent,
     // the bare acquisition, its Origin being Binding's name, the Type the consumer expects (DECISIONS BU-27), and an explicit borrow is the
-    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
+    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1). A value operation adapts nothing:
+    // where an erasure is applied is the ErasedType column's, at the node Binding erased, which the Adjust rule reads (ChildAdjust, a
+    // group's operand; SPEC 7.7.4, DECISIONS BU-83's rule E); the operation's Erasure is only the selection's quality (its ranking, the
+    // ErasePart trigger), and its Source, the argument as written, may be a group around that node.
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
         ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
-        ArgumentOperationKind.Value => operation.Adaptation == ArgumentAdaptation.Erasure ? HirAdaptation.Erasure : HirAdaptation.None,
+        ArgumentOperationKind.Value => HirAdaptation.None,
         ArgumentOperationKind.Borrow => operation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow,
         ArgumentOperationKind.Reborrow => operation.Adaptation == ArgumentAdaptation.SameSemanticsReborrow ? HirAdaptation.None : HirAdaptation.ReferenceRead,
         ArgumentOperationKind.BaseBorrow => HirAdaptation.BaseBorrow,
@@ -159,13 +174,15 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
 /// <summary>What happens to a consumed child's own value or Place (SPEC 3.5, 15.1.5).</summary>
 internal enum HirAcquire : byte
 {
-    Unset,
+    Unset, // No consumer takes the node: the column's default (DECISIONS BU-103).
     None, // Used in place: a target, a projected, followed or borrowed Place, the Place its adaptation reads, or a group's operand.
     Copy,
     Move,
     Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode, of the Type its consumer expects (DECISIONS BU-27).
     ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.14).
     Temporary, // A value, not a Place, taken as it is.
+    Failed, // A consumed Place or a Pattern binding whose acquisition failed (no Type, a failed Pattern Type check, or a Move resting on an
+    // Error Copy proof): its consumer takes a value derived from that failure (SPEC 23.1.2; DECISIONS BU-103).
 }
 
 /// <summary>The Place a node designates: the PlaceShape column of <see cref="HirTables"/> (SPEC 3.4.3, 3.5, 13.5.5), set on every node
@@ -198,11 +215,11 @@ internal enum HirAdaptation : byte
 {
     None,
     ReferentRead, // The Scalar the reference layers end in is read (SPEC 3.5.3).
-    ReferenceRead, // One reference, in the destination's mode, to the referent the layers reach (SPEC 3.4.3, 10.2).
+    ReferenceRead, // One reference, in its row's mode, to the referent the layers reach (SPEC 3.4.3, 10.2); in place, the layers followed.
     SharedBorrow,
     ExclusiveBorrow,
-    BaseBorrow, // A borrow of the base a projected receiver's path selects (SPEC 7.3).
-    PayloadProjection, // A shared borrow of an object handle's payload (SPEC 13.5.5).
-    StorageProjection, // The receiver's base that declares the selected stored Field.
+    BaseBorrow, // A borrow, in its row's mode, of the base a projected receiver's path selects (SPEC 7.3, 9.6.1).
+    PayloadProjection, // A borrow, in its row's mode, of an object handle's payload (SPEC 13.5.5).
+    StorageProjection, // The receiver's base that declares the selected stored Field, in place: no reference, so no mode (SPEC 9.6.1).
     Erasure, // A closure or function item erased to its Function Type (SPEC 10.2).
 }

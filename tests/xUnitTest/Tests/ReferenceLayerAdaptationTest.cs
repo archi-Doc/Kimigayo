@@ -74,21 +74,21 @@ public class ReferenceLayerAdaptationTest
     public void DictionaryIndexingCannotRecoverWriteThroughASharedLayer()
     {
         // SPEC 3.4.3, 4.7.1: Indexable follows reference layers but never recovers exclusive access through ref.
-        var c = MinimalEmissionTest.Analyze("func set(m: ref/(uniq/Dictionary<i32, i32> during b)) => m[1] = 42");
+        var c = MinimalEmissionTest.Analyze("func set(m: ref/(uniq/Dictionary<i32, i32> during b)) => m[1] = 42\npublic func main() => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.SharedPathAccess_Kd);
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.Equal(["SharedPathAccess_Kd m[1]"], CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}"));
     }
 
     [Theory]
-    [InlineData("func at(a: ref/(ref/[2 of i32] during b)) -> i32 => a[1]")]
+    [InlineData("func at(a: ref/(ref/[2 of i32] during b)) -> i32 => a[1]\npublic func main() => ()")]
     public void IndexingThroughSeveralLayersReportsOnlyItsBoundary(string source)
     {
         // STATUS boundary: indexing through several reference layers stops at Binding with one diagnostic.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.Equal([nameof(Kimi.DiagnosticCode.Unsupported_Kd)], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 3.4.3: sequence metadata and indexing follow every safe reference layer and pair layer, so metadata past one reference

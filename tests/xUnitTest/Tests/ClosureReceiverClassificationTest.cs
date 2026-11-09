@@ -53,6 +53,21 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(SemanticsKind.Owner, closure.ClosureOf()!.Receiver);
     }
 
+    // SPEC 7.7.3, 3.5, 23.1.2 (R7-Y2b): a Consuming call Copies a captured Copy Closure, which only reads it, so the outer Closure stays
+    // Shared and `ref/F` supplies its call; a Non-Copy one needs `g@move()`, a Move out of the environment (Consuming), whose call through
+    // `ref/F` is invalid. The bare call of a Non-Copy one fails, and its failure explains its callee: no Consuming need rests on it.
+    [Theory]
+    [InlineData("    let n: i32 = 1\n    let g = func [n] () -> i32 => n@move\n    let f = func [g] () -> i32 => g()\n", SemanticsKind.Ref, "")]
+    [InlineData("    let s = \"a\"\n    let g = func [s@move] () -> string => s@move\n    let f = func [g@move] () -> string => g@move()\n", SemanticsKind.Owner, "InvalidAssignment_Kd r")]
+    [InlineData("    let s = \"a\"\n    let g = func [s@move] () -> string => s@move\n    let f = func [g@move] () -> string => g()\n", SemanticsKind.Ref, "TransferRequired_Kd g")]
+    public void AConsumingCallIsConsumingWhereItMovesTheCapturedClosure(string head, SemanticsKind receiver, string records)
+    {
+        var source = "public func main() -> ()\n" + head + "    let r = f@ref\n    let v = r()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Last(static x => x.IsAnonymous).ClosureOf()!;
+        Assert.Equal((receiver, records), (f.Receiver, Records(source)));
+    }
+
     [Fact]
     public void AnExclusiveBodyNeedsAWritableClosure()
     {
@@ -118,6 +133,84 @@ public class ClosureReceiverClassificationTest
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
+    // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
+    // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
+    // (a displacement, a raw pointer conversion), a write, a Take or an in-place destruction, makes the call Exclusive; a read leaves it
+    // Shared. Labels from SPEC: each `true` row's `let` call is invalid, its `var` twin valid.
+    [Theory]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => consume((*p)@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => _ = (*p)@move\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p - 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => ((p + 1) - 1)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => (*pp + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => ((*pp)@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => consume((*(*pp))@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p@raw/i32, 5)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*(pp + 0), Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.release(p)\n    f()\n", false)]
+    public void AWriteCapabilityAccessThroughAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
+        => AssertCallReceiver(source, exclusive);
+
+    // SPEC 5.2.1 condition 3 ("every pointer derived from it (copies, displacements, ...)"), 5.3, 5.4, 7.7.3 (R7-Y2c; the owner's O-76): a
+    // body local that every definition derives from an environment pointer, a copy, a displacement or a conversion of one, or a pointer read
+    // through a raw Place the environment reaches, is that pointer; a call's result (O-76 (b) (i)) and an allocation are their own. Labels
+    // from SPEC: each `true` row's `let` call is invalid, its `var` twin valid; each `false` row is valid.
+    [Theory]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p + 0\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q1 = p\n            let q2 = q1 + 1\n            let q3 = q2 - 1\n            q3[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            var q = p\n            q += 1\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p@raw/i32\n            q[0] = 5\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p\n            consume((*q)@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p + 0\n            Raw.initialize(q, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] ()\n        unsafe\n            let q = *pp\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe\n            let q = p + 0\n            return q[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe\n            var q = p + 0\n            q = q + 1\n            return q[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = Raw.allocate<Probe>(1)\n            q[0] = Probe.init(2)\n    f()\n", false)]
+    [InlineData(NextProbe + "    let f = func [p] ()\n        unsafe\n            let q = next(p)\n            q[0] = Probe.init(2)\n    f()\n", false)]
+    public void AWriteThroughALocalDerivedFromAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
+        => AssertCallReceiver(source, exclusive);
+
+    // SPEC 5.2.1 condition 3, 7.7.3 (R7-Y2c; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a write through a body local
+    // that only some of its definitions derive from an environment pointer needs the definition reaching it, which no flow fact states: a
+    // located Unsupported_Kd at the use, whether the program is valid (the write precedes the derived assignment) or invalid (one branch).
+    [Theory]
+    [InlineData("            q[0] = Probe.init(2)\n            q = p\n")]
+    [InlineData("            if c => q = p\n            q[0] = Probe.init(2)\n")]
+    public void AWriteThroughALocalSomeDefinitionsDeriveIsUnsupported(string tail)
+    {
+        var source = RawProbe + "    let c = true\n    let f = func [p, c] ()\n        unsafe\n            var q = Raw.allocate<Probe>(1)\n" + tail + "    f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), error.Code);
+    }
+
+    private const string NextProbe = RawDeclarations + "func next(q: raw/Probe) -> raw/Probe\n    unsafe => return q + 1\n" +
+        "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";
+
+    // SPEC 5.2, 7.7.3, 22.6 (DECISIONS R7-Y2; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a foreign import's operation
+    // contract is prose, so a call passing it a pointer the environment reaches leaves the receiver undecided: the located Unsupported_Kd
+    // at the call, in a `var` Closure too.
+    [Fact]
+    public void AForeignImportPassedAnEnvironmentPointerIsUnsupported()
+    {
+        const string Source = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n" +
+            "public func main() -> ()\n    let p = Raw.allocate<i64>(1)\n    var f = func [p] () -> i32\n        unsafe => return Native.query(p + 0)\n    let v = f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Native.query(p + 0)"), (error.Code, error.Span is { } span ? Source.Substring(span.Start, span.Length) : string.Empty));
+    }
+
+    private const string RawDeclarations = "struct Probe\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc consume(x: Probe) => ()\n";
+    private const string RawProbe = RawDeclarations + "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";
+    private const string RawPointerProbe = RawDeclarations + "public func main() -> ()\n    let pp = Raw.allocate<raw/Probe>(1)\n";
+
     // SPEC 8.14, 13.5.6, 7.7.3: a case adaptation of a capture that borrows it exclusively in an admitted case makes the call Exclusive,
     // the strongest requirement over the cases; one whose borrowing cases are all shared stays Shared.
     [Theory]
@@ -142,6 +235,22 @@ public class ClosureReceiverClassificationTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), callee), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
         Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
+    }
+
+    private const string ExclusiveCallNote = "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
+
+    // SPEC 7.7.3, 8.10: a call's Note holds for every cause of its receiver (7.7.3's Exclusive row also names a use with exclusive
+    // access): a body that only reads through an exclusive borrow of a capture, and a generic callee, whose receiver is its declared
+    // Callable receiver (uniq or owner, 7.7.3's last paragraph) with no body known.
+    [Theory]
+    [InlineData("public func main() -> ()\n    var n = 7\n    let f = func [var n] () -> i32\n        let s = n@uniq\n        return s@follow\n    let v = f()\n", ExclusiveCallNote)]
+    [InlineData("func callIt<F>(f: F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\npublic func main() -> ()\n    let v = 0\n", ExclusiveCallNote)]
+    [InlineData("func callIt<F>(f: ref/F) -> i32\n    F is Callable<owner, () -> i32>\n    return f()\npublic func main() -> ()\n    let v = 0\n", "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)")]
+    public void ACallNoteHoldsForEveryCauseOfItsReceiver(string source, string note)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal(note, error.Note);
     }
 
     // SPEC 3.5.1, 10.2.2, 7.7.3 (PLAN G232): a captured exclusive reference, `uniq/T` or `objuniq/T`, at a fixed expected Type that it fits is
@@ -226,9 +335,10 @@ public class ClosureReceiverClassificationTest
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
     // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
     // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
-    // marked captures. A value position its consumer takes by value (ClosureEffects.ConsumedByValue: an argument of a call or a value
+    // marked captures. A value position its consumer takes by case (ClosureEffects.TakenByCase: an argument of a call or a value
     // call, an assignment's source, a Dictionary entry, through parentheses too) acquires as a bare use does; a Reborrow of a Place reached
-    // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case.
+    // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case. An explicit transfer of
+    // the capture moves it out of the environment in every case (Consuming, R7-Y2b).
     [Theory]
     [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
     [InlineData("    let h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
@@ -244,6 +354,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("    var h = func [value] () -> ()\n        _ = 1\n", "Ref Ref Ref []")]
     [InlineData("    let pair = (value, 1)\n    var h = func [pair@move] () -> ()\n        let local = pair.0\n        _ = local\n", "Uniq Uniq Uniq []")]
     [InlineData("    var local: i32 = 1\n    var h = func [var local] () -> ()\n        let k = local@s/i32\n", "Uniq Uniq Uniq []")]
+    [InlineData("    let h = func [value] () -> ()\n        take(value@move)\n", "Owner Owner Owner []")]
     public void EachAdmittedCaseHasTheReceiverItsFactsGive(string body, string expected)
     {
         var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
@@ -295,7 +406,9 @@ public class ClosureReceiverClassificationTest
     // `(take(value), missing)` keep the mark and a `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)`
     // decides only a bare acquisition position, which its argument is not; a discarded use has no consumer whose failure explains it,
     // so a failed sibling arm leaves the mark (BU's re-check 3, N1); an assignment's failed target fixes its source's Type and explains
-    // it (the concrete twin is Shared). Each row: the records under `let h`, then under `var h`.
+    // it (the concrete twin is Shared); a later use of the Case value that takes it explains nothing: after `.Some(value)`, the bare
+    // `_ = o` is its own TransferRequired_Kd in the uniq case (SPEC 3.5.1; DECISIONS BU-84). Each row: the records under `let h`, then
+    // under `var h`.
     [Theory]
     [InlineData("        value\n", "InvalidAssignment_Kd h", "")]
     [InlineData("        (value)\n", "InvalidAssignment_Kd h", "")]
@@ -306,7 +419,10 @@ public class ClosureReceiverClassificationTest
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
-    [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
+    [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "TransferRequired_Kd o; InvalidAssignment_Kd h", "TransferRequired_Kd o")]
+    // DECISIONS: G572 U2a (Q13, SPEC 23.1.2): t's Type string holds with the write's obligation pending, so `_ = t`, a bare acquisition, is
+    // judged on its own.
+    [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
     [InlineData("        let a: [2 of i32] = [1, 2]\n        let k = a[value]\n        _ = k\n", "TypeMismatch_Kd value", "TypeMismatch_Kd value")]
@@ -320,7 +436,8 @@ public class ClosureReceiverClassificationTest
     // SPEC 14.2.2, 3.5, 3.5.1, 7.7.3 (DECISIONS R4-M145; PLAN G251 (7)): a captured Place in Discard Context is acquired as at a value
     // position: a stored exclusive reference Reborrows, so its Closure is Exclusive and a `let` Closure's call invalid, as a statement,
     // in parentheses and as a discarded `if` or `match` body, as `let k = value` is; a Copy capture is read and stays Shared; a bare
-    // Non-Copy capture needs its Move spelled, and `title@move` makes the call Consuming, so it needs `h@move`. Each row: the records
+    // Non-Copy capture needs its Move spelled, and `title@move` makes the call Consuming, so it needs `h@move`; so does the bare rule's
+    // Move row of `title` (R7-Y2b: a record dependent on the failed acquisition, DECISIONS Q13). Each row: the records
     // under `let h`, under `var h`, and of the same use outside a Closure (a discarded Copy local's lint, DiscardedValue_Kd, there).
     [Theory]
     [InlineData("value\n", "InvalidAssignment_Kd h", "", "")]
@@ -329,7 +446,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("match c\n    true => value\n    false => ()\n", "InvalidAssignment_Kd h", "", "")]
     [InlineData("let k = value\n_ = k@move\n", "InvalidAssignment_Kd h", "", "")]
     [InlineData("count\n", "", "", "DiscardedValue_Kd count")]
-    [InlineData("title\n", "TransferRequired_Kd title", "TransferRequired_Kd title", "TransferRequired_Kd title")]
+    [InlineData("title\n", "TransferRequired_Kd title; TransferRequired_Kd h", "TransferRequired_Kd title; TransferRequired_Kd h", "TransferRequired_Kd title")]
     [InlineData("title@move\n", "TransferRequired_Kd h", "TransferRequired_Kd h", "")]
     public void ADiscardedCapturedPlaceIsAcquiredAsAtAValuePosition(string use, string letRecords, string varRecords, string freeRecords)
     {
@@ -425,7 +542,7 @@ public class ClosureReceiverClassificationTest
 
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
     // the uniq case: the capture is marked and a `let` Closure's call is Exclusive (SPEC 7.7.3), which its `let` slot cannot lend
-    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; PLAN G252), as outside a
+    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; DECISIONS BU-45), as outside a
     // Closure, so it has no TransferRequired_Kd; Binding's records.
     [Theory]
     [InlineData("let", "InvalidAssignment_Kd h")]
@@ -454,7 +571,7 @@ public class ClosureReceiverClassificationTest
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         for (var pass = 0; pass < 2; pass++)
         {
-            var closure = function.ClosureDefinition!;
+            var closure = BoundClosure.Of(function)!;
             Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
             Assert.Equal(complete, c.Bind().IsComplete);
         }
@@ -477,6 +594,56 @@ public class ClosureReceiverClassificationTest
             ["Owner Owner value", "Ref Uniq value", "Ref Uniq value"],
             closures.Select(x => $"{x.CaseFreeReceiver} {x.Receiver} {string.Join(",", x.Captures.Where(y => y.BareReborrows).Select(y => y.Environment.Name))}"));
         Assert.All(closures, x => Assert.True(x.Classified));
+    }
+
+    // R7-Y2c: Derive's passes read every definition, and the passes are bounded by the locals. A chain of N body locals in source order,
+    // each derived from the one before (a valid `var` Closure, SPEC 5.2.1 condition 3, 7.7.3), converges in two passes: work linear in N.
+    // A chain assigned in reverse order (N locals from their own allocations, then `q{N} = q{N-1}` ... `q1 = p`, only read: valid, Shared)
+    // takes one pass per local, Derive's worst case: work within the bound, quadratic in N (design review 1's N1; a worklist over the
+    // definitions by root would make it linear).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClassificationWorkOfAChainOfDerivedLocalsStaysWithinItsBound(bool reverse)
+    {
+        var work = new[] { 200, 400, 800 }.Select(n => Work(reverse, n)).ToArray();
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, reverse ? 4 : 2), $"work {string.Join(", ", work)}");
+
+        static long Work(bool reverse, int count)
+        {
+            var chain = reverse
+                ? string.Concat(Enumerable.Range(1, count).Select(static i => $"            var q{i} = Raw.allocate<Probe>(1)\n")) +
+                    string.Concat(Enumerable.Range(2, count - 1).Reverse().Select(static i => $"            q{i} = q{i - 1}\n")) + "            q1 = p\n"
+                : "            let q0 = p\n" + string.Concat(Enumerable.Range(1, count).Select(static i => $"            let q{i} = q{i - 1} + 0\n"));
+            var tail = reverse ? $"            return q{count}[0].v\n    let v = f()\n" : $"            q{count}[0] = Probe.init(2)\n    f()\n";
+            var c = MinimalEmissionTest.Analyze(RawProbe + $"    var f = func [p] (){(reverse ? " -> i32" : string.Empty)}\n        unsafe\n" + chain + tail);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureWork;
+        }
+    }
+
+    // R7-Y2a (review 1's N1): ClosureEffects records a consumer's takes once per Classify and selection, so its work grows linearly in one
+    // consumer's capture uses, a literal's elements or a call's arguments (valid programs: reads of a Copy capture, SPEC 7.7.3 Shared), not
+    // as every use times every child.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ClassificationWorkGrowsLinearlyInAConsumersCaptureUses(bool literal)
+    {
+        var work = new[] { 200, 400, 800 }.Select(n => Work(literal, n)).ToArray();
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(bool literal, int count)
+        {
+            var uses = string.Join(", ", Enumerable.Repeat("c", count));
+            var source = literal
+                ? "func g() -> isize\n    let c: i32 = 1\n    let f = func [c] () -> isize\n        let xs: Array<i32> = [" + uses + "]\n        return xs.length\n    return f()\n"
+                : "func many(" + string.Join(", ", Enumerable.Range(0, count).Select(static i => $"a{i}: i32")) + ") -> i32 => 0\nfunc g() -> i32\n" +
+                    "    let c: i32 = 1\n    let f = func [c] () -> i32 => many(" + uses + ")\n    return f()\n";
+            var c = MinimalEmissionTest.Analyze(source + "()\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureWork;
+        }
     }
 
     // The records of a checked source: each one's code and the text at its span.
@@ -519,6 +686,6 @@ public class ClosureReceiverClassificationTest
 
         var error = Assert.Single(errors);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent", error.Note);
+        Assert.Equal(ExclusiveCallNote, error.Note);
     }
 }

@@ -44,6 +44,11 @@ public sealed partial class Binding
         _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
     };
 
+    // The parameter Type at child position `index` of one part `core` whose position's is `pattern`: a Tuple or array literal element's
+    // (ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
+    private static BoundType? PartChildPattern(Koto core, int index, BoundType? pattern)
+        => core is TupleLiteralKoto or ArrayLiteralKoto ? ChildPattern(core, index, pattern) : pattern;
+
     // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
     // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
     private static int IndexedChildren(Koto part) => part switch
@@ -115,11 +120,13 @@ public sealed partial class Binding
         if (part is TupleLiteralKoto or ArrayLiteralKoto)
         {
             this.AddIndexedChild(part, index);
-            return ChildPattern(part, index, pattern);
+        }
+        else
+        {
+            this.AddResults(this.ComposedJoin(part)!);
         }
 
-        this.AddResults(this.ComposedJoin(part)!);
-        return pattern;
+        return PartChildPattern(part, index, pattern);
     }
 
     // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for a Tuple or array without

@@ -14,7 +14,8 @@ namespace XunitTest;
 // located limit at the literal (before, the collector's at the whole literal). The guards keep dev's verdicts: a Closure naming no
 // container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1). Since the MIR decides (R6-check H5; H3b T51, class 4: records
 // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
-// UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit, and an UninitializedPlace_Kd at x1's constructor.
+// UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit; x1's constructor has none, as its Field has no stored Type (SPEC
+// 23.1.2; PLAN G105, G522; DECISIONS Q13).
 public partial class PropertyBindingTest
 {
     private const string ViewHead = "struct View {source}\n    public let data: ref/i32 during source\n    public let ";
@@ -32,6 +33,9 @@ public partial class PropertyBindingTest
     private const string Widen = "func f(p: ref/i32, q: ref/i32, w: View during q) -> i32\n    origin p outlives q\n    let a: View during p = w@move\n    return 1";
     private const string Narrow = "func f(p: ref/i32, q: ref/i32, v: View during p) -> i32\n    origin p outlives q\n    let a: View during q = v@move\n    return 1";
     private const string AtLiteral = "Unsupported_Kd: (y: ref/i32 during source)";
+    private const string P2 = "struct P2\n    public let t: ((i32) -> i32, i32)\n    public init(t: ((i32) -> i32, i32)) => self.t = t@move\n";
+    private const string E2 = "enum E2\n    A(((i32) -> i32, i32))\n    B\n";
+    private const string Holder = "struct Holder\n    public let a: Array<(i32) -> i32>\n    public init(a: Array<(i32) -> i32>) => self.a = a@move\n";
 
     [Theory]
     [InlineData("L2g", CbView + Local + "    return need(view.cb)", AtLiteral)]
@@ -65,11 +69,26 @@ public partial class PropertyBindingTest
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", null)]
     [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", null)]
-    [InlineData(
-        "x1",
-        ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1",
-        "UnresolvedBinding_Kd: missingName",
-        "UninitializedPlace_Kd: init(data: ref/i32 during source) => self.data = data")]
+    [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
+
+    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381): an inferred Field's initializer is bound with its header, before the capability
+    // engine judges, so an erasure there (a call argument, a Tuple element of a call argument or payload, an array element; a Case payload
+    // in EnumBindingTest) is one located Unsupported_Kd at the converted value until Owned is judged during header binding (R7); it was
+    // InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its typed and local twins are valid.
+    [Theory]
+    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q3t", "struct S\n    public let p: P = P.init(func (x: i32) -> i32 => x)\n", null)]
+    [InlineData("q3l", "func g() -> i32\n    let p = P.init(func (x: i32) -> i32 => x)\n    return 1\n", null)]
+    [InlineData("h1", P2 + "struct S\n    public let p = P2.init((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h1t", P2 + "struct S\n    public let p: P2 = P2.init((func (x: i32) -> i32 => x, 1))\n", null)]
+    [InlineData("h2", E2 + "struct S\n    public let e = E2.A((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h2t", E2 + "struct S\n    public let e: E2 = E2.A((func (x: i32) -> i32 => x, 1))\n", null)]
+    [InlineData("h3", Holder + "struct S\n    public let h = Holder.init([func (x: i32) -> i32 => x])\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h3t", Holder + "struct S\n    public let h: Holder = Holder.init([func (x: i32) -> i32 => x])\n", null)]
+    public void AnErasureInAFieldHeaderIsTheLocatedLimit(string id, string declarations, string? record)
+        => Assert.Equal(
+            [id, .. new[] { record }.OfType<string>()],
+            [id, .. RawPointerSyntaxTest.Records("struct P\n    public let f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\n\n" + declarations)]);
 }

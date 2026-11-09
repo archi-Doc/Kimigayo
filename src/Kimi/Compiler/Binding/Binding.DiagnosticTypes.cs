@@ -27,6 +27,18 @@ public sealed partial class Binding
         return text.ToString();
     }
 
+    // The adapter's text of a mismatch side's form (SPEC 23.3).
+    private static string FormText(MismatchForm form, int count) => (form, count) switch
+    {
+        (MismatchForm.AnonymousFunction, < 0) => "an anonymous function",
+        (MismatchForm.AnonymousFunction, 1) => "an anonymous function with 1 parameter",
+        (MismatchForm.AnonymousFunction, _) => $"an anonymous function with {count} parameters",
+        (MismatchForm.IntegerLiteral, _) => "integer literal",
+        (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
+        (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
+        _ => throw new ArgumentOutOfRangeException(nameof(form)),
+    };
+
     private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
     {
         if (value is not BoundType type)
@@ -297,7 +309,7 @@ public sealed partial class Binding
             return "self"; // SPEC 5.7: the holding value, and a constructor's or destructor's receiver.
         }
 
-        if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input)
+        if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.ConstraintSet)
         {
             var display = OriginDisplay(origin, null, typeLevel: true);
             return display.Kind == "expression" ? display.Text : "<" + display.Kind + " origin: " + display.Text + ">";

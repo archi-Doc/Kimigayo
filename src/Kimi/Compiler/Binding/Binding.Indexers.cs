@@ -87,7 +87,7 @@ public sealed partial class Binding
         var layered = core;
         if (TryPairLayer(core, out _, out _))
         {
-            core = ComparisonReferent(this.ComparisonThroughPairs(source.Left, core!)); // SPEC 13.5.5: and past each followable pair layer.
+            core = this.OperandTerminal(source.Left, core!); // SPEC 13.5.5: and past each followable pair layer.
         }
 
         // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
@@ -172,7 +172,7 @@ public sealed partial class Binding
     // bound reference instantiated for `core` and normalized in `scope` (a key named through a projection, as NamesReference reads it).
     private bool TakesRangeKey(BoundType core, BindingSymbol indexable, BindingScope scope)
     {
-        if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || this.impls.OfType(owner) is not { } identities)
         {
             return false;
         }
@@ -197,7 +197,7 @@ public sealed partial class Binding
     // reference (`contract` with the key's Type as its argument) for `core` in `scope` (NamesReference), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
     {
-        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }
@@ -262,9 +262,9 @@ public sealed partial class Binding
         else
         {
             // A synthesized node is outside the tree that each Bind resets.
-            ResetSynthetic(call);
-            ResetSynthetic(call.Method);
-            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
         }
 
         // SPEC 10.2: a literal key is an unfitted literal that each call fits to ref/Key once; the second synthesized call
@@ -274,15 +274,14 @@ public sealed partial class Binding
         {
             if (key is UnaryKoto prefix)
             {
-                ResetSynthetic(prefix.Operand);
+                this.ResetSynthetic(prefix.Operand);
             }
 
-            ResetSynthetic(key);
+            this.ResetSynthetic(key);
         }
 
         // Like every synthesized call, its own failure is a published fact that the index expression rests on.
-        this.nodes.Add(call);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
     }
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).

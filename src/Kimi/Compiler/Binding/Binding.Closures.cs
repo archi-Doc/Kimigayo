@@ -4,14 +4,15 @@
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
 //   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
-//   (BindConcreteClosure); a Closure argument bound under a consultation (BindClosureArgument); for TryCandidate, the one Closure
+//   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
+//   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
 //   PermittedClosureReceiver).
 // - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType and
-//   EvaluatingBody; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
+//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
 //   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
 //   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
@@ -148,7 +149,7 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
-            return this.RecordMismatch(function, function, "an anonymous function", expected, ComparisonFailure.Shape);
+            return this.RecordMismatch(function, function, new(null, MismatchForm.AnonymousFunction), expected, ComparisonFailure.Shape);
         }
 
         var restated = this.ClosureExpectation(function, expected);
@@ -156,8 +157,7 @@ public sealed partial class Binding
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
         if (function.Parameters.Count != count)
         {
-            var found = function.Parameters.Count == 1 ? "an anonymous function with 1 parameter"
-                : $"an anonymous function with {function.Parameters.Count} parameters";
+            var found = new MismatchSide(null, MismatchForm.AnonymousFunction, function.Parameters.Count);
             return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 
@@ -279,7 +279,41 @@ public sealed partial class Binding
         plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.HeaderBound = true;
+        this.BindClosureHeader(function, scope, expected, openResult, plan);
+        if (this.CaptureEntriesFail(function, scope, out var failed))
+        {
+            return failed;
+        }
+
+        this.BindClosureBody(function, scope);
+
+        // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
+        // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
+        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
+        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
+        var effects = this.closureEffects ??= new(this);
+        effects.Classify(function, plan);
+        foreach (var (use, _) in effects.Unlisted)
+        {
+            this.Fail(use, BindingFailure.Unsupported);
+        }
+
+        // A use whose need no published fact decides leaves the receiver undecided, a located Unsupported_Kd: a call of a foreign import
+        // passed a pointer the environment reaches, until imports state their writes (SPEC 5.2, 7.7.3; DECISIONS R7-Y2); a write through a
+        // body local only some definitions derive from an environment pointer, until a flow fact states which reaches it (R7-Y2c).
+        foreach (var use in effects.Undecided)
+        {
+            this.Fail(use, BindingFailure.Unsupported);
+        }
+
+        this.JudgePendingRelations(function);
+        return this.PublishClosure(function, plan, expected, openResult);
+    }
+
+    // The header (SPEC 10.5): each parameter, the result a written annotation or the expectation fixes, the Origin declaration over them.
+    private void BindClosureHeader(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult, BoundClosure plan)
+    {
+        var symbol = this.symbols[function];
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
@@ -290,58 +324,78 @@ public sealed partial class Binding
         symbol.Type = function.ReturnType is { } annotation
             ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
             : openResult ? null : expected?.Components[1];
+        plan.InfersResult = symbol.Type is null; // SPEC 10.5.4: the body's context is the one this fixes, never its inferred result.
         this.CompleteOriginDeclaration(originDeclaration);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
         }
+    }
 
-        if (function.Captures is { } captures)
+    // SPEC 7.7.2: the written capture list's entries; true, with the literal's Type, where an entry ends the binding.
+    private bool CaptureEntriesFail(FunctionKoto function, BindingScope scope, out BoundType? failed)
+    {
+        failed = null;
+        if (function.Captures is not { } captures)
         {
-            // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
-            // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
-            // fails on its own is reported beside the repeats (SPEC 23.1.2).
-            var repeats = RepeatedCaptures(function, captures);
-            foreach (var capture in captures)
+            return false;
+        }
+
+        // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
+        // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
+        // fails on its own is reported beside the repeats (SPEC 23.1.2).
+        var repeats = RepeatedCaptures(function, captures);
+        foreach (var capture in captures)
+        {
+            if (repeats is not null && RepeatsEarlierEntry(repeats, capture))
             {
-                if (repeats is not null && RepeatsEarlierEntry(repeats, capture))
-                {
-                    continue;
-                }
-
-                var source = this.Lookup(capture.Name, scope.Parent!, function, false);
-                if (source is not null && Receiver(source) is not null)
-                {
-                    // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
-                    // which self is reached only through its Fields (Receiver).
-                    return this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
-                }
-
-                if (source is not null && this.HelperCarrier(function, source) is { } helper)
-                {
-                    return this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
-                }
-
-                if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
-                {
-                    // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
-                        : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
-                }
-
-                environment.MutableCapture = capture.IsMutable;
-                if (this.CaptureEntry(function, capture, source, environment) is { } failure)
-                {
-                    return this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
-                }
+                continue;
             }
 
-            if (repeats is not null)
+            var source = this.Lookup(capture.Name, scope.Parent!, function);
+            if (source is not null && Receiver(source) is not null)
             {
-                return this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
+                // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
+                // which self is reached only through its Fields (Receiver).
+                failed = this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
+                return true;
+            }
+
+            if (source is not null && this.HelperCarrier(function, source) is { } helper)
+            {
+                failed = this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
+                return true;
+            }
+
+            if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
+            {
+                // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
+                failed = source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
+                    : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
+                return true;
+            }
+
+            environment.MutableCapture = capture.IsMutable;
+            if (this.CaptureEntry(function, capture, source, environment) is { } failure)
+            {
+                failed = this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
+                return true;
             }
         }
 
+        if (repeats is not null)
+        {
+            failed = this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
+            return true;
+        }
+
+        return false;
+    }
+
+    // The body and its result (SPEC 14.9, 15.3.4).
+    private void BindClosureBody(FunctionKoto function, BindingScope scope)
+    {
+        var symbol = this.symbols[function];
         if ((function.Body ?? function.ExpressionBody) is { } body)
         {
             var saved = this.EnterBody(new(symbol)); // The body and its result are the Closure's own.
@@ -366,19 +420,13 @@ public sealed partial class Binding
                 this.formingBody = saved;
             }
         }
+    }
 
-        // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
-        // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
-        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
-        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
-        var effects = this.closureEffects ??= new(this);
-        effects.Classify(function, plan);
-        foreach (var (use, _) in effects.Unlisted)
-        {
-            this.Fail(use, BindingFailure.Unsupported);
-        }
-
-        this.JudgePendingRelations(function);
+    // The result, the Signature and the EnvironmentType, once the receiver is classified, and what the published result's fit and the omitted
+    // captures judge (SPEC 15.8.2, 7.7.2).
+    private BoundType? PublishClosure(FunctionKoto function, BoundClosure plan, BoundType? expected, bool openResult)
+    {
+        var symbol = this.symbols[function];
         if (symbol.Type is null)
         {
             return Complete(function, null);
@@ -389,7 +437,7 @@ public sealed partial class Binding
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type, closureBody));
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));

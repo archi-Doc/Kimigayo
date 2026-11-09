@@ -129,16 +129,12 @@ public sealed partial class Binding
 
             if (decomposition is not null && slot is not null)
             {
-                var proof = this.ProveCopy(slot, name);
-                var acquisition = slotReach.Access != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy
-                    : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
+                // Acquired by the match's rule, when the match's bindings are (CompleteIterationAcquisitions).
                 var parent = source.IsTupleBinding ? 1 : 0;
                 var position = new BoundPattern(name, slot, BoundPatternKind.Binding, parent, parent * i, decomposition.Positions.Count + 1);
                 decomposition.PositionStorage.Add(position with
                 {
                     BodySymbol = symbol,
-                    Acquisition = acquisition,
                     WholePosition = true,
                     AccessMode = slotReach.Access,
                     ImplicitFollows = slotLayers,
@@ -226,7 +222,7 @@ public sealed partial class Binding
         var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
-            (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
+            (WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
@@ -241,13 +237,13 @@ public sealed partial class Binding
         }
         else
         {
-            ResetSynthetic(call);
-            ResetSynthetic(call.Method);
-            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
         }
 
         this.projectionUses.Add((source, subject, entry));
-        if (this.BindCall(call, scope, null) is not { } iterator)
+        if (this.BindSynthesizedCall(source, call, scope) is not { } iterator)
         {
             return false;
         }
@@ -279,6 +275,23 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
+    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    private void CompleteIterationAcquisitions()
+    {
+        for (var i = 0; i < this.userIterations.Count; i++)
+        {
+            var plan = BoundMatch.Of(this.userIterations[i].Loop);
+            for (var p = 0; plan is not null && p < plan.PositionStorage.Count; p++)
+            {
+                if (plan.PositionStorage[p].Kind == BoundPatternKind.Binding)
+                {
+                    this.AcquireBinding(plan, p);
+                }
+            }
+        }
+    }
+
     private bool SelectsWitness(BindingSymbol target, BoundType self, BindingSymbol contract)
     {
         if (target.Declaration is FunctionKoto { IsRequirement: true })
@@ -286,12 +299,12 @@ public sealed partial class Binding
             return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
         }
 
-        if (IsFixedArrayEntry(self, contract))
+        if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
         {
-            return ReferenceEquals(this.FixedArrayWitness(contract), target);
+            return ReferenceEquals(this.ContractWitness(group, contract), target);
         }
 
-        if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))
+        if (self.Symbol is not { } type || this.impls.OfType(type) is not { } identities)
         {
             return false;
         }
@@ -333,10 +346,10 @@ public sealed partial class Binding
         plan.Receiver.BoundSymbol = symbol;
         Complete(plan.Iterator, iterator);
         Complete(plan.Receiver, iterator);
-        ResetSynthetic(plan.Next);
-        ResetSynthetic(plan.Next.Method);
-        ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
-        return this.BindCall(plan.Next, plan.Scope, null);
+        this.ResetSynthetic(plan.Next);
+        this.ResetSynthetic(plan.Next.Method);
+        this.ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
+        return this.BindSynthesizedCall(source, plan.Next, plan.Scope);
     }
 
     // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary match decomposition and its

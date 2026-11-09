@@ -7,11 +7,12 @@ namespace Kimi.Compiler.Mir;
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
 //   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
 //   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
-//   a diverging Call's write bit for G131, no Never value written by a returning Call. Over a walked body, each FormatFinish's adapter
-//   over a FormatBuffer's buffer and its estimate operands that FormatBuffer's (Finishes).
+//   a diverging Call's write bit for G131, no Never value written by a returning Call; a constant record only as an input of a Fn call
+//   that keeps nothing of it (ConstantRecords); a Places Call's Fn callee and whole-Temp Moves (Placed; PLAN G442). Over a walked body,
+//   each FormatFinish's adapter over a FormatBuffer's buffer and its estimate operands that FormatBuffer's (Finishes).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
-//   StaticSlot, Type and NeverWrite findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs to
-//   MirValidator.Inputs (G136).
+//   StaticSlot, Type, NeverWrite and Operation findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs
+//   to MirValidator.Inputs (G136).
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked; an intrinsic row after
 //   the arity row sees the row's operand count.
 // - Prohibitions: no argument or result Type of a signature (MirValidator.Signatures); an intrinsic row's Type only through the Type
@@ -174,6 +175,30 @@ internal sealed partial class MirValidator
                 types.Comparison(TyCtxt.Contract(callee.Symbol!), self, operators: true) is { Kind: ComparisonKind.Composite };
         }
 
+        // SPEC 13.4, 14.8.1: a constant record, a comparison's literal, has no Place, Loan or destruction, so A5 follows nothing from it, and only
+        // here is it stated that nothing needs following: each is an input of a Fn call that its Clears clears. Else an Operation finding.
+        private void ConstantRecords(in MirTerminator call)
+        {
+            for (var position = 0; position < call.Count; position++)
+            {
+                var input = body.Operands[call.Start + position];
+                if (input.Kind == MirOperandKind.Const && (uint)input.Arg < (uint)body.Consts.Length && body.Consts[input.Arg].IsRecord &&
+                    !this.Clears(call.Callee, position))
+                {
+                    this.Report(MirViolation.Operation);
+                }
+            }
+        }
+
+        // A Fn call of a declared function, not a default template's (Compared's is one), and the two facts a Loan would otherwise carry: the
+        // parameter is not `during static`, an Origin bound that TyCtxt.Retains does not judge, and the call keeps nothing of the input, by that
+        // fact, A5's own. A Value callee has no declaration to read, a default template's call no contract and an intrinsic an operand beyond
+        // its declaration (its row's Retained), and nothing is built with a record at a Requirement or Virtual call.
+        private readonly bool Clears(in MirCallee callee, int position)
+            => callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } function } && MirCallee.Slot(function, position) is var slot &&
+                TyCtxt.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
+                !types.Retains(function, callee.Subst, body.Key.Decl).Keeps(slot);
+
         // False when the arguments are out of range.
         private bool Call(in MirTerminator call)
         {
@@ -218,7 +243,13 @@ internal sealed partial class MirValidator
                     break;
             }
 
+            if (call.Places && !this.Placed(call))
+            {
+                this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
+            }
+
             this.Inputs(call);
+            this.ConstantRecords(call);
             if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
             {
                 writes[root] |= DivergingWrite; // The destination MirUses does not report.
@@ -227,6 +258,27 @@ internal sealed partial class MirValidator
                 body.Locals[written] is { Kind: MirLocalKind.Temp } local && ReferenceEquals(local.Type, BoundType.Never))
             {
                 this.Report(MirViolation.NeverWrite); // A returning Call writes the Never value (R5-M38).
+            }
+
+            return true;
+        }
+
+        // A Places Call (PLAN G442; the owner's O-97 (a)): a construction's insertion, a Fn callee each of whose operands is a Move of a
+        // whole Temp that the call transfers into the construction.
+        private readonly bool Placed(in MirTerminator call)
+        {
+            if (call.Callee.Kind != MirCalleeKind.Fn)
+            {
+                return false;
+            }
+
+            foreach (ref readonly var operand in body.Operands.Slice(call.Start, call.Count))
+            {
+                if (operand.Kind != MirOperandKind.Move || Whole(operand.Place, body.Locals.Length) is not (>= 0 and var root) ||
+                    body.Locals[root].Kind != MirLocalKind.Temp)
+                {
+                    return false;
+                }
             }
 
             return true;

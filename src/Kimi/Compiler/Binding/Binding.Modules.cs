@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private Dictionary<Kotonoha, BindingSymbol>? moduleSymbols;
+
     private BindingScope ModuleScope(Koto node) => this.scopes[node.CodeContext.Kotonoha.RootKoto];
 
     private BindingSymbol? ModuleReference(Koto use, string name)

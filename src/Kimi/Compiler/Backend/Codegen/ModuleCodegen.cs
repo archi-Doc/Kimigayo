@@ -13,8 +13,7 @@
 // array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112), an Array's (R5-M121), a
 // Dictionary's (R5-M124)),
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
-// heap environment's release, written by FunctionCodegen; R5-M108), the LegacyRow items of the Array rows and of placeEntry (their routines,
-// their helpers written before the definitions, ModuleCodegen.Arrays and ModuleCodegen.Dictionaries; R5-M121, R5-M124), the Builtin shims
+// heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims
 // (__kimi_builtin<item>, a comparison's, an arithmetic operation's or a built-in formatting's function under its requirement's signature,
 // Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), a user or library formatter's wrappers (__kimi_write<item>, a conversion over
 // it; ModuleCodegen.Formatting, R5-M130), the property witnesses (__kimi_witness<item>, a standard property witness's function under its
@@ -39,8 +38,8 @@
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
 // entries (ModuleCodegen.Erasures.cs), the formatting wrappers of formatter items (ModuleCodegen.Formatting.cs), the object descriptors
-// with their virtual tables (ModuleCodegen.Objects.cs), the Array rows' routines and helpers (ModuleCodegen.Arrays.cs) and the Dictionary
-// rows' (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
+// with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
+// (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -146,7 +145,7 @@ internal sealed partial class ModuleCodegen
     }
 
     // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a Builtin or PropertyWitness shim, a descriptor
-    // through ObjectRuntime, a VTable as its descriptor's table, a LegacyRow item's routine; MonoKind has no other member.
+    // through ObjectRuntime, a VTable as its descriptor's table; MonoKind has no other member.
     private void Item(MirProgram program, InstanceCollector collector, int item)
     {
         var entry = collector.Set.Items[item];
@@ -169,9 +168,6 @@ internal sealed partial class ModuleCodegen
                 return;
             case MonoKind.VTable:
                 return; // Its text is its descriptor's virtual table (ModuleCodegen.Objects' Table; R5-M114).
-            case MonoKind.LegacyRow:
-                _ = this.Row(item, out _); // Its routine, its helper's text and its row's needs (ModuleCodegen.Arrays; R5-M121, R5-M124).
-                return;
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }

@@ -9,8 +9,9 @@ namespace Kimi.Compiler.Mir;
 //   node's kept operands, evaluated first in syntax order as their Places and never acquired (KeptOperands), then the locals, parameters,
 //   environment bindings and statics the rest of the node's syntax names or a Closure in it captures (Roots), a part located already
 //   named by its Place's root.
-// - Inputs: the node; the published Op, Res, Adjust and symbols; the Places the builder has bound or located.
-// - Outputs: roots, the root list Site reads (other producers of a derived site fill it themselves); the kept operands' MIR.
+// - Inputs: the node; the published Op and Adjust, each node's Res and symbol; the Places the builder has bound or located.
+// - Outputs: roots, the root list Site reads, or the root of a part built already (SiteRoots(MirPlace?)); Defaults names a default's earlier
+//   slots; the kept operands' MIR.
 // - Invariants: each root once; a kept operand is evaluated once, before the site, and its syntax's roots are not named again, also
 //   where several consumers take an Error node an expansion located (DECISIONS R4-M109).
 // - Prohibitions: no record, no acquisition of a kept operand, no site formed here.
@@ -21,7 +22,8 @@ internal sealed partial class MirBuilder
     private Roots? collector;
     private KeptOperands? keptOperands;
 
-    // Whether the HIR keeps a child of an Error node in place: an operand Binding resolved of a failed compound Place (DECISIONS R5-M63).
+    // Whether the HIR keeps a child of an Error node in place: a part Binding resolved that the publisher keeps (Binding's Keeps: a failed
+    // compound Place's operands, an unresolved operation's, a rejected do's parts; DECISIONS R5-M63, R4-M88, BU-106).
     private static bool Kept(Koto node) => HirTables.AdjustOf(node) == new HirAdjust(HirAcquire.None, HirAdaptation.None);
 
     // The roots of the Opaque site formed for a node (Opaque). SPEC 23.1.2 (DECISIONS R5-M63): an Error node's kept operands are evaluated
@@ -45,6 +47,17 @@ internal sealed partial class MirBuilder
 
         this.kept.RemoveRange(start, this.kept.Count - start);
         (this.collector ??= new(this)).Collect(node);
+    }
+
+    // The roots of an Opaque site derived from a part built already: that part's Place root, a local's or a static's, none for a constant
+    // (null), never the node's syntax (R5-M63, R5-M84).
+    private void SiteRoots(MirPlace? built)
+    {
+        this.roots.Clear();
+        if (built is { } place)
+        {
+            this.Root(place.Root);
+        }
     }
 
     // A root of the Opaque site being formed, once: a kept operand's, or one its syntax names.
@@ -130,7 +143,7 @@ internal sealed partial class MirBuilder
                     break;
             }
 
-            var captures = node is FunctionKoto function ? function.ClosureDefinition?.Captures : null; // A named function has no definition.
+            var captures = node is FunctionKoto function ? BoundClosure.Of(function)?.Captures : null; // A named function has no definition.
             for (var i = 0; i < captures?.Count; i++)
             {
                 this.Add(captures[i].Source);

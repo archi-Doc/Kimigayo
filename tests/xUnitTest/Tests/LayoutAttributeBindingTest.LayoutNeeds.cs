@@ -5,7 +5,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 8.15.3 with DECISIONS R5-M144 and R5-M149 (the owner's LayoutNeed): a form whose generated code reads a layout past its root's
-// storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout on every pipeline. A Field, Case payload
+// storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout. A Field, Case payload
 // or element projected through a borrow, raw pointer, object handle or a sequence's storage needs its container's offsets or its stride; a
 // raw pointer's displacement, a whole-value update through references (swap, replace, exchange; a value given or taken is a by-value use too)
 // and a Dictionary operation need their Types' sizes; a comparison of a Tuple's parts through a reference needs its offsets (SPEC 13.4). The
@@ -83,6 +83,17 @@ public partial class LayoutAttributeBindingTest
             "func f(a: uniq/Option<X>)\n    let old = Kimi.Intrinsics.exchange(a, with: .None)\n",
             "InvalidCLayout_Kd let old|InvalidCLayout_Kd .None|InvalidCLayout_Kd Kimi.Intrinsics.exchange(a, with: .None)"),
         ("dictionary", "func f(d: ref/Dictionary<i32, X>) -> i32\n    let r = d[1]@ref\n    return 0\n", "InvalidCLayout_Kd d[1]@ref"),
+        // SPEC 4.6.1, 8.15.3 (G597): a view whose start boundary is Start starts at the storage, projecting no element; a written
+        // start, whatever its value, is that element's offset.
+        ("view-whole", "func f(a: ref/Array<X>) -> isize => a[..].length\n", string.Empty),
+        ("view-prefix", "func f(a: ref/Array<X>, k: isize) -> isize => a[..k].length\n", string.Empty),
+        ("view-from-end", "func f(a: ref/Array<X>) -> isize => a[..^1].length\n", string.Empty),
+        ("view-fixed", "func f(a: ref/[2 of X]) -> isize => a[..=0].length\n", string.Empty),
+        ("view-slice", "func f(s: Slice<X>) -> isize => s[..1].length\n", string.Empty),
+        ("view-value", "func f(a: ref/Array<X>) -> isize\n    let r = ..\n    return a[r].length\n", string.Empty),
+        ("view-uniq", "func f(a: uniq/Array<X>) -> isize => a.sliceUniq().length\n", string.Empty),
+        ("view-start", "func f(a: ref/Array<X>) -> isize => a[0..].length\n", "InvalidCLayout_Kd a[0..]"),
+        ("view-start-value", "func f(a: ref/Array<X>) -> isize\n    let r = 1..\n    return a[r].length\n", "InvalidCLayout_Kd a[r]"),
     ];
 
     // The inferred and compared forms: P<()> projected in a generic body's instance, and a comparison shim's Tuple compared through a

@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The evaluated Op classification and what a node's parent covers, part of the Adjust column's rule (Binding.Hir.Adjust), and the HIR
-// publisher's Transitional evaluation positions.
+// publisher's evaluation positions.
 // - The rule (lasting): a node's evaluated Op (OpOf: Body, Syntax, Error or the Op its form and Binding's facts give, published only with
 //   the facts it guarantees, HasFacts) and Covers, whether a parent covers a child. Inputs: syntax slots and completed Binding facts; it
 //   classifies only existing Binding decisions.
-// - The publisher's walk (Transitional, R7): each child's position (PositionOf), the parts an Error or a closure keeps (Keeps, Parts) and the
-//   Op at a position; the publisher owns the walk, retained storage and column writes.
+// - The publisher's positions: each child's position (PositionOf), the parts an Error or a closure keeps (Keeps, Parts) and the Op at a
+//   position, from the inputs the walk passes; the publisher owns the walk, retained storage and column writes.
 // Must not resolve syntax again or change the facts each Op guarantees (Binding.HasFacts).
 
 using Kimi.Compiler.Parsing;
@@ -17,9 +17,8 @@ public sealed partial class Binding
 {
     // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (Covers), or inside an Error,
     // whose value the builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved
-    // operands, R4-M88 an unresolved operation's operands).
+    // operands, R4-M88 an unresolved operation's operands, BU-106 a rejected do's resolved parts).
     [Flags]
-    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
     {
         None = 0,
@@ -158,16 +157,16 @@ public sealed partial class Binding
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length; an Error replaces its
         // children but those it keeps (Keeps).
-        private HirPosition PositionOf(Koto node)
+        private HirPosition PositionOf(Koto node, Koto? parent, HirOp parentOp, HirPosition position, bool unresolvedOperation)
         {
-            if ((this.parentOp == HirOp.Error && !this.Keeps(node)) || (this.position & HirPosition.Replaced) != 0)
+            if ((parentOp == HirOp.Error && !this.Keeps(node, parent!, unresolvedOperation)) || (position & HirPosition.Replaced) != 0)
             {
                 return HirPosition.Replaced;
             }
 
-            var position = this.position & ~HirPosition.Covered;
-            var body = this.parentOp is HirOp.Body or HirOp.Closure ? HirPosition.Evaluated : HirPosition.None;
-            switch (this.parent)
+            position &= ~HirPosition.Covered;
+            var body = parentOp is HirOp.Body or HirOp.Closure ? HirPosition.Evaluated : HirPosition.None;
+            switch (parent)
             {
                 case null or TypeKoto or AttributeKoto or OriginRelationKoto or DeclarationContainerKoto:
                     return HirPosition.None;
@@ -183,12 +182,6 @@ public sealed partial class Binding
                     {
                         if (ReferenceEquals(node, function.Parameters[i].DefaultValue) && PartsPublished(function))
                         {
-                            if (this.defaultCount == this.defaults.Length)
-                            {
-                                Array.Resize(ref this.defaults, this.defaultCount * 2);
-                            }
-
-                            this.defaults[this.defaultCount++] = (function, i);
                             this.table!.Hir.Defaults!.Add(new(function, i));
                             return HirPosition.Evaluated;
                         }
@@ -196,7 +189,7 @@ public sealed partial class Binding
 
                     return HirPosition.None;
                 case VariableKoto variable:
-                    return ReferenceEquals(node, variable.InitializerKoto) && this.parentOp is HirOp.Body or HirOp.Let ? HirPosition.Evaluated : HirPosition.None;
+                    return ReferenceEquals(node, variable.InitializerKoto) && parentOp is HirOp.Body or HirOp.Let ? HirPosition.Evaluated : HirPosition.None;
                 case MatchKoto match:
                     for (var i = 0; i < match.Arms.Count; i++)
                     {
@@ -210,11 +203,11 @@ public sealed partial class Binding
                 case ForKoto loop:
                     return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
                 case InvocationKoto or MacroKoto:
-                    return Covers(this.parent!, node) ? position | HirPosition.Covered : position;
+                    return Covers(parent, node) ? position | HirPosition.Covered : position;
                 case GenericsKoto:
-                    return Covers(this.parent!, node) ? position | HirPosition.Covered : HirPosition.None;
+                    return Covers(parent, node) ? position | HirPosition.Covered : HirPosition.None;
                 case MemberAccessKoto or ConversionKoto or IsKoto:
-                    return ReferenceEquals(node, ((BinaryKoto)this.parent).Left) ? position : HirPosition.None;
+                    return ReferenceEquals(node, ((BinaryKoto)parent).Left) ? position : HirPosition.None;
                 case ArrayLiteralKoto array:
                     return ReferenceEquals(node, array.FillLength) ? HirPosition.None : position;
                 case SyntaxFormKoto:
@@ -229,10 +222,20 @@ public sealed partial class Binding
         // not, an Error), except a construct that has no Type (Construct), also in parentheses or labeled: no destination Type holds a
         // kept operand, so it stays replaced, its parts' problems lost (PLAN G121's kept-construct design). A compound Place Binding
         // rejected or did not resolve, not a broken contract, keeps each operand Binding resolved as a value or a Place, an Op with its facts
-        // (not a Type or group name, Syntax; DECISIONS R5-M63).
-        private bool Keeps(Koto child)
+        // (not a Type or group name, Syntax; DECISIONS R5-M63). A rejected expression that runs its one body once (RunsItsBodyOnce: a do)
+        // keeps each part Binding resolved with its Op's facts, unless a jump the builder builds goes to it (DECISIONS BU-106). A kept part
+        // holds no jump published without failure whose target row is the Error: the builder resolves such a row against the targets it
+        // opened, and an Error opens none (its InternalInvariant_Kd).
+        private bool Keeps(Koto child, Koto parent, bool unresolvedOperation)
         {
-            if (this.unresolvedOperation)
+            if (Rejected(parent) && RunsItsBodyOnce(binding.KindOp(parent)))
+            {
+                // The label test bounds the walk's cost only: a do is a jump's target row only as a labeled target (SPEC 14.3).
+                return child.BindingState == BindingState.Resolved && binding.OpOf(child) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error) &&
+                    !(parent.Parent is LabeledKoto && (this.targets ??= new(binding)).Targeted(parent));
+            }
+
+            if (unresolvedOperation)
             {
                 var op = binding.OpOf(child);
                 var inner = KotoHelper.UnwrapParentheses(child);
@@ -241,8 +244,8 @@ public sealed partial class Binding
                     HirTables.Meaning(inner) is null && HirTables.Meaning(child) is null);
             }
 
-            return child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&
-                (Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
+            return child.BindingState == BindingState.Resolved && CompoundPlace(parent) &&
+                (Rejected(parent) || parent.BindingState != BindingState.Resolved) &&
                 binding.OpOf(child) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error);
         }
 
@@ -260,5 +263,41 @@ public sealed partial class Binding
         private HirOp OpOf(Koto node, HirPosition position)
             => position == HirPosition.Evaluated || node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto
                 ? binding.OpOf(node) : HirOp.Syntax;
+
+        // SPEC 14.5.2 (DECISIONS BU-101, BU-106): whether a jump in a construct's subtree, one the builder builds through its target row (its
+        // Op not Error), has the construct as that row (HirTables.PlanOf, written by the jump binding before publication). A failed jump is
+        // built as a derived Opaque and reads no target, so it does not count.
+        private sealed class TargetWalk(Binding binding) : KotoVisitor
+        {
+            private Koto? target;
+            private bool found;
+
+            internal long Visited { get; private set; }
+
+            public override void Visit(Koto node)
+            {
+                if (this.found)
+                {
+                    return;
+                }
+
+                this.Visited++;
+                if (node is JumpKoto jump && binding.OpOf(jump) != HirOp.Error && ReferenceEquals(HirTables.PlanOf(jump).Plan, this.target))
+                {
+                    this.found = true;
+                    return;
+                }
+
+                node.VisitChildren(this);
+            }
+
+            internal bool Targeted(Koto construct)
+            {
+                (this.target, this.found) = (construct, false);
+                construct.VisitChildren(this);
+                this.target = null;
+                return this.found;
+            }
+        }
     }
 }

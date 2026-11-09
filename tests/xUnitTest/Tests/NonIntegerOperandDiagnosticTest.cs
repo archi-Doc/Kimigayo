@@ -19,7 +19,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void FloatRemainderIsRejectedAtBindingWithItsTypeAndOperator()
     {
         const string Source = "var x = 1.0\nx %= 2.0";
-        var c = Analyze(Source);
+        var c = MinimalEmissionTest.Check(Source);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
@@ -59,7 +59,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f() -> f64\n    return 1.0\n    1.0 & 2.0\npublic func main() => ()", "f64", "&", "1.0 & 2.0")]
     public void EveryIntegerOnlyOperatorOnAFloatNamesItsTypeAndOperator(string source, string type, string op, string text)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal($"The operator {op} requires integer operands, but this operand has Type {type}", error.Message);
         Assert.Equal($"operator {op} requires an integer operand", error.Label);
@@ -76,7 +76,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("let x: u64 = 1\nlet c = \"a\"\nlet v = x >> c", "string", ">>", "c")]
     public void AShiftCountWithoutAnIntegerTypeIsReportedAtTheCount(string source, string type, string op, string text)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"The operator {op} requires an integer count, but this count has Type {type}", error.Message);
         Assert.Equal($"{type} is not an integer Type", error.Label);
@@ -89,7 +89,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(x: Wrapping<u8>, w: Wrapping<u16>) -> Wrapping<u8> => x >> w\npublic func main() => ()", "Wrapping<u16>")]
     public void AWrappingCountIsNeverAShiftCount(string source, string type)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"{type} is not an integer Type", error.Label);
         Assert.Equal("w", error.Text);
@@ -100,7 +100,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [Fact]
     public void TheShiftedOperandIsJudgedBeforeTheCount()
     {
-        var error = Assert.Single(Errors(Analyze("let x = 1.0\nlet v = x << 1.0")));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check("let x = 1.0\nlet v = x << 1.0")));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal("x << 1.0", error.Text);
     }
@@ -112,7 +112,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("let n: i32 = 2\nlet v = 1.5 % n", "expected i32, found floating-point literal")]
     public void AnIntegerOperandWithAFloatKeepsTheMismatch(string source, string label)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(label, error.Label);
     }
@@ -152,7 +152,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void ARefutedIntegerRequirementPublishesItsActualQuery()
     {
         const string Source = "func bits<T>(value: T)\n    T is not PrimitiveInteger\n    return value & 2\npublic func main() => ()";
-        var compilation = Analyze(Source);
+        var compilation = MinimalEmissionTest.Check(Source);
         var error = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
@@ -165,11 +165,64 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f<T>(x: T) -> T\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
     [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
     [InlineData("func f(x: Wrapping<i32>) -> Wrapping<i32> => 1 + x\npublic func main() => ()")]
+    [InlineData("func f(x: ref/isize) -> isize => 1 + x\npublic func main() => ()")]
+    [InlineData("func f<T>(x: ref/T) -> T\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
+    [InlineData("func f(x: ref/i32) -> i32 => 1 % x\npublic func main() => ()")]
+    [InlineData("func f<T>(x: T) -> T\n    T is PrimitiveInteger\n    return 1 % x\npublic func main() => ()")]
     public void AProvenRightIntegerSuppliesTheLiteralExpectation(string source)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
         Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // SPEC 13.3.4: a right operand's Left Contract provides `%` after a literal left; the counterpart check keeps its selection.
+    [Fact]
+    public void ARightLeftProviderKeepsTheLiteralRemainder()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("""
+            struct V
+                Self is LeftRemainderProvider<i32>
+                associate LeftRemainderProvider<i32>.Output is i32
+                var x: i32 = 0
+                public func remainderFrom(left: ref/i32, self: ref/Self) -> i32
+                    return 0
+            func f(v: V)
+                _ = 1 % v
+            public func main() => ()
+            """);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // SPEC 13.3.4, 5.3: a raw pointer reached through a layer takes the raw-pointer route once @follow reads it; an offset
+    // keeps its value read.
+    [Theory]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> raw/i32\n    unsafe => return p@follow + n\npublic func main() => ()")]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> raw/i32\n    unsafe => return p@follow - n\npublic func main() => ()")]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> i32\n    unsafe => return p@follow[n]\npublic func main() => ()")]
+    [InlineData("func f(items: uniq/Array<raw/i32>, n: isize)\n    for item in items\n        unsafe => item@follow += n\npublic func main() => ()")]
+    [InlineData("func f<s/T>(p: s/raw/i32, n: isize, t: s/T) -> raw/i32\n    s is value or valueborrow\n    unsafe => return p@follow + n\npublic func main() => ()")]
+    [InlineData("func f(p: raw/i32, n: ref/isize) -> raw/i32\n    unsafe => return p + n\npublic func main() => ()")]
+    public void AFollowedRawPointerTakesThePointerRoute(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // SPEC 13.3.4, 23.1.2: a literal left operand's route is judged at the right operand's terminal Type, and each independent
+    // operation keeps its own record.
+    [Theory]
+    [InlineData("let x = 1 + p\n    let y = 1 - p", "OperatorNotDefined_Kd@1 + p|OperatorNotDefined_Kd@1 - p")]
+    [InlineData("_ = (1 + p) + (1 + true)", "OperatorNotDefined_Kd@1 + p|NonNumericOperand_Kd@1 + true")]
+    [InlineData("_ = p + (1 + p)", "OperatorNotDefined_Kd@1 + p|OperatorNotDefined_Kd@p + (1 + p)")]
+    [InlineData("let v: i32 = 1 + p", "OperatorNotDefined_Kd@1 + p")]
+    [InlineData("_ = 1 % p\n    let b: bool = 3", "OperatorNotDefined_Kd@1 % p|TypeMismatch_Kd@3")]
+    public void ALiteralLeftRouteRecordStaysAtEachOperation(string body, string records)
+    {
+        var errors = Errors(MinimalEmissionTest.Check($"func f(p: ref/raw/i32)\n    {body}\npublic func main() => ()"));
+        Assert.Equal(records.Split('|').Order(), errors.Select(static x => $"{x.Code}@{x.Text}").Order());
     }
 
     [Fact]
@@ -207,7 +260,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void CliAndLspCarryTheLabels()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze("func bits(x: f64) -> f64 => x & x\nfunc f(n: i32, w: Wrapping<i32>) -> i32 => n << w\npublic func main() => ()", path);
+        var c = MinimalEmissionTest.Check("func bits(x: f64) -> f64 => x & x\nfunc f(n: i32, w: Wrapping<i32>) -> i32 => n << w\npublic func main() => ()", path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal([nameof(DiagnosticCode.NonIntegerOperand_Kd), nameof(DiagnosticCode.InvalidShiftCount_Kd)], result.Diagnostics.Select(static x => x.Code));
@@ -244,7 +297,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         var condition = refuted ? $"\n    {type} is not PrimitiveInteger" : string.Empty;
         var source = $"func bits<{type}>(value: {type}){condition}\n    return value & 2\npublic func main() => ()";
         var path = Path.GetFullPath("operator.kimi");
-        var compilation = Analyze(source, path);
+        var compilation = MinimalEmissionTest.Check(source, path);
         compilation.Diagnostics.AddInput(compilation.Diagnostics.FindDocument(path)!, compilation.Kotonoha);
         var result = compilation.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -377,6 +430,142 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         "2 - p",
         null)]
     [InlineData(
+        "func f(p: ref/raw/i32) => 2 + p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+",
+        "2 + p",
+        null)]
+    [InlineData(
+        "func f(p: uniq/raw/i32) => 2 - p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "-",
+        "2 - p",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32) => 2 * p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "*",
+        "2 * p",
+        null)]
+    [InlineData(
+        "func f(p: ref/(ref/raw/i32 during static)) => 2 / p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/ref/raw/i32",
+        "/",
+        "2 / p",
+        null)]
+    [InlineData(
+        "func f<s/T>(p: s/raw/i32, t: s/T)\n    s is value or valueborrow\n    return 2 + p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "s/raw/i32",
+        "+",
+        "2 + p",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/f64) => 2.0 + p\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/f64",
+        "+",
+        "2.0 + p",
+        null)]
+    [InlineData(
+        "func f(u: ref/()) => 1 + u\npublic func main() => ()",
+        "NonNumericOperand_Kd",
+        "ref/()",
+        "+",
+        "1 + u",
+        null)]
+    [InlineData("let v = 1 % true", "NonNumericOperand_Kd", "bool", "%", "1 % true", null)]
+    [InlineData("func f(b: bool) => 1 % b\npublic func main() => ()", "NonNumericOperand_Kd", "bool", "%", "1 % b", null)]
+    [InlineData("func f(u: ()) => 1 % u\npublic func main() => ()", "NonNumericOperand_Kd", "()", "%", "1 % u", null)]
+    [InlineData(
+        "func f(q: ref/raw/i32) => 1 % q\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "%",
+        "1 % q",
+        null)]
+    [InlineData(
+        "func f(u: uniq/raw/i32) => 1 % u\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "%",
+        "1 % u",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize) => p - n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "-",
+        "p - n",
+        null)]
+    [InlineData(
+        "func f(p: uniq/raw/i32, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize)\n    var q = p\n    q += n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+=",
+        "q += n",
+        null)]
+    [InlineData(
+        "func f(p: uniq/raw/i32, n: isize)\n    var q = p\n    q -= n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "-=",
+        "q -= n",
+        null)]
+    [InlineData(
+        "func f<T>(p: ref/raw/T, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/T",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, q: ref/raw/i32) => p + q\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+",
+        "p + q",
+        null)]
+    [InlineData(
+        "func f<s/T>(p: s/raw/i32, n: isize, t: s/T)\n    s is value or valueborrow\n    return p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "s/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32) => p * 2\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "*",
+        "p * 2",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32) => p % 2\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "ref/raw/i32",
+        "%",
+        "p % 2",
+        null)]
+    [InlineData(
         "func f(p: raw/i32)\n    var q = p\n    q *= 2\npublic func main() => ()",
         "OperatorNotDefined_Kd",
         "raw/i32",
@@ -456,7 +645,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void ApplicabilityFailuresRetainFactsBeforeCounterpartFitting(
         string source, string code, string type, string op, string at, string? contract)
     {
-        var compilation = Analyze(source);
+        var compilation = MinimalEmissionTest.Check(source);
         var error = Assert.Single(Errors(compilation));
         Assert.Equal(code, error.Code);
         Assert.Equal(at, error.Text);
@@ -480,13 +669,4 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
 
     private static TestDiagnostic[] Errors(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error)];
-
-    private static Compilation Analyze(string source, string path = "Hello.kimi")
-    {
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return c;
-    }
 }

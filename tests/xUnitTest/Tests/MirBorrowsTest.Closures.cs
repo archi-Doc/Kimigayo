@@ -418,7 +418,7 @@ public sealed partial class MirBorrowsTest
                 """));
 
     // SPEC 15.8.2, 15.6.4, 7.7.3 (DECISIONS R4-M152, R4-M126 P8, P9): a result over the environment is bound, R1's located Unsupported_Kd
-    // gone from Binding (the old analysis's gate keeps it on the default pipeline). A result naming the receiver ρ takes the acquisition's
+    // gone from Binding (the old analysis's gate kept it until H5). A result naming the receiver ρ takes the acquisition's
     // Origin and carries the receiver's Loan, so the Closure's Move (envMoveBad), a second Exclusive call (envTwiceBad) and the end of a
     // temporary receiver (temporaryBad, movedTemporaryBad) conflict while it lives, as does a write of what a read through the receiver
     // reaches (envReadBad); a Reborrow through a captured `uniq` is contained in ρ too (reborrowBad, sharedThroughUniqBad), while one under a
@@ -1020,8 +1020,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape(z: uniq/i32, x: ref/i32)\n    origin z outlives x\n    var last: ref/i32 during x = x\n" +
             "«N:    var r{0}: ref/i32 during x = x\n»    var c = func [var last«N:, var r{0}»] (v: ref/i32 during x) => last = v\n«K:    c(x)\n»";
-        long[] inN = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(Prelude + Expand(Shape, n, 8)).Work)];
-        long[] inK = [.. new[] { 8, 16, 32 }.Select(k => this.Measured(Prelude + Expand(Shape, 8, k)).Work)];
+        long[] inN = [.. new[] { 8, 16, 32 }.Select(n => Measured(Prelude + Expand(Shape, n, 8)).Work)];
+        long[] inK = [.. new[] { 8, 16, 32 }.Select(k => Measured(Prelude + Expand(Shape, 8, k)).Work)];
         output.WriteLine($"N 8, 16, 32 at K 8: work {string.Join(", ", inN)}; K 8, 16, 32 at N 8: work {string.Join(", ", inK)}");
         Assert.True(Grows(inN, 5), $"work in N {string.Join(", ", inN)}");
         Assert.True(Grows(inK, 5), $"work in K {string.Join(", ", inK)}");
@@ -1037,7 +1037,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape()\n    let n: i32 = 4\n    let mk = func [n] () => func [n@ref] () => «N:func [n] () => »n\n" +
             "    let r = mk()()«N:()»\n    inspect(r)\n";
-        long[] work = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(Prelude + Expand(Shape, n, 0)).Work)];
+        long[] work = [.. new[] { 8, 16, 32 }.Select(n => Measured(Prelude + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }

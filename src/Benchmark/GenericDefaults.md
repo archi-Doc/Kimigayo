@@ -14,7 +14,7 @@ zero-allocation regression `GenericDefaultTest.AllocationTests.WarmDefaultContex
 - `depth` at 1, 4 and 8: that many omitted defaults nested over it, each making the inner level's sample, called once
   with each Type.
 
-The command shares `CompilerPlanMeasurements`: binding, ownership and emission phases with 32 warm-up iterations and
+The command shares `CompilerPlanMeasurements`: binding, check and emission phases with 32 warm-up iterations and
 seven samples of 64 iterations, full collections outside each sample, and every operation required to remain valid.
-`defaultContexts` reports the interpretation contexts recorded in the analyzed bodies (zero after the binding phase,
-which resets ownership). Timing has no pass/fail threshold and is not speedup evidence; retain every report.
+From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass. Until H9 `defaultContexts` reported the interpretation contexts the legacy pass recorded; H9 removed the
+column. Timing has no pass/fail threshold and is not speedup evidence; retain every report.

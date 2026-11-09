@@ -40,14 +40,17 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Slice:
                 this.Slice(call);
                 return;
+            case IntrinsicWriter.Stride:
+                this.Finish(call, new Value('\0', this.Needed(call.Callee.Subst!, 0, out _)?.Layout.Stride ?? 0));
+                return;
             case IntrinsicWriter.Ensure:
                 this.Ensure(call, target);
                 return;
             case IntrinsicWriter.Test:
                 this.Test(call);
                 return;
-            case IntrinsicWriter.Capacity:
-                this.Capacity(call);
+            case IntrinsicWriter.Destroy:
+                this.DestroyValues(call, target);
                 return;
             case IntrinsicWriter.Buffer:
                 this.FormatBuffer(call, row);
@@ -88,35 +91,18 @@ internal sealed partial class FunctionCodegen
         };
     }
 
-    // A legacy row's routine (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128), the one path its direct call, its Item's Value call and its
+    // A legacy row's routine (DECISIONS R5-M116, R5-M128), the one path its direct call, its Item's Value call and its
     // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
-    // (FunctionCodegen.Formatting); a row's in its function's instance (LegacyRow.InInstance), its call site's LegacyRow item's
-    // (ModuleCodegen.Row: the item's Array helper or its row's capacity routine, given the element's stride or a fixed array's length, or
-    // placeEntry's Place helper, which takes no given value); null for any other row, and after a record at the source (such a row's call
-    // targets its item, K 4.5 row 2).
+    // (FunctionCodegen.Formatting); null for any other row, and after a record at the source.
     private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
-        if (!row.InInstance)
+        return row.Writer switch
         {
-            return row.Writer switch
-            {
-                LegacyWriter.Routine => row.Routine,
-                LegacyWriter.Formatting => this.Formatting(row, target, source, out given),
-                _ => null,
-            };
-        }
-
-        if (target < 0 || this.collector.Set.Items[target].Key.Kind != MonoKind.LegacyRow)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, source); // The collector targets an Instance row's call at its LegacyRow item.
-            return null;
-        }
-
-        var routine = this.module.Row(target, out var number);
-        this.slotless[0] = new('\0', number);
-        given = this.slotless.AsSpan(0, 1);
-        return routine;
+            LegacyWriter.Routine => row.Routine,
+            LegacyWriter.Formatting => this.Formatting(row, target, source, out given),
+            _ => null,
+        };
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
@@ -229,26 +215,22 @@ internal sealed partial class FunctionCodegen
         this.Finish(call, null);
     }
 
-    // SPEC 5.6: Raw.slice(storage, length) forms the Slice record {buffer, length} in the destination, at its Fields 0 and 1 (Layout's
-    // offsets, as Length reads Field 1), reading nothing; the backing, Unit, has no value (DECISIONS R4-M40).
+    // SPEC 5.6: Raw.slice(storage, length) forms the Slice record in the destination, its words `data` and `length` (StoreWord), reading
+    // nothing; the backing, Unit, has no value (DECISIONS R4-M40).
     private void Slice(in MirTerminator call)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count))
+        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count) ||
+            this.LoweringOf(call.Place) is not { } slice)
         {
             return; // A broken contract, recorded.
         }
 
-        if (this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
-        {
-            return; // A broken contract, recorded.
-        }
-
-        var offsets = slice.Layout.FieldOffsets.Span;
-        this.StoreAt(this.Offset(record, offsets[0]), pointer.Layout, buffer);
-        this.StoreAt(this.Offset(record, offsets[1]), index.Layout, count);
+        var type = this.InstanceType(call.Place)!;
+        this.StoreWord(type, slice, record, "data", buffer);
+        this.StoreWord(type, slice, record, "length", count);
         this.Finish(call, null);
     }
 }

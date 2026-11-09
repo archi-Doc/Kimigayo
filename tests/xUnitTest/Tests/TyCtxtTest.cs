@@ -10,7 +10,7 @@ namespace XunitTest;
 /// <summary>The Type context (<c>Compilation.Types</c>, docs/dev/COMPILER_ARCHITECTURE.md, R2b): a substitution is interned, so a warm
 /// lookup returns the same object and allocates nothing, and a call's, closure's or function item's substitution applied to a declared
 /// Type is the instantiation Binding makes for it, over the Kimi library and every milestone program.</summary>
-public sealed class TyCtxtTest
+public sealed partial class TyCtxtTest
 {
     // Generic functions whose requirement calls, in the closed calls below, run each witness kind: a conformance witness, an inherited one, one
     // through a conditional conformance of a Type with an Origin slot, one through a bound Contract reference (also written in a generic Type's
@@ -102,9 +102,11 @@ public sealed class TyCtxtTest
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
 
-    // A generic function with a closure, called with two borrows of different Origins, and a nongeneric function with Origins.
+    // A generic function with a closure, called with two borrows of different Origins, one whose call binds an input Origin, and a
+    // nongeneric function with Origins.
     private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
-        "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
+        "func view<T>(value: ref/T) -> i32 => 1\nfunc host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    _ = view(a)\n    return 0\n" +
+        "let x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
 
     // A raw Field and a Case payload stating `self`, and a raw Field stating a slot, held under a local's Origin and under `static`.
     private const string RawShapeSource = "struct Block\n    internal let data: raw/u8 during self\n    public init() => self.data = null\n" +
@@ -281,6 +283,18 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
+    // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
+    // callee's own Origin in its own body keeps the caller's (it became the callee's image `j` before).
+    [Fact]
+    public void ACallsInstanceMapsEachSlotOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k)\n    let p: (ref/i32 during k, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\npublic func main() => ()\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var declared = nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "p").TypeKoto!.TypeOf();
+        var call = nodes.OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.Same(declared, c.Binding.InstantiateStorageType(call.Target.Type!, call));
+    }
+
     // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
     // substitutions that differ only in Self close it twice. No source call gives a body with a closure a Self (a Contract declares no default
     // implementation, SPEC 8.6.1), so the test synthesizes the two calls.
@@ -373,7 +387,7 @@ public sealed class TyCtxtTest
             "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\npublic func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
-        Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
+        Assert.Equal([HoldStep.Static, HoldStep.Shared, HoldStep.Exclusive], [c.Types.StoredStep(p[1], 0, []), c.Types.StoredStep(p[2], 1, []), c.Types.StoredStep(p[3], 1, [])]);
     }
 
     // SPEC 15.3.5, 5.2.1 condition 3, 5.7 Origins (DECISIONS BU-44): a raw layer stating a slot only conditional pair slots use steps by
@@ -389,8 +403,8 @@ public sealed class TyCtxtTest
         foreach (var (at, part) in ConditionalRows)
         {
             var members = new List<RawMember>();
-            Assert.True(types.RawMembers(p[at], part, [], members));
-            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+            Assert.True(MembersAt(types, p[at], part, [], members));
+            rows.Add($"{types.StoredStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
         }
 
         Assert.Equal(
@@ -414,8 +428,8 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal(
-            [RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared],
-            [c.Types.RawStep(p[3], 1, []), c.Types.RawStep(p[4], 1, []), c.Types.RawStep(p[5], 1, []), c.Types.RawStep(p[6], 1, []), c.Types.RawStep(p[7], 0, []), c.Types.RawStep(p[8], 0, [])]);
+            [HoldStep.Exclusive, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Shared],
+            [c.Types.StoredStep(p[3], 1, []), c.Types.StoredStep(p[4], 1, []), c.Types.StoredStep(p[5], 1, []), c.Types.StoredStep(p[6], 1, []), c.Types.StoredStep(p[7], 0, []), c.Types.StoredStep(p[8], 0, [])]);
     }
 
     // DECISIONS BU-44: a binder after 64 pair slots keeps its cases (its ordinal has no width limit): a nested declaration's raw Field
@@ -430,8 +444,8 @@ public sealed class TyCtxtTest
         foreach (var (at, part) in new[] { (2, 1), (3, 1), (4, 1), (5, 1) })
         {
             var members = new List<RawMember>();
-            Assert.True(types.RawMembers(p[at], part, [], members));
-            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+            Assert.True(MembersAt(types, p[at], part, [], members));
+            rows.Add($"{types.StoredStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
         }
 
         Assert.Equal(["Exclusive []", "Shared []", "Exclusive [i32 excl]", "Shared [i32]"], rows);
@@ -450,7 +464,7 @@ public sealed class TyCtxtTest
         {
             c.Binding.Bind(BindingMode.Final);
             members.Clear();
-            if (types.RawStep(p[2], 1, []) != RawStep.Exclusive || types.RawStep(p[5], 1, []) != RawStep.Shared || !types.RawMembers(p[4], 1, [], members))
+            if (types.StoredStep(p[2], 1, []) != HoldStep.Exclusive || types.StoredStep(p[5], 1, []) != HoldStep.Shared || !MembersAt(types, p[4], 1, [], members))
             {
                 throw new InvalidOperationException("Wide raw steps changed.");
             }
@@ -468,8 +482,8 @@ public sealed class TyCtxtTest
         var steps = 0;
         foreach (var (at, part) in ConditionalRows)
         {
-            steps += (int)types.RawStep(p[at], part, []);
-            types.RawMembers(p[at], part, [], members);
+            steps += (int)types.StoredStep(p[at], part, []);
+            MembersAt(types, p[at], part, [], members);
         }
 
         var count = members.Count;
@@ -479,8 +493,8 @@ public sealed class TyCtxtTest
             var again = 0;
             foreach (var (at, part) in ConditionalRows)
             {
-                again += (int)types.RawStep(p[at], part, []);
-                types.RawMembers(p[at], part, [], members);
+                again += (int)types.StoredStep(p[at], part, []);
+                MembersAt(types, p[at], part, [], members);
             }
 
             if (again != steps || members.Count != count)
@@ -503,9 +517,9 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
+        Assert.True(MembersAt(c.Types, p[1], 0, [], members));
         Assert.Empty(members);
-        Assert.True(c.Types.RawMembers(p[2], 1, [], members) && c.Types.RawMembers(p[3], 1, [], members));
+        Assert.True(MembersAt(c.Types, p[2], 1, [], members) && MembersAt(c.Types, p[3], 1, [], members));
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
     }
 
@@ -528,7 +542,7 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
+        Assert.True(MembersAt(c.Types, p[1], 0, [], members));
         Assert.Equal([new(0, BoundType.I32, false)], members);
     }
 
@@ -566,8 +580,8 @@ public sealed class TyCtxtTest
         var (types, p) = StoredLayers();
         (BoundType Instance, int Part, int[] Positions)[] layers = [(p[3], 0, []), (p[4], 0, [0]), (p[5], 1, []), (p[6], 1, []), (p[7], 0, []), (p[8], 0, [0]), (p[8], 1, [1])];
         Assert.Equal(
-            [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
-            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+            [HoldStep.Own, HoldStep.Own, HoldStep.Shared, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Own, HoldStep.Own],
+            layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
@@ -589,17 +603,17 @@ public sealed class TyCtxtTest
             (p[16], 0, [0]), (p[17], 0, [0]), (p[18], 0, [0]), (p[19], 0, [0]), (p[21], 0, []),
         ];
         Assert.Equal(
-            [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
-                RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive, RawStep.Unstated],
-            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+            [HoldStep.Address, HoldStep.Exclusive, HoldStep.Static, HoldStep.Address, HoldStep.Address, HoldStep.Address, HoldStep.Address,
+                HoldStep.Address, HoldStep.Address, HoldStep.Address, HoldStep.Exclusive, HoldStep.Exclusive, HoldStep.Address],
+            layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         var members = new List<RawMember>();
-        Assert.Equal((false, true, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members), types.RawMembers(p[21], 0, [], members)));
+        Assert.Equal((false, true, true), (MembersAt(types, p[10], 0, [], members), MembersAt(types, p[9], 0, [], members), MembersAt(types, p[21], 0, [], members)));
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(p[20], 0, [])).Message, StringComparison.Ordinal);
         var supplied = types.Intern(BoundTypeKind.Constructed, p[9].Symbol, SemanticsKind.Owner, [types.Pointer(BoundType.I32, BoundOrigin.Holder)]);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(supplied, 0, [])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(supplied, 0, [])).Message, StringComparison.Ordinal);
     }
 
     // DECISIONS BU-58: WrittenAt is the Type a part's declaration writes at inline positions while it is a Tuple, a fixed array or a raw
@@ -650,11 +664,11 @@ public sealed class TyCtxtTest
         Assert.Equal(
             ["raw/i32 during Parameter Shared True 1", "- Exclusive False 0", "raw/i32 during Parameter Shared True 1", "- Exclusive False 0",
                 "raw/ref/i32 during Parameter Shared True 0", "raw/ref/i32 during Static Static True 0"],
-            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.RawStep(x.Instance, x.Part, x.Positions)} " +
-                $"{types.RawMembers(x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
+            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.StoredStep(x.Instance, x.Part, x.Positions)} " +
+                $"{MembersAt(types, x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
         Assert.Equal(
             [Binding.StepOf(KeptLayer(types, q[1], 1, [0]).RawOrigin), Binding.StepOf(KeptLayer(types, q[2], 2, [0]).RawOrigin)],
-            [types.RawStep(q[1], 1, [0]), types.RawStep(q[2], 2, [0])]);
+            [types.StoredStep(q[1], 1, [0]), types.StoredStep(q[2], 2, [0])]);
         (BoundType Instance, int Part)[] roots = [(q[2], 1), (q[2], 2), (q[1], 0)];
         Assert.Equal(["(raw/i32, i32)", "-", "-"], roots.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, []))));
 
@@ -681,7 +695,7 @@ public sealed class TyCtxtTest
             kept = k < 8 ? kept.Components[0] : kept;
         }
 
-        Assert.Equal(RawStep.Static, c.Types.RawStep(holder, 1, path));
+        Assert.Equal(HoldStep.Static, c.Types.StoredStep(holder, 1, path));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
@@ -708,7 +722,7 @@ public sealed class TyCtxtTest
         var q = KotoTree.Walk(failed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
         Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.StoredStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
 
         // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
         static BoundType?[] Kept(Compilation c, BoundType holder)
@@ -741,24 +755,24 @@ public sealed class TyCtxtTest
         var members = new List<RawMember>();
         var wrap = Kept(1);
         Assert.Equal(
-            (RawStep.Exclusive, false, false),
-            (types.RawStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), types.RawMembers(wrap, 0, [], members)));
-        Assert.Equal(RawStep.Unstated, types.RawStep(AdtDef.FieldType(p[1], 0)!, 0, []));
+            (HoldStep.Exclusive, false, false),
+            (types.StoredStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), MembersAt(types, wrap, 0, [], members)));
+        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
         var some = Array.FindIndex(option.Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 });
         (BoundType Instance, int Part, int[] Positions)[] layers =
             [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
         Assert.Equal(
-            ["Exclusive False False", "Unstated True True", "Exclusive False False", "Exclusive False False", "Unstated True True",
-                "Exclusive False False", "Unstated False True"],
-            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
-                $"{types.RawMembers(x.Instance, x.Part, x.Positions, members)}"));
+            ["Exclusive False False", "Address True True", "Exclusive False False", "Exclusive False False", "Address True True",
+                "Exclusive False False", "Address False True"],
+            layers.Select(x => $"{types.StoredStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
+                $"{MembersAt(types, x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
         Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
-            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
+            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
 
         // The first kept part of the probe's parameter i.
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
@@ -1001,17 +1015,17 @@ public sealed class TyCtxtTest
         int[] zero = [0], one = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, one) != RawStep.Own ||
-                types.RawStep(p[19], 0, zero) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
-                !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
-                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || types.RawMembers(nested, 0, [], members) ||
+            if (types.StoredStep(p[3], 0, []) != HoldStep.Own || types.StoredStep(p[6], 1, []) != HoldStep.Shared || types.StoredStep(p[8], 1, one) != HoldStep.Own ||
+                types.StoredStep(p[19], 0, zero) != HoldStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
+                !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.StoredStep(nested, 0, []) != HoldStep.Exclusive ||
+                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || MembersAt(types, nested, 0, [], members) ||
                 TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
             }
 
-            if (!ReferenceEquals(declared.Types.StoredParts(holder2, out _)[0], wrap) || declared.Types.RawStep(wrap, 0, []) != RawStep.Unstated ||
-                !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !declared.Types.RawMembers(wrap, 0, [], members))
+            if (!ReferenceEquals(declared.Types.StoredParts(holder2, out _)[0], wrap) || declared.Types.StoredStep(wrap, 0, []) != HoldStep.Address ||
+                !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !MembersAt(declared.Types, wrap, 0, [], members))
             {
                 throw new InvalidOperationException("A declared raw layer's reads changed.");
             }
@@ -1228,9 +1242,10 @@ public sealed class TyCtxtTest
         Assert.Equal((3, 2, tall, 2), (item.Height, tall.Height, subst.Self, subst.Height));
     }
 
-    // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in
-    // Origins only have one erased substitution, and every Type of the callee's body and closure, the closure's context included, erases
-    // alike in their instances; erasing is idempotent and keeps a Type without Origins; a binder that does not instantiate has none.
+    // DECISIONS R5-M39 (K package 4.1), R4-M180: Erase makes every Origin static and binds none of a substitution's (view's call binds an
+    // input Origin), and keeps everything else; two calls whose substitutions differ in Origins only have one erased substitution, and
+    // every Type of the callee's body and closure, the closure's context included, erases alike in their instances; erasing is idempotent
+    // and keeps a Type without Origins; a binder that does not instantiate has none.
     [Fact]
     public void EraseKeepsEverythingButOrigins()
     {
@@ -1246,7 +1261,9 @@ public sealed class TyCtxtTest
         Assert.Same(erased, types.Erase(calls[1]));
         Assert.Same(erased, types.Erase(erased));
         Assert.Equal((SemanticsKind.Ref, BoundOrigin.Static), (erased.Types[0]!.Semantics, erased.Types[0]!.Origin));
-        Assert.All(erased.Inputs.ToArray().Concat(erased.Origins.ToArray()), static x => Assert.Same(BoundOrigin.Static, x));
+        var viewed = types.SubstOf(nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x?.Target.Name == "view")!)!;
+        Assert.NotEmpty(viewed.Inputs.ToArray());
+        Assert.All([erased, types.Erase(viewed)!], static x => Assert.True(x.Origins.IsEmpty && x.Inputs.IsEmpty));
         var locals = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "keep" || (x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0))
             .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).ToArray();
         Assert.True(locals.Length > 4);
@@ -1298,10 +1315,11 @@ public sealed class TyCtxtTest
         Assert.All(["Block", "Cell"], x => Assert.Contains(instances, y => TyCtxt.Name(y) == x && ReferenceEquals(c.Types.Erase(y), y)));
     }
 
-    // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
-    // instance (InstantiateForwardedCall), over the corpus and over generic, length, Origin, member and requirement calls in defaults.
+    // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it instantiates each declared Type of
+    // its callee as the two substitutions applied in turn, over the corpus and over generic, length, Origin, member and requirement calls
+    // in defaults.
     [Fact]
-    public void ComposeIsTheForwardedInstantiation()
+    public void ComposeIsTheTwoStepInstantiation()
     {
         var problems = new List<string>();
         var corpus = 0;
@@ -1316,7 +1334,7 @@ public sealed class TyCtxtTest
         var calls = ComposeProblems(direct, direct.Kotonoha, problems);
         Assert.True(corpus == 6 && calls == 7 && problems.Count == 0, $"{corpus} corpus and {calls} direct nested calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
-        // copy, count, first, same (a requirement, so the forwarding resolves its witness) and get bind a Type, a length, an Origin, Self and
+        // copy, count, first, same (a requirement, whose Self the composition closes) and get bind a Type, a length, an Origin, Self and
         // a declaring Type of the instance.
         var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
         Assert.Equal(["i32", "bool"], composed.Where(static x => x.Name == "copy").Select(static x => x.Subst.Types[0]!.Name));
@@ -1327,11 +1345,11 @@ public sealed class TyCtxtTest
         Assert.Same(BoundType.I32, composed.Single(static x => x.Name == "get").Subst.Declaring!.Components[0]);
     }
 
-    // DECISIONS R5-M61 (F package 4.5): a requirement call in a generic body, in the instance a closed call of that body makes, has under
-    // Witness the target Binding's forwarding into that instance materializes (InstantiateForwardedCall), over every such call of the
-    // generic library and the milestones and over WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
+    // DECISIONS R5-M61 (F package 4.5): every requirement call in a generic body, in the instance a closed call of that body makes, resolves
+    // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
+    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
     [Fact]
-    public void WitnessIsTheForwardedRequirementCall()
+    public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {
         var problems = new List<string>();
         var corpus = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -1354,8 +1372,8 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
-    // instance that makes a requirement call's Self nest past it has no composed substitution, as it has no forwarded call (PLAN G157 (4)),
-    // so no substitution without its Self reaches Witness.
+    // instance that makes a requirement call's Self nest past it has no composed substitution (PLAN G157 (4)), so no substitution without
+    // its Self reaches Witness.
     [Fact]
     public void ADeepSelfHasTheLimitTarget()
     {
@@ -1387,7 +1405,6 @@ public sealed class TyCtxtTest
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
         Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
         Assert.Same(nested, composed.Part);
-        Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
     // DECISIONS BU-36, BU-12: storage preparation's verdict depends on the Type alone. A part Binding did not bind ends no storage walk,
@@ -1496,7 +1513,7 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
-    // Bad<i32>, whose Field m did not bind, is Rejected with the substitution of Binding's forwarded call; beside a Type argument nested past
+    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past
     // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
     // published as the storage-nesting gap). The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32>
     // when Rejected, also before Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
@@ -1515,7 +1532,6 @@ public sealed class TyCtxtTest
         Assert.Equal(expected, storage.ToString());
         Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
         Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
-        Assert.Same(subst is null ? null : c.Types.SubstOf(c.Binding.InstantiateForwardedCall(calls["inner"], calls["outer"])!), subst);
         Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
     }
 
@@ -1535,6 +1551,28 @@ public sealed class TyCtxtTest
             Assert.Same(contract, TyCtxt.Contract(requirement));
             Assert.Same(contract, TyCtxt.Contract(target.Target!));
         }
+    }
+
+    // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
+    // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
+    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target).
+    [Theory]
+    [InlineData("i32", true)]
+    [InlineData("isize", true)]
+    [InlineData("u8", false)]
+    public void AWitnessOfTheTableIsGivenItsInstance(string name, bool specialized)
+    {
+        var c = MinimalEmissionTest.Analyze("let x = 1\n");
+        var self = BoundType.Primitives[name];
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Position)!;
+        var targets = new List<(BindingSymbol Target, Subst Instance)>();
+        Assert.True(c.Types.Witnesses(contract.Contract!.OwnRequirement()!, self, contract, null, null, targets));
+        var (target, instance) = Assert.Single(targets);
+        Assert.Equal([self], instance.Types);
+        var selected = c.Types.Implementation(target, instance, 0)!;
+        Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
+        Assert.Equal(specialized, !ReferenceEquals(selected, target));
+        Assert.Null(c.Types.Implementation(target, instance, 1));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
@@ -1723,7 +1761,7 @@ public sealed class TyCtxtTest
         _ => Binding.DiagnosticTypeName(type),
     };
 
-    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
+    // The raw layer an instance stores at a part and inline positions, as StoredStep reads it: its kept part (an enum Case's payload Tuple),
     // then per position a Tuple's component or a fixed array's element.
     private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
     {
@@ -1735,6 +1773,10 @@ public sealed class TyCtxtTest
 
         return layer;
     }
+
+    // RawMembers of the raw layer an instance stores at a part and inline positions, by the key a Holdings read gives it.
+    private static bool MembersAt(TyCtxt types, BoundType instance, int part, int[] positions, List<RawMember> members)
+        => types.RawMembers(KeptLayer(types, instance, part, positions), TyCtxt.WrittenAt(instance, part, positions), instance, members);
 
     // The compilation of DeclaredSource and its `probe`'s parameter Types by name.
     private static (Compilation C, Dictionary<string, BoundType> Parameters) DeclaredLayers()
@@ -1812,8 +1854,8 @@ public sealed class TyCtxtTest
         }
     }
 
-    // The forwarded call has the composed substitution and instantiates each declared Type of the callee as Apply does; a requirement call,
-    // which the forwarding resolves to its witness, composes as applying the two substitutions in turn.
+    // Each nested call composes, and the composed substitution instantiates each declared Type of the callee as applying the call's and
+    // then the context's substitution does.
     private static int ComposeProblems(Compilation c, Kotonoha module, List<string> problems)
     {
         var count = 0;
@@ -1821,17 +1863,10 @@ public sealed class TyCtxtTest
         {
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
-            var forwarded = inner.Kind == CalleeKind.Requirement ? null : c.Binding.InstantiateForwardedCall(inner, outer);
             var where = $"{module.Compilation.Kotonoha.Name} {outer.Target.Name} > {inner.Target.Name}";
-            if (inner.Kind != CalleeKind.Requirement && (forwarded is null || !ReferenceEquals(c.Types.SubstOf(forwarded), composed)))
-            {
-                problems.Add($"{where}: {composed is null} {forwarded is null}");
-                continue;
-            }
-
             foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(static x => x.Type.TypeOf()).Append(inner.Target.Type))
             {
-                var expected = declared is null ? null : forwarded is not null ? c.Binding.InstantiateStorageType(declared, forwarded)
+                var expected = declared is null ? null
                     : c.Types.Apply(declared, c.Types.SubstOf(inner)!) is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!) : null;
                 if (composed is null || !ReferenceEquals(declared is null ? null : c.Types.Apply(declared, composed), expected))
                 {
@@ -1937,7 +1972,7 @@ public sealed class TyCtxtTest
             subst.Origins.SequenceEqual(call.Origins) && subst.Inputs.SequenceEqual(call.InputOrigins);
 
     // Each requirement call in the body of a generic function, with each call of that function in a module whose instance closes the
-    // requirement's Self, as InstantiateForwardedCall pairs them (a call in a nested function or closure is its own binder's).
+    // requirement's Self (a call in a nested function or closure is its own binder's).
     private static IEnumerable<(CallPlan Inner, CallPlan Outer)> RequirementCalls(Compilation c, Kotonoha module)
     {
         var bodies = new Dictionary<FunctionKoto, CallPlan[]>();
@@ -1978,11 +2013,9 @@ public sealed class TyCtxtTest
     private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
         => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);
 
-    // Each Witness of RequirementCalls agrees with the forwarded call (the CallPlan materializer's): a Body is the function the forwarded call
-    // runs under its substitution; a Builtin the same compiler function, and a Storage witness the Field its bridge reads with the bridge's
-    // operation, each under the requirement call's own substitution, which binds what the forwarded call binds; Refused has no forwarded
-    // call; None and Limit occur for no closed Self of an accepted program. A bound Contract reference is the substitution's declaring Type.
-    // The views leave Binding's records and the HIR version unchanged. Counts the targets by kind and the bound references.
+    // Counts each Witness of RequirementCalls by kind, which the caller pins (Refused, None and Limit occur for no closed Self of an
+    // accepted program), and the bound Contract references, each the substitution's declaring Type. The views leave Binding's records and
+    // the HIR version unchanged.
     private static void WitnessProblems(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
     {
         var version = HirTables.Publish(c);
@@ -2005,38 +2038,8 @@ public sealed class TyCtxtTest
                     problems.Add($"{where} bound reference");
                 }
             }
-
-            var forwarded = c.Binding.InstantiateForwardedCall(inner, outer);
-            var agrees = target.Kind switch
-            {
-                RequirementTargetKind.Body => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, c.Types.SubstOf(forwarded!)),
-                RequirementTargetKind.Builtin => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, subst) &&
-                    Same(c.Types.SubstOf(forwarded!)!, subst),
-                RequirementTargetKind.Storage => forwarded?.Target.Declaration is FunctionKoto { IsPropertyWitness: true, Accessor: { } bridge } function &&
-                    ReferenceEquals(target.Target, bridge.Property.Symbol) && target.Access == Access(function) && ReferenceEquals(target.Subst, subst) &&
-                    c.Types.SubstOf(forwarded) is { } storage && ReferenceEquals(storage.Declaring, subst.Self) && Same(storage, subst, self: false),
-                RequirementTargetKind.Refused => forwarded is null,
-                _ => false,
-            };
-
-            if (!agrees)
-            {
-                problems.Add($"{where}; forwarded {forwarded?.Target.Name}");
-            }
         }
 
         void Count(string key) => kinds[key] = kinds.TryGetValue(key, out var count) ? count + 1 : 1;
-
-        // A standard bridge's operation, by the body PropertyWitnessFunction gives it.
-        static PropertyWitnessKind Access(FunctionKoto bridge) => bridge.ExpressionBody switch
-        {
-            ConversionKoto => PropertyWitnessKind.StorageBorrow,
-            BinaryKoto { Akind: KotoKind.Equals } => PropertyWitnessKind.StorageSet,
-            _ => PropertyWitnessKind.StorageCopy,
-        };
-
-        // Two substitutions bind the same Self (when asked), Types, lengths, Origins and inputs.
-        static bool Same(Subst a, Subst b, bool self = true) => (!self || ReferenceEquals(a.Self, b.Self)) && a.Types.SequenceEqual(b.Types) &&
-            a.Lengths.SequenceEqual(b.Lengths) && a.Origins.SequenceEqual(b.Origins) && a.Inputs.SequenceEqual(b.Inputs);
     }
 }

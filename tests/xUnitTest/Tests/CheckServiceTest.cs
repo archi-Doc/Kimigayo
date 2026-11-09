@@ -519,6 +519,17 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Same(exception, thrown);
     }
 
+    // SPEC 23.4: the dependency lock's read catches only its own failures, so a pending lock read propagates out of the check unchanged.
+    [Fact]
+    public void APendingLockFileReadPropagatesOutOfTheCheck()
+    {
+        var project = this.WriteProject("PendingLock", ("main.kimi", Valid));
+        var path = DependencyLock.PathForProject(project);
+        var exception = new PendingInputException(path);
+        var thrown = Record.Exception(() => this.Run(project, inputs: new FailingInputSource(path, exception)));
+        Assert.Same(exception, thrown);
+    }
+
     // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
@@ -530,6 +541,16 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Equal(CheckOutcome.Completed, output.Outcome);
         Assert.False(output.Accepted);
         Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTestDefinition_Kd));
+    }
+
+    // DECISIONS R4-M178 (PLAN G444): the LSP's and `check --json`'s path runs every phase on a compiler thread, so 200 nested calls,
+    // which overflowed dev's 1.5 MB bind walk from about 138, are checked and accepted.
+    [Fact]
+    public void ADeepProgramIsCheckedOnACompilerThread()
+    {
+        var output = this.Run(this.WriteProject("Deep", ("main.kimi", CompilationEntryTest.Calls(200))));
+        Assert.Equal(CheckOutcome.Completed, output.Outcome);
+        Assert.True(output.Accepted);
     }
 
     private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)

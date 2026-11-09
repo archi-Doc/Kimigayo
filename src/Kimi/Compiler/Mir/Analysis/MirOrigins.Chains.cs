@@ -1,15 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // MirOrigins' judgment of one class (2a0-D §6.2-§6.4; D15-D17, D19, D20): its edges (each active row, Longer -> Shorter and back for an
-// equality, a meet expanded by MeetNode's rule; each containment edge); an edge between two Fixed Origins judged at once, one oracle test
-// (an Equality row failing both ways is one problem); Tarjan's components over the inner nodes (Finite, Inferred and Dependent);
-// finite-source and then fixed-source bitsets propagated in topological order through one pooled arena that MirDataflow.Within admits; and
-// at each edge into a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle
-// closed once per target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with
-// the layer's oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an
-// Unclassed end forms nothing and is the located limit. A Dependent node, an end a Binding failure left Unbound or an unclassified
-// Closure's pending atom (DECISIONS R4-M126 §2.5 (c)), is never a source or a judged target: it passes on what reaches it, so a chain
-// through it is judged between its ends and one ending at it records nothing (SPEC 23.1.2; DECISIONS R4-M118).
+// equality, a meet expanded by MeetNode's rule, a shorter meet's operand edges once per class; each containment edge; the meet law's,
+// MirOrigins.Meets.cs); an edge between two Fixed Origins judged at once, one oracle test (an Equality row failing both ways is one
+// problem); Tarjan's components over the inner nodes (Finite, Inferred and Dependent); finite-source and then fixed-source bitsets
+// propagated in topological order through one pooled arena that MirDataflow.Within admits; and at each edge into a Fixed node a problem per
+// finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle closed once per target and part. An edge of
+// the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with the layer's oracle, the Type's public
+// premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an Unclassed end forms nothing and is the
+// located limit. A Dependent node, an end a Binding failure left Unbound or an unclassified Closure's pending atom (DECISIONS R4-M126 §2.5
+// (c)), is never a source or a judged target: it passes on what reaches it, so a chain through it is judged between its ends and one ending
+// at it records nothing (SPEC 23.1.2; DECISIONS R4-M118). A failing chain with an end the view marks an enclosing body's call region is the
+// located limit instead of its record (NestedLimit).
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -59,7 +61,13 @@ internal sealed partial class MirOrigins
     {
         ref readonly var known = ref this.classes[c];
         (this.classViews, this.condition, this.edgeCount, this.lastDirect) = (known.Views, known.Borrows, 0, (-1, -1, -1, -1));
-        foreach (var edge in this.ClassEdges(c))
+        if (!this.ClassEdges(c))
+        {
+            this.StorageLimit(report, this.meetWords);
+            return false;
+        }
+
+        foreach (var edge in this.classEdges.AsSpan(0, this.classEdgeCount))
         {
             if (edge.Tail < 0)
             {
@@ -74,11 +82,14 @@ internal sealed partial class MirOrigins
     }
 
     // A class's edges, in order (classEdges): each active row's, Longer -> Shorter and back for an equality, then each containment edge's
-    // (row -1), by MeetNode's rule (Relate); one with an Unclassed end forms none and is an entry with Tail -1 at its site.
-    private ReadOnlySpan<ClassEdge> ClassEdges(int c)
+    // (row -1), by MeetNode's rule (Relate); one with an Unclassed end forms none and is an entry with Tail -1 at its site; then the meet
+    // law's (MirOrigins.Meets.cs). The class's stamp (reachStamps; no walk runs before the law) marks each shorter meet whose operand edges
+    // are formed. False when the law's words are over the limit (D20).
+    private bool ClassEdges(int c)
     {
         ref readonly var known = ref this.classes[c];
         this.classEdgeCount = 0;
+        this.reachStamp++;
         var rows = this.slice.Rows;
         var bits = this.rowBits.AsSpan(c * this.rowWords, this.rowWords);
         for (var r = 0; r < rows.Count; r++)
@@ -114,7 +125,7 @@ internal sealed partial class MirOrigins
             this.Relate(edge.Tail, edge.Head, site, -1);
         }
 
-        return this.classEdges.AsSpan(0, this.classEdgeCount);
+        return this.MeetLaw();
     }
 
     private void Related(int tail, int head, SourceRef site, int row)
@@ -130,7 +141,9 @@ internal sealed partial class MirOrigins
     private bool InLayer(int tail, int head, int row) => row >= 0 ? row >= this.slice.LayerStart : this.slice.InLayer(tail) || this.slice.InLayer(head);
 
     // An edge `longer -> shorter` by MeetNode's rule (2a0-D D15), into classEdges: a meet at the longer end gives an edge from each operand
-    // and, unless it is Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands.
+    // and, unless it is Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands once per
+    // class, at its first row's site and row (a later row's copies differ only there: Refuted and Unknown read only edges into a Fixed node,
+    // Join judges only Fixed ends at once, and the meet law skips an operand's edge into its own meet).
     private void Relate(int longer, int shorter, SourceRef site, int row)
     {
         var meet = this.slice.Atoms[longer];
@@ -155,6 +168,13 @@ internal sealed partial class MirOrigins
         var target = this.slice.Atoms[shorter];
         if (target.Atom.Kind == OriginKind.Intersection && target.Kind != OriginAtomKind.Fixed)
         {
+            MirDataflow.Grow(ref this.reachStamps, shorter + 1); // By the rows' own atoms, which a second pass's table keeps: no regrow.
+            if (this.reachStamps[shorter] == this.reachStamp)
+            {
+                return;
+            }
+
+            this.reachStamps[shorter] = this.reachStamp;
             var operands = target.Atom.Operands;
             for (var i = 0; i < operands.Count; i++)
             {
@@ -209,8 +229,7 @@ internal sealed partial class MirOrigins
             return;
         }
 
-        this.Unproven(tail, head, site, row);
-        this.lastDirect = (tail, head, row, this.pending.Count - 1);
+        this.lastDirect = this.Unproven(tail, head, site, row) ? (tail, head, row, this.pending.Count - 1) : (-1, -1, -1, -1);
     }
 
     // SPEC 15.6.5 (2a0-D D16, D17, D20): over Tarjan's components of the inner nodes, finite sources and then fixed sources propagate in
@@ -249,9 +268,9 @@ internal sealed partial class MirOrigins
             return true;
         }
 
-        this.IndexEdges(this.tails, nodes, ref this.outStart, ref this.outEdges);
+        this.IndexEdges(this.tails.AsSpan(0, this.edgeCount), nodes, ref this.outStart, ref this.outEdges);
         var components = this.Components(nodes);
-        var words = ArenaWords(components, finiteCount, fixedCount);
+        var words = ArenaWords(components, finiteCount, fixedCount) + this.meetWords;
         if (!MirDataflow.Within(words))
         {
             this.StorageLimit(report, words);
@@ -267,7 +286,7 @@ internal sealed partial class MirOrigins
         if (fixedCount > 0)
         {
             var fixedWords = this.Propagate(this.fixedBits, fixedCount, components);
-            this.IndexEdges(this.heads, nodes, ref this.inStart, ref this.inEdges);
+            this.IndexEdges(this.heads.AsSpan(0, this.edgeCount), nodes, ref this.inStart, ref this.inEdges);
             for (var g = 0; g < nodes; g++)
             {
                 if (atoms[g].Kind == OriginAtomKind.Fixed && this.inStart[g] < this.inStart[g + 1])
@@ -406,15 +425,16 @@ internal sealed partial class MirOrigins
         }
     }
 
-    // The edges by a key (their tails or their heads), a counting sort: node v's edges are index[start[v]..start[v + 1]), in edge order.
-    private void IndexEdges(int[] keys, int nodes, ref int[] start, ref int[] index)
+    // The edges by a key (their tails or their heads; a negative key, an Unclassed end's entry, indexes none), a counting sort: node v's
+    // edges are index[start[v]..start[v + 1]), in edge order.
+    private void IndexEdges(ReadOnlySpan<int> keys, int nodes, ref int[] start, ref int[] index)
     {
         MirDataflow.Grow(ref start, nodes + 1);
-        MirDataflow.Grow(ref index, this.edgeCount);
+        MirDataflow.Grow(ref index, keys.Length);
         start.AsSpan(0, nodes + 1).Clear();
-        for (var e = 0; e < this.edgeCount; e++)
+        foreach (var key in keys)
         {
-            start[keys[e] + 1]++;
+            start[key + 1] += key >= 0 ? 1 : 0;
         }
 
         for (var v = 0; v < nodes; v++)
@@ -424,9 +444,12 @@ internal sealed partial class MirOrigins
 
         MirDataflow.Grow(ref this.low, nodes); // Scratch for the insertion cursors.
         start.AsSpan(0, nodes).CopyTo(this.low);
-        for (var e = 0; e < this.edgeCount; e++)
+        for (var e = 0; e < keys.Length; e++)
         {
-            index[this.low[keys[e]]++] = e;
+            if (keys[e] >= 0)
+            {
+                index[this.low[keys[e]]++] = e;
+            }
         }
     }
 
@@ -542,11 +565,16 @@ internal sealed partial class MirOrigins
             for (var word = reached[w]; word != 0; word &= word - 1)
             {
                 var source = this.finiteNodes[(w << 6) + BitOperations.TrailingZeroCount(word)];
+                if (this.NestedLimit(source, this.heads[edge], this.edgeSites[edge]))
+                {
+                    continue;
+                }
+
                 var start = this.pendingFacts.Count;
-                this.pendingFacts.Add(new(MirFactKind.Relation, this.edgeSites[edge], this.edgeRows[edge]));
+                this.pendingFacts.Add(new(ProblemFactKind.Relation, this.edgeSites[edge], this.edgeRows[edge]));
                 if (source < this.anchorCount && this.anchors[source] >= 0)
                 {
-                    this.pendingFacts.Add(new(MirFactKind.Anchor, this.refs[this.anchors[source]].Site));
+                    this.pendingFacts.Add(new(ProblemFactKind.Anchor, this.refs[this.anchors[source]].Site));
                 }
 
                 var reason = new MirReason(atoms[source].Atom, atoms[this.heads[edge]].Atom, Equality: false);
@@ -556,15 +584,36 @@ internal sealed partial class MirOrigins
         }
     }
 
-    // A fixed source the target's premises do not derive, at the last edge's site with its row (SPEC 15.6.5, 23.1.2; 2a0-D D18).
-    private void Unproven(int source, int target, SourceRef site, int row)
+    // A fixed source the target's premises do not derive, at the last edge's site with its row (SPEC 15.6.5, 23.1.2; 2a0-D D18); false
+    // when it is the nested-body limit instead.
+    private bool Unproven(int source, int target, SourceRef site, int row)
     {
+        if (this.NestedLimit(source, target, site))
+        {
+            return false;
+        }
+
         var atoms = this.slice.Atoms;
         var start = this.pendingFacts.Count;
-        this.pendingFacts.Add(new(MirFactKind.Relation, site, row));
+        this.pendingFacts.Add(new(ProblemFactKind.Relation, site, row));
         var reason = new MirReason(atoms[source].Atom, atoms[target].Atom, Equality: false);
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
         this.pending.Add(new(DiagnosticCode.UnprovenOriginRelation_Kd, requirement, site, reason, this.classViews, start, 1));
+        return true;
+    }
+
+    // The nested-body limit (U3-design twelfth amendment, N4): a failing chain with an end the view marks an enclosing body's call region,
+    // which only the enclosing body's rows decide, is the located limit at the chain's site, never a Language record.
+    private bool NestedLimit(int source, int target, SourceRef site)
+    {
+        var atoms = this.slice.Atoms;
+        if (!atoms[source].EnclosingCallRegion && !atoms[target].EnclosingCallRegion)
+        {
+            return false;
+        }
+
+        this.Limit(site);
+        return true;
     }
 
     // The located limit at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's completeness (DECISIONS R4-M113).

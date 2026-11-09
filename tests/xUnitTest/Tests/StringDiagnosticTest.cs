@@ -22,7 +22,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("\r")]
     public void MissingQuoteExplainsTheCallWithoutCascades(string lineEnd)
     {
-        var c = Analyze(BrokenCall + lineEnd);
+        var c = MinimalEmissionTest.Check(BrokenCall + lineEnd);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), error.Code);
@@ -53,7 +53,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f()\n    Console.writeLine(\"hello)\nlet next = 1", 1)]
     public void RecoveryRetainsTheInvalidValueAndOpeningDelimiter(string source, int quotes)
     {
-        var error = Assert.Single(Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        var error = Assert.Single(MinimalEmissionTest.Check(source).Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), error.Code);
         Assert.Equal(new SourceSpan(source.IndexOf('"'), quotes), error.Span);
         Assert.Equal(new string('"', quotes), Assert.Single(error.Reason!).Value);
@@ -68,7 +68,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("Console.writeLine(\"hello\"", "MissingSyntax_Kd")]
     public void IndependentRequirementsStillExplainTheirFailures(string source, string codes)
     {
-        var errors = Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics;
+        var errors = MinimalEmissionTest.Check(source).Diagnostics.Finalize(rejected: true).Diagnostics;
         Assert.Equal(codes.Split(','), errors.Select(static x => x.Code));
     }
 
@@ -94,7 +94,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void IndependentErrorsSurviveRecovery(string lineEnd)
     {
         var source = lineEnd + BrokenCall + lineEnd + "let wrong: i32 = true" + lineEnd + "missing()" + lineEnd + "let x = (1";
-        var errors = Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics;
+        var errors = MinimalEmissionTest.Check(source).Diagnostics.Finalize(rejected: true).Diagnostics;
         Assert.Equal(
             [nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd), nameof(DiagnosticCode.MissingSyntax_Kd)],
             errors.Select(static x => x.Code));
@@ -108,7 +108,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("Console.writeLine(\"hello\\\"\")")]
     public void ClosingTheStringRestoresAcceptance(string source)
     {
-        var c = Analyze(source);
+        var c = MinimalEmissionTest.Check(source);
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Diagnostics.Finalize().Diagnostics);
     }
@@ -117,7 +117,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void CliAndLspExplainTheSameOpeningQuote()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze(BrokenCall, path);
+        var c = MinimalEmissionTest.Check(BrokenCall, path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -142,10 +142,10 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [Fact]
     public void ClosureEndingInAStringCoversTheClosingQuote()
     {
-        var error = Assert.Single(TestDiagnostics.Of(Analyze("let text = \"owned\"\nlet keep = func () => text == \"owned\"")));
+        var error = Assert.Single(TestDiagnostics.Of(MinimalEmissionTest.Check("let text = \"owned\"\nlet keep = func () => text == \"owned\"")));
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
         Assert.Equal("func () => text == \"owned\"", error.Text);
-        Assert.Empty(TestDiagnostics.Of(Analyze("let text = \"owned\"\nlet keep = func [text@move] () => text == \"owned\"")));
+        Assert.Empty(TestDiagnostics.Of(MinimalEmissionTest.Check("let text = \"owned\"\nlet keep = func [text@move] () => text == \"owned\"")));
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     {
         const string Closure = "func () => text == \"owned\"";
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze("let text = \"owned\"\nlet keep = " + Closure, path);
+        var c = MinimalEmissionTest.Check("let text = \"owned\"\nlet keep = " + Closure, path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -180,7 +180,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void LiteralsAndTheirEnclosingNodesSpanTheDelimiters(string literal, string value)
     {
         var source = "let text = " + literal + "\nlet same = text == " + literal;
-        var c = Analyze(source);
+        var c = MinimalEmissionTest.Check(source);
         Assert.Empty(TestDiagnostics.Of(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var literals = nodes.OfType<StringLiteralKoto>().ToArray();
@@ -195,7 +195,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     {
         const string Literal = "\"a \\(n) b \\(\"c\")!\"";
         var source = "let n: i32 = 1\nlet text = " + Literal;
-        var c = Analyze(source);
+        var c = MinimalEmissionTest.Check(source);
         Assert.Empty(TestDiagnostics.Of(c));
         var interpolated = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InterpolatedStringKoto>());
         Assert.Equal(Literal, Text(source, interpolated.Span));
@@ -213,7 +213,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("let c = '\\q'", "\\q")]
     public void EscapeProblemsStayAtTheEscape(string source, string text)
     {
-        var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
+        var error = Assert.Single(TestDiagnostics.Of(MinimalEmissionTest.Check(source)));
         Assert.True(error.Code is nameof(DiagnosticCode.InvalidEscape_Kd) or nameof(DiagnosticCode.InvalidUnicodeScalar_Kd), error.ToString());
         Assert.Equal(text, error.Text);
     }
@@ -229,7 +229,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void SeparateEscapesRetainSeparateErrors(string escape, string code)
     {
         var source = "let text = \"prefix " + escape + " middle " + escape + " suffix\"";
-        var c = Analyze(source);
+        var c = MinimalEmissionTest.Check(source);
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, x => Assert.Equal((code, escape), (x.Code, x.Text)));
@@ -248,7 +248,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void EscapeLocationsFollowPhysicalText(string lineEnd)
     {
         var source = "let text = \"a\\n" + lineEnd + "\\q \\(1) b\\z\"\nlet wrong: i32 = true";
-        var errors = TestDiagnostics.Of(Analyze(source));
+        var errors = TestDiagnostics.Of(MinimalEmissionTest.Check(source));
         Assert.Equal([nameof(DiagnosticCode.InvalidEscape_Kd), nameof(DiagnosticCode.InvalidEscape_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(source.IndexOf("\\q", StringComparison.Ordinal), 2), errors[0].Span);
         Assert.Equal(new SourceSpan(source.IndexOf("\\z", StringComparison.Ordinal), 2), errors[1].Span);
@@ -260,7 +260,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void CliAndLspUnderlineEachEscape(char quote)
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze("let text = " + quote + "prefix \\q middle \\z suffix" + quote, path);
+        var c = MinimalEmissionTest.Check("let text = " + quote + "prefix \\q middle \\z suffix" + quote, path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(2, result.Diagnostics.Length);
@@ -294,19 +294,10 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [InlineData("let texts = [\"a\", \"\"")]
     public void MissingCloserFollowsTheClosingQuote(string source)
     {
-        var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
+        var error = Assert.Single(TestDiagnostics.Of(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), error.Code);
         Assert.Equal(new SourceSpan(source.Length, 0), error.Span);
     }
 
     private static string Text(string source, SourceSpan span) => source.Substring(span.Start, span.Length);
-
-    private static Compilation Analyze(string source, string path = "Hello.kimi")
-    {
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return c;
-    }
 }

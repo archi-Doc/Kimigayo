@@ -1,87 +1,93 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
+using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.5, 16.3.2, 22.2; R5 plan C8d; DECISIONS R5-M121, R5-M129), beside the
-// operations and storage kinds whose call runs their LegacyRow item's routine (FunctionCodegen.Intrinsics' Routine): an Array aggregate's
-// storage (ArrayBuffer: the runtime's empty handle at its Place with its location, for n elements one growth to n and the length n), whose
-// buffer the aggregate writer puts the elements in; setArrayLength, the length stored in the handle's length word (Layout.LengthWord, the
-// word Length reads), reading or destroying no element; capacity, P2b's kernel over the handle, the legacy representation's
-// capacity word of an Array or a Dictionary (PD2); and an Array's glue level, its glue item's Drop helper called with the glue's own
-// parameters (the string row's form). A Dictionary's glue and a Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
+// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.7, 16.3.2; R5 plan C8d; DECISIONS R5-M129): an Array aggregate's storage
+// (ArrayBuffer: the empty handle at its Place, for n elements one growth to n, the aggregate's target, and the length n), whose buffer
+// the aggregate writer puts the elements in; and destroyValues' counted loop over T's glue (PLAN G126). An Array's glue level is a
+// collection's (FunctionCodegen.Glue's CollectionGlue; DECISIONS R8-M5).
 internal sealed partial class FunctionCodegen
 {
-    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the runtime's empty handle, then for its n
-    // elements one growth to n (the Array runtime's grow, as the old generator called it) and the length n in the handle's length word; its
-    // buffer, where the aggregate writer puts each element, the handle for `[]`, which allocates nothing; null after a record. No element is
-    // observable before all are put: the puts run no user code and cannot fail.
+    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the handle's words zero, then for its n
+    // elements one growth to n, the site's target, growArray's instance, and the length n in the handle's length word; its buffer, where the
+    // aggregate writer puts each element, the handle for `[]`, which allocates nothing; null after a record. No element is observable before
+    // all are put: the puts run no user code and cannot fail.
     private Value? ArrayBuffer(in SourceInfo source, Value handle, BoundType array, ValueLowering record, int count)
     {
-        if (!this.Location(source, out var site))
-        {
-            return null; // Recorded.
-        }
+        // The empty handle (IMPL 21.1.3: `data` null while `capacity` is 0): each word at its Field's row, so `data` is stored as the pointer it
+        // is: stored as an integer, SROA promotes it as one and O2 keeps one address in a `phi i64` beside the body's `phi ptr`, which it cannot
+        // merge (R8-A1d, the O2 corpus' Array).
+        this.StoreWord(array, record, handle, "data", new('n', 0));
+        this.StoreWord(array, record, handle, "length", new('\0', 0));
+        this.StoreWord(array, record, handle, "capacity", new('\0', 0));
 
-        _ = this.WriteCall(RuntimeAbi.ArrayInit, [handle, site.Text, site.Length]);
         if (count == 0)
         {
             return handle;
         }
 
-        if (this.Laid(array.Components[0]) is not { } element)
+        var target = this.Target(new(this.at, this.position));
+        if (!this.Location(source, out var site) || this.Laid(array.Components[0]) is not { } element || target < 0 ||
+            this.module.Signature(target) is not { } grow)
         {
             return null; // Recorded.
         }
 
-        this.module.Request(HelperNeeds.ArrayRuntime);
-        _ = this.WriteCall(RuntimeAbi.ArrayGrow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
-        this.StoreAt(this.Offset(handle, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), Layout.Row(BoundType.ISize).Layout, new('\0', count));
-        return this.LoadAt(handle, RuntimeAbi.StringReference.Layout); // The buffer word, a pointer (IMPL 21.1.3).
+        _ = this.WriteCall(grow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
+        this.StoreWord(array, record, handle, "length", new('\0', count));
+        return this.LoadWord(array, record, handle, "data");
     }
 
-    // SPEC 22.2: setArrayLength(value, length) publishes the length in the handle its reference holds; it reads and destroys no element.
-    private void ArrayLength(in MirTerminator call)
+    // SPEC 4.9.7, 16.3.2, 4.9.8 (PLAN G126): destroyValues over its operands, the storage and the count: the values from the last, each by T's
+    // glue, the call's target, in the one counted loop (Loop) after a test for no value. A T without a glue has no target and writes nothing,
+    // so a cleanup-free destruction costs nothing at any optimization level.
+    private void DestroyValues(in MirTerminator call, int target)
     {
-        var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
-        var handle = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
-        var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (this.ReferencedType(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize)
+        if (target >= 0)
         {
-            return; // A broken contract, recorded.
+            var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+            if (this.Needed(call.Callee.Subst!, 0, out _) is not { } element ||
+                !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 0)], out var storage) ||
+                !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 1)], out var count) ||
+                !this.Location(call.Source, out var site))
+            {
+                return; // A broken contract, recorded.
+            }
+
+            var (id, empty, bytes) = (this.next, new Value('t', this.next + 1), new Value('t', this.next + 2));
+            this.next += 3;
+            var output = this.output;
+            output.Write("  ");
+            this.WriteValue(empty);
+            output.Write(" = icmp sle i64 ");
+            this.WriteValue(count);
+            output.Write(", 0\n  br i1 ");
+            this.WriteValue(empty);
+            output.Write(", label %undestroyed");
+            WriteNumber(output, id);
+            output.Write(", label %destroying");
+            WriteNumber(output, id);
+            output.Write("\ndestroying");
+            WriteNumber(output, id);
+            output.Write(":\n  ");
+            this.WriteValue(bytes);
+            output.Write(" = mul i64 ");
+            this.WriteValue(count);
+            output.Write(", ");
+            WriteNumber(output, element.Layout.Stride);
+            output.Write('\n');
+            var last = this.Difference(bytes, new('\0', element.Layout.Stride));
+            this.Loop(count, element, new Destroyed(target, storage, last, site));
+            output.Write("  br label %undestroyed");
+            WriteNumber(output, id);
+            output.Write("\nundestroyed");
+            WriteNumber(output, id);
+            output.Write(":\n");
         }
 
-        if (!this.Operand(handle, out var address) || !this.Operand(length, out var value))
-        {
-            return; // A broken contract, recorded.
-        }
-
-        this.StoreAt(this.Offset(address, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), isize.Layout, value);
         this.Finish(call, null);
-    }
-
-    // SPEC 4.9.5: capacity, from the shared view of the handle its one operand holds, by P2b's kernel (the legacy handle's capacity word).
-    private void Capacity(in MirTerminator call)
-    {
-        if (!this.Operand(this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)], out var handle))
-        {
-            return; // A broken contract, recorded.
-        }
-
-        var capacity = new Value('t', this.next++);
-        LegacyRuntimeHelpers.WriteCapacity(
-            this.output, this.Spelled(handle, stackalloc char[SpellingLength]), this.Spelled(capacity, stackalloc char[SpellingLength]), this.next++);
-        this.Finish(call, capacity);
-    }
-
-    // SPEC 4.9.7, 16.3.2: an Array's glue level at its address, its glue item's Drop helper (P1b's row, which destroys the elements from the
-    // last by the element's glue, then releases the buffer) with the glue's own parameters.
-    private void ArrayGlue(int glue, Value address, Site site)
-    {
-        if (this.module.ArrayDrop(glue) is { } drop)
-        {
-            this.Destroy(drop, address, site);
-        }
     }
 }

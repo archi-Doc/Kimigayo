@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The Types of locals over the local-region graph (SPEC 15.4.4): a mutable local's Type opened into region slots (LocalBorrowType), a
-// result's local regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
-// (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf, CheckLocalTypeUse).
+// result's own body's regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
+// (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf).
 public sealed partial class Binding
 {
     // Whether an Origin of the Type's parts, a raw layer's included, is a local region or a pending atom; a Function or Function Item part
@@ -175,7 +175,9 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType ResolveLocalResultOrigins(BoundType type)
+    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved. An enclosing region is fixed in
+    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds.
+    private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body)
     {
         if (!this.HasLocalRegion(type))
         {
@@ -188,7 +190,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.ResolveLocalResultOrigins(type.Components[i]);
+                components[i] = this.ResolveLocalResultOrigins(type.Components[i], body);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -223,7 +225,7 @@ public sealed partial class Binding
                 return resolved;
             }
 
-            if (!IsLocalRegion(origin))
+            if (!RegionIn(origin, body))
             {
                 return origin;
             }
@@ -243,7 +245,4 @@ public sealed partial class Binding
             return result;
         }
     }
-
-    private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
-        => (this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use, out _);
 }

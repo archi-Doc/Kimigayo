@@ -11,13 +11,17 @@ internal readonly record struct SignatureEvidence(Koto? Binder, Koto Source);
 public sealed partial class Binding
 {
     // The key of a call's own open region for the callee's i-th Origin, apart from the keys of argument evidence.
-    private const int ResultOnlyKey = int.MinValue / 2;
+    private const int UnsolvedKey = int.MinValue / 2;
 
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
 
-    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the Reason.
-    private Dictionary<Koto, (Koto Argument, string Reason)>? perCallOrigins;
+    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
+    private Dictionary<Koto, PerCallOriginFact>? perCallOrigins;
+
+    // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
+    // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
+    private readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
 
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
@@ -140,92 +144,85 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6, 15.6.4 step 1: a callee's own Origin that no supplied parameter's Type and no relation clause mentions, such as the
-    // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `defaults` the call uses name (SPEC 10.1.1: a
-    // default gives no evidence), has no evidence at a call that no expected result fixes. It is a local region of the call, solved with
-    // the body's other local regions by its uses; it needs no annotation and is never replaced by static. The well-formedness obligation
-    // of a default naming it, judged at the call, keeps the region under the bounds that default's Type states, accepting what 15.3.6's
-    // meet of those bounds would. It is the call's open region, keyed apart from argument evidence by ResultOnlyKey.
-    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, in SlotSet defaults)
+    // Whether `type` names the Origin parameter `slot` of `binder` (EvidenceNames).
+    private static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
     {
-        var opened = false;
-        var relations = this.originDeclarations.GetValueOrDefault(function)?.Relations;
-        for (var i = 0; i < function.Origins.Count; i++)
+        if (!type.CarriesOrigin)
         {
-            if (origins[i] is not null)
-            {
-                continue;
-            }
-
-            var mentioned = false;
-            for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
-            {
-                mentioned = !defaults.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
-            }
-
-            for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)
-            {
-                mentioned = NamesSlot(relations[r].Longer, function, i) || NamesSlot(relations[r].Shorter, function, i);
-            }
-
-            if (!mentioned)
-            {
-                origins[i] = this.OpenOrigin(call, ResultOnlyKey + i);
-                opened = true;
-            }
-        }
-
-        return opened;
-
-        static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
-        {
-            if (!type.CarriesOrigin)
-            {
-                return false;
-            }
-
-            if (NamesSlot(type.Origin, binder, slot))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (NamesSlot(type.OriginArguments[i], binder, slot))
-                {
-                    return true;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (MentionsOriginSlot(type.Components[i], binder, slot))
-                {
-                    return true;
-                }
-            }
-
             return false;
         }
 
-        static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
+        if (NamesSlot(type.Origin, binder, slot))
         {
-            if (origin is null)
-            {
-                return false;
-            }
+            return true;
+        }
 
-            for (var i = 0; i < origin.Operands.Count; i++)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (NamesSlot(type.OriginArguments[i], binder, slot))
             {
-                if (NamesSlot(origin.Operands[i], binder, slot))
-                {
-                    return true;
-                }
+                return true;
             }
+        }
 
-            return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (MentionsOriginSlot(type.Components[i], binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
+    {
+        if (origin is null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (NamesSlot(origin.Operands[i], binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
+    }
+
+    // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
+    private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
+
+    // SPEC 15.3.6, 15.6.4 steps 1, 3 (DECISIONS BU-104, superseding BU-51's region clause): after a candidate's solve, every Origin of
+    // the callee without a candidate (no evidence, no equality, no result and no representative), whatever names it, a supplied
+    // parameter's premise included, is a local region of the call, solved with the body's other local regions by its uses; the
+    // premises the call's judgment visits over it are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one
+    // only a default names, the Origins only a join's or an aggregate's `.None` leaves name). It needs no annotation and is never
+    // replaced by static. It is the call's open region (CallRegion); the input Origins are opened too (an elided parameter Origin a
+    // Never argument leaves without one, SPEC 10.8; PLAN G410). `origins` and `inputs` are the callee binder's slots, a Function
+    // Type's none and its per-call inputs.
+    private void OpenUnsolvedOrigins(Koto call, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+    {
+        for (var i = 0; i < origins.Length; i++)
+        {
+            origins[i] ??= this.CallRegion(call, i);
+        }
+
+        for (var i = 0; i < inputs.Length; i++)
+        {
+            inputs[i] ??= this.CallRegion(call, -1 - i);
         }
     }
+
+    // SPEC 15.3.6, 15.6.4 step 1: the region of `call` for a callee Origin no evidence supplies: Origin parameter `index` (from 0) or
+    // input Origin `-1 - index`, or a Never `$tryWrite` writer's Origin argument `index` (BindTryWrite), or, keyed by the callee node of
+    // a construction rather than its call, the constructed Type's own slot `index` (ConstructorType). Keyed apart from argument
+    // evidence by UnsolvedKey, parameters up and inputs down, all below UnsolvedKey / 2, so IsCallRegion holds for every one.
+    private BoundOrigin CallRegion(Koto call, int index) => this.OpenOrigin(call, UnsolvedKey + index);
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {
@@ -295,20 +292,20 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 10.8: after selection, a slot that only the argument's own per-call Origin would satisfy is MissingOriginBinding_Kd
-    // at the call, whose Reason names the argument and the slot, with the argument related.
+    // at the call, whose Reason names the argument and the slot (ReportPerCallOrigin), with the argument related.
     private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, BoundType?[] slots, Koto argument)
     {
-        var slot = "the Type argument";
+        var slot = -1;
         for (var g = 0; g < selected.GenericArguments.Count; g++)
         {
             if (slots[g] is { } solution && HasOpenOriginFrom(solution, argument))
             {
-                slot = selected.GenericArguments[g].Identifier;
+                slot = g;
                 break;
             }
         }
 
-        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, (argument, $"only a per-call Origin of {argument} would satisfy {slot}"));
+        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, new PerCallOriginFact(argument, selected, slot));
     }
 
     // SPEC 15.3.6, 10.8: `type` with each open region that the known call signature of `source` put in place of its k-th per-call input

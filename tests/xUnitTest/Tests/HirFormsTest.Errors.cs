@@ -62,6 +62,58 @@ public sealed partial class HirFormsTest
         Assert.True(kept is null || kept == string.Join(" ", keeps.Select(static x => x.ToString())), string.Join(" ", keeps.Select(static x => x.ToString())));
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-106): a rejected do keeps its body Evaluated, written in place (None, None), with its parts' own Ops; a
+    // labeled do that a jump published without failure goes to, and a rejected if, keep nothing (fail-before: the do's body was Syntax).
+    [Fact]
+    public void ARejectedDoKeepsItsBody()
+    {
+        const string Source = "func f(c: bool) -> i32\n    let x: i32 = do\n        require c else => ()\n        7\n" +
+            "    let y: i32 = label done: do\n        if c => exit to done 2\n        require c else => ()\n" +
+            "    let z: i32 = if c\n        require c else => ()\n    else\n        ()\n    return 1\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        var dos = Reachable(c.Kotonoha).OfType<DoKoto>().ToArray();
+        Assert.All(dos, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
+        Assert.Equal((HirOp.Block, new HirAdjust(HirAcquire.None, HirAdaptation.None)), (HirTables.Op(dos[0].Body), HirTables.AdjustOf(dos[0].Body)));
+        Assert.Equal(HirOp.Require, HirTables.Op(Reachable(c.Kotonoha).OfType<RequireKoto>().First()));
+        var rejectedIf = Reachable(c.Kotonoha).OfType<IfKoto>().Last();
+        var replaced = Reachable(c.Kotonoha).Where(x => x.Parent is not null && (IsWithin(x, dos[1]) || IsWithin(x, rejectedIf)));
+        Assert.All(replaced.Where(x => x is not DoKoto and not IfKoto), static x => Assert.Equal(HirOp.Syntax, HirTables.Op(x)));
+    }
+
+    // DECISIONS BU-106: the jump walk of a rejected labeled do visits its subtree once per enclosing rejected labeled do: linear in the
+    // number of the do's body statements at a fixed depth, and at most depth times the program's nodes for nesting. The depth rows reach
+    // G414's 100, since the phases run on a compiler thread (DECISIONS R4-M178); a 1.5 MB Debug host overflowed from about 63, PLAN G444.
+    [Fact]
+    public void TheJumpWalkIsBoundedByItsSubtree()
+    {
+        long[] statements = [Work(1, 8).Work, Work(1, 16).Work, Work(1, 32).Work];
+        Assert.True(MirBorrowsTest.Grows(statements, 2), $"body statements {string.Join(", ", statements)}");
+        foreach (var depth in (int[])[12, 25, 50, 100])
+        {
+            var (work, nodes) = Work(depth, 1);
+            Assert.True(work <= (long)depth * nodes, $"depth {depth}: {work} visits, {nodes} nodes");
+        }
+
+        static (long Work, long Nodes) Work(int depth, int statements)
+        {
+            var source = new System.Text.StringBuilder("func f(c: bool) -> i32\n");
+            for (var i = 0; i < depth; i++)
+            {
+                source.Append(' ', 4 * (i + 1)).Append($"let y{i}: i32 = label l{i}: do\n");
+            }
+
+            for (var i = 0; i < statements; i++)
+            {
+                source.Append(' ', 4 * (depth + 1)).Append("require c else => ()\n");
+            }
+
+            source.Append("    return 1\n");
+            var c = MinimalEmissionTest.Analyze(source.ToString());
+            return (c.Binding.KeptTargetWork, Reachable(c.Kotonoha).LongCount());
+        }
+    }
+
     // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
     // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
     // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records
@@ -146,6 +198,51 @@ public sealed partial class HirFormsTest
             CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
+    // SPEC 14.5.2, 14.9.1-14.9.3, 23.1.2 (DECISIONS BU-101): an invalid transfer goes to no target (Binding.TransferTarget). Its row is
+    // null and Binding records row 9 or 10 at it; it supplies no result source and completes no construct, and its operand is bound with
+    // no expected Type. A selection whose every transfer is invalid is a Never form (Never, Diverges). One with another source takes that
+    // source's Type: an omitted or written `else`'s Unit, a valid labeled yield's, or the enclosing join's sources beside an inner Never
+    // form. No record rests on the target an invalid transfer lacks: the operand's TypeMismatch_Kd, the discarded selection's own (r15) and
+    // an enclosing join's at another source (r4's `2`) go. The operand's own records stay (TransferRequired_Kd at `yield xs`, as row 9
+    // gives it), and so does the fallthrough the Dependent construct hid (FunctionFallthrough_Kd, SPEC 14.9.3's example). A valid labeled
+    // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), and its Unit twin is valid. Fail-before: the first six rows'
+    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit. SPEC 10.5.4 (DECISIONS
+    // BU-109): an anonymous function's single-item body keeps the context fixed before it, so a result inferred as Unit leaves it in
+    // Value Context (r21, r23, t5: valid; fail-before: row 10 at each yield beside its non-null row, and r23's `if` Diverges), while Unit
+    // written (t2) or fixed by the expected Type (t1) or the parameter (t3) discards it.
+    [Theory]
+    [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n    return 0\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: bool)\n    if a\n        yield ()\n    else\n        yield\n    ()\n", "if a: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32)\n    match a\n        0 => yield 1\n        _ => yield 2\n", "match a: Never Diverges", "UnlabeledYieldTarget_Kd 3:14, UnlabeledYieldTarget_Kd 4:14")]
+    [InlineData("func f(a: i32) -> i32\n    var x: i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n    return x\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 4:9, UnlabeledYieldTarget_Kd 6:9")]
+    [InlineData("func r1(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        yield 1\n", "if a > 0: () Completes", "UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func r2(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield 5\n        yield 1\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: () Completes", "UnlabeledYieldTarget_Kd 4:13")]
+    [InlineData("func r4(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield 5\n        else\n            yield 6\n        ()\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: Never Diverges", "UnlabeledYieldTarget_Kd 4:13, UnlabeledYieldTarget_Kd 6:13")]
+    [InlineData("func r15(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield \"s\"\n        yield 1\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: () Completes", "UnlabeledYieldTarget_Kd 4:13")]
+    [InlineData("func r19(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    if a > 0\n        yield xs\n    else\n        ()\n    return xs\n", "if a > 0: () Completes", "TransferRequired_Kd 4:15, TransferRequired_Kd 7:12, UnlabeledYieldTarget_Kd 4:9")]
+    [InlineData("func r19c(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    loop\n        yield xs\n", "loop: Never Diverges", "InvalidJumpTarget_Kd 4:9, TransferRequired_Kd 4:15")]
+    [InlineData("func p12(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        ()\n", "if a > 0: () Completes", "FunctionFallthrough_Kd 2:5, UnlabeledYieldTarget_Kd 3:9")]
+    [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: null Completes", "TypeMismatch_Kd 3:20")]
+    [InlineData("func p5(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        ()\n", "if a > 0: () Completes", "")]
+    [InlineData("func r21(c: bool)\n    let g = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func r23(c: bool)\n    let g = func [c] () => if c => yield () else => yield ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func t5(c: bool)\n    let g = func [c] () => match c\n        true => yield ()\n        false => ()\n    g()\n", "match c: () Completes", "")]
+    [InlineData("func t1(c: bool)\n    let g: () -> () = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:46")]
+    [InlineData("func t2(c: bool)\n    let g = func [c] () -> () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:42")]
+    [InlineData("func run(f: () -> ()) => f()\nfunc t3(c: bool) => run(func [c] () => if c => yield () else => ())\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:48")]
+    public void AnInvalidTransferSuppliesNoSource(string source, string constructs, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var nodes = Reachable(c.Kotonoha);
+        Assert.All(nodes.OfType<JumpKoto>(), static x => Assert.True(HoldsItsTarget(x)));
+        Assert.Equal(constructs, string.Join("; ", nodes.Where(static x => x is IfKoto or MatchKoto or LoopKoto)
+            .Select(static x => $"{x.ToString()!.Split('\n')[0]}: {x.TypeOf()?.Name ?? "null"} {HirTables.CompletionOf(x)}")));
+        Assert.Equal(records, string.Join(", ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {At(source, x.Span.Start)}").Order(StringComparer.Ordinal)));
+    }
+
     // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): a compound update's getter and setter take its receiver; where they take it by different
     // Adjusts, the column keeps the setter's and the receiver's plan row the getter's, and an input one call takes has none; an Error
     // receiver's both are its derived value (fail-before: no plan-row Adjust, and the Error receiver kept the setter's Reborrow).
@@ -158,11 +255,52 @@ public sealed partial class HirFormsTest
         var nodes = Reachable(c.Kotonoha);
         var box = nodes.Single(static x => x.ToString() == "box" && x.Parent?.ToString() == "box.count");
         Assert.Equal(
-            (new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)),
+            (new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow, ExclusiveMode: true), new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)),
             (HirTables.AdjustOf(box), HirTables.PlanOf(box).Adjust));
         Assert.Equal(default, HirTables.PlanOf(nodes.Single(static x => x.ToString() == "box.n")).Adjust);
         var receiver = nodes.Single(static x => x.ToString() == "t" && x.Parent?.ToString() == "t.item");
         var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
+    // whose Move rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error
+    // (Deferred), a match arm's or a for loop's item, also a Tuple item's slot; an Error node's folds to its derived value (Temporary, None;
+    // R4-M109), and a discarded one's plan row is Failed, its column unset (no consumer takes it). Fail-before: each was the column's default
+    // (Unset, None), and a for item whose Copy proof is Error was (Move, None). A valid Copy item stays Copied and a Non-Copy one Moved.
+    [Fact]
+    public void AFailedAcquisitionIsPublishedFailed()
+    {
+        const string Source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nstruct Gen\n    Self is Iterator\n" +
+            "    associate Iterator.Item is Bad\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<Bad> => .None\n" +
+            "func a(b: Bad) -> Bad => b\nfunc f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let z = x\n" +
+            "    let y: i32 = if c => 1 else => x\n    let w: i32 = if c => 1 else => (z)\n    return y + w\nfunc g() -> i32\n    let q = missing\n    q\n" +
+            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n" +
+            "func n(xs: Array<Bad>, ys: Array<(Bad, i32)>)\n    for e in xs@move\n        _ = 1\n    for (p, j) in ys@move\n        _ = j\n" +
+            "struct Good\n    Self is Copy\n    public var n: i32 = 0\n    public init() => ()\nstruct Owned\n    public var s: string = \"\"\n" +
+            "    public init() => ()\nfunc h(gs: Array<Good>, os: Array<Owned>)\n    for o in gs@move\n        _ = o\n    for u in os@move\n" +
+            "        _ = u@move\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        var rows = Reachable(c.Kotonoha)
+            .Where(static x => x.ToString() == "t.5" || HirTables.AdjustOf(x).Acquire == HirAcquire.Failed ||
+                HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Failed)
+            .Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} {HirTables.PlanOf(x).Adjust.Acquire}");
+        string[] expected =
+        [
+            "b Name Failed Unset", "t.5 Error Temporary Unset", "x Name Failed Unset", "(z) Group Failed Unset", "q Name Unset Failed",
+            "let v Syntax Failed Unset", "e Syntax Failed Unset", "p Syntax Failed Unset",
+        ];
+        Assert.Equal(expected, rows);
+        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
+            .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
+        Assert.Equal(["j Copy", "o Copy", "u Move"], items);
+    }
+
+    // The 1-based line:column of an offset in a source.
+    private static string At(string source, int offset)
+    {
+        var start = offset == 0 ? 0 : source.LastIndexOf('\n', offset - 1) + 1;
+        return $"{source.AsSpan(0, offset).Count('\n') + 1}:{offset - start + 1}";
     }
 }

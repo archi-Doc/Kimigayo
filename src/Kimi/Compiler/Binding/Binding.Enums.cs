@@ -25,19 +25,18 @@ public sealed class BoundEnumCase
     public ReadOnlySpan<Koto> Payload => ((SyntaxFormKoto)((SyntaxFormKoto)this.Symbol.Declaration).Operands[1]).Operands;
 }
 
-/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate.</summary>
+/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate. A resting construction's plan (a
+/// payload failed, PLAN G418 (2)) holds only its completed payloads and is judged only by the pass-end formation and acquisitions
+/// (CompleteEnumAcquisitions); no consumer reads it, since <see cref="Binding.TryGetEnumConstruction"/> returns a resolved use's plan.</summary>
 public sealed class BoundEnumConstruction
 {
     private BoundArgumentOperation[] operations = [];
-    private AcquisitionKind[] acquisitions = [];
 
     public BoundEnumCase Case { get; private set; } = null!;
 
     public BoundType Type { get; private set; } = null!;
 
     public ReadOnlySpan<BoundArgumentOperation> PayloadOperations => this.operations;
-
-    public ReadOnlySpan<AcquisitionKind> Acquisitions => this.acquisitions;
 
     internal bool IsValid { get; set; }
 
@@ -53,21 +52,18 @@ public sealed class BoundEnumConstruction
         if (this.operations.Length != operations.Length)
         {
             this.operations = new BoundArgumentOperation[operations.Length];
-            this.acquisitions = new AcquisitionKind[operations.Length];
         }
 
         operations.CopyTo(this.operations);
         this.IsValid = true;
     }
-
-    internal void SetAcquisition(int index, AcquisitionKind acquisition) => this.acquisitions[index] = acquisition;
 }
 
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundEnumConstruction> enumConstructions = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets this pass's construction plan; failed/replaced uses never expose old plans.</summary>
+    /// <summary>Gets this pass's construction plan; failed, resting and replaced uses never expose a plan (the Resolved gate).</summary>
     /// <param name="use">The construction expression.</param>
     /// <param name="construction">The committed plan, or null if unavailable.</param>
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
@@ -189,9 +185,10 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count);
         var lengths = this.lengthScratch.Rent(slots);
         var settled = this.RentSlotSet(count);
-        var solved = this.RentSlotSet(slots);
         var adapted = this.typeScratch.Rent(count);
         var rows = this.rowScratch.Rent(count);
+        var childSlice = this.indexScratch.Rent(2);
+        var childBase = this.childRows.Count;
         Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
@@ -206,34 +203,33 @@ public sealed partial class Binding
 
             if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
             {
-                if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
+                if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied)
                 {
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
+                // SPEC 6.5.2 item 2, 10.8, 10.8.1 (DECISIONS BU-2 U5): a qualifier's explicit argument is kept and the expected Type fills
+                // only the open slots; the result's fit judges the kept argument (a structure or Semantics difference is its Type mismatch,
+                // an Origin-only difference its Origin relation).
                 for (var i = 0; i < slots; i++)
                 {
-                    if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
+                    if (i >= expected.Components.Count)
                     {
                         return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
-                    if (arguments[i] is null || ReferenceEquals(owner, expected))
-                    {
-                        solved.Add(i); // F1: a slot the expected Type fixes, which a bare qualifier takes (EnumQualifierType).
-                    }
-
-                    arguments[i] = expected.Components[i];
+                    arguments[i] ??= expected.Components[i];
                 }
 
-                for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
+                for (var i = 0; i < Math.Min(originCount, supplied.Count); i++)
                 {
-                    origins[i] = expected.OriginArguments[i];
+                    origins[i] = supplied[i];
                 }
             }
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
             solution.Rows = rows.AsSpan(0, count);
+            solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
             {
                 return null;
@@ -255,10 +251,11 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 steps 1, 3, 15.3.6 (F1, DECISIONS R4-M164 U4): a construction is a call. The Origins that its expected Type leaves
             // open are solved by the call's solve, which its clauses and each Signature payload's premises bound (SolveLate).
-            solution.ContributePayloads(payload, solved);
+            solution.ContributePayloads(payload);
+            this.RetainChildRows(ref solution); // R3: the payloads' composition, before their completion.
             if (expected is null || ReferenceEquals(expected, BoundType.Never))
             {
-                this.SolveConstructionOrigins(payload, ref solution);
+                this.SolveConstructionOrigins(ref solution);
             }
 
             for (var i = 0; i < originCount; i++)
@@ -272,33 +269,51 @@ public sealed partial class Binding
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch; a Function
-                // component's failed contract is the construction's contract record, whose fact its walk gives (RecordMismatch).
-                if (!FitsStructurally(result, expected))
+                // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
+                // pair layers read at the use's scope; a Function component's failed contract is the construction's contract record, whose
+                // fact its walk gives (RecordMismatch).
+                if (!this.FitsStructurallyAt(result, expected, use))
                 {
                     return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
                         ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use, out var failure) && !this.CheckLocalTypeUse(result, expected, use))
+                if (!this.FitsValueAt(result, expected, use, use, out var failure))
                 {
                     return this.RecordMismatch(use, use, result, expected, failure);
                 }
             }
 
-            if (!this.CompletePayloads(use, payload, result, scope, operations, adapted, settled))
-            {
-                return null;
-            }
+            // SPEC 23.1.2, 10.8 (PLAN G418 (2), DECISIONS BU-96): a failed payload stops the payloads after it (PLAN G262 F2), not the
+            // judgments over the solution SolveConstruction fixed, since completing a payload fills no slot: the completed payloads'
+            // premises, the Constraints and the plan's formation are judged, and then the construction rests on the payload's record.
+            var completed = this.CompletePayloads(use, payload, result, scope, operations, adapted, settled);
 
-            // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its contribution (RequireInputPremises).
+            // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its rows (JudgePositionRows) where it has
+            // child rows, else by its contribution (RequireInputPremises; R4, DECISIONS BU-104).
             this.callRelationScratch.Clear();
-            for (var i = 0; i < count; i++)
+            var done = 0;
+            for (; done < count && operations[done].Source is { } source; done++)
             {
-                this.RequireInputPremises(operations[i].Source!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
+                this.ChildGroup(solution, done, out var childStart, out var childEnd);
+                if (childStart != childEnd)
+                {
+                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution);
+                }
+                else
+                {
+                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
+                }
             }
 
             this.PublishCallRelations();
+
+            // A construction that holds its own record (a payload's Type mismatch or acquisition) has no second one: R7-E1's one record
+            // per node, whose removal removes this gate (PLAN G418).
+            if (!completed && use.BindingFailure != BindingFailure.None)
+            {
+                return null;
+            }
 
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
             if (proof != ConstraintProof.Proven)
@@ -312,7 +327,14 @@ public sealed partial class Binding
                 this.enumConstructions.Add(use, plan = new());
             }
 
-            plan.Set(enumeration, result, operations.AsSpan(0, count));
+            // A resting construction's plan holds its completed payloads: its formation (the Origin clauses) and their acquisitions are
+            // judged as every plan's (CompleteEnumAcquisitions), and no consumer reads it (TryGetEnumConstruction reads a resolved use's).
+            plan.Set(enumeration, result, operations.AsSpan(0, done));
+            if (!completed)
+            {
+                return null;
+            }
+
             if (call is not null)
             {
                 call.CallStorage = null;
@@ -325,8 +347,9 @@ public sealed partial class Binding
         finally
         {
             this.rowScratch.Return(rows, clearArray: true);
+            this.indexScratch.Return(childSlice);
+            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.typeScratch.Return(adapted, clearArray: true);
-            this.ReturnSlotSet(solved);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.lengthScratch.Return(lengths, clearArray: true);
             this.ReturnSlotSet(settled);
@@ -353,8 +376,7 @@ public sealed partial class Binding
             }
 
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
-                !this.HasUnsubstitutedOrigin(
-                    this.SubstituteStoredOrigins(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)), solution.SlotOwner))
+                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
             {
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
@@ -419,33 +441,16 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 steps 1, 3, 15.3.6 (Rule C): the call's solve of the construction's Origins (SolveOriginInference), which the enum's
-    // clauses and each Signature payload's premises over its instantiated payload Type bound, as SolveLate's do a candidate's.
-    private void SolveConstructionOrigins(ReadOnlySpan<Koto> payload, ref SlotSolution solution)
+    // clauses and each Signature leaf row's premise over its payload's instantiated sub-Type bound (CollectPositionPremises), as
+    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or such a row nothing
+    // bounds them.
+    private void SolveConstructionOrigins(ref SlotSolution solution)
     {
-        var signature = false;
-        for (var i = 0; i < payload.Length; i++)
-        {
-            signature |= solution.Rows[i].Contribution == Contribution.Signature && payload[i].BoundType is { StoresOrigin: true };
-        }
-
-        // Evidence that carries an Origin began the inference (InferAdapted); without it or such a Signature payload nothing bounds them.
-        if (signature)
-        {
-            solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
-        }
-
+        this.CollectPositionPremises(ref solution);
+        this.ReturnSlotSet(solution.EvidenceNamed); // Read by the discoveries above only.
         if (solution.OriginInference is not { } inference)
         {
             return;
-        }
-
-        for (var i = 0; i < payload.Length; i++)
-        {
-            if (solution.Rows[i].Contribution == Contribution.Signature &&
-                this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
-            {
-                this.CollectInputPremises(instantiated, inference, solution.Call);
-            }
         }
 
         // A selection's solve never fails (SolveOriginInference with `select`); the payload walk and the Type-formation check judge it.
@@ -497,8 +502,10 @@ public sealed partial class Binding
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
     // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
     // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Place without a plan names its required
-    // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound is its record, on which the
-    // construction rests.
+    // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound (PartFailed, as at a call
+    // argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record, on which the construction rests. False at
+    // the first failing payload: the payloads after it are not completed (PLAN G262 F2, R7-E1) and keep no operation, those before it keep
+    // theirs, and no slot is filled.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -523,6 +530,7 @@ public sealed partial class Binding
 
             this.acquisitionFailure = null;
             if (fit == CandidateApplicability.Error || (this.PropagateBound(source, type) ?? this.BindNode(source, scope, type)) is not { } completed ||
+                this.PartFailed(source) ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
@@ -543,8 +551,7 @@ public sealed partial class Binding
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
             // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             var fits = this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
-                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsTypeAt(adaptedType, type, source, out failure) ||
-                this.CheckLocalTypeUse(adaptedType, type, source));
+                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);
             if (acquisition is { } failed)
@@ -625,8 +632,6 @@ public sealed partial class Binding
                     plan.IsValid = false;
                     this.FailAcquisition(entry.Key, BindingFailure.TransferRequired, payloadSource);
                 }
-
-                plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
             }
         }
     }
@@ -666,7 +671,13 @@ public sealed partial class Binding
 
                 var type = this.RewriteOrigins(construction.Type, declaration);
                 construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
-                use.BoundType = type;
+
+                // A resting construction forms no result (DECISIONS BU-96 amended; whether it publishes one is PLAN G495's), so only a
+                // published result Type is rewritten.
+                if (use.BoundType is not null)
+                {
+                    use.BoundType = type;
+                }
             }
             finally
             {

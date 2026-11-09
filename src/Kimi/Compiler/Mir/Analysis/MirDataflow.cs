@@ -61,8 +61,8 @@ internal interface IMirFlow
 /// <param name="reach">The one reachability walk, whose post-order over every edge orders the blocks and whose runtime walk decides P1.</param>
 internal sealed class MirDataflow(MirReach reach)
 {
-    // R4-M15a: the byte size of an analysis arena above which a body is not analyzed (OwnershipStorageLimit_Kd), the old path's limit
-    // value until R6 states it in IMPL 21.3.2.
+    // R4-M15a: the byte size of an analysis arena above which a body is not analyzed (OwnershipStorageLimit_Kd), an implementation-defined
+    // analysis storage limit (IMPL 21.3.2).
     private const long ByteLimit = 64L * 1024 * 1024;
     private int[] order = []; // The blocks in reverse postorder.
     private int[] next = []; // Each block's successor in its chain, or -1 at the chain's tail.
@@ -181,11 +181,11 @@ internal sealed class MirDataflow(MirReach reach)
     internal static int StorageLimit(MirReport report, MirBody body, ulong views, MirStorageTable table, long words)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-        ReadOnlySpan<MirFact> facts =
+        ReadOnlySpan<ProblemFact> facts =
         [
-            new(MirFactKind.Required, body.Source, words * sizeof(ulong)),
-            new(MirFactKind.Limit, body.Source, ByteLimit),
-            new(MirFactKind.Table, body.Source, (long)table),
+            new(ProblemFactKind.Required, body.Source, words * sizeof(ulong)),
+            new(ProblemFactKind.Limit, body.Source, ByteLimit),
+            new(ProblemFactKind.Table, body.Source, (long)table),
         ];
         return report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, views), facts);
     }

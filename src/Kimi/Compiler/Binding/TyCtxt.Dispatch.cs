@@ -13,15 +13,16 @@
 // Output: RequirementTarget(Kind, Target, Subst, Access), one per (requirement, contract, subst), kept across passes with no edit and
 // discarded at an edit (ResetViews). Body: a function with a MIR body under its instance: a conformance witness (inherited ones included)
 // under its declaring instance with the call's Types, lengths and its Origins in the call's terms (Binding.WitnessOrigin), an accessor-call
-// witness's executing accessor under its implementing Type's instance, a fixed-array or integer Position member under its own slots.
+// witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
 // every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (PrepareTypeStorage's Limit); a Self whose
 // storage rests on a part Binding rejected passes through, since what the call runs does not depend on that part (DECISIONS BU-38), and
 // the instance its target needs is its reader's to admit. None: no answer, also for an abstract Self, which for a closed accepted Self is
 // a broken contract that its reader records as InternalInvariant_Kd.
-// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance (TyCtxtTest's
-// twin); no receiver projection is returned, since a base subobject is a layout prefix (Layout.Of, X1).
+// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance
+// (InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
+// since a base subobject is a layout prefix (Layout.Of, X1).
 // Must not: forward an abstract Self (the materializer's SPEC 8.15 rule), create a bridge or a CallPlan, write a diagnostic, HIR or pass
 // state, or prove on an erased value.
 
@@ -48,8 +49,7 @@ internal sealed partial class TyCtxt
 {
     private readonly Dictionary<(BindingSymbol Requirement, BindingSymbol? Contract, Subst Subst), RequirementTarget> witnesses = new();
 
-    // A witness instance's Types and Origins before interning, reused.
-    private BoundType?[] witnessTypes = [];
+    // A witness instance's Origins before interning, reused.
     private BoundOrigin[] witnessOrigins = [];
 
     // SPEC 8.6.1: the Contract that declares a requirement, also of a built-in target, which keeps its requirement's declaration and scope
@@ -82,6 +82,32 @@ internal sealed partial class TyCtxt
     // reserve for an erased writer's destination); null for a Contract that declares none.
     internal BindingSymbol? OwnRequirement(KimiDeclarationId contract) => library.GetSymbol(contract)?.Contract?.OwnRequirement();
 
+    // The library declaration a compiler component reaches by its catalog identity (InstanceCollector: the destroyArray instance).
+    internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
+
+    // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
+    internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
+
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
+    // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.
+    internal Subst? LibraryInstance(in Binding.RequirementWitness witness, BoundType self, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    {
+        var target = witness.Target!;
+        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), origins, inputs);
+        }
+        finally
+        {
+            binding.ReturnWitnessArguments(types, lengths);
+        }
+    }
+
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
     private void ResetDispatch()
@@ -110,8 +136,7 @@ internal sealed partial class TyCtxt
             Binding.RequirementWitnessKind.Builtin => new(RequirementTargetKind.Builtin, witness.Target, subst, default),
             Binding.RequirementWitnessKind.Conformance => this.Conformance(requirement, witness, subst),
             Binding.RequirementWitnessKind.Property => this.Property(requirement, witness, subst),
-            Binding.RequirementWitnessKind.FixedArrayEntry => this.FixedArrayEntry(witness.Target!, self, subst),
-            Binding.RequirementWitnessKind.IntegerPosition => this.IntegerPosition(witness.Target!, self, subst),
+            Binding.RequirementWitnessKind.LibraryWitness => this.LibraryWitness(witness, self, subst),
             Binding.RequirementWitnessKind.Refused => new(RequirementTargetKind.Refused, null, null, default),
             _ => default,
         };
@@ -156,35 +181,7 @@ internal sealed partial class TyCtxt
         return Body(accessor, this.Intern(accessor, null, witness.Declaring, [], [], origins[..at], origins[at..]));
     }
 
-    // SPEC 21.3.1: the fixed array's entry member at the array's element Type and length (InstantiateFixedArrayEntry).
-    private RequirementTarget FixedArrayEntry(BindingSymbol target, BoundType self, Subst subst)
-    {
-        if (!binding.RentFixedArrayArguments((FunctionKoto)target.Declaration, self, out var types, out var lengths, out var count))
-        {
-            return default;
-        }
-
-        try
-        {
-            return Body(target, this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), subst.Origins, subst.Inputs));
-        }
-        finally
-        {
-            binding.ReturnFixedArrayArguments(types, lengths);
-        }
-    }
-
-    // SPEC 4.6.1, 21.3.1: the integer Position witness at the integer Type (InstantiateIntegerPosition).
-    private RequirementTarget IntegerPosition(BindingSymbol target, BoundType self, Subst subst)
-    {
-        if (binding.IntegerPositionSlot(target) is not (>= 0 and var slot))
-        {
-            return default;
-        }
-
-        var types = Fit(ref this.witnessTypes, slot + 1);
-        types.Clear();
-        types[slot] = self;
-        return Body(target, this.Intern(target, null, null, types, [], subst.Origins, subst.Inputs));
-    }
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (LibraryInstance).
+    private RequirementTarget LibraryWitness(in Binding.RequirementWitness witness, BoundType self, Subst subst)
+        => this.LibraryInstance(witness, self, subst.Origins, subst.Inputs) is { } instance ? Body(witness.Target!, instance) : default;
 }

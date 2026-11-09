@@ -40,7 +40,7 @@ public sealed partial class Binding
         }
 
         declaringType ??= this.SelfType(member.Scope.Owner.BoundSymbol!);
-        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], member.Scope.Owner, declaringType, scope);
+        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], declaringType, scope);
     }
 
     private void ValidateConditionalBlock(SyntaxFormKoto syntax, DeclarationContainerKoto owner)
@@ -86,7 +86,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[syntax];
-            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.conformancePaths.TryGetValue((owner.BoundSymbol!, contract, target, contract), out var path))
+            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { } path)
             {
                 scope.ConformancePath = path;
             }

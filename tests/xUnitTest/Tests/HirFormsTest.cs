@@ -16,7 +16,38 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
-    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // The Types of the takes a later take overwrites (AnOverwrittenTakeClaimsNothing).
+    private const string OverwrittenTakes = """
+            struct One<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var items: T
+                public init(items: T) => self.items = items@move
+            struct Vec2
+                Self is Addable<Vec2>
+                associate Addable<Vec2>.Output is Vec2
+                public var x: i32 = 0
+                public init() => ()
+                public func added(self: ref/Self, right: ref/Vec2) -> Vec2 => Vec2.init()
+
+            """;
+
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed sweeps: every SPEC example variant without an expected record that the MIR
     // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
     {
@@ -201,6 +232,28 @@ public sealed partial class HirFormsTest
         Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
+    // SPEC 3.5.3, 13.4, 13.5.5: a comparison operand of Unit behind ref layers alone is read (ReferentRead); one below qualifying pair
+    // layers is inspected through a shared borrow, at every depth Binding follows them, the eighth included (R8-S1e: the walk's
+    // fallthrough there once left the ref layer, so the operand was read).
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(8, false)]
+    public void AUnitOperandBelowPairLayersIsNotRead(int layers, bool read)
+    {
+        var type = "ref/() during o0";
+        for (var k = 1; k <= layers; k++)
+        {
+            type = $"s/({type}) during o{k}";
+        }
+
+        var c = MinimalEmissionTest.Analyze($"func f<s/T>(value: {type}) -> bool\n    s is ref or uniq\n    return value == ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var comparison = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(static x => x.Akind == KotoKind.EqualsEquals);
+        Assert.Equal(read ? HirAdaptation.ReferentRead : HirAdaptation.SharedBorrow, HirTables.AdjustOf(comparison.Left).Adaptation);
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]
@@ -277,6 +330,43 @@ public sealed partial class HirFormsTest
         Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
     }
 
+    // SPEC 7.7.4, 12.4.1, 10.5.4 (G386; DECISIONS BU-83's rule E): an erasure is adjusted once, at the node Binding erased, whatever
+    // groups enclose it: a named call's anonymous function or function group, also at a generic callee, a method or an initializer, as
+    // its unparenthesized twin is; a Closure local's group, erased itself; a `let` initializer's group and a payload's.
+    [Theory]
+    [InlineData("return k(func [] (o) => 0)", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o) => 0))", "func [] (o) => 0")]
+    [InlineData("return k(((func [] (o) => 0)))", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o: i32) => 0))", "func [] (o: i32) => 0")]
+    [InlineData("return k0((func [] () => 0))", "func [] () => 0")]
+    [InlineData("return gk(func [] (o: i32) => o, 1)", "func [] (o: i32) => o")]
+    [InlineData("return gk((func [] (o: i32) => o), 1)", "func [] (o: i32) => o")]
+    [InlineData("return k(g1)", "g1")]
+    [InlineData("return k((g1))", "g1")]
+    [InlineData("return k((gid))", "gid")]
+    [InlineData("let b = Box.init()\n    return b.apply((func [] (o) => o))", "func [] (o) => o")]
+    [InlineData("let h = Holder.init((func [] (o) => o))\n    return 0", "func [] (o) => o")]
+    [InlineData("let c = func [] (o: i32) => 0\n    return k((c))", "(c)")]
+    [InlineData("let f: (i32) -> i32 = (func [] (o) => 0)\n    return 0", "func [] (o) => 0")]
+    [InlineData("let f: Option<(i32) -> i32> = .Some((func [] (o) => 0))\n    return 0", "func [] (o) => 0")]
+    public void AnErasureIsAdjustedOnceAtTheNodeBindingErased(string body, string erased)
+    {
+        const string Callees = "func k(g: (i32) -> i32) -> i32 => 0\nfunc k0(g: () -> i32) -> i32 => 0\nfunc gk<T>(g: (T) -> T, x: T) -> T => x@move\n" +
+            "func g1(o: i32) -> i32 => o\nfunc g1(o: bool) -> i32 => 0\nfunc gid<T>(o: T) -> T => o@move\n" +
+            "struct Box\n    public var v: i32\n    public init() => self.v = 1\n    public func apply(self: ref/Self, g: (i32) -> i32) -> i32 => 0\n" +
+            "struct Holder\n    public var v: i32\n    public init(g: (i32) -> i32) => self.v = 1\n";
+        var source = Callees + "func run() -> i32\n    " + body + "\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Adaptation == HirAdaptation.Erasure)
+            .Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        var recorded = Reachable(c.Kotonoha).Where(static x => HirTables.ErasedType(x) is not null).Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        Assert.Equal([erased], adjusted);
+        Assert.Equal([erased], recorded);
+    }
+
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
     // ConstIndex and a runtime one an Index, a user index designates the referent of its selected call's reference, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
@@ -327,6 +417,24 @@ public sealed partial class HirFormsTest
         Assert.Equal(["t.1 1", "fixed[2] 2", "p.x -", "t.0 0"], rows);
     }
 
+    // SPEC 3.1, 13.5.4 (G620): an Integer constant has one encoding on its own plan row (Folded), its Type's N-bit sign-extended payload,
+    // whether a literal or a folded conversion spells it.
+    [Theory]
+    [InlineData("let a: u8 = 255", "255", "-1")]
+    [InlineData("let a = (-1)@wrap<u8>", "(-1)@wrap<u8>", "-1")]
+    [InlineData("let a: u64 = 18446744073709551615", "18446744073709551615", "-1")]
+    [InlineData("let a: Wrapping<u16> = 65535", "65535", "-1")]
+    [InlineData("let a: i8 = -128", "-128", "-128")]
+    [InlineData("let a: u8 = 127", "127", "127")]
+    public void AnIntegerConstantIsItsSignExtendedPayload(string source, string spelling, string folded)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => source.Substring(x.Span.Start, x.Span.Length) == spelling && HirTables.PlanOf(x).Folded is not null);
+        Assert.Equal(folded, HirTables.PlanOf(node).Folded!.Value.ToString(CultureInfo.InvariantCulture));
+    }
+
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
     // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
@@ -366,7 +474,9 @@ public sealed partial class HirFormsTest
     // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
     // also through an object handle's payload, and below another element; a read, a shared borrow, a shared receiver (a base's
     // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
-    // exclusive receiver over Binding's in-place read states its own borrow.
+    // exclusive receiver over Binding's in-place read states its own borrow. A discarded element (SPEC 14.2.2) is a bare acquisition: a
+    // stored exclusive reference's Reborrow selects indexUniq through the discard row's claim (PLAN G426) in every Discard Context, in
+    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index.
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -451,6 +561,36 @@ public sealed partial class HirFormsTest
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
                 unsafe => ptrs[1][0] = 6
+            struct Shelf {a}
+                public var d: Dictionary<i32, uniq/i32 during a>
+            struct Link {a}
+                public var link: uniq/i32 during a
+            func discards(value: uniq/i32 during a, d: uniq/Dictionary<i32, uniq/i32 during a>, e: uniq/(Dictionary<i32, uniq/i32 during b>) during s, c: bool)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                entries[1]
+                (entries[1])
+                d[1]
+                (d[1])
+                e[1]
+                (e[1])
+                if c => d[1]
+                do
+                    d[1]
+                match c
+                    true => d[1]
+                    false => ()
+                ((d[1]))
+            func parts(shelf: uniq/(Shelf during a) during s, links: uniq/Dictionary<i32, Link during a>, pair: uniq/(Pair<uniq/i32 during a>) during s)
+                shelf.d[1]
+                links[1].link
+                pair[0]
+                (pair[0])
+            func cases<s/T>(d: uniq/Dictionary<i32, s/T during a>)
+                s is uniq
+                d[1]
+            func copies(d: uniq/Dictionary<i32, i32>, ints: uniq/Pair<i32>)
+                d[1]
+                ints[0]
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
@@ -469,14 +609,101 @@ public sealed partial class HirFormsTest
             "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
             "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
             "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+            "entries[1] indexUniq", "(entries[1]) indexUniq", "d[1] indexUniq", "(d[1]) indexUniq", "e[1] indexUniq", "(e[1]) indexUniq",
+            "if c => d[1] indexUniq", "d[1] indexUniq", "true => d[1] indexUniq", "((d[1])) indexUniq", "shelf.d[1] indexUniq",
+            "links[1].link indexUniq", "pair[0] indexUniq", "(pair[0]) indexUniq", "d[1] indexUniq", "d[1] index", "ints[0] index",
         ];
         Assert.Equal(expected, selections);
         var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");
-        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), HirTables.AdjustOf(receiver));
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow, ExclusiveMode: true), HirTables.AdjustOf(receiver));
         var shared = MinimalEmissionTest.Analyze(
             Source.Replace("require rcs[0].level() == 2 else => $abort(\"rc\")", "rcs[0].bump()", StringComparison.Ordinal));
         var issue = Assert.Single(shared.Binding.Issues);
         Assert.Equal("rcs[0].bump() NoApplicableOverload_Kd", $"{issue.Node} {issue.Code}");
+
+        static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
+    }
+
+    // SPEC 3.4.3, 7.3.3, 9.6.1, 10.2, 13.5.5 (PLAN G147 (2)): a row an operation gives states its target's mode, whatever its adaptation
+    // (DECISIONS BU-8): a handle's payload, a base and one reference through layers, whatever the layers offer (a recorded read of
+    // exclusive layers at a shared receiver), and a Reborrow. A compound update's getter and setter differ by that mode alone, which the
+    // plan row keeps. A use in place forms no reference: a Field's receiver, an inherited stored Field's
+    // StorageProjection included (SPEC 9.6.1), states no mode, in a read or a write, and the use's capability reaches what it selects
+    // through (ExclusiveUse: the user index below, whose element keeps Binding's recorded read). An exclusive base receiver is still Unsupported_Kd
+    // (InheritedReceiverBindingTest.ProjectedCallsProveSharedReceiversAndRetainExclusiveObligations).
+    [Fact]
+    public void AdaptationsStateTheirModes()
+    {
+        const string Source = """
+            struct Meter
+                public var n: i32 = 0
+                public computed doubled: i32
+                    get() -> i32 => self.n * 2
+                    set(self: uniq/Self, value: i32) -> () => self.n = value / 2
+                public init() => ()
+                public func look(self) -> i32 => self.n
+                public func bump(self: uniq/Self) => self.n += 1
+            open struct Base
+                public var item: i32 = 0
+                public init() => ()
+                public func peek(self) -> i32 => self.item
+            struct Derived : Base
+                public init() => ()
+            struct One<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func payloads() -> i32
+                var handle = Meter.init()@obj
+                handle.bump()
+                return handle.look()
+            func layers(shared: ref/(ref/Meter during a) during b, exclusive: uniq/(uniq/Meter during a) during b) -> i32
+                exclusive.bump()
+                exclusive.n = shared.look()
+                let r: ref/Meter = shared
+                return exclusive.look() + exclusive.n + r.n
+            func bases(d: uniq/Derived) -> i32
+                d.item = 2
+                return d.peek() + d.item
+            func stored(pairs: uniq/(One<Derived>) during s) -> i32
+                pairs[0].item = 3
+                return pairs[1].item
+            func updates(exclusive: uniq/(uniq/Meter during a) during b)
+                exclusive.doubled += 1
+            func change(value: uniq/Meter) => value.bump()
+            func reborrows(value: uniq/Meter) => change(value)
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("func payloads", StringComparison.Ordinal);
+        string[] names = ["handle", "shared", "exclusive", "d", "pairs[0]", "pairs[1]"];
+        var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && names.Contains(Text(x)) && HirTables.AdjustOf(x).Adaptation != HirAdaptation.None)
+            .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Adaptation} {HirTables.AdjustOf(x).ExclusiveMode}");
+        string[] expected =
+        [
+            "handle.bump(): handle PayloadProjection True", "return handle.look(): handle PayloadProjection False",
+            "exclusive.bump(): exclusive ReferenceRead True", "exclusive.n = shared.look(): exclusive ReferenceRead False",
+            "exclusive.n = shared.look(): shared ReferenceRead False", "let r: ref/Meter = shared: shared ReferenceRead False",
+            "return exclusive.look() + exclusive.n + r.n: exclusive ReferenceRead False", "return exclusive.look() + exclusive.n + r.n: exclusive ReferenceRead False",
+            "d.item = 2: d StorageProjection False", "return d.peek() + d.item: d BaseBorrow False", "return d.peek() + d.item: d StorageProjection False",
+            "pairs[0].item = 3: pairs[0] SharedBorrow False", "return pairs[1].item: pairs[1] SharedBorrow False",
+            "exclusive.doubled += 1: exclusive ReferenceRead True",
+        ];
+        Assert.Equal(expected, adjusted);
+        var updated = Reachable(c.Kotonoha).Single(x => Text(x) == "exclusive" && Line(x.Span.Start) == "exclusive.doubled += 1");
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ReferenceRead), HirTables.PlanOf(updated).Adjust);
+        var reborrowed = Reachable(c.Kotonoha).Single(x => Text(x) == "value" && Line(x.Span.Start) == "func reborrows(value: uniq/Meter) => change(value)" && x.Span.Start > Source.IndexOf("change(value)", StringComparison.Ordinal));
+        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), HirTables.AdjustOf(reborrowed));
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        Assert.Equal(["indexUniq", "index"], selections);
+
+        static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
 
         static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
     }
@@ -544,7 +771,7 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, adjusted);
         var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");
-        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None), HirTables.AdjustOf(element)); // SPEC 3.4.3: the stored uniq/Point.
+        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), HirTables.AdjustOf(element)); // SPEC 3.4.3: the stored uniq/Point.
 
         static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
 
@@ -661,9 +888,10 @@ public sealed partial class HirFormsTest
         Assert.Equal(["u@follow Reborrow", "owned[0] Reborrow", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase"], rows);
     }
 
-    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
-    // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
-    // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
+    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145, BU-103): in a program Binding accepts, every Place the MIR builder takes as its value by its
+    // plan row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, neither unset
+    // nor failed, so the builder's derived reading of a failed row arises only beside a Binding error
+    // (MirBuildTest.AFailedDiscardRowIsDerivedFromABindingError).
     // The forms below each discard a Place; a group's operand is a parenthesized one (a label wraps only a control-flow construct, never
     // a Place: Parser's label rule).
     [Theory]
@@ -678,13 +906,147 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
-        Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+        Assert.All(built, static x => Assert.True(HirTables.PlanOf(x).Adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Failed), $"{x}"));
+        var held = HeldByTheirRow(c.Kotonoha).ToArray();
+        Assert.NotEmpty(held);
+        Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
     }
 
-    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): the Place a container or an explicit discard takes holds the Type its bare
+    // acquisition supplies in its plan row (DiscardedType), which no consumer states: a stored exclusive reference's Reborrow by Binding's
+    // name, the meet of the layers reaching it (BU-27), the same for `_ = h.link`, `h.link` and `(h.link)`, the last its group's Meaning; a
+    // Copy Place its own Type. A group's operand and a value statement have none (the builder holds a value statement's Meaning). Each row:
+    // the node, its row's Type.
+    [Fact]
+    public void ADiscardedPlaceHoldsTheTypeItsAcquisitionSupplies()
+    {
+        const string Source = "struct Holder2 {a}\n    public var link: uniq/i32 during a\nfunc id(x: i32) -> i32 => x\n" +
+            "func f(h: uniq/(Holder2 during a) during s, n: i32) -> ()\n    _ = h.link\n    h.link\n    (h.link)\n    _ = (h.link)\n    n\n    _ = n\n" +
+            "    id(n)\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var rows = Reachable(c.Kotonoha)
+            .Where(x => IsWithin(x, f) && x is not (FunctionKoto or DiscardKoto) && x.Parent is CodeBlockKoto or ParenthesizedKoto or DiscardKoto)
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(HirTables.PlanOf(x).DiscardedType is { } type ? Binding.HoverTypeName(type) : "-")}");
+        const string Name = "uniq/i32 during (s and a)";
+        Assert.Equal(
+            [$"h.link {Name}", $"h.link {Name}", $"(h.link) {Name}", "h.link -", $"(h.link) {Name}", "h.link -", "n i32", "n i32", "id(n) -"],
+            rows);
+        var group = Reachable(c.Kotonoha).First(x => IsWithin(x, f) && x is ParenthesizedKoto);
+        Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
+    }
+
+    // SPEC 4.7.1, 13.7.2, 14.6.2, 15.1.6 (R7-Y1c, superseding BU-8's and R4-M142's accumulation): a user index's selection as ExpansionPlan
+    // gives it, which equal IR does not show where index and indexUniq have equal bodies. A take a later take replaces is no use of the
+    // element: a for's Subject is read by its shared entry call (a stored uniq over ref, a pair of ref or uniq, the weakest mode) and a
+    // compound assignment's right side as its operator's `right: ref/Vec2` requires, so each selects index.
+    [Fact]
+    public void AnOverwrittenTakeClaimsNothing()
+    {
+        const string Source = OverwrittenTakes + """
+            func stored(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func pair<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T) -> i32
+                s is ref or uniq
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func counted(v: uniq/Two<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func element(v: uniq/One<uniq/Vec2 during a>) -> i32
+                var total = Vec2.init()
+                total += v[0]
+                return total.x
+            func part(v: uniq/One<Holder<uniq/Vec2 during a>>) -> i32
+                var total = Vec2.init()
+                total += v[0].items
+                return total.x
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var selections = Reachable(c.Kotonoha).Where(static x => x is IndexKoto && ExpansionPlan.Of(x)?.Second is not null).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        Assert.Equal(Enumerable.Repeat("index", 5), selections);
+    }
+
+    // The acceptance the selection moves (SPEC 15.6.2): a shared view stays live across a read, which an exclusive indexUniq rejected (the
+    // first four), and a `let` Closure whose body only reads the element makes a Shared call (SPEC 7.7.3, 15.1.5, 15.1.6), where indexUniq
+    // needed the environment exclusively (the fifth; base gave InternalInvariant_Kd); and its invalid twins stay rejected: a read below a
+    // live exclusive Reborrow, a write through a shared Subject's item, and an Exclusive call on a `let` Closure (the last).
+    [Theory]
+    [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
+    [InlineData(true, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T) -> i32\n    s is ref or uniq\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
+    [InlineData(true, "func f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0]\n    return total.x + view[0].x\n")]
+    [InlineData(true, "func f(v: uniq/One<Holder<uniq/Vec2 during a>>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0].items\n    return total.x + view[0].items.x\n")]
+    [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        return total\n    return g()\n")]
+    [InlineData(false, "func hit(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> () => ()\nfunc f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let e = v@follow@uniq\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    hit(e)\n    return total\n")]
+    [InlineData(false, "func hit(v: uniq/One<uniq/Vec2 during a>) -> () => ()\nfunc f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let e = v@follow@uniq\n    var total = Vec2.init()\n    total += v[0]\n    hit(e)\n    return total.x\n")]
+    [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>)\n    for x in v[0].0\n        x@follow = 1\n")]
+    [InlineData(false, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T)\n    s is ref or uniq\n    for x in v[0].0\n        x@follow = 1\n")]
+    [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        v[0].1 = 2\n        return total\n    return g()\n")]
+    public void AnOverwrittenTakeLeavesAReadAccepted(bool accepted, string program)
+    {
+        var c = MinimalEmissionTest.Analyze(OverwrittenTakes + program + "()\n");
+        Assert.True(accepted == c.Accepts, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.14, 13.5.6, 4.7.1, 15.6.2 (DECISIONS R7-Y2; BU-8's open item: the selection is per node): a case adaptation of a user index's
+    // element that borrows it exclusively in an admitted case needs exclusive capability (Binding.UseOf), so it selects indexUniq, where
+    // base selected index and MIR found an exclusive borrow of index's shared result (InternalInvariant_Kd); its invalid twin, a shared
+    // view of the owner live across, is that case's activation conflict.
+    [Theory]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let c = a[0]@s/Vec2\n    return 0\n", null)]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let view = a@ref\n    let c = a[0]@s/Vec2\n    return view[0].x\n", nameof(DiagnosticCode.CallActivationConflict_Kd))]
+    public void ACaseAdaptationOfAUserIndexsElementSelectsByItsExclusiveCase(string body, string? code)
+    {
+        var source = OverwrittenTakes + "func h<s/T>(marker: s/T) -> i32\n    s is ref or uniq\n" + body + "()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var selection = Reachable(c.Kotonoha).Single(static x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(x)?.Second is not null);
+        Assert.Equal("indexUniq", ExpansionPlan.Of(selection)!.Value.Second!.Target.Name);
+    }
+
+    // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
+    // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
+    // Type in its row, which MirBuilder.Held would hold the value at.
+    [Fact]
+    public void AnEditedDiscardKeepsNoEarlierType()
+    {
+        const string Source = "func x() -> i32 => 1\nfunc g() -> ()\n    let x = 2\n    x\nfunc donor() -> ()\n    let z = 3\npublic func main() => ()\n";
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source));
+        c.Bind();
+        HirTables.Publish(c);
+        var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().ToArray();
+        var g = functions.Single(static x => x.Name == "g");
+        var donor = functions.Single(static x => x.Name == "donor");
+        var statement = g.Body!.Items[1];
+        Assert.Equal("i32", Binding.HoverTypeName(HirTables.PlanOf(statement).DiscardedType!));
+        var replaced = g.Body.Items[0];
+        Assert.True(KotoHelper.Replace(replaced.Parent!, replaced, ParseTestHelper.Detach(donor.Body!.Items[0], new CodeBlockKoto(donor.CodeContext))));
+        c.Bind();
+        HirTables.Publish(c);
+        Assert.Equal((HirOp.Name, HirPlaceKind.Value), (HirTables.Op(statement), HirTables.PlaceOf(statement).Kind));
+        Assert.Null(HirTables.PlanOf(statement).DiscardedType);
+        Assert.Equal(default, HirTables.PlanOf(statement).Adjust); // A publish clears it, so no earlier pass's take claims the node (Binding.Claimed).
+    }
+
+    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset or failed.
     [Theory]
     [MemberData(nameof(AcceptedPrograms))]
-    public void AnAcceptedProgramLeavesNoDiscardRowUnset(string name)
+    public void AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed(string name)
     {
         Kotonoha module;
         if (name.StartsWith("spec/", StringComparison.Ordinal))
@@ -701,8 +1063,10 @@ public sealed partial class HirFormsTest
         }
 
         HirTables.Publish(module.Compilation);
-        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
+        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire is HirAcquire.Unset or HirAcquire.Failed);
         Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
+        var untyped = HeldByTheirRow(module).Where(static x => HirTables.PlanOf(x).DiscardedType is null);
+        Assert.Empty(untyped.Select(static x => $"{x.Span.Start} {x}"));
     }
 
     // The Places the MIR builder acquires by their plan row (MirBuilder.Into's Place case): a Place no consumer's Adjust takes (a
@@ -710,5 +1074,11 @@ public sealed partial class HirFormsTest
     private static IEnumerable<Koto> BuiltByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
         HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
-        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
+        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !Binding.IsValueContext(x))));
+
+    // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-98): a Place outside any group that a container
+    // discards (no consumer's Adjust takes it, in Discard Context) or an explicit discard takes, as the publisher writes them.
+    private static IEnumerable<Koto> HeldByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
+        HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && x.Parent is not ParenthesizedKoto &&
+        (x.Parent is DiscardKoto || (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset && !Binding.IsValueContext(x))));
 }

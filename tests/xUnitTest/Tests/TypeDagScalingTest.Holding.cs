@@ -80,7 +80,7 @@ public partial class TypeDagScalingTest
 
         var d = With(c, p["d"], doubled[40]);
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
-        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], out _);
+        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], [], out _);
         var stored = seen.Where(static x => x.Key.Stored).ToArray();
         Assert.Equal(
             [.. Enumerable.Range(past, 41 - past).Select(k => new MirHoldingKey(doubled[k], true, null, null))],
@@ -223,6 +223,44 @@ public partial class TypeDagScalingTest
         Assert.Equal(keys, seen.Keys.Count(static x => x.Stored && x.Written is not null));
     }
 
+    // PLAN G272 N5 (DECISIONS R4-M153's revision 3): the holding walk enters a key at most once per depth within the bound in each mode,
+    // so its meetings (one lookup of a part's key each, counted by the slots' comparer) are at most 33 depths x 3 modes x 3 parts per
+    // entered Type per key. MirTypesTest's Fibonacci structs with a borrow last in each F_n, as (D<F_n>, uniq/F_n): F_n is D's Type
+    // argument (LoanOnly), its Field (Own, which never decides and walks every part) and a uniq referent (Exclusive), so a walk of
+    // F(60) paths as a tree would meet millions; the keyed walk's meetings keep the bound at n = 20, 40 and 60, and each 20 more F_n add
+    // at most their keys' share: linear in n.
+    [Fact]
+    public void TheHoldingWalksMeetingsAreLinearInItsKeys()
+    {
+        var text = new StringBuilder("struct D<T>\n    public var x: T\nstruct F0 {s}\n    var a: i32\n    var r: ref/i32 during s\n")
+            .Append("struct F1 {s}\n    var a: F0 during s\n    var b: i32\n    var r: ref/i32 during s\n");
+        for (var i = 2; i <= 60; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"struct F{i} {{s}}\n    var a: F{i - 1} during s\n    var b: F{i - 2} during s\n")
+                .Append("    var r: ref/i32 during s\n");
+        }
+
+        var c = MirBuildTest.Compile(text.Append("func probe(f20: F20 during static, f40: F40 during static, f60: F60 during static, d: D<i32>)\n")
+            .Append("    return\npublic func main() => ()\n").ToString());
+        Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
+        var p = body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type);
+        var (meetings, keys) = (new int[3], new int[3]);
+        for (var i = 0; i < meetings.Length; i++)
+        {
+            var f = p[$"f{20 * (i + 1)}"];
+            var counter = new Meetings();
+            var seen = new Dictionary<MirHoldingKey, MirModeDepths>(counter);
+            Assert.True(MirTypes.HoldsLoans(Tuple(c, With(c, p["d"], f), Uniq(c, f)), c.Types, seen, [], [], out var writes));
+            Assert.Equal(MirWrites.Through, writes);
+            (meetings[i], keys[i]) = (counter.Count, seen.Count); // 402, 1229 and 1569 over 26, 46 and 66 keys on dev 5f5a3c67a.
+            var modes = seen[new(f, false, null, null)];
+            Assert.True(modes[0] != 0 && modes[1] != 0 && modes[2] != 0); // F_n entered in Own, Exclusive and LoanOnly mode.
+            Assert.InRange(meetings[i], 1, 33 * 3 * 3 * keys[i]);
+            Assert.InRange(meetings[i] - (i == 0 ? 0 : meetings[i - 1]), 0, 33 * 3 * 3 * (keys[i] - (i == 0 ? 0 : keys[i - 1])));
+        }
+    }
+
     // The checked program of the forms and of holders of 4, 16 and 64 parts, and its probe's parameter Types by name.
     private static (Compilation Compilation, Dictionary<string, BoundType> Parameters) HoldingProbe()
     {
@@ -255,7 +293,7 @@ public partial class TypeDagScalingTest
     private static string Holding(Compilation c, BoundType type, out Dictionary<MirHoldingKey, MirModeDepths> seen)
     {
         seen = new();
-        var holds = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
+        var holds = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
         return $"{holds} {writes}"; // HoldsLoans gives None where the value holds no Loan.
     }
 
@@ -289,5 +327,20 @@ public partial class TypeDagScalingTest
         }
 
         return part;
+    }
+
+    // The holding walk's slots' comparer, counting its meetings: each meeting looks its part's key up once (MirTypes.Holding's Holds), and
+    // HoldsLoans otherwise only clears and scans the slots.
+    private sealed class Meetings : IEqualityComparer<MirHoldingKey>
+    {
+        internal int Count { get; private set; }
+
+        public bool Equals(MirHoldingKey x, MirHoldingKey y) => x.Equals(y);
+
+        public int GetHashCode(MirHoldingKey obj)
+        {
+            this.Count++;
+            return obj.GetHashCode();
+        }
     }
 }

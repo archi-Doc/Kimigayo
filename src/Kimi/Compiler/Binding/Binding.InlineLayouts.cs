@@ -7,31 +7,37 @@ namespace Kimi.Compiler;
 // Inline layouts (SPEC 6.2 Finite inline storage; PLAN G310; DECISIONS BU-65): the struct and enum declarations whose storage, their own
 // parameters open, reaches the same declaration again, with any Type arguments, through by-value positions: Fields, the base, Case
 // payloads, Tuple and fixed-array elements, and the parts a declaration stores inline of its arguments, a projection's included as SPEC
-// 8.6.1 completes it. A borrow, raw pointer, object handle or sequence is an indirection.
-// - Inputs: the prepared storage (AdtDef.Types, after PrepareStorage), ProjectionSpecification's outcome (a binding with its Subject and
-//   conformance path), the premise proof of a node's scope, and Binding.IsRecursive (SPEC 8.3.3).
-// - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order.
+// 8.6.1 completes it. A borrow, raw pointer, object handle or sequence is an indirection. An associated binding whose storage reaches
+// itself the same way is invalid at the binding, used or not (SPEC 6.2, the owner's O-70 (a); DECISIONS BU-128).
+// - Inputs: the prepared storage (AdtDef.Types, after PrepareStorage), the conformance paths and their completed bindings,
+//   ProjectionSpecification's outcome (a binding with its Subject, conformance path and identity), the premise proof of a node's scope,
+//   and Binding.IsRecursive (SPEC 8.3.3).
+// - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order, and one at each
+//   such binding: its specification (SpecificationPart, SPEC 8.5.1), else its conformance clause, an inherited path's at the heir's
+//   base clause after that clause's own checks (ReportInheritedInlineCycles, SPEC 8.6.2).
 // - Representation: a node per struct or enum declaration (its storage walked and proven in the declaration's scope) and per associated
-//   binding (its binding walked and proven in its conformance path's Scope, SPEC 8.8.2's D + P, keyed by that path), each with its
-//   summary: the abstract parts its storage reaches by value. An instance at a by-value position adds the edge to its declaration and
-//   walks that summary under the instance; a completed projection adds the edge to its binding's node and walks that summary under the
-//   Subject (an inherited path's binding is its source's, on the base clause's instance). A declaration is invalid iff it lies on a cycle
-//   of the edges.
+//   binding of a conformance path, inherited paths included (InlineBinding: an inherited path's binding is its source's on the base
+//   clause's instance; walked and proven in that path's Scope, SPEC 8.8.2's D + P, which Binding.InheritedConformances builds for an
+//   inherited path; keyed by the path and the identity; a binding's Origin arguments never change what it stores inline), each with its
+//   summary: the abstract parts its storage reaches by value. Every node is a root, declarations first. An instance at a by-value
+//   position adds the edge to its declaration and walks that summary under the instance; a completed projection adds the edge to its
+//   binding's node and walks that summary under the Subject. A node is invalid iff it lies on a cycle of the edges, a declaration and a
+//   binding alike.
 // - Invariants: Tarjan over the edges the walks discover, each summary computed before its first read (every read follows its edge, so
 //   dependencies are edges), a cyclic component re-walked until no summary grows: the result is the cycles of the least-fixpoint edge
 //   graph, whatever the declaration order. Termination: nodes are finite, a walk visits the written DAG, its substituted subterms and
 //   the projections it resolves to nodes, and a summary holds a node's parameters, pair applications and their formable projections
 //   through non-recursive Contracts, finitely many (AddInlinePart). Each walk is one query of layoutParts (DECISIONS BU-19), so it is
 //   linear in the distinct parts of its storage. A warm pass reuses its nodes and allocates nothing.
-// - Prohibitions: no instance walk of a declaration's storage, no record for a binding node (a cycle of binding nodes alone is its
-//   conformance's error, SPEC 8.3.3), no limit, no read of TyCtxt.RecursiveContracts' post-Bind memo inside Bind.
+// - Prohibitions: no instance walk of a declaration's storage, no instance-level fact for Layout (a conformance resting on its failed
+//   binding names no Type after the failed Binding), no limit, no read of TyCtxt.RecursiveContracts' post-Bind memo inside Bind.
 public sealed partial class Binding
 {
-    private readonly Dictionary<(object Key, BoundType? Binding), InlineSummary> inlineSummaries = new();
+    private readonly Dictionary<(object Key, BoundRequirement Identity), InlineSummary> inlineSummaries = new();
     private readonly List<InlineSummary> inlineSummaryPool = new();
     private readonly List<InlineSummary> inlineComponents = new(); // Tarjan's stack: the nodes whose component is open.
     private readonly Dictionary<BindingSymbol, bool> inlineRecursive = new(ReferenceEqualityComparer.Instance);
-    private readonly TypeMemo<bool> layoutParts = new(); // The composite parts one node's storage walk met.
+    private readonly TypeMemo<BoundType, bool> layoutParts = new(); // The composite parts one node's storage walk met.
     private int inlineIndex;
     private long inlineGrowth;
 
@@ -47,27 +53,68 @@ public sealed partial class Binding
 
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, null, this.scopes[container]) is { Index: 0 } summary)
+            if (this.Summary(container, default, null, this.scopes[container]) is { Index: 0 } summary)
             {
                 this.SummarizeInlineStorage(summary);
             }
         }
 
+        foreach (var conformance in this.impls.Identities)
+        {
+            for (var p = 0; p < conformance.PathStorage.Count; p++)
+            {
+                var path = conformance.PathStorage[p];
+                var shape = path.Contract.Contract!;
+                for (var i = 0; i < shape.AssociatedTypes.Count; i++)
+                {
+                    if (this.InlineBinding(path, shape.AssociatedTypes[i]) is { } binding &&
+                        this.Summary(path, shape.AssociatedTypes[i], binding, path.Scope) is { Index: 0 } summary)
+                    {
+                        this.SummarizeInlineStorage(summary);
+                    }
+                }
+            }
+        }
+
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, null, this.scopes[container]).Cyclic)
+            if (this.Summary(container, default, null, this.scopes[container]).Cyclic)
             {
                 container.BoundSymbol!.Adt!.InlineCycle = true;
                 this.Fail(container, BindingFailure.InvalidInlineLayout);
             }
         }
+
+        for (var i = 0; i < this.inlineSummaries.Count; i++)
+        {
+            if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
+            {
+                this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+            }
+        }
     }
 
-    // A node's summary in this run, taken from the pool on its first request: a declaration's (key the declaration, binding null) or an
-    // associated binding's (key its conformance path), walked and proven in `scope`.
-    private InlineSummary Summary(object key, BoundType? binding, BindingScope scope)
+    // SPEC 6.2, 8.6.2 (PLAN G631): an inherited binding on an inline cycle is invalid at its conformance, whose site is the heir's base
+    // clause (Use), written after that clause's own checks (ValidateBaseDeclarations), so their independent records keep its one slot
+    // (DIAGNOSTICS rule 4); a clause that failed by itself keeps it, the heir's binding being read from that clause's instance (rule W).
+    // The judge decided the node (Cyclic); only the write waits, until the judge writes inherited paths' records with the declared ones.
+    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262), until Fail's drop goes (R7-E5).")]
+    private void ReportInheritedInlineCycles()
     {
-        if (!this.inlineSummaries.TryGetValue((key, binding), out var summary))
+        for (var i = 0; i < this.inlineSummaries.Count; i++)
+        {
+            if (this.inlineSummaryPool[i] is { Path: { InheritedBase: not null } path, Cyclic: true })
+            {
+                this.Fail(path.Use, BindingFailure.InvalidInlineLayout);
+            }
+        }
+    }
+
+    // A node's summary in this run, taken from the pool on its first request: a declaration's (key the declaration, no identity, binding
+    // null) or an associated binding's (key its conformance path and identity), walked and proven in `scope`.
+    private InlineSummary Summary(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
+    {
+        if (!this.inlineSummaries.TryGetValue((key, identity), out var summary))
         {
             var count = this.inlineSummaries.Count;
             if (count == this.inlineSummaryPool.Count)
@@ -76,8 +123,8 @@ public sealed partial class Binding
             }
 
             summary = this.inlineSummaryPool[count];
-            summary.Reset(key as DeclarationContainerKoto, binding, scope);
-            this.inlineSummaries.Add((key, binding), summary);
+            summary.Reset(key, identity, binding, scope);
+            this.inlineSummaries.Add((key, identity), summary);
         }
 
         return summary;
@@ -174,7 +221,7 @@ public sealed partial class Binding
         else if (instance)
         {
             var declaration = (DeclarationContainerKoto)part.Symbol!.Declaration;
-            this.VisitInlineNode(summary, this.Summary(declaration, null, this.scopes[declaration]), part, query);
+            this.VisitInlineNode(summary, this.Summary(declaration, default, null, this.scopes[declaration]), part, query);
         }
         else
         {
@@ -201,20 +248,26 @@ public sealed partial class Binding
         {
             this.VisitInlinePart(summary, specified, query);
         }
-        else if (outcome.Path!.InheritedFrom is not null)
+        else if (this.InlineBinding(outcome.Path!, outcome.Identity) is { } binding)
         {
-            // An inherited path's binding is its source's, formed in the source's conformance scope: the projection is resolved again on
-            // the base clause's instance, where ProveConformanceConditions proves an inherited path's conditions.
-            if (this.StoredType(outcome.Path.InheritedBase!, subject) is { } parent)
-            {
-                this.VisitInlinePart(summary, this.WithComponent(part, 0, parent), query);
-            }
-        }
-        else
-        {
-            this.VisitInlineNode(summary, this.Summary(outcome.Path, specified, outcome.Path.Scope), subject, query);
+            this.VisitInlineNode(summary, this.Summary(outcome.Path!, outcome.Identity, binding, outcome.Path!.Scope), subject, query);
         }
     }
+
+    // What a binding node stores, in its subject declaration's terms: a path's completed binding; an inherited path's is its
+    // source's on the base clause's instance (SPEC 8.6.2), the projection of InheritedBase, which the walk resolves to the source's node.
+    // So the heir has a node of its own, on a cycle the heir's base arguments close, and its source is on every cycle it closes itself.
+    private BoundType? InlineBinding(BoundConformancePath path, BoundRequirement identity)
+        => path.InheritedBase is { } inheritedBase ? this.InheritedProjection(inheritedBase, identity) : this.ResolveAssociated(path, identity, out _);
+
+    // The projection of `identity` on an inherited path's base clause instance.
+    private BoundType InheritedProjection(BoundType inheritedBase, BoundRequirement identity)
+        => this.types.Intern(
+            BoundTypeKind.AssociatedProjection,
+            identity.Symbol,
+            SemanticsKind.Owner,
+            [inheritedBase, this.ProjectionContract(identity.Symbol, identity.Contract)],
+            originArguments: this.AssociatedParameters(identity.Symbol.Declaration));
 
     // The edge from `summary` to `target` (a Tarjan step), then the target's summary under `instance`, an instance of its declaration.
     private void VisitInlineNode(InlineSummary summary, InlineSummary target, BoundType instance, uint query)
@@ -330,6 +383,10 @@ public sealed partial class Binding
     {
         internal DeclarationContainerKoto? Container { get; private set; } // A declaration node's declaration.
 
+        internal BoundConformancePath? Path { get; private set; } // A binding node's conformance path.
+
+        internal BoundRequirement Identity { get; private set; } // A binding node's associated identity in that path.
+
         internal BoundType? Binding { get; private set; } // A binding node's binding, in its subject declaration's terms.
 
         internal BindingScope Scope { get; private set; } = null!;
@@ -346,9 +403,10 @@ public sealed partial class Binding
 
         internal bool Cyclic { get; set; }
 
-        internal void Reset(DeclarationContainerKoto? container, BoundType? binding, BindingScope scope)
+        internal void Reset(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
         {
-            (this.Container, this.Binding, this.Scope) = (container, binding, scope);
+            (this.Container, this.Path, this.Identity) = (key as DeclarationContainerKoto, key as BoundConformancePath, identity);
+            (this.Binding, this.Scope) = (binding, scope);
             (this.Index, this.Low, this.OnStack, this.SelfEdge, this.Cyclic) = (0, 0, false, false, false);
             this.Parts.Clear();
         }

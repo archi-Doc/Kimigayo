@@ -28,80 +28,6 @@ public sealed partial class Binding
         return true;
     }
 
-    private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
-    {
-        for (var current = member; current is not null; current = EnclosingAccessDeclaration(current))
-        {
-            if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
-            {
-                break;
-            }
-
-            var access = ReferenceEquals(current, member) && memberAccess is { } specific ? specific : DeclarationAccess(current);
-            if (access == ModifierKind.Public)
-            {
-                continue;
-            }
-
-            var module = current.Declaration.CodeContext.Kotonoha;
-            var internalDomain = (!ExternallyVisible(a) && ReferenceEquals(a.Declaration.CodeContext.Kotonoha, module)) || (!ExternallyVisible(b) && ReferenceEquals(b.Declaration.CodeContext.Kotonoha, module));
-            var lexical = PrivateDomainWithin(a, current.Scope.Owner) || PrivateDomainWithin(b, current.Scope.Owner);
-            var covered = access switch
-            {
-                ModifierKind.Internal or ModifierKind.ProtectedOrInternal => internalDomain || lexical,
-                ModifierKind.ProtectedAndInternal => internalDomain && lexical,
-                _ => lexical,
-            };
-            if (!covered)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static ModifierKind DeclarationAccess(BindingSymbol symbol)
-        => (symbol.Declaration switch
-        {
-            DeclarationContainerKoto container => container.Modifier,
-            FunctionKoto function => function.Modifier,
-            PropertyAccessorKoto accessor => accessor.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier ? accessor.Modifier : ((PropertyKoto)accessor.Parent!).Modifier,
-            VariableKoto variable => variable.Modifier,
-            _ => ModifierKind.Public,
-        }).ExtractAccessibilityModifiers();
-
-    private static bool PrivateDomainWithin(BindingSymbol symbol, Koto owner)
-    {
-        if (owner is DeclarationContainerKoto { IsRoot: true })
-        {
-            return !ExternallyVisible(symbol) && ReferenceEquals(owner.CodeContext.Kotonoha, symbol.Declaration.CodeContext.Kotonoha);
-        }
-
-        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
-        {
-            if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
-            {
-                break;
-            }
-
-            if (DeclarationAccess(current) is not (ModifierKind.Private or ModifierKind.NoModifier))
-            {
-                continue;
-            }
-
-            for (var scope = current.Scope; scope is not null; scope = scope.Parent)
-            {
-                if (ReferenceEquals(scope.Owner, owner))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     private static bool ExternallyVisible(BindingSymbol symbol)
     {
         for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
@@ -135,7 +61,7 @@ public sealed partial class Binding
 
     private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
     {
-        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !AccessCovers(symbol, a, b))
+        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
         {
             return false;
         }
@@ -177,9 +103,13 @@ public sealed partial class Binding
             this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
-            if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
+            if (conformance.Invalid && (this.partPrerequisites.ContainsKey(conformance.Use) || this.prerequisites.ContainsKey(conformance.Use)))
             {
-                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
+                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification or its proof's evidence.
+            }
+            else if (conformance.RootPath.Use.BindingFailure != BindingFailure.None)
+            {
+                this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
 
             return ConstraintProof.Error;
@@ -314,7 +244,7 @@ public sealed partial class Binding
                             }
                         }
 
-                        ancestorProofs[i] = this.VerifyConformance(this.conformancePaths[(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract)], prerequisites);
+                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), prerequisites);
                         proof = CombineProof(proof, ancestorProofs[i], true);
                     }
                 }
@@ -377,7 +307,7 @@ public sealed partial class Binding
                 var requirement = identity.Symbol;
                 if (!ReferenceEquals(identity.Contract, conformance.Contract))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract)];
+                    var ancestor = this.impls.Path(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract);
                     if (!CopyRequirementWitness(ancestor, conformance, identity))
                     {
                         proof = CombineProof(proof, ConstraintProof.Unknown, true);
@@ -520,17 +450,15 @@ public sealed partial class Binding
         return pending ? null : true;
     }
 
+    // SPEC 8.3.1: a requirement or an implementation whose declaration failed supplies no evidence, a function's or an accessor's alike.
+    private bool SuppliesNoEvidence(CallableContract requirement, CallableContract implementation)
+        => this.InvalidDeclarationContext(requirement.Binder) || this.InvalidDeclarationContext(implementation.Binder);
+
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
+        if (this.SuppliesNoEvidence(new(requirement), new(implementation)) || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
             return ConstraintProof.Error;
-        }
-
-        var formation = CombineProof(this.CheckSignatureTypeConstraints(requirement), this.CheckSignatureTypeConstraints(implementation), true);
-        if (formation != ConstraintProof.Proven)
-        {
-            return formation;
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
@@ -576,9 +504,9 @@ public sealed partial class Binding
                 }
 
                 var substituted = this.SubstituteConstraint(constraint, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
-                if (selection.DeclaringType is { Symbol.Declaration: { } owner } declaring)
+                if (selection.DeclaringType is { Symbol: not null } declaring)
                 {
-                    substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaring.Components);
+                    substituted = this.StoredConstraint(substituted, declaring);
                 }
 
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
@@ -734,5 +662,5 @@ public sealed partial class Binding
     }
 
     private bool ConformanceAccessible(BoundConformancePath conformance, FunctionKoto implementation)
-        => AccessCovers(implementation.BoundSymbol!, conformance.Type, conformance.Contract);
+        => this.AccessCovers(implementation.BoundSymbol!, conformance.Type, conformance.Contract);
 }

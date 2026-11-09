@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness); an own-step entry
 // found, its tag (MirBorrows.OwnSteps). What the drop tier finds is tagged apart (DECISIONS R4-M153): a candidate's Dropped tags, a
 // marker's drop stamp and an own-step entry's drop tag, each with the drop-live holder as via. Which check sets hold a
-// candidate is Tags.Takes, either tier's; the passes and the closure are the gather's (MirBorrows.CheckSets).
+// candidate is Tags.Takes, either tier's, and its Outcome there decided by its own tags, else Deep by the drop tier's; the passes and the
+// closure are the gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -43,7 +44,7 @@ internal sealed partial class MirBorrows
     {
         var kept = this.Kept(found, element, via);
         var dropped = (this.pass & DropTier) != 0;
-        if (element <= Writable)
+        if (element <= Unformed)
         {
             if (element == Escaped)
             {
@@ -151,7 +152,11 @@ internal sealed partial class MirBorrows
         internal bool Kept { get; set; }
 
         // Whether a check set holds it (Tags.Takes), in either tier.
-        internal readonly bool Takes(int taking) => this.tags.Takes(taking) || this.dropped.Takes(taking);
+        internal readonly bool Takes(int taking) => !this.Outcome(taking).IsNone;
+
+        // What it is to a check set (R4-M153): decided where its own tags take it, Deep where only the drop tier's do, else none.
+        internal readonly MirOutcome Outcome(int taking)
+            => this.tags.Takes(taking) ? MirOutcome.Decided : this.dropped.Takes(taking) ? MirOutcome.Deep : MirOutcome.None;
 
         // A tag of a pass, a drop-tier pass's into Dropped as its plain pass.
         internal void Tag(byte pass, int index, int via)

@@ -9,7 +9,7 @@ namespace XunitTest;
 
 /// <summary>SPEC 8.2, 8.8.1, 8.3: an available Type-identity premise `X is U` makes X and U one Type in its scope, a
 /// function body or a conditional conformance's block, by substitution.</summary>
-public class TypeIdentityTest
+public partial class TypeIdentityTest
 {
     private const string Pair =
         "contract Pick\n    func pick(self: ref/Self) -> bool\n" +
@@ -116,7 +116,7 @@ public class TypeIdentityTest
             return;
         }
 
-        var receiver = HirTables.Meaning(KotoHelper.UnwrapParentheses(node.Left)) as BoundType;
+        var receiver = HirTables.TypeOf(KotoHelper.UnwrapParentheses(node.Left));
         while (receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
         {
             receiver = receiver.Components[0];

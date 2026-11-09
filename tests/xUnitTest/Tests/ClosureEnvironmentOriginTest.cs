@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Verification;
 using Xunit;
@@ -275,7 +276,7 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 7.7.3 (PLAN G147 (3), ledger row 13972.1438): an exclusive Borrow of a `var` environment binding or of a part of it, or an
     // Exclusive-mode `for` or `match` Subject that is a captured exclusive reference (SPEC 14.6.2, 15.1.6), makes the call Exclusive,
-    // so the body is checked against `uniq/Self` by both the old analysis and the MIR's: using the binding while the child lives is a
+    // so the body is checked against `uniq/Self` by the MIR's analysis: using the binding while the child lives is a
     // Loan conflict, and the twin that uses it before or after the child is valid. The MIR accepted the conflicts, its body borrowing
     // the binding exclusively through a shared receiver.
     [Theory]
@@ -291,21 +292,16 @@ public class ClosureEnvironmentOriginTest
     {
         var source = "func peek(o: ref/Option<i32>) -> i32 => 1\n" + Main + body + "    let v = f()\n";
         var c = VerifiedSpecExampleTest.Bind(source);
-        c.Analyze();
-        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        foreach (var side in new List<MirDifferenceLedger.Entry>[] { [.. common, .. old, .. passed], [.. common, .. mir] })
+        var errors = MirTargetSide.MirSide(c).Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error).ToArray();
+        if (at is null)
         {
-            var errors = side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error).ToArray();
-            if (at is null)
-            {
-                Assert.Empty(errors);
-                continue;
-            }
-
-            var error = Assert.Single(errors);
-            Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, error.Code);
-            Assert.StartsWith(at, source[error.Node.Span.Start..], StringComparison.Ordinal);
+            Assert.Empty(errors);
+            return;
         }
+
+        var error = Assert.Single(errors);
+        Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, error.Code);
+        Assert.StartsWith(at, source[error.Node.Span.Start..], StringComparison.Ordinal);
     }
 
     // Loans on environment bindings end at their last use and stay per Field, as those of locals do.
@@ -336,7 +332,7 @@ public class ClosureEnvironmentOriginTest
     // The Closure keeps its Type and its calls bind (DECISIONS R4-M152, R4-M126 P8; OQ-F7-2 (a)): an indented body's record was at the
     // Closure, which failed with a `Never` result, NotCallable_Kd or UnresolvedBinding_Kd at its calls and two MIR validator findings.
     // Each row: the published records by code and text, then Binding's (the one related at the header) at `text`. Since the MIR decides
-    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until H11 (H0b §5.4, R4-M108), at the returned value
+    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until R7 (H0b §5.4, R4-M108), at the returned value
     // or at its `return`, and the Consuming row also publishes A5's MovedPlace_Kd at its `return`.
     [Theory]
     [InlineData(
@@ -393,15 +389,14 @@ public class ClosureEnvironmentOriginTest
         var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var (common, _, _, mir) = MirDifferenceLedger.Sides(c, program);
-        var error = Assert.Single([.. common, .. mir], static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
+        var error = Assert.Single(MirTargetSide.MirSide(c), static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
         Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, text), (error.Code, error.Node.ToString()!.Split('\n')[0].Trim()));
     }
 
     // DECISIONS R4-M126 P8, R4-M152: each published position is the meet of its admissible sources, so where one returned value is a
     // Borrow of an environment binding (ρ under the Shared receiver) and another a body local's, the position is ρ and only the local's
     // Borrow is Refuted, at its returned value; the call carries the receiver's Origin. Since the MIR decides (R6-check H5; H3b T50,
-    // class 4), A5's twin of Binding's record stands at its `return` until H11 (H0b §5.4, R4-M108).
+    // class 4), A5's twin of Binding's record stands at its `return` until R7 (H0b §5.4, R4-M108).
     [Fact]
     public void ACallLocalSourceBesideAnAdmissibleOneIsRefutedAgainstIt()
     {
@@ -696,7 +691,7 @@ public class ClosureEnvironmentOriginTest
     // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
     // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
     // Each is its function's one Binding record, also beside an unrelated Binding error (SPEC 23.1.2). Since the MIR decides (R6-check H5;
-    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until H11 (H0b §5.4, R4-M108), at `twin`'s exact text: the
+    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until R7 (H0b §5.4, R4-M108), at `twin`'s exact text: the
     // clause, or the `return`.
     [Theory]
     [InlineData(ClauseOverEnv, Unproven, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
@@ -735,7 +730,7 @@ public class ClosureEnvironmentOriginTest
     // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
     // They were at the whole declaration and an independent record. Since the MIR decides (R6-check H5; H3b T50/T51, class 4: records
     // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has A5's MovedPlace_Kd and its twin of
-    // Binding's record (H0b §5.4, until H11) at the declaration.
+    // Binding's record (H0b §5.4, until R7) at the declaration.
     [Theory]
     [InlineData(LocalAnnotatedConsuming, "MovedPlace_Kd let r: ref/i32 during p = n@ref; " + Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
@@ -842,25 +837,15 @@ public class ClosureEnvironmentOriginTest
             source[x.Span.Start..].StartsWith(at, StringComparison.Ordinal));
     }
 
-    // D-13's Option form under an Exclusive receiver and g6c, G6's Consuming control, hold by SPEC: Binding and the MIR accept them; the
-    // old analysis keeps its conservative Loan record (a recorded old-path limit until R6-check).
+    // D-13's Option form under an Exclusive receiver and g6c, G6's Consuming control, hold by SPEC: Binding and the MIR accept them.
     [Theory]
-    [InlineData(OptionStore, "a@uniq")]
-    [InlineData(G6c, "q@follow = p")]
-    public void OnlyTheOldAnalysisRejectsAReceiverContainmentThatHolds(string function, string at)
+    [InlineData(OptionStore)]
+    [InlineData(G6c)]
+    public void AReceiverContainmentThatHoldsIsAccepted(string function)
     {
-        var source = function + "public func main() => ()\n";
-        var c = VerifiedSpecExampleTest.Bind(source);
+        var c = VerifiedSpecExampleTest.Bind(function + "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        c.Analyze();
-        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        Assert.Empty(Errors([.. common, .. mir]));
-        var errors = Errors([.. common, .. old, .. passed]);
-        Assert.All(errors, static x => Assert.Equal(DiagnosticCode.ComparisonLoanConflict_Kd, x.Code));
-        Assert.Contains(errors, x => source[x.Node.Span.Start..].StartsWith(at, StringComparison.Ordinal));
-
-        static MirDifferenceLedger.Entry[] Errors(List<MirDifferenceLedger.Entry> side)
-            => [.. side.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)];
+        Assert.DoesNotContain(MirTargetSide.MirSide(c), static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
     }
 
     // DECISIONS R4-M126 §2.5: a pending relation waits for its Closure's classification, which runs on every path that bound the body:

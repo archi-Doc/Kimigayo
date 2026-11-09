@@ -43,9 +43,34 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string ConstructorPut = "struct H\n    public init(slot: uniq/(ref/i32 during a), v: ref/i32 during b, " + Defaulted + ")\n        slot@follow = v\n";
 
+    private const string Identity = "func id(x: ref/i32) -> ref/i32 during x => x\n";
+
     private const string ResultOnly = "func z2(v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
 
     private const string SharedInput = "func z5(x: ref/i32 during a, v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
+
+    // G458's headers: a generic and a plain callable whose own body uses it, `z` passed for `y`, so the callee's k is the caller's j.
+    private const string OwnBodyCall = "func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k)\n";
+
+    private const string OwnBodyValue = "func h(y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k\n";
+
+    // A getter whose own body reads its Property.
+    private const string OwnBodyGetter = "struct S\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public computed view: ref/i32 during self\n" +
+        "        get(self: ref/Self) -> ref/i32 during self\n";
+
+    // PLAN G457: a method and a constructor whose own bodies call them with a Type argument naming their own k.
+    private const string OwnBodyMethod = "struct Box<T>\n    public let v: i32\n    public init(v: i32) => self.v = v\n" +
+        "    public func m<U>(self: ref/Self, u: U, y: ref/i32 during k, z: ref/i32 during j) -> (U, ref/i32 during k)\n";
+
+    private const string OwnBodyConstructor = "struct Box<T>\n    public let v: T\n    public init(v: T, y: ref/i32 during k, z: ref/i32 during j)\n        self.v = v@move\n";
+
+    // An elided input `y` named by the Type argument (its per-call image), and a projection normalized after the Origins are mapped.
+    private const string OwnBodyInput = "func h<T>(t: T, y: ref/i32, z: ref/i32 during j) -> (T, ref/i32 during j)\n";
+
+    private const string OwnBodyProjection = "contract Source\n    associate Item\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\n" +
+        "    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n" +
+        "func f<T>(t: T, i: T.(Source).Item, y: ref/i32 during k, z: ref/i32 during j) -> (T.(Source).Item, ref/i32 during k)\n    T is Source\n" +
+        "    let c: Cursor during k = Cursor.init(y)\n";
 
     // A default copying an input's referent, stored by the callee (G277 (1)'s k1).
     private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
@@ -92,7 +117,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
     // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch. Beside Binding's record at the
-    // borrowed payload, A5 publishes its twin at the same span until H11 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // borrowed payload, A5 publishes its twin at the same span until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("func needs(o: Option<ref/i32 during static>) -> i32 => 1\nfunc caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    return needs(.Some(local@ref)) + needs(.Some(p))\n")]
     [InlineData("func caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    let o: Option<ref/i32 during static> = .Some(local@ref)\n    let q: Option<ref/i32 during static> = .Some(p)\n    return 1\n")]
@@ -169,7 +194,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // meet at its longer end names the failing operand (SPEC 15.3.6). A constructor call whose local's clause fixes its slot is that
     // record at the call (it was NoApplicableOverload_Kd at the call, and a fact-less UnprovenConstraint_Kd before local slots were
     // judged by variance). Since H5 the MIR judges a local annotation's fit at its declaration (H3b T45), and beside Binding's record at
-    // a returned call A5's twin at the return statement precedes it until H11 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // a returned call A5's twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let h: H{x} = H.init(a)", "requires a outlives b, which is not proven", null)]
     [InlineData("func take(x: ref/i32) -> ref/i32 during x => x\nfunc f(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 5\n    return take(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "take(local)", "requires the borrow local outlives x, which is false", "local", "return take(local)")]
@@ -178,6 +203,18 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let r: ref/i32 during p = id(q)\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let r: ref/i32 during p = id(q)", "requires q outlives p, which is not proven", null)]
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32, c: bool) -> ref/i32 during p\n    return if c => p else => id(q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => p else => id(q)", "requires q outlives p, which is not proven", null)]
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc keep(x: ref/i32 during static) -> i32 => 1\nfunc caller(q: ref/i32) -> i32 => keep(id(q))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(q)", "requires q outlives static, which is not proven", null)]
+    [InlineData("func pick2(a: ref/i32, b: ref/i32) -> ref/i32 during b => b\nfunc f(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return pick2($abort(\"x\"), short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pick2($abort(\"x\"), short@ref)", "requires the borrow short@ref outlives p, which is false", "short@ref", "return pick2($abort(\"x\"), short@ref)")]
+    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during k) = f<i32>(1, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (i32, ref/i32 during k) = f<i32>(1, z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during k = g(z, z)\n    return y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: ref/i32 during k = g(z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during k = h\n    return y\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "h", "the result requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyCall + "    let e: (i32, ref/i32 during j, ref/i32 during j) -> (i32, ref/i32 during k) = f<i32>\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f<i32>", "the result requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyGetter + "            let v: ref/i32 during static = self.view\n            return self.n@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let v: ref/i32 during static = self.view", "requires self outlives static, which is not proven", null)]
+    [InlineData("enum Holder {at}\n    Some(ref/i32 during at)\n    Empty\n    public func remake(self: ref/Self, v: ref/i32) -> Holder during at => .Some(v)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires v outlives self.at, which is not proven", null)]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyMethod + "        let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyInput + "    let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)", "requires y outlives j, which is not proven", null)]
     public void TheResultRelationIsJudgedAtItsDestination(string body, string code, string text, string label, string? origin, string? twin = null)
     {
         var source = body + Main;
@@ -256,7 +293,9 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     public void ConstraintsKeepTakingPartInApplicability()
     {
         var source = "func hold<T>(x: T, n: i32) -> i32\n    T is Owned\n    return 1\n\nfunc hold<T>(x: T, n: i64) -> i32 => 2\n\nfunc caller(p: ref/i32) -> i32 => hold(p, 1)\n\nfunc staticCaller(p: ref/i32 during static) -> i32 => hold(p, 1)\n" + Main;
-        Assert.Equal([nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        // SPEC 10.1 (DECISIONS: G572 U2a): an unproven candidate is compared as though applicable, so with neither strictly best the call is
+        // ambiguous, as its Proven twin is (Q13: the first call was UnprovenConstraint_Kd by the deferral).
+        Assert.Equal([nameof(DiagnosticCode.AmbiguousBinding_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
     // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location.
@@ -305,7 +344,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     // SPEC 15.6.4 step 3: an Origin shared with an input's inner position bounds the call's solution, so the result over it is shortened
     // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before). Beside Binding's record at the call,
-    // A5's twin at the return statement precedes it until H11 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // A5's twin at the return statement precedes it until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "", "f(m@ref, q)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "    let h = f\n", "h(m@ref, q)")]
@@ -350,20 +389,22 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // SPEC 15.6.4 step 3, 7.2.3, 10.1.1 (DECISIONS BU-51): a slot that a default fills is an input too, so its instantiated Type's
     // well-formedness bounds the call's solution and is judged at the call, every position. A Finite end at a fixed one is Unsatisfied, two
     // fixed ends Unproven, a result the premise shortens fails its own fit at its destination, and local ends are a Loan conflict where
-    // the borrowed local is destroyed. Each was accepted before (PLAN G277 (1)).
+    // the borrowed local is destroyed. Each was accepted before (PLAN G277 (1)). z2's `a`, which only the default and the result name,
+    // is solved by the default's premise (DECISIONS BU-99, superseding BU-51's region for it), so its record is the result's fit, as
+    // z5's, and the return statement re-records it (a dependent record, PLAN G430).
     [Theory]
     [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let sr = short@ref\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
     [InlineData(Put2 + "func bad(p: uniq/(ref/i32 during q), sr: ref/i32 during r) -> i32\n    put2(p, sr)\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "put2(p, sr)", "wellFormed")]
     [InlineData(GenericPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    g(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "g(p, short@ref)", "wellFormed")]
     [InlineData(MethodPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let s = S.init()\n    let short = 2\n    s.put(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "s.put(p, short@ref)", "wellFormed")]
     [InlineData(ConstructorPut + "func bad(p: uniq/(ref/i32 during q)) -> i32\n    let short = 2\n    let h = H.init(p, short@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(p, short@ref)", "wellFormed")]
-    [InlineData(ResultOnly + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z2(short@ref)", "wellFormed")]
+    [InlineData(ResultOnly + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z2(short@ref)", "fit", "return z2(short@ref)")]
     [InlineData(SharedInput + "func bad(p: ref/i32 during q) -> ref/i32 during q\n    let short = 2\n    return z5(p, short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "z5(p, short@ref)", "fit", "return z5(p, short@ref)")]
     [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let short = 2", null)]
     public void ADefaultedInputsWellFormednessIsJudgedAtTheCall(string body, string code, string text, string? source, string? twin = null)
     {
         // Since H5 A5 records the Loan conflict at the destroyed local's declaration (H3b T44), and beside Binding's record at a returned
-        // call its twin at the return statement precedes it until H11 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+        // call its twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
         var program = body + Main;
         var errors = DiagnosticCorpus.Check(program).Diagnostics;
         (string, string)[] expected = twin is null ? [(code, text)] : [(code, twin), (code, text)];
@@ -395,6 +436,71 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     {
         var check = DiagnosticCorpus.Check(body + Main);
         Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 3.8, 10.8, 15.3.6, 15.6.4 steps 1 and 3 (PLAN G410): a Never argument fits its parameter and supplies no Origin, so the input
+    // Origin its parameter elides, which the result names, has no candidate and is a region of the call, as a named Origin is: valid
+    // after `$abort`, a transfer and a value call (UnprovenConstraint_Kd at the named calls, Unsupported_Kd at the value call before),
+    // and so are the twins with a real argument. So are an omitted Never default (SPEC 7.2.3: no evidence), an aggregate input
+    // (`s.source`), a Contract requirement, a Closure, and value calls through a Function Type, a Callable bound and an erased value,
+    // whose binder's per-call inputs are its call's regions too (Unsupported_Kd before). The invalid twin, whose real argument still
+    // bounds the result, is TheResultRelationIsJudgedAtItsDestination's pick2 row.
+    [Theory]
+    [InlineData("func g(x: ref/i32 = $abort(\"d\")) -> ref/i32 during x => x\nfunc f() -> i32\n    let r = g()\n    return r@follow\n")]
+    [InlineData("func fs(s: Slice<i32>) -> Slice<i32> during s.source => s\nfunc f() -> i32\n    let r = fs($abort(\"x\"))\n    return 0\n")]
+    [InlineData("contract Getter\n    func get(self: ref/Self, x: ref/i32) -> ref/i32 during x\nfunc use<T>(t: ref/T) -> i32\n    T is Getter\n    let r = t.get($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func f() -> i32\n    let c = func [] (x: ref/i32) -> ref/i32 during x => x\n    let r = c($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func h(g: (ref/i32) -> ref/i32) -> i32\n    let r = g($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func h(g: (ref/i32) -> ref/i32) -> i32\n    let v: i32 = 1\n    let r = g(v)\n    return r@follow\n")]
+    [InlineData("func app<F>(f: ref/F) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func app<F>(f: ref/F) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let v: i32 = 1\n    let r = f(v)\n    return r@follow\n")]
+    [InlineData(Identity + "func f() -> i32\n    let g: (ref/i32) -> ref/i32 = id\n    let r = g($abort(\"x\"))\n    return 0\n")]
+    [InlineData(Identity + "func f() -> i32\n    let r = id($abort(\"x\"))\n    return 0\n")]
+    [InlineData(Identity + "func f() -> i32\n    let r = id(do => return 7)\n    return 0\n")]
+    [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a => a\nfunc f() -> i32\n    let v: i32 = 1\n    let r = pick($abort(\"x\"), v)\n    return 0\n")]
+    [InlineData(Identity + "func f() -> i32\n    let r = id($abort(\"x\"))\n    return r@follow\n")]
+    [InlineData(Identity + "func f() -> i32\n    let g = id\n    let r = g($abort(\"x\"))\n    return 0\n")]
+    [InlineData(Identity + "func f() -> i32\n    let v: i32 = 1\n    let r = id(v)\n    return r@follow\n")]
+    [InlineData(Identity + "func f() -> i32\n    let v: i32 = 1\n    let g = id\n    let r = g(v)\n    return r@follow\n")]
+    public void ANeverArgumentLeavesItsInputOriginARegionOfTheCall(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 8.15.1, 8.15.3, 15.3.4, 15.3.6, 7.7.4 (PLAN G458): in a callable's own body its Origins are the caller's, and a call, an erasure,
+    // a value call or a Property read of it instantiates them as from any other body, though each image is then one of its own atoms:
+    // valid as from another function (UnprovenConstraint_Kd at the call before G410, InternalInvariant_Kd at the erasure, TypeMismatch_Kd
+    // at the generic erasure, Unsupported_Kd at the value call and the getter's read before). The invalid twins, and a Case construction
+    // in its enum's own method, are TheResultRelationIsJudgedAtItsDestination's rows. A Type
+    // argument naming the callee's own Origin or input is mapped once, with the callee's Origins and inputs, and normalized after them (PLAN
+    // G457: two or three UnprovenOriginRelation_Kd before).
+    [Theory]
+    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during j) = f<i32>(1, z, z)\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during j = h\n    return y\n")]
+    [InlineData(OwnBodyCall + "    let e: (i32, ref/i32 during j, ref/i32 during j) -> (i32, ref/i32 during j) = f<i32>\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during j = g(z, z)\n    return y\n")]
+    [InlineData(OwnBodyGetter + "            let v: ref/i32 during self = self.view\n            return self.n@ref\n")]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during k, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during k, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyMethod + "        let p: (ref/i32 during k, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n")]
+    [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during k> = Box<ref/i32 during k>.init(y, z, z)\n")]
+    [InlineData(OwnBodyInput + "    let p: (ref/i32 during y, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n")]
+    [InlineData(OwnBodyProjection + "    let p: (ref/i32 during k, ref/i32 during j) = f<Cursor during k>(c@move, y, z, z)\n    return (i@move, y)\n")]
+    public void ACallableUsedInItsOwnBodyIsJudgedAsFromAnotherBody(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 7.2.3 (PLAN G410): a default is checked at its declaration and is no evidence, so an omitted one leaves its input a region of
+    // the call, and the call has no failure of its own: the declaration's record stands alone (dev added a spurious
+    // UnprovenConstraint_Kd at `g(v)`; nothing independent is lost).
+    [Fact]
+    public void AnOmittedDefaultFailsOnlyAtItsDeclaration()
+    {
+        var source = "func g(a: ref/i32, x: ref/i32 = a) -> ref/i32 during x => x\nfunc f() -> i32\n    let v: i32 = 1\n    let r = g(v)\n    return r@follow\n" + Main;
+        Assert.Equal([(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "a")], DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))));
     }
 
     [Trait("Purpose", "Allocation")]

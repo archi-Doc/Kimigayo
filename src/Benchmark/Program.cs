@@ -2,13 +2,25 @@
 
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using Kimi.Compiler;
 
 namespace Benchmark;
 
 public class Program
 {
+    // Every measurement runs on a compiler thread (DECISIONS R4-M178), so the per-thread counters read the compiler's own thread.
     public static void Main(string[] args)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run(args, static args =>
+            {
+                Main(args);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--associated-inference")
         {
             AssociatedInferenceMeasurements.Run();
@@ -117,12 +129,6 @@ public class Program
             return;
         }
 
-        if (args.Length > 0 && args[0] == "--borrow-storage")
-        {
-            BorrowStorageMeasurements.Run();
-            return;
-        }
-
         if (args.Length > 0 && args[0] == "--static-keys")
         {
             StaticKeyMeasurements.Run(timing: args.Length > 1 && args[1] == "timing");
@@ -204,8 +210,6 @@ public class Program
             typeof(KimiLibraryBenchmark),
             typeof(PatternBindingBenchmark),
             typeof(StartupBindingBenchmark),
-            typeof(OwnershipAnalysisBenchmark),
-            typeof(MatchOwnershipBenchmark),
             typeof(FrontEndBenchmark),
             typeof(DirectiveBenchmark),
             typeof(TokenReaderBenchmark),

@@ -300,29 +300,23 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable))
+        // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
+        if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
+            ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-                : ComparisonTypes.IsBuiltin(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+                : ComparisonTypes.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid
                 ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
-        }
-
-        // SPEC 4.6.1, 8.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
-        if (this.contractHeadersReady && IsIntegerPosition(type, contract))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
-        // SPEC 22.1 (PLAN G32): the compiler records the fixed array's borrowing entry conformances; their witnesses are the
-        // members of the Kimi fixed-array group.
-        if (this.contractHeadersReady && IsFixedArrayEntry(type, contract))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
@@ -345,8 +339,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        this.conformances.TryGetValue((symbol, contract), out var identity);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.conformancesByType.TryGetValue(symbol, out var bindings))
+        var identity = this.impls.Find(symbol, contract);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.impls.OfType(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {
@@ -450,10 +444,10 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
+        return this.ProveConditionalPremises(path.Premises, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, BoundType type, BindingScope scope)
     {
         if (premises is null)
         {
@@ -471,7 +465,7 @@ public sealed partial class Binding
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
-            var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
+            var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
             var limit = this.ScopeReads.Limit;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
             if (proof != ConstraintProof.Proven)

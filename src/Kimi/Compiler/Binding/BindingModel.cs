@@ -159,6 +159,7 @@ internal enum BindingFailure : byte
     Cycle,
     Unsupported,
     CaseLimit,
+    TypeHeightLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -228,7 +229,6 @@ internal enum BindingFailure : byte
     OverrideContractMismatch,
     DuplicateOverride,
     UnprovenOverrideCondition,
-    VirtualEffectBound,
     BaseCall,
 
     // SPEC 7.3: value.method without invocation forms no bound-method value.
@@ -287,6 +287,14 @@ internal enum BindingFailure : byte
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
 public sealed class BindingSymbol
 {
+    // Two bits per DeclQueryKind in a ushort: a ninth kind fails this constant's conversion at compile time.
+    private const byte QueryRoom = (byte)(8 - DeclQueryKind.Count);
+
+    // The declaration queries' states (Binding.DeclQuery), valid in the pass queryPass names.
+    private ushort queries;
+
+    private uint queryPass;
+
     internal BindingSymbol(string name, BindingSymbolKind kind, Koto declaration, BindingScope scope)
     {
         this.Name = name;
@@ -346,8 +354,6 @@ public sealed class BindingSymbol
 
     internal bool Resolving { get; set; }
 
-    internal bool HeaderBound { get; set; }
-
     /// <summary>Gets or sets a declaration container's published closed-clause check (Binding.SourceStates): Unknown while pending or under check.</summary>
     internal ConstraintProof SourceState { get; set; }
 
@@ -367,11 +373,30 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.7.2).</summary>
     internal CaptureAcquisition CaptureAcquisition { get; set; }
 
-    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.7.2).</summary>
-    internal bool TransferCapture => this.CaptureAcquisition == CaptureAcquisition.Move;
-
     /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.7.3), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }
+
+    /// <summary>Gets a declaration query's state in a pass (Binding.DeclQuery).</summary>
+    /// <param name="kind">The query's kind.</param>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>The state, NotStarted when set in another pass.</returns>
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <param name="kind">The query's kind.</param>
+    /// <param name="pass">The pass stamp.</param>
+    /// <param name="state">The state.</param>
+    internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
+    {
+        if ((uint)pass != this.queryPass)
+        {
+            this.queries = 0;
+            this.queryPass = (uint)pass;
+        }
+
+        var shift = (int)kind * 2;
+        this.queries = (ushort)((this.queries & ~(3 << shift)) | ((int)state << shift));
+    }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
@@ -634,10 +659,11 @@ public sealed record BoundType
     public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
 
     // Whether two Types agree in every part of their own layer but their Origin and Origin arguments, which each identity compares in
-    // its own way (exactly, modulo open Origins, except omitted ones). A raw layer's Origin is compared here: no identity treats it as
-    // open, omitted or inferred (DECISIONS BU-24).
+    // its own way (exactly, modulo open Origins, except omitted ones). The Name is a primitive's whole layer (SPEC 3.1, 3.8: `i32` and
+    // `i64`, `Wrapping<T>` and `T` differ), and a part of any other layer its Symbol or Kind already decides. A raw layer's Origin is
+    // compared here: no identity treats it as open, omitted or inferred (DECISIONS BU-24).
     internal bool SameExceptOrigins(BoundType other)
-        => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Semantics == other.Semantics && this.Length == other.Length &&
+        => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Name == other.Name && this.Semantics == other.Semantics && this.Length == other.Length &&
             ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.ClosureContext, other.ClosureContext) &&
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
@@ -732,6 +758,10 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
 {
     /// <summary>Gets the failure that the code reports; its requirement identifies the problem.</summary>
     internal BindingFailure Failure { get; init; }
+
+    /// <summary>Gets the index of the issue's problem in the pass's report, or -1.</summary>
+    [Transitional("R7", Reason = "The bridge from the test surface to Binding's records until Binding.Issues is their list (R7-E5).")]
+    internal int Problem { get; init; } = -1;
 }
 
 /// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>

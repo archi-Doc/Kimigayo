@@ -673,6 +673,9 @@ ending) and **P12**.
 - Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
   any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
   implies no implementation support.
+  - SETTLED "Instance-evaluated generic defaults" revised at H15 (2026-11-06; R5-M11, the owner's OQ15 decision of
+    2026-10-18): its "Why not applied" mechanism text and reopening conditions now state the inline fold
+    (`MirBuilder.Defaults`); its Problem, Example, Proposed fix, decision and reason stay. No SPEC or IMPL change.
 
 ## 2026-10-19 — A5 step 2 implementation plan
 
@@ -1262,10 +1265,83 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
 - Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
   SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-06, plan §14, R6-check's exit H15): the R6-check items the owner moved to R7 are recorded with each decision:
+  H7 and `BaseReferenceKoto.BasePath` (2026-11-05, verbatim 「推奨どおり」), R2b-D5's rename (2026-11-06, verbatim 「R7 に送る」), H11b-0
+  and H11b into the Problem records (2026-11-06, verbatim 「Cで決定します」) with their named exceptions (R4-M108's twins with
+  `IsTwinRecord` and MirSide's filter, OriginRecoveryTest's two pins, D-1, D-2); the plan stays 一部取り込み (open), nothing frozen.
+- Revision 4 (2026-11-06, plan §14, R6-check's exit H15; the owner, verbatim 「一括承認します。」): §5.4's middle list takes G318,
+  G258's W with G263 item 4, G289 (5), G220 (M's C-47 consented) and G157 (39) (R5's own row, no consent needed); `JudgeChains`
+  and BU-72's three R4 tags are retagged R7 (M's C-47 consented to `JudgeChains`' retag, F's C-48 to the retags: `JudgeChains`'
+  with G318, and BU-72's three); row 3 names
+  H11b's two `UntilH11` test methods. With Revision 3 this fixes R6-check's exit list to R7 (DECISIONS R5-M194); the plan stays
+  一部取り込み (open), nothing frozen.
+- Revision 5 (2026-11-06, plan §14, the owner's workflow revision, DECISIONS Q14 and R7-M4): a Coordinator session takes the windows,
+  the numbering and the project documents; the Full and Owner classes end, so §5.5's units run as Major units with one prototype-first
+  candidate unless the owner instructs otherwise, and RP7 and RP21 end; RQ10's owner preview of SPEC text ends (SPEC and IMPL get an
+  independent review). The plan stays 一部取り込み (open), nothing frozen.
+- Revision 6 (2026-11-07, plan §14, DECISIONS Q15): RP11's and §3.2's window rules move to WORKFLOW "Windows" with the owner's size
+  (at most five record- or acceptance-moving units, one acceptance mover per area, eight in all); the plan stays 一部取り込み (open),
+  nothing frozen.
+- Revision 7 (2026-11-07, plan §14, the R7 restart; the Middle's D-46 and the owner's O-21 「(ii) で決定」): Y2 takes G251 (5) with the
+  explicit SPEC §7.7.3 revision and drops `EffectBounds.PlaceAccess`; Y3 and the Y1–Y5 line drop G233; §5.4 drops X-1a. The plan
+  stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-07, plan §14, the R7 restart; the Front's D-47): phases A and B become one queue, since H5, H10, H12 and H14 are
+  passed; I3, D1 and D3 state where they stand; G416 joins the Front's lane; the Position Rows links point to `draft/Changes/`. No
+  unit's rule changed. The plan stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-07, plan §14; the owner's request to check the plan against dev, verbatim 「精査して、今後の作業に支障がある箇所があれば、
+  Implementation Planを修正してください。」): the position, arrangement, order, gates and unit states follow dev `efe7f0b6c`; the Full and Owner
+  labels became Major; §5.1 and §5.4 follow each issue's state; the mir ledger's rows go. No unit's rule changed. The plan stays 一部取り込み
+  (open), nothing frozen.
+- Revision 10 (2026-11-07, plan §14; the Front's D-49): §5.1 names the units revision 9 left open. The plan stays 一部取り込み (open), nothing
+  frozen.
+- Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
+- Revision 12 (2026-11-07, plan §14; the owner's O-39 and O-40, verbatim 「(a) GO」 and 「(a) walk を恒久の部品として残す」): the HIR publisher stays; Y1 shrinks; G339 goes ahead with
+  G338. Nothing frozen.
+- Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
+- Revision 14 (2026-11-07, plan §14; the owner's O-44, verbatim 「(a) 有効とする」): §5.1 gains V5. Nothing frozen.
+- Revision 15 (2026-11-07, plan §14; the Back's D-60): R8-S1's first stop and split. Nothing frozen.
+- Revision 20 (2026-11-07, plan §14; the owner's O-50, verbatim 「(A) 候補 A を採用する」): R8-S1's adopted design. Nothing frozen.
+- Revision 21 (2026-11-07, plan §14; the Front's D-72): G416 U0 and U1's landing. Nothing frozen.
+- Revision 22 (2026-11-07, plan §14; the owner's O-51 and O-52; the Middle's D-83): O2's row removes G553's conservative limit. Nothing frozen.
+- Revision 23 (2026-11-07, plan §14; the Front's D-88): R7-I1's rows. Nothing frozen.
+- Revision 24 (2026-11-07, plan §14; the owner's O-44 and O-54; the Front's D-90): V5's row; V5b added. Nothing frozen.
+- Revision 25 (2026-11-08, plan §14; the Back's D-92): P5's row after R8-S1a. Nothing frozen.
+- Revision 26 (2026-11-08, plan §14; the Front's D-94): N2's row splits; G250 leaves N2. Nothing frozen.
+- Revision 27 (2026-11-08, plan §14; the Middle's D-96): rows Y1, Y2, Y3. Nothing frozen.
+- Revision 28 (2026-11-08, plan §14; the Front's D-98): E1's row. Nothing frozen.
+- Revision 29 (2026-11-08, plan §14; the Middle's D-99): row Y1. Nothing frozen.
+- Revision 30 (2026-11-08, plan §14; the Back's D-100): A1's row; `IntrinsicId` 27. Nothing frozen.
+- Revision 31 (2026-11-08, plan §14; the Middle's D-103): O2's row. Nothing frozen.
+- Revision 32 (2026-11-08, plan §14; the Front's D-106): rows N2 and N3. Nothing frozen.
+- Revision 33 (2026-11-08, plan §14; the Back's D-110): rows S1 and P5. Nothing frozen.
+- Revision 34 (2026-11-08, plan §14; the Front's D-113): row N3 split into N3a, N3b, N3c. Nothing frozen.
+- Revision 35 (2026-11-08, plan §14; the Middle's D-117): row F5. Nothing frozen.
+- Revision 36 (2026-11-08, plan §14; the Middle's D-119): row F1, naming review 1's Q2 (the Body<Item> entries have no loops). Nothing frozen.
+- Revision 37 (2026-11-08, plan §14; the Middle's D-127): row F2. Nothing frozen.
+- Revision 38 (2026-11-08, plan §14; the owner's O-68, verbatim 「O-68はeでお願いいたす」; the Back's D-133): rows RQ11, K1 and §6's representation-struct row. Nothing frozen.
+- Revision 39 (2026-11-08, plan §14; the Front's D-144): row N3b. Nothing frozen.
+- Revision 41 (2026-11-08, plan §14; the owner's O-85 (a); the Middle's D-150): row F3. Nothing frozen.
+- Revision 42 (2026-11-09, plan §14; the Front's D-152): rows V2, D2 and C2. Nothing frozen.
+- Revision 43 (2026-11-09, plan §14; the owner's O-80 (b), O-82 and O-89 (a); the Front's D-148): row C8. Nothing frozen.
+- Revision 44 (2026-11-09, plan §14; the owner's answer to the Coordinator's slot-gap proposal): §3.2 and §9, a 15-minute build gap
+  between quiet slots. Nothing frozen.
+- Revision 45 (2026-11-09, plan §14; the owner's answer to the Coordinator's review of the caps): §3.3, designers and reviewers at
+  most three together per session; watchers wake only on rows that need an answer. Nothing frozen.
+- Revision 46 (2026-11-09, plan §14; the Front's D-168): §5.0's N1 row, e split into e1, e2 and e3. Nothing frozen.
+- Revision 48 (2026-11-09, plan §14; the Back's message): W2t lands before W1's remaining units. Nothing frozen.
+- Revision 49 (2026-11-09, plan §14; the owner's 「Adopt now」): quiet slots by one guard (`quiet_guard.py`) and a begin handshake. Nothing frozen.
+- Revision 50 (2026-11-09, plan §14; the owner's 「Adopt all three」): R7 spread over the three sessions (DECISIONS Q18). Nothing frozen.
+- Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
+- Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
+  R8-M1). Nothing frozen.
+- Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
+- Revision 18 (2026-11-07, plan §14; the Front's D-67): N7's row follows its landing. Nothing frozen. SPEC 8.2.1 and Appendix F's `ConstraintSubject`, an explicit revision on the owner's O-42 (a) (DECISIONS BU-119), take the sentence and the production no rule changes under: Appendix F
+  and §7.5 already excluded a constructed subject, and SPECJ follows.
+- Revision 19 (2026-11-07, plan §14; the owner's O-48, verbatim 「全部 (a)」): V1's landing; G375's remainder goes to R7-C2 and V5. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
-- [G216 (a) Position Rows](Proposals/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
+- [G216 (a) Position Rows](Changes/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
   and its two SPEC readings in the G216 planning session (verbatim 「推奨の内容でOKです。」), fixed the policy (「その方針で確定します。」:
   start after the flip group's sweep, this session leads the design and U0, R4 reviews, DECISIONS under BU numbers, U0 before H5) and
   chose its placement (「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: option A, the R7 plan's revision 2,
@@ -1282,6 +1358,32 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   is the premise visits' stop at a slot pattern (the pattern beside the instantiated Type; a layer's stored premise ranges over the
   slot's solution), so the Result column value and `ResultSolved` are superseded (§4, §5, §6's U2 row). No other text changed; the
   proposal stays 一部取り込み (open), nothing frozen.
+- Revision 4 (2026-11-05, U3's design by the planning session, `artifacts/verify/g216a-oracle/U3-design.md`, designed before U2's
+  landing on the owner's decision, verbatim 「設計の先行を開始して下さい」): U3 composes a candidate's child rows once at its solve and
+  retains them (an `Index` column; `Type` the reader's), judges by rows wherever a root has child rows, composes a composite beneath a
+  slot with a null pattern (M's N8) and gives value calls rows; rule 5 (one formation), the Join record as a waiting fact, the survey
+  path and q20 move to U6 (§6's U3 and U6 rows). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 5 (2026-11-05, U3's design review 1 by the middle, N3 and N5): U6 retires the Join record, the survey path and one
+  formation itself, before and independently of R7-I2 parts d and i; U3 is implemented in two parts, U3a (the retained composition,
+  the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
+  changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
+  and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
+  the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;
+  rule 6's argument site for a payload's failed fit (D-1) is deferred to its own item after R5's H11b, since the one record is then
+  A5's row and a cross-phase report Site would be needed; the site stays DIAGNOSTICS' failed node; Decided is not published (§6's
+  U4 row). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-05, U6's design review 1 by the middle, B1–B3): the retirements of the Join record, `ClassifiedByCall`,
+  `ConflictWaits` and `PartContribution` are withdrawn (the record is a fact of its own, a waiting join classified position by
+  position, differing from the Waiting outcome; the rows replaced its membership readers only); the survey stays as a classifier
+  that forms no Type; U6 is rule 5's one formation in `SelectCommonType` plus the closing records; SPEC 10.5.1 is no contradiction
+  (its last paragraph states the structure; reading 2 adds explicitness, reported to the owner). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-05, the owner, verbatim 「G216 (a) を締めくくる で決定します」, after U6's two design reviews did not converge under
+  Q11): the lane closes after U3 lands; U6 is not implemented (rule 5's array case is an open PLAN row for the join formation's
+  owner); the proposal moves to `draft/Changes` as 取り込み済み when U3 has landed and the closing records are written. No other text
+  changed; the proposal stays 一部取り込み (open) until then, nothing frozen. (Superseded: closed as 取り込み済み on 2026-11-06, below.)
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
@@ -1314,3 +1416,46 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md`,
   `Proposals/2026-10-12 Post-Reduction Work Items.md` (P34_REMAINING's R3, now in PLAN's U7 row), `Sketches/R5 Step 0/C-design-2.md`,
   `C-package.md`, `deep-dives/q2-codegen-shape.md` and `Sketches/R6-gen/G8-design.md`, and the older entries above, are unchanged and read at that commit or at the new path.
+
+## 2026-11-06 — G216 (a) position rows closed
+
+- `Changes/2026-11-03 G216 (a) Position Rows.md`: 取り込み済み (closed 2026-11-06, revision 10). The file moved from `Proposals/`
+  with a closing status paragraph added and its R7 plan link following the move; the whole file is now frozen. Dispositions: U0
+  (the oracle and its rows, `claude/g216a-u0` revision 17, never on dev), U1 (W-15, 37a0c05a6), U2 (W-20, 9324178a0) and U3a
+  (W-30, 5029f7941) implemented; U3b closed without a unit (the owner, verbatim 「U3b なしで閉じる」: M's ruling C-52 by SPEC alone
+  makes its target forms valid under 10.8 and 15.3.5, and the bare forms' false rejection is PLAN G452); U4 dropped (revision 7);
+  U5 closed (revision 6); U6 not implemented (revision 9; rule 5's array case is PLAN G443). No section is integrated into SPEC or
+  IMPL: §3's two readings stay readings of the current text, and two SPEC observations are reported to the owner without a change:
+  10.5.1 (reading 2: a control-flow argument supplies child positions by structure, whether or not the join waited) and 10.8
+  (C-52: Solving names invariant and covariant bindings only, and does not say what a call-signature match at a parameter position
+  contributes beyond its structure when covariant bindings exist). The old path in the R7 R8 R9 plan's I3 row and in DECISIONS
+  (Binding units, 2026-10-18) reads this one. Closure implies no support beyond STATUS.
+
+## 2026-11-06 — Proposals: two deleted, four reviewed
+
+- Deleted on the owner's instruction (R5's dialog, verbatim 「以下を削除してください：」):
+  - `Proposals/2026-10-12 PLAN Size Budget and Issue Register.md` (accepted 2026-10-12, never applied);
+  - `Proposals/2026-10-02 Semantic Tokens.md` (undecided).
+
+  Their text is in git history at f69d55e12. The links and mentions to them in `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Obsolete/2026-10-03 Async Tasks.md`, `Proposals/2026-10-07 LSP Completion and Implementation Plan.md`, `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md` and the 2026-10-12 entry above are unchanged and read at that commit. Neither was integrated into SPEC or IMPL.
+- Reviewed for completion on the owner's instruction (「以下を精査して、完了していたらChangesに移動、未完了だったら完了していない作業をここに表示してください」): `Proposals/2026-10-18 A5 Step 2 Implementation Plan.md`, `Proposals/2026-10-16 Complete Polonius A5 Plan.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md` and `Proposals/2026-10-12 Post-Reduction Work Items.md`. None is complete, so all four stay in `Proposals/`, unchanged:
+  - the two A5 plans' remaining units are PLAN G396's (R4's exit under R4-M165);
+  - Pre-R5's D3 has no record of its backup;
+  - Post-Reduction has 13 of its 18 items still open on dev.
+
+  The review records are in `artifacts/handoff/2026-11-05-r5/proposals-review/`. Its probe of R1g-1 found a constructor's `self.helper()` accepted: PLAN G454.
+
+## 2026-11-06 — Pre-R5 Work Items closed
+
+- `Changes/2026-10-12 Pre-R5 Work Items.md`: 取り込み済み. It moved from `Proposals/` on the owner's instruction (verbatim
+  「2026-10-12 Pre-R5 Work Items.md を、Changesに移動してください。」), after the review recorded in the entry above.
+  - The file gained a closing status paragraph, and its two links to `Proposals/` follow the move. The whole file is now frozen.
+  - Dispositions:
+    - §2 was superseded and met by DECISIONS R5-M2.
+    - §3's R1 was met by R5's E9 and R5-M158, and R2 is rejected by A5.
+    - §4 was met by G87.
+    - §5's D1 and D2 are done.
+    - D3, the backup, has no record and is left undone.
+  - The old path in DECISIONS R5-M2, in `Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, in `Proposals/2026-10-12
+    Post-Reduction Work Items.md` and in `Sketches/R5 Step 0/deep-dives/q4-evidence-metrics.md` reads this file.
+  - No SPEC or IMPL text came from it.

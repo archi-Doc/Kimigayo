@@ -7,13 +7,12 @@ namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
-// zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the Array runtime, the formatting
-// runtime and the Array helpers, the storage byte primitives, the string-comparison routines, the buffered definitions, the entry, the
-// object runtime and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized
-// symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the Array runtime (DECISIONS R5-M121), the
-// formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145),
-// the string-comparison routines (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are written only when a definition
-// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays) before every definition
+// zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the formatting runtime and the
+// Dictionary helpers, the storage byte primitives, the buffered definitions, the entry, the object runtime and the footer. The external
+// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations
+// (DECISIONS R5-M143), the memory declarations, the formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable
+// Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime (DECISIONS R5-M110) are written only when a definition
+// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every definition
 // (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each
 // test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's
 // test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
@@ -27,6 +26,7 @@ internal sealed partial class ModuleCodegen
 
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
     private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
+    private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
@@ -49,13 +49,6 @@ internal sealed partial class ModuleCodegen
         /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
         Objects = 8,
 
-        /// <summary>The string-comparison routines (LegacyRuntimeHelpers.StringComparisons), for a string comparison (DECISIONS R5-M118).</summary>
-        Strings = 16,
-
-        /// <summary>The Array runtime (LegacyRuntimeHelpers.WriteArrayRuntime: the capacity routines), for an Array row that declares it (DECISIONS
-        /// R5-M46, R5-M121).</summary>
-        Arrays = 32,
-
         /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
 
@@ -69,16 +62,10 @@ internal sealed partial class ModuleCodegen
     internal void Request(Needs need) => this.needs |= need;
 
     /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the Array runtime and the formatting runtime, each with the memory declarations. The other needs name
-    /// no part: the element glue is an item, the collector's target.</summary>
+    /// row's needs to the frame's parts: the formatting runtime with the memory declarations.</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {
-        if ((needs & HelperNeeds.ArrayRuntime) != 0)
-        {
-            this.Request(Needs.Arrays | Needs.Memory);
-        }
-
         if ((needs & HelperNeeds.FormattingRuntime) != 0)
         {
             this.Request(Needs.Formatting | Needs.Memory);
@@ -108,11 +95,6 @@ internal sealed partial class ModuleCodegen
             output.Write(LlvmModuleText.MemoryDeclarations);
         }
 
-        if ((this.needs & Needs.Arrays) != 0)
-        {
-            LegacyRuntimeHelpers.WriteArrayRuntime(output);
-        }
-
         if ((this.needs & Needs.Formatting) != 0)
         {
             LegacyRuntimeHelpers.WriteFormattingRuntime(output);
@@ -124,11 +106,6 @@ internal sealed partial class ModuleCodegen
         {
             output.Write(LlvmModuleText.TryAllocate);
             output.Write(LlvmModuleText.TransferBytes);
-        }
-
-        if ((this.needs & Needs.Strings) != 0)
-        {
-            output.Write(LegacyRuntimeHelpers.StringComparisons);
         }
 
         output.Write(this.functions.GetStringBuilder());

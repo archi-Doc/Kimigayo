@@ -81,7 +81,7 @@ public enum SyntaxForm : ushort
     /// <summary>The open modifier on a declaration other than a struct.</summary>
     OpenModifier,
 
-    /// <summary>A modifier or attribute on a declaration that takes none.</summary>
+    /// <summary>A modifier on a declaration that takes none; an attribute there is reported as an Attribute.</summary>
     Decoration,
 
     /// <summary>A receiver parameter that is repeated, renamed, defaulted or declared outside a struct or Contract.</summary>
@@ -231,7 +231,7 @@ public enum SyntaxForm : ushort
     /// <summary>The operation of a capture: move, ref or uniq.</summary>
     CaptureOperation,
 
-    /// <summary>A Constraint in a signature's clause block.</summary>
+    /// <summary>A Constraint in a signature's clause block, or at a Type before <c>is</c> that is no Constraint subject.</summary>
     Constraint,
 
     /// <summary>The 'of' between a length and an element Type.</summary>

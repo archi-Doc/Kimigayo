@@ -21,15 +21,14 @@ public sealed partial class Binding
         callee.BoundSymbol = requirement;
         callee.BoundType = requirement.Type;
         callee.BindingState = BindingState.Resolved;
-        callee.BindingFailure = BindingFailure.None;
+        this.ClearFailure(callee);
         arguments.CopyTo((Koto[])call.ArgumentNodes);
         call.BindingState = BindingState.Unvisited;
-        call.BindingFailure = BindingFailure.None;
+        this.ClearFailure(call);
         call.BoundMeaning = null;
         call.BoundSymbol = null;
         call.CallStorage = callee.RequirementStorage;
-        this.nodes.Add(call);
-        this.BindCall(call, scope, null);
+        this.BindSynthesizedCall(root, call, scope);
         if (call.BoundCall is not { } selected)
         {
             return call;

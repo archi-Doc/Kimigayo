@@ -6,15 +6,19 @@
 // each inside an inline default copy with the copy's call as its Inlined fact, and the arena limit through MirDataflow.StorageLimit; to
 // A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
 // paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
-// before each Drop the runtime edges reach and each state event there.
+// before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
-// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
-// Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
+// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree
+// but its Never parts and what a temp it takes whole left uninitialized on the path (MirMoveData's NeverParts and Carries, SPEC 14.10.3),
+// a Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
 // contract, DECISIONS R4-M56), so the two are one problem unless the receiver changed in between. Every root is tracked (A2 reads
-// temporaries' states), but the state rules
-// report only the Places of Var, Arg and Return roots: a compiler temporary is never a Place of the program. A whole use of the return local
+// temporaries' states). The state rules report a temp's use as a program Place's but for its own bit: a temp that holds nothing
+// holds the Never value, which a consumption takes as it is (SPEC 3.8, 14.10.3), and its parts are what a construction left
+// unplaced (R4-M175), a part being a Place in its Temporary Place (SPEC 3.4). A whole temp that a placing location's operand moves is
+// transferred, not used (SPEC 3.5.3, 12.4.3): an Assign's Use or aggregate, whose carries give its state to the component, and a
+// Places Call, a construction's insertion into storage without component paths (PLAN G442). A whole use of the return local
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
 // else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
@@ -47,6 +51,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     private const int Ever = 2; // EverInit.
     private const int Fresh = (1 << Moved) | (1 << Ever) | (1 << Init) | (1 << Partial); // Cleared where a binding lifetime starts.
 
+    private bool[] held = [];
+
     /// <summary>Analyzes a body under the selected view; view 0 of a body no view decides analyzes it for every view.</summary>
     /// <param name="body">The body.</param>
     /// <param name="view">The selected view.</param>
@@ -59,7 +65,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             return true;
         }
 
-        var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
+        var all = MirCases.Every(body);
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
@@ -68,7 +74,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             return false;
         }
 
-        var transfer = new Transfer(body, moves, cases, flow, state, drops) { Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all };
+        MirDataflow.Grow(ref this.held, moves.MaxCarried);
+        var transfer = new Transfer(body, moves, cases, flow, state, drops) { Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all, Held = this.held };
         flow.Forward(ref transfer);
         transfer.Checks = true;
         flow.Replay(ref transfer);
@@ -82,10 +89,14 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         private ushort scope; // The location's scope.
         private MirLocation at;
         private bool runtime; // Whether the runtime edges reach the block applied.
+        private bool placing; // Whether the location places its operands: an Assign of a Use or an aggregate, or a Places Call.
+        private bool placed; // Whether the next Place reported is the whole temp an operand of such a location moves.
 
         internal required MirReport Report { get; init; }
 
         internal ulong Views { get; init; }
+
+        internal required bool[] Held { get; init; } // Each carry's source state before an Assign's uses (pooled, MirMoveData.MaxCarried).
 
         internal bool Checks { get; set; }
 
@@ -127,23 +138,49 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 }
                 else if (statement.Kind != MirStatementKind.EndBorrow)
                 {
+                    // SPEC 14.10.3 (R4-M175): a construction places nothing into its Never parts, and a temp taken whole gives its
+                    // component what this path left of it, read before its uses take it.
+                    var carries = statement.Kind == MirStatementKind.Assign ? moves.Carries(data.Start + i) : default;
+                    for (var k = 0; k < carries.Length; k += 2)
+                    {
+                        this.Held[k >> 1] = MirDataflow.Any(state, Lanes, Uninit, carries[k], moves.Paths[carries[k]].End);
+                    }
+
+                    this.placing = statement.Kind == MirStatementKind.Assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate;
                     MirUses.ForEach(cases, this.at, ref this);
+                    this.placing = false;
+                    foreach (var part in statement.Kind == MirStatementKind.Assign ? moves.NeverParts(data.Start + i) : default)
+                    {
+                        this.Unplaced(part);
+                    }
+
+                    for (var k = 0; k < carries.Length; k += 2)
+                    {
+                        if (this.Held[k >> 1])
+                        {
+                            this.Unplaced(carries[k + 1]);
+                        }
+                    }
                 }
             }
 
             if (data.Terminator.Kind != MirTerminatorKind.Return)
             {
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
+                this.placing = data.Terminator.Places;
                 MirUses.ForEach(cases, this.at, ref this);
+                this.placing = false;
             }
         }
 
         // The union join (R4-M34).
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
 
-        public readonly void Operand(in MirOperand operand)
-        {
-        }
+        // A placing location's operand that moves a whole temp transfers it (SPEC 3.5.3, 12.4.3, 14.10.3): it is not checked there; an
+        // Assign's carries give its state to the component, checked where that is used. MirUses reports an operand before its Place.
+        public void Operand(in MirOperand operand)
+            => this.placed = this.placing && operand.Kind != MirOperandKind.Const && operand.Place is { Projection: 0, IsStatic: false } &&
+                body.Locals[operand.Place.Root].Kind == MirLocalKind.Temp;
 
         public readonly void Effect(MirEffect effects, int site)
         {
@@ -152,16 +189,19 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use of a Place under the view. A whole use of the return local delivers it, which only the runtime edges can (SPEC 14.10.3). A
         // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5),
         // so the outermost such reference ends the path; through a Deref or an Index only the prefix's path is used, and a Move there has
-        // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop the runtime edges reach from the state before it, by its path (-1: none).
-        public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop from the state before it, by its path (-1: none), and whether the runtime
+        // edges reach it.
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
+            var transfer = this.placed;
+            this.placed = false;
             var used = (access & MirAccess.CaseDependent) != 0 ? this.Layer(place) : place;
             var how = MirMoveData.NoPath;
             var path = place.IsStatic ? -1 : moves.Find(used, out how);
             how = used == place ? how : MirMoveData.NoPath;
-            if ((access & MirAccess.DropUse) != 0 && this.Checks && this.runtime)
+            if ((access & MirAccess.DropUse) != 0 && this.Checks)
             {
-                drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1);
+                drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1, this.runtime);
             }
 
             if (place.IsStatic || (place == new MirPlace(0) && (access & MirAccess.Defines) == 0 && !this.runtime))
@@ -185,7 +225,11 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
             else if ((access & MirAccess.Moves) != 0)
             {
-                this.Check(path, this.subject);
+                if (!transfer)
+                {
+                    this.Check(path, this.subject);
+                }
+
                 this.Take(path, (1 << Uninit) | (1 << Moved));
             }
             else if ((access & MirAccess.DropUse) != 0)
@@ -285,6 +329,10 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             this.Event(path, set: true);
         }
 
+        // A part its definition left uninitialized (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path.
+        private readonly void Unplaced(int path)
+            => MirDataflow.Apply(state, Lanes, path, moves.Paths[path].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial));
+
         // A Move or a Drop takes the subtree out, uninitialized; a part taken out of its parent leaves the parent's own bit, so it is partial.
         private readonly void Take(int path, int set)
         {
@@ -310,15 +358,20 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use needs the whole subtree initialized, the construction fact included (SPEC 15.1.2): Moved where it may have been moved.
         private readonly void Check(int path, SourceRef subject)
         {
-            var end = moves.Paths[path].End;
-            if (this.Checks && this.Reported(path) && MirDataflow.Any(state, Lanes, Uninit, path, end))
+            var (start, end) = (this.Checked(path), moves.Paths[path].End);
+            if (this.Checks && this.Reported(path) && MirDataflow.Any(state, Lanes, Uninit, start, end))
             {
-                this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, path, end), subject);
+                this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, start, end), subject);
             }
         }
 
-        // Whether the state rules report on a path: its root is a Place of the program, not a compiler temporary.
-        private readonly bool Reported(int path) => body.Locals[moves.Paths[path].Local].Kind is MirLocalKind.Var or MirLocalKind.Arg or MirLocalKind.Return;
+        // Whether the state rules report on a path: its root is a Place of the program or a temp (PLAN G442), not a drop flag.
+        private readonly bool Reported(int path) => body.Locals[moves.Paths[path].Local].Kind is not MirLocalKind.DropFlag;
+
+        // The first path a use of a path checks: a temp's own bit is no construction fact, as a temp that holds nothing holds the Never
+        // value, which a consumption takes as it is (SPEC 3.8, 14.10.3); its parts are what a construction left unplaced (R4-M175).
+        private readonly int Checked(int path)
+            => moves.Paths[path].Parent < 0 && body.Locals[moves.Paths[path].Local].Kind == MirLocalKind.Temp ? path + 1 : path;
 
         // A use of a Place some incoming path leaves uninitialized: MovedPlace_Kd where it may have been moved, else UninitializedPlace_Kd.
         private readonly void Uninitialized(bool moved, SourceRef subject) => this.Add(
@@ -332,7 +385,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
             var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
-            var index = this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
+            var index = this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
             drops.Incomplete(code, new(subject, this.scope, StatementStart: false), index);
         }
     }

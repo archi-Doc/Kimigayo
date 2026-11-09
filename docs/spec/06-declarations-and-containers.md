@@ -111,6 +111,8 @@ A `struct` declares a named composite Core. Its Fields have complete Types, incl
 
 **Finite inline storage.** A struct or enum declaration is invalid if its inline storage (Fields, the direct base, Case payloads, Tuple and fixed-array elements, including zero-length arrays, and Type arguments that a declaration stores inline) reaches the same declaration again, with any Type arguments, without passing through a borrow, raw pointer or object handle. The check is made at the declaration, whether or not the Type is used or instantiated, and is a Language error, never a Resource diagnostic. Only growth of distinct instantiations through an indirection (for example polymorphic recursion) can reach a generation limit.
 
+An associated-Type binding whose Type's inline storage reaches that binding again, with any Type arguments, through the same positions (a projection reaches the binding it denotes, [§8.2.3](08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises)), is invalid in the same way, at the binding: at its specification in the conformance, decomposition included ([§8.5.1](08-generics-constraints-and-contracts.md#851-declaration-and-specification)); otherwise, however the binding is determined (inferred, [§8.5.5](08-generics-constraints-and-contracts.md#855-inference), or by a Contract identity Constraint), at the conformance.
+
 ```kimi
 struct Shared
     var next: Option<rc/Shared>         // OK: an object handle is an indirection.
@@ -120,6 +122,17 @@ struct Node
 
 struct Grow<T>
     var more: Option<Grow<(T, T)>>      // Error: inline recursion, whatever the arguments.
+
+contract C
+    associate Item
+
+struct Hold<T>
+    T is C
+    var next: T.(C).Item
+
+struct S
+    Self is C
+    associate C.Item is Hold<S>         // Error: Hold<S> stores S.(C).Item, which is Hold<S>, inline.
 ```
 
 ### 6.2.1. Logical declaration order
@@ -377,7 +390,7 @@ A Case is referenced only as `Type.Case` or `.Case`; an unqualified Name never s
 The enum's own Type arguments are inferred as follows:
 
 1. Qualifier: an omitted own Type-argument list selects the enum by [§9.7](09-names-signatures-and-access.md#97-type-name-selection).
-2. Construction: when the expected Type is an owned Type of the same enum, its fixed arguments are supplied first; the payload arguments are then adapted to the resulting payload Types ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), including Function Type erasure [§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)); remaining own slots are inferred from the payload arguments ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); a slot still unbound after literal defaults ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)) is an error. The leading-dot form needs an expected Type that fixes the enum. Explicit arguments that differ from the expected Type's are an error.
+2. Construction: when the expected Type is an owned Type of the same enum, its fixed arguments are supplied first; the payload arguments are then adapted to the resulting payload Types ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), including Function Type erasure [§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)); remaining own slots are inferred from the payload arguments ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); a slot still unbound after literal defaults ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)) is an error. The leading-dot form needs an expected Type that fixes the enum. Explicit arguments that differ from the expected Type's in structure or Semantics are an error; an argument that differs only in its Origins is kept, and the result's fit judges the Origin relation ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference), [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)).
 3. Pattern: a qualified Case Pattern may omit the enum's own arguments; they come from the Type at the Pattern position, and explicit arguments must equal them.
 
 Outer Container arguments are never inferred ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)). The qualifier writes no Semantics or Origin arguments of the enum and no binding-set suffix (`View<T>{v}.Some(...)` is not a Case reference); complete Types inside its Type arguments keep theirs. Origin arguments are inferred from the expected Type and the payloads, never invented; if these do not determine them, annotate the expected Type.
@@ -394,9 +407,14 @@ let a = Option.Some(1)               // Option<i32>, from the payload.
 let b: Option<i64> = Option.Some(1)  // The expected Type supplies T first.
 // let c = Option.None               // Error: nothing determines T.
 // let d: Option<i32> = .None()      // Error: a payload-free Case takes no parentheses.
+// let e: Option<i64> = Option<i32>.Some(1)   // Error: the explicit argument differs in structure.
 let n = match a
     Option.Some(let x) => x          // T from the matched Type.
     .None => 0
+
+func keep(x: ref/i32 during p, y: ref/i32 during q) -> Option<ref/i32 during q>
+    origin p outlives q
+    return Option<ref/i32 during p>.Some(x)   // OK: only Origins differ; the clause proves the result's fit.
 ```
 
 ## 6.6. Bindings

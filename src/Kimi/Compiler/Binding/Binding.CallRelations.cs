@@ -79,22 +79,37 @@ public sealed partial class Binding
 
         for (var i = 0; i < operations.Length; i++)
         {
-            if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            var childStart = 0;
+            var childEnd = 0;
+            if (i < argumentCount)
             {
-                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+                this.ChildGroup(solution, i, out childStart, out childEnd);
             }
-            else if (i < argumentCount && solution.Rows[i].Contribution != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
+
+            // R4 (DECISIONS BU-104): an argument whose root has child rows is judged by them, whether or not its operation adapted it.
+            if (childStart == childEnd && operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            {
+                // The parameter's pattern as the candidate reads it, the receiver's too (DECISIONS BU-99).
+                var pattern = i < argumentCount ? solution.Rows[i].Pattern : solution.Pattern(selected.Parameters[receiver.ParameterIndex].Type.BoundType!);
+                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+            }
+            else if (i < argumentCount && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
                 // SPEC 10.2: a composite borrowed at `ref/T` (its cross-semantics borrow) is walked at its value Type T, the operation's
-                // SourceType (FitComposite).
-                var borrowed = operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value } ? value : null;
-                this.JudgePositionRows(whole, solution.Rows[i], borrowed ?? type);
+                // SourceType (FitComposite), beside the pattern's referent; a slot's solution stays its contributor's (BU-99).
+                var root = solution.Rows[i] with { Type = type };
+                if (operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value })
+                {
+                    root = root with { Pattern = IsBorrow(root.Pattern!.Semantics) ? root.Pattern.Components[0] : root.Pattern, Type = value };
+                }
+
+                this.JudgePositionRows(whole, root, solution);
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, argument.ParameterType, null, Contribution.Signature);
+            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature);
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
@@ -134,7 +149,7 @@ public sealed partial class Binding
 
     private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
-        var binder = selected.Accessor?.Binder ?? selected;
+        var binder = selected.OriginBinder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
@@ -169,7 +184,7 @@ public sealed partial class Binding
             origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
         }
 
-        var binder = selected.Accessor?.Binder ?? selected;
+        var binder = selected.OriginBinder;
         var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
         return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
     }
@@ -294,7 +309,7 @@ public sealed partial class Binding
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
         var forwardProven = this.FitOriginOutlives(longer, shorter, at, default, condition);
         var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, default, condition);
-        if (BodyChain(longer, shorter, this.formingBody))
+        if (BodyChain(longer, shorter, equality, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.

@@ -33,7 +33,7 @@ public class UnaryKoto : ExpressionKoto
         PrefixTexts[(int)KotoKind.PrefixPlusPlus] = "++";
         PrefixTexts[(int)KotoKind.PrefixMinus] = "-";
         PrefixTexts[(int)KotoKind.PrefixMinusMinus] = "--";
-        PrefixTexts[(int)KotoKind.Not] = Constants.NotKeyword + " ";
+        PrefixTexts[(int)KotoKind.Not] = TokenKind.Not.ToText() + " ";
         PrefixTexts[(int)KotoKind.Parenthesized] = "(";
         PostfixTexts[(int)KotoKind.Parenthesized] = ")";
         PostfixTexts[(int)KotoKind.PostfixIncrement] = "++";
@@ -62,14 +62,14 @@ public class UnaryKoto : ExpressionKoto
     /// <summary>Gets the spelling of a prefix or postfix operator, without the operand or spaces.</summary>
     public string OperatorText => (PrefixTexts[(int)this.Akind] ?? PostfixTexts[(int)this.Akind] ?? string.Empty).Trim();
 
-    [Transitional("R6", Reason = "Arithmetic plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Arithmetic plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundArithmetic? ArithmeticStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundArithmetic;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
-    [Transitional("R6", Reason = "Arithmetic plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Arithmetic plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
 
     /// <inheritdoc/>
@@ -94,6 +94,25 @@ public class UnaryKoto : ExpressionKoto
     }
 }
 
+/// <summary>
+/// The closed classification of an attribute by its Name (SPEC 6.7). A Name the compiler reads is one member here and one row of
+/// <see cref="AttributeKoto.Classify"/>; every other Name is <see cref="Unknown"/>. Argument values are no part of it.
+/// </summary>
+public enum AttributeKind : byte
+{
+    /// <summary>A Name the compiler does not read; Binding binds it as an expression.</summary>
+    Unknown,
+
+    /// <summary><c>#Layout</c> (SPEC 6.7.1).</summary>
+    Layout,
+
+    /// <summary><c>#Test</c> (SPEC 6.7.2).</summary>
+    Test,
+
+    /// <summary><c>#LibraryImport</c> (SPEC 22.6).</summary>
+    LibraryImport,
+}
+
 /// <summary>Represents an attribute expression.</summary>
 public sealed class AttributeKoto : UnaryKoto
 {
@@ -104,7 +123,11 @@ public sealed class AttributeKoto : UnaryKoto
     public AttributeKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, KotoKind.Attribute, operand)
     {
+        this.Classify();
     }
+
+    /// <summary>Gets the kind of this attribute's Name; the compiler reads this, never the Name.</summary>
+    public AttributeKind Kind { get; private set; }
 
     /// <summary>Gets the attribute identifier.</summary>
     public Koto IdentifierKoto
@@ -118,9 +141,19 @@ public sealed class AttributeKoto : UnaryKoto
     internal int FragmentOrdinal { get; set; }
 
     internal string? LayoutMode
-        => this.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" } &&
+        => this.Kind == AttributeKind.Layout &&
             this.Operand is InvocationKoto { ArgumentNodes.Count: 1 } call && call.GetArgumentLabel(0) is null &&
             call.ArgumentNodes[0] is StringLiteralKoto literal && literal.Literal is "C" or "Kimigayo" ? literal.Literal : null;
+
+    // The one read of the Name: when the parser builds the node and when an edit replaces the Name (Koto.ReplaceChild).
+    internal void Classify()
+        => this.Kind = this.IdentifierKoto is IdentifierNameKoto name ? name.IdentifierName switch
+        {
+            "Layout" => AttributeKind.Layout,
+            "LibraryImport" => AttributeKind.LibraryImport,
+            "Test" => AttributeKind.Test,
+            _ => AttributeKind.Unknown,
+        } : AttributeKind.Unknown;
 }
 
 /// <summary>Represents a macro expression.</summary>

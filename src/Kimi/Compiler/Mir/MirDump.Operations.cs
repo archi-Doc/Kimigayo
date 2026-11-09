@@ -46,8 +46,9 @@ internal static partial class MirDump
                 text.Append((MirAggregateKind)rvalue.Op).Append(rvalue.Type is { } adt && AdtDef.IsEnum(adt) ? $" case {rvalue.Arg}" : string.Empty);
                 Operands(text, body, rvalue.Start, rvalue.Count).Append(": ").Append(Type(rvalue.Type));
                 break;
-            case MirRvalueKind.Discriminant or MirRvalueKind.Len:
-                Place(text.Append(rvalue.Kind == MirRvalueKind.Len ? "len(" : "discriminant("), body, rvalue.Place).Append(')');
+            case MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
+                var name = rvalue.Kind switch { MirRvalueKind.Len => "len(", MirRvalueKind.Storage => "storage(", _ => "discriminant(" };
+                Place(text.Append(name), body, rvalue.Place).Append(')');
                 break;
             case MirRvalueKind.Adapt:
                 Operands(text.Append("adapt"), body, rvalue.Start, rvalue.Count);
@@ -107,6 +108,7 @@ internal static partial class MirDump
                 }
 
                 Operands(text, body, terminator.Start, terminator.Count).Append(" -> ").Append(terminator.Target < 0 ? "!" : "bb" + terminator.Target);
+                text.Append(terminator.Places ? " places" : string.Empty);
                 break;
             case MirTerminatorKind.Drop:
                 Place(text.Append("drop "), body, terminator.Place).Append(" -> bb").Append(terminator.Target);
@@ -144,7 +146,7 @@ internal static partial class MirDump
                         .Append(Type(constant.Type)),
                     MirConstKind.Bool => text.Append(constant.Bits != 0 ? "true" : "false"),
                     MirConstKind.Unit => text.Append("()"),
-                    MirConstKind.String => text.Append('"').Append(
+                    MirConstKind.String => text.Append(constant.IsRecord ? "record \"" : "\"").Append(
                         ((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(
                         "\n",
                         "\\n")).Append('"'),

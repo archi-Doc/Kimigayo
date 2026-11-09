@@ -109,6 +109,9 @@ public sealed class MirAnalysisTest
         """;
 
     // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
+    // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
+    internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
 
@@ -202,13 +205,13 @@ public sealed class MirAnalysisTest
         var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
         int[] indices =
         [
-            report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]),
+            report.Add(loan, [new(ProblemFactKind.Anchor, new(0, 4)), new(ProblemFactKind.Inlined, new(0, 9))]),
             report.Add(limit),
-            report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]),
+            report.Add(loan with { Views = 0b01 }, [new(ProblemFactKind.Anchor, new(0, 4))]),
         ];
         Assert.Equal([-1, 0, 1], indices);
         Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
-        Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }
 
     // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
@@ -219,8 +222,8 @@ public sealed class MirAnalysisTest
     public void AMergeIsDerivedOnlyWhenEveryReportIs()
     {
         var (loan, other) = (Conflict with { Subject = new(0, 5) }, Conflict with { Subject = new(0, 6) });
-        var (anchor, first, second) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Cause, new(0, 1), 0), new MirFact(
-            MirFactKind.Cause, new(0, 2), 1));
+        var (anchor, first, second) = (new ProblemFact(ProblemFactKind.Anchor, new(0, 4)), new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0),
+            new ProblemFact(ProblemFactKind.Cause, new(0, 2), 1));
         var report = new MirReport();
         Assert.Equal([0, 1, 2, 3, 2, 2, 2], new[]
         {
@@ -328,16 +331,16 @@ public sealed class MirAnalysisTest
     [Fact]
     public void AMergedProblemIsDerivedOnlyWhenEveryMemberIs()
     {
-        var (anchor, other) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Anchor, new(0, 3)));
+        var (anchor, other) = (new ProblemFact(ProblemFactKind.Anchor, new(0, 4)), new ProblemFact(ProblemFactKind.Anchor, new(0, 3)));
         var report = new MirReport();
         report.Add(Conflict);
         report.Add(Conflict with { Subject = new(0, 2) });
-        report.Add(Conflict with { Subject = new(0, 5) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [other, new(MirFactKind.Cause, new(0, 2), 1)]);
-        report.Add(Conflict with { Subject = new(0, 6) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [anchor, new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [other, new(ProblemFactKind.Cause, new(0, 2), 1)]);
+        report.Add(Conflict with { Subject = new(0, 6) }, [anchor, new(ProblemFactKind.Cause, new(0, 1), 0)]);
         report.Add(Conflict with { Subject = new(0, 6), Body = 1 }, [other]);
         Assert.Equal(4, report.Merged.Length);
-        Assert.Equal([anchor, new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 2), 1)], report.MergedFacts(2).ToArray());
+        Assert.Equal([anchor, new(ProblemFactKind.Cause, new(0, 1), 0), new(ProblemFactKind.Cause, new(0, 2), 1)], report.MergedFacts(2).ToArray());
         Assert.Equal([anchor], report.MergedFacts(3).ToArray());
     }
 
@@ -350,10 +353,10 @@ public sealed class MirAnalysisTest
         report.Add(Conflict);
         report.Add(Conflict with { Subject = new(0, 9) });
         report.Add(Conflict with { Body = 1 });
-        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 2), new(MirFactKind.Cause, new(0, 7), -1)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 9), 1)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(ProblemFactKind.Cause, new(0, 9), 1)]);
         Assert.Equal(
-            [new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 7), -1), new MirFact(MirFactKind.Cause, new(0, 9), 1)],
+            [new(ProblemFactKind.Cause, new(0, 1), 0), new(ProblemFactKind.Cause, new(0, 7), -1), new ProblemFact(ProblemFactKind.Cause, new(0, 9), 1)],
             report.MergedFacts(2).ToArray());
     }
 
@@ -364,10 +367,10 @@ public sealed class MirAnalysisTest
         var report = new MirReport();
         report.Add(Conflict);
         report.Add(Conflict with { Body = 1 });
-        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 1), 1)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(ProblemFactKind.Cause, new(0, 1), 1)]);
         Assert.Equal([1, 1], new[] { report.Facts(2).Length, report.Facts(3).Length });
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // R6-check H3-2 (R4's U1b note n2): members of one merged problem that cause one another, A4's (NoBody) and A5's Unsupported_Kd at one
@@ -377,9 +380,9 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         report.Add(Conflict);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(MirFactKind.Cause, new(0, 5), 1)]);
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(ProblemFactKind.Cause, new(0, 5), 1)]);
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // R6-check H3-2 (N2, as R5-M23's disagreement): a Cause fact whose Value is neither -1 nor an index in All names no problem, a recording
@@ -392,10 +395,10 @@ public sealed class MirAnalysisTest
         var report = new MirReport();
         Assert.Equal([0, -1, -1, 2, 2], new[]
         {
-            report.Add(moved), report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 1)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -2)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -1)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 0)]),
+            report.Add(moved), report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), 1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), -2)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), -1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), 0)]),
         });
         Assert.Equal(
             [
@@ -429,15 +432,15 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
-    // record, A5's broken contracts, the C1-F4 view's findings), so the disagreement record never disagrees again: each site of the code
-    // in the analyses states that requirement before it in its block, and a new site joins this list after review.
+    // record, A5's broken contracts; the C1-F4 view throws at its own, DECISIONS BU-102), so the disagreement record never disagrees again:
+    // each site of the code in the analyses states that requirement before it in its block, and a new site joins this list after review.
     [Fact]
     public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
     {
         var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
         var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
         Assert.Equal(
-            ["MirBorrows.Reports.cs 1 1", "MirOrigins.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            ["MirBorrows.Reports.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
             Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
                 .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
                 .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));
@@ -507,7 +510,8 @@ public sealed class MirAnalysisTest
 
     // R4-M71 (G125, the 1c design review's r05): a Field initializer is built into each constructor, so its conflict is one problem per
     // constructor body with that body's views: S's two constructors have one view each, G's two enumerate two and nine cases. One problem
-    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names.
+    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names. Every problem's views are bits of its body's
+    // views (MirProblem): A3's falling failure body in g, which depends on no case, has g's two (MirCases.Every).
     [Fact]
     public void AFieldInitializersProblemIsEachConstructors()
     {
@@ -533,6 +537,9 @@ public sealed class MirAnalysisTest
                     self.t = t
                 public init(t: s/T, n: i32)
                     self.t = t@move
+            func g<s/T>(v: s/T, flag: bool)
+                s is ref or uniq
+                require flag else => ()
 
             """);
         Assert.Empty(c.Binding.Issues);
@@ -540,6 +547,7 @@ public sealed class MirAnalysisTest
         var problems = program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).ToArray();
         Assert.Equal(
             [
+                "RequireFallthrough_Kd () in func g<s/T>(v: s/T, flag: bool): 3",
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32) => self.k = k: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
@@ -670,8 +678,7 @@ public sealed class MirAnalysisTest
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
-        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|"; // Each part's line N times, with its index.
-        const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|";
         const string Limit = "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32";
         foreach (var (size, views, line, expected) in new[]
         {
@@ -680,17 +687,7 @@ public sealed class MirAnalysisTest
             (2_000, 1, References, Limit + " Loans over"),
         })
         {
-            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
-                .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
-            foreach (var part in line.Split('|'))
-            {
-                for (var n = 0; n < size; n++)
-                {
-                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
-                }
-            }
-
-            var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
+            var c = MirBuildTest.Compile(ArenaWorkload(size, line));
             var program = c.BuildMir();
             Assert.Equal([expected], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
                 .Where(static x => x.Problem.Subject.Module == 0)
@@ -757,10 +754,9 @@ public sealed class MirAnalysisTest
 
     // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
     // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
-    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit and the C1-F4 view's findings
-    // included. It reuses the compilation's TyCtxt, so MirOrigins.Findings adds again every finding TyCtxt collected, the first run's
-    // pass-walk findings included (none today): a pass-walk finding shows both in the program's records and here. Every unit changing A3 or
-    // A5 runs it.
+    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4
+    // view contract throws (DECISIONS BU-102). It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit
+    // changing A3 or A5 runs it.
     [Theory]
     [InlineData(WindowsProfile.Target)]
     public void TheLibraryHasNoAnalysisProblem(string target)
@@ -809,7 +805,7 @@ public sealed class MirAnalysisTest
             report.Clear();
             for (var i = 0; i < 64; i++)
             {
-                ReadOnlySpan<MirFact> cause = [new(MirFactKind.Cause, new(0, i % 24), i - 1)];
+                ReadOnlySpan<ProblemFact> cause = [new(ProblemFactKind.Cause, new(0, i % 24), i - 1)];
                 _ = i % 2 == 0 ? report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 24) + 1), i / 24, 0b01))
                     : report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 24) + 1), i / 24, 0b01), cause);
             }
@@ -819,7 +815,7 @@ public sealed class MirAnalysisTest
         }));
         Assert.Equal((64, 24), (report.All.Length, report.Merged.Length));
         Assert.Equal([0, 24, 48], report.Members(0).ToArray());
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // DIAGNOSTICS 4.3, DECISIONS R5-M186: A3's problem at a falling failure body has one Cause fact of Value -1 (a Binding cause) per site
@@ -833,7 +829,7 @@ public sealed class MirAnalysisTest
         var index = Assert.Single(
             Enumerable.Range(0, problems.All.Length), i => problems.All[i] is { Code: DiagnosticCode.RequireFallthrough_Kd, Subject.Module: 0 });
         var facts = problems.Facts(index).ToArray();
-        Assert.All(facts, static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        Assert.All(facts, static x => Assert.Equal((ProblemFactKind.Cause, -1L), (x.Kind, x.Value)));
         Assert.Equal(sites, MirBuildTest.Sites(c, problems.All[index].Subject, facts.Select(static x => x.Site)));
     }
 
@@ -852,31 +848,21 @@ public sealed class MirAnalysisTest
         Assert.Equal(8, report.All.Length);
     }
 
-    // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view, and the MIR and the
-    // cold build's allocation, A3's included, grow linearly with N.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void RequireEndsScaleLinearly()
+    // The arena workload (A5ChecksTheViewsA1Completed, OwnershipStorageLimitTest.TheMirsArenaLimitPublishesBesideIndependentErrors):
+    // `f`, with each '|'-separated part of `line` repeated `size` times with its index, then a Loan conflict at `x = 2`.
+    internal static string ArenaWorkload(int size, string line)
     {
-        var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+        var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
+            .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
+        foreach (var part in line.Split('|'))
         {
-            var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            return () => programs[i] = c.BuildMir();
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (c, program) = (compilations[i], programs[i]);
-            work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
-            var problems = program.Problems.All.ToArray();
-            Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));
-            Assert.Equal([sizes[i], sizes[i]], new[] { "sequence", "nest" }.Select(name => problems.Count(x => Function(c.SyntaxOf(x.Subject)) == name)));
+            for (var n = 0; n < size; n++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
+            }
         }
 
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
-
-        static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
+        return text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString();
     }
 
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
@@ -899,4 +885,35 @@ public sealed class MirAnalysisTest
 
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view (1: its body's one,
+        // MirCases.Every), and the MIR and the cold build's allocation, A3's included, grow linearly with N.
+        [Fact]
+        public void RequireEndsScaleLinearly()
+        {
+            var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
+                return () => programs[i] = c.BuildMir();
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (c, program) = (compilations[i], programs[i]);
+                work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
+                var problems = program.Problems.All.ToArray();
+                Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, 1UL), (x.Code, x.Views)));
+                Assert.Equal([sizes[i], sizes[i]], new[] { "sequence", "nest" }.Select(name => problems.Count(x => Function(c.SyntaxOf(x.Subject)) == name)));
+            }
+
+            Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+
+            static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
+        }
+    }
 }

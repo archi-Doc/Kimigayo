@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 //   below: the failing positions by composed variance and the failing operand chains of a meet, in its body and mode, OriginFitMode);
 //   RecordMismatch's Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure); and the reset of the pass's
 //   Origin relation records, a failed node's first chain and its others (ResetOriginRecords).
-// - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
+// - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordFurtherOriginRecord, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
@@ -29,20 +29,18 @@ public sealed partial class Binding
     private HashSet<Koto>? originTwins;
 
     // SPEC 15.6.1, 15.6.5: how OriginFitSearch decides that a position's relation fails: unproven by the premises visible at the use
-    // (Proof), also failed by the relation judge in the search's body (Judged, a body fit), or not proven by the verified regions
-    // (Verified, lowering's recheck of a verified contract).
+    // (Proof), or also failed by the relation judge in the search's body (Judged, a body fit).
     private enum OriginFitMode : byte
     {
         Proof,
         Judged,
-        Verified,
     }
 
     /// <summary>Gets whether a node's Origin relation records are twins, the records of a relation that is also a row A5 judges, which the
-    /// MIR difference ledger compares with A5 (DECISIONS R4-M108, R4-M111).</summary>
+    /// test MIR side (<c>MirTargetSide.MirSide</c>) leaves out for A5's row (DECISIONS R4-M108, R4-M111).</summary>
     /// <param name="node">The records' node.</param>
     /// <returns>Whether its records are twins.</returns>
-    [Transitional("R6", Reason = "The ledger's twin subset; H11 deletes it with the twins (DECISIONS R4-M111).")]
+    [Transitional("R7", Reason = "The test MIR side's twin filter; R7's Problem records delete it with the twins (the owner's 「Cで決定します」; DECISIONS R4-M111).")]
     internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
 
     // DIAGNOSTICS (Origin relations): an obligation's record is at its use, a local annotation's fit at the local's initializer, the
@@ -50,20 +48,10 @@ public sealed partial class Binding
     private static Koto RelationAt(in BindingObligation obligation)
         => IsFitObligation(obligation) && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
 
-    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and its others, whose
-    // lists are kept, empty (furtherOriginLists), and the twin nodes.
+    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and the twin nodes.
     private void ResetOriginRecords()
     {
         this.originRelations?.Clear();
-        if (this.furtherOriginLists is { } lists)
-        {
-            foreach (var more in lists)
-            {
-                more.Clear();
-            }
-        }
-
-        this.furtherOriginRecords?.Clear();
         this.originTwins?.Clear();
     }
 
@@ -84,7 +72,7 @@ public sealed partial class Binding
     // records (RecordOriginChains). A position the relation judge fails records every failed chain; a position that is only unproven is
     // recorded when an end is unresolved and is otherwise Unsupported, unless a failed Origin environment explains it. A record at a
     // body chain (2a0-D D1, ends resolved at the use) gives every position of the fit, fixed-fixed ones included, a row of its body for
-    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until H11
+    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until R7
     // (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
@@ -144,10 +132,10 @@ public sealed partial class Binding
         // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it. Beside a node whose
         // own record is a comparison's contract (RecordComparisonFacts), every chain is published with that record.
         var rows = false;
-        var further = node.BindingFailure == BindingFailure.OriginContract;
+        var further = FollowsContract(node);
         for (var i = 0; i < all.Count && (further || node.BindingFailure == BindingFailure.None); i++)
         {
-            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
+            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), all[i].Equality, body);
             if (further || !all[i].Equals(recorded))
             {
                 this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
@@ -213,7 +201,7 @@ public sealed partial class Binding
 
             // Transitional until G216 (a) U2.2 removes this search (DECISIONS R4-M155, Staged): a Function component is one comparison,
             // which the fit's walk judged and records as its contract fact (RecordComparisonFacts), so its members are no plain positions.
-            if (mode != OriginFitMode.Verified && actual.Kind == BoundTypeKind.Function)
+            if (actual.Kind == BoundTypeKind.Function)
             {
                 return first;
             }
@@ -280,15 +268,15 @@ public sealed partial class Binding
 
             if (variance == OriginVariance.Contravariant)
             {
-                return this.Fails(expected, actual, condition) ? this.FailedChain(expected, actual, condition) : null;
+                return this.OriginPartFails(expected, actual, condition) ? this.FailedChain(expected, actual, condition) : null;
             }
 
             if (variance == OriginVariance.Covariant)
             {
-                return this.Fails(actual, expected, condition) ? this.FailedChain(actual, expected, condition) : null;
+                return this.OriginPartFails(actual, expected, condition) ? this.FailedChain(actual, expected, condition) : null;
             }
 
-            if (!this.Fails(actual, expected, condition) && !this.Fails(expected, actual, condition))
+            if (!this.OriginPartFails(actual, expected, condition) && !this.OriginPartFails(expected, actual, condition))
             {
                 return null;
             }
@@ -298,10 +286,6 @@ public sealed partial class Binding
             all?.Add(equality);
             return equality;
         }
-
-        // Whether a position's relation fails in the search's mode: one the verified regions do not prove, or one OriginPartFails fails.
-        private bool Fails(BoundOrigin longer, BoundOrigin shorter, ulong condition)
-            => mode == OriginFitMode.Verified ? !binding.VerifiedRegionOutlives(longer, shorter, use) : this.OriginPartFails(longer, shorter, condition);
 
         // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names
         // the chain of one failing operand, never the meet itself, and keeps the whole meet for a result bound. With `all`, the chain of

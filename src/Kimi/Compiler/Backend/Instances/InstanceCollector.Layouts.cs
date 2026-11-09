@@ -33,17 +33,48 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
     };
 
+    // SPEC 6.3.4, 16.3.1 (DECISIONS BU-48, amended by G283): whether a Place is a constructor's or destructor's receiver
+    // (MirLocalRole.Receiver) or a part in its own storage, reached by no step that leaves it (Leaves: never past a Deref or another
+    // indirection, whose referent its creation did not lay out, SPEC 8.15.3): storage its construction expression, or the destroyed value's
+    // creation, made and laid out, so neither a by-value use (LayOutLocals) nor, where the body destroys such a part (a destructor's layer
+    // cleanup, a replaced Field), a use (Edge). Such a part is in its receiver's layout, so it has none only where the receiver has none, a
+    // body checked only (Generates).
+    private static bool Received(MirBody body, MirPlace place)
+    {
+        if (place.IsStatic || body.Locals[place.Root].Role != MirLocalRole.Receiver)
+        {
+            return false;
+        }
+
+        for (var id = place.Projection; id > 0; id = body.Projections[id].Prefix)
+        {
+            if (Leaves(body, place with { Projection = id }))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Whether a Place's last step leaves its prefix's storage: a pair layer (its case decides; ListNeeds) or a step whose prefix is laid out
+    // without its component (Layout.Indirect: a borrow, raw pointer, handle or sequence handle, X34).
+    private static bool Leaves(MirBody body, MirPlace step)
+        => body.Projections[step.Projection] is var row &&
+            (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!));
+
     // SPEC 8.15.3, 22.6 (DECISIONS R5-M150): an import a root module declares is checked as a nongeneric body is, called or not (22.6 makes
     // it nongeneric): its parameters' and result's Types (TyCtxt.Signature; none where Binding failed it) are by-value uses at their written
-    // Types (TyCtxt.SignatureSite), beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are
-    // always laid out). It is no item: no body, no target, nothing generated.
+    // Types (TyCtxt.SignatureSite, which indexes the written parameters by the slot: an import is receiverless, without special parameters),
+    // beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are always laid out). It is no
+    // item: no body, no target, nothing generated.
     private void LayOutImports()
     {
         var imports = this.types.Imports; // Read by index: a warm run allocates no enumerator.
         for (var i = 0; i < imports.Count; i++)
         {
             var function = imports[i];
-            if (TyCtxt.SignatureSite(function, -1).Module >= this.rootModules)
+            if (SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, -1)).Module >= this.rootModules)
             {
                 continue;
             }
@@ -51,8 +82,8 @@ internal sealed partial class InstanceCollector
             _ = TyCtxt.Signature(function, null, -1, out var count);
             for (var slot = -1; slot < count; slot++)
             {
-                if (TyCtxt.Signature(function, null, slot, out _) is { } type && TyCtxt.SignatureSite(function, slot) is var site &&
-                    this.Verdict(site, type).IsLimit)
+                if (TyCtxt.Signature(function, null, slot, out _) is { } type &&
+                    SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type).IsLimit)
                 {
                     this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }
@@ -60,9 +91,9 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's
-    // construction receiver (MirLocalRole.Receiver), whose storage its caller's construction expression made and laid out (SPEC 6.3.2-6.3.4,
-    // 8.15.3; DECISIONS BU-48): the body reaches it only for its Fields' access.
+    // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's or
+    // destructor's receiver (MirLocalRole.Receiver), whose storage its caller's construction expression, or the destroyed value's creation,
+    // made and laid out (SPEC 6.3.2-6.3.4, 8.15.3, 16.3.1; DECISIONS BU-48, amended by G283): the body reaches it only for its Fields' access.
     private void LayOutLocals(int item, MirBody body)
     {
         foreach (var local in body.Locals)
@@ -146,7 +177,7 @@ internal sealed partial class InstanceCollector
         {
             var step = place with { Projection = this.chain[i] };
             var row = projections[step.Projection];
-            if (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!))
+            if (Leaves(body, step))
             {
                 (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer && !past ? step.Projection : 0);
             }

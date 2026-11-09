@@ -92,13 +92,165 @@ public class ContainerNestingTest
     [Theory]
     [InlineData("struct Box<T>\n    public var a: i32 = 0\nlet v: Box<i32>.T = 1", "Box<i32>.T")]
     [InlineData("struct Box<T>\n    public var a: i32 = 0\nfunc f(x: Box<i32>.T) => ()", "Box<i32>.T")]
-    public void AQualifiedNameNeverSelectsAGenericParameter(string source, string name)
+    [InlineData("struct Box<T>\n    public var a: i32 = 0\nfunc f(x: ::Box<i32>.T) => ()", "::Box<i32>.T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f(x: Box<T>) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f() -> i32\n    let x: Option<T> = .None\n    return 1", "T")]
+    [InlineData("alias Box<i32>\nalias Pair<i64>\nstruct Box<T>\n    public var a: i32 = 0\nstruct Pair<T>\n    public var b: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<S/T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Outer<i32>.Inner<i64>\nstruct Outer<T>\n    public struct Inner<U>\n        public var a: i32 = 0\nfunc f(x: U) => ()", "U")]
+    [InlineData("alias Kimi.Option<i32>\nfunc f(x: T) => ()", "T")]
+    public void AFormalParameterIsNoMemberOfItsContainer(string source, string name)
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(Kimi.DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
         Assert.Equal(name, issue.Node.ToString());
+    }
+
+    // SPEC 23.1.2, 9.1, 9.4.1, 9.7.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
+    // failures, independent of the access, are reported beside the member's: an arity mismatch, omitted outer arguments and an
+    // inaccessible argument.
+    [Theory]
+    [InlineData("T<i32, bool>.G.Box.init()", "InaccessibleBinding_Kd T<i32, bool>.G|InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData("T.G.Box.init()", "InaccessibleBinding_Kd T.G|InvalidTypeFormation_Kd T")]
+    [InlineData("T<H.Hidden>.G.Box.init()", "InaccessibleBinding_Kd H.Hidden|InaccessibleBinding_Kd T<H.Hidden>.G")]
+    public void AQualifierOfAnInaccessibleMemberReportsItsOwnFailure(string use, string records)
+    {
+        var c = CompilationTestHelper.Parse("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\ngroup H\n    struct Hidden\nfunc f()\n    let b = " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 23.1.2, 9.1, 9.7, 9.7.1, 6.1 (PLAN G481 (1), (3)): a qualifier's own failure is reported at the qualifier whatever form reads
+    // it, and stays failed: a struct qualifier's wrong arity or omitted outer arguments (a call, a Type position, a `::` path, also
+    // a middle segment), a qualifier resting on its failed argument, and a group qualifier's written arguments, since a group has no
+    // own parameters. The consumer rests on it. A failed qualifier's arguments keep their own failures (SPEC 9.7; PLAN G513). The
+    // valid twins bind.
+    [Theory]
+    [InlineData(false, "func f()\n    let b = T<i32, Missing>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(false, "func f(b: T<i32, Missing>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "func f()\n    let b = T<Missing>.G.Box.init()\n", "InvalidTypeFormation_Kd T<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "func f() -> i32 => T<Missing>.one()\n", "InvalidTypeFormation_Kd T<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "group H\n    struct Hidden\nfunc f() -> i32 => T<H.Hidden>.value\n", "InaccessibleBinding_Kd H.Hidden|InvalidTypeFormation_Kd T<H.Hidden>")]
+    [InlineData(false, "func f()\n    let b = T<i32, bool>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "func f()\n    let b = T.G.Box.init()\n", "InvalidTypeFormation_Kd T")]
+    [InlineData(false, "func f(b: T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "func f(b: ::T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "struct Outer\n    public struct T<U>\n        public group G\n            public struct Box\nfunc f(b: ::Outer.T.G.Box) => ()\n", "InvalidTypeFormation_Kd Outer.T")]
+    [InlineData(false, "func f()\n    let b = T<Missing>.G.Box.init()\n", "UnresolvedBinding_Kd Missing")]
+    [InlineData(false, "group H\n    struct Hidden\nfunc f()\n    let b = T<H.Hidden>.G.Box.init()\n", "InaccessibleBinding_Kd H.Hidden")]
+    [InlineData(false, "func f()\n    let b = T<i32>.G.Box.init()\n", "")]
+    [InlineData(true, "func f()\n    let b = T<i32>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f(b: T<i32>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f(b: ::T<i32>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f() -> i32 => T<i32>.value\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f() -> i32 => T<i32>.one()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f()\n    let b = T.G.Box.init()\n", "")]
+    public void AQualifierReportsItsOwnFailure(bool group, string use, string records)
+    {
+        var declaration = group ? "group T\n    public let value: i32 = 1\n    public func one() -> i32 => 1\n" : "struct T<U>\n";
+        var c = CompilationTestHelper.Parse(declaration + "    public group G\n        public struct Box\n            public init() => ()\n" + use);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.7.1, 23.1.2 (PLAN G481 (2)): a missing member's qualifier is bound in its container role, as an inaccessible member's, so
+    // its own failure is reported beside the missing Name. Only a group or a struct declares nested Containers (SPEC 6.1, 6.5.1), so an
+    // enum or a Contract qualifier of a missing member gets no container record.
+    [Theory]
+    [InlineData("struct T<U>\n    public init() => ()\nfunc f()\n    let b = T<i32, bool>.Nope.init()\n", "InvalidTypeFormation_Kd T<i32, bool>|UnresolvedBinding_Kd T<i32, bool>.Nope.init")]
+    [InlineData("struct T<U>\n    public init() => ()\nfunc f()\n    let b = T<i32, bool>.Nope.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>|UnresolvedBinding_Kd T<i32, bool>.Nope.Box.init")]
+    [InlineData("group T\n    public group G\n        public struct Box\nfunc f()\n    let b = T<i32>.G.Nope.init()\n", "InvalidTypeFormation_Kd T<i32>|UnresolvedBinding_Kd T<i32>.G.Nope.init")]
+    [InlineData("enum E<T>\n    A(T)\nfunc f()\n    let b = E.Nope.init()\n", "UnresolvedBinding_Kd E.Nope.init")]
+    [InlineData("contract C\n    func g(self) -> i32\nfunc f(b: C.Nope) => ()\n", "UnresolvedBinding_Kd C.Nope")]
+    public void AMissingMembersQualifierReportsItsOwnFailure(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
+    // publishes (R7 N1). The value path read the Type path's binding, so where neither path or both found the member, the form is one
+    // located Unsupported_Kd at the qualifier (the owner's decision O-32 (a)), never a Language error from one path: the valid Type-only
+    // (`group T`, `T.one()`) and value-only (`T: T`) forms among them. A group qualifier is never taken as a value (that ended the check
+    // in Layout). The valid form without the Type binds.
+    [Theory]
+    [InlineData("struct T\n    public group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
+    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
+    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "Unsupported_Kd T")]
+    [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
+    public void AQualifierOfBothNamespacesIsUnsupported(string type, string use, string records)
+    {
+        var c = CompilationTestHelper.Parse(type + "struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\n" + use);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        c.Analyze();
+    }
+
+    // SPEC 9.6, 18.2.1 (R7-N1b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member. The value
+    // path compares only its own sources' environments, never the Type path's import of the node, so the qualifier is the located
+    // Unsupported_Kd of its class (BU-117, the owner's decision O-32 (a)), never AmbiguousBinding_Kd: where the Type path finds the
+    // member (valid) and where neither path does (invalid).
+    [Theory]
+    [InlineData("N.m()")]
+    [InlineData("N.k()")]
+    public void AQualifierOpenedFromTwoInstantiationsIsUnsupported(string use)
+    {
+        var c = CompilationTestHelper.Parse("alias Box<i32>\nalias Other<i64>\nstruct Box<T>\n    public struct N\n        public func m() -> i32 => 1\n" +
+            "struct Other<T>\n    public func N() -> i32 => 2\nfunc g() -> i32 => " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal("Unsupported_Kd N", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+    }
+
+    // SPEC 9.6, 6.1 (PLAN G481 (3)): a group qualifier that failed selects no member, as a failed struct qualifier does; the scope lookup
+    // is the root container's and a Kotonoha reference's, never a fallback for a failed group.
+    [Theory]
+    [InlineData("T<i32>.value", "value")]
+    [InlineData("T<i32>.one()", "one")]
+    public void AFailedGroupQualifierSelectsNoMember(string use, string member)
+    {
+        var c = CompilationTestHelper.Parse("group T\n    public let value: i32 = 1\n    public func one() -> i32 => 1\nfunc f() -> i32 => " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        var name = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == member && x.Parent is MemberAccessKoto);
+        Assert.Null(name.SymbolOf());
+    }
+
+    // SPEC 9.4.1 (PLAN G250 (4)): a value, a Function Item or a Case selected through an inaccessible Container reports the access at
+    // that Container, as a call through it does, and its struct qualifier is bound as its Type.
+    [Theory]
+    [InlineData("    group G\n        public let value: i32 = 1\n", "T.G.value", "T.G")]
+    [InlineData("    group G\n        public func one() -> i32 => 1\n", "T.G.one", "T.G")]
+    [InlineData("    enum K\n        A\n", "T.K.A", "T.K")]
+    public void AMemberThroughAnInaccessibleContainerReportsTheAccess(string members, string use, string container)
+    {
+        var c = CompilationTestHelper.Parse("struct T\n" + members + "func f()\n    let b = " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal($"InaccessibleBinding_Kd {container}", $"{issue.Code} {issue.Node}");
+        Assert.Equal("T", Qualifier(c).TypeOf()?.Symbol?.Name);
+    }
+
+    // SPEC 9.4.1 (PLAN G250 (4)): a group qualifier of an inaccessible member is bound as its Container, symbol and Type, as when the
+    // member is accessible.
+    [Theory]
+    [InlineData("group G")]
+    [InlineData("public group G")]
+    public void AGroupQualifierOfAnInaccessibleMemberIsBoundAsItsContainer(string member)
+    {
+        var c = CompilationTestHelper.Parse("group T\n    " + member + "\n        public struct Box\n            public init() => ()\nfunc f()\n    let b = T.G.Box.init()\n");
+        c.Bind();
+        var qualifier = Qualifier(c);
+        Assert.Equal((BindingSymbolKind.Container, "T"), (qualifier.SymbolOf()?.Kind, qualifier.SymbolOf()?.Name));
+        Assert.Same(qualifier.SymbolOf(), qualifier.TypeOf()?.Symbol);
     }
 
     [Fact]
@@ -183,7 +335,7 @@ public class ContainerNestingTest
         const int depth = 64;
         for (var i = 1; i <= depth; i++)
         {
-            source.Append(' ', i * 4).Append("public struct N").Append(i).Append(" {}\n");
+            source.Append(' ', i * 4).Append("public struct N").Append(i).Append('\n');
         }
 
         source.Append(' ', (depth + 1) * 4).Append("let value: T\nfunc use(value: Outer<i32>");
@@ -219,4 +371,8 @@ public class ContainerNestingTest
     }
 
     private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues) + "\n" + string.Join('\n', TestDiagnostics.Of(c));
+
+    // The written qualifier `T` of the member that f uses.
+    private static IdentifierNameKoto Qualifier(Compilation c)
+        => HirColumnsTest.Reachable(c.Kotonoha).OfType<IdentifierNameKoto>().Single(static x => x.IdentifierName == "T" && x.Parent is MemberAccessKoto);
 }

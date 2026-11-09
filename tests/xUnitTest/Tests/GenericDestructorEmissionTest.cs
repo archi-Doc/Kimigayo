@@ -64,10 +64,12 @@ public class GenericDestructorEmissionTest
     }
 
     // SPEC 16.3.1, 15.1.5: the general rules judge the whole destruction receiver under its exclusive access (DECISIONS BU-15): a
-    // shared borrow is a helper borrow, and a Move, Copy, exclusive acquisition, assignment or uniq/Self argument is their record.
+    // shared borrow is a helper borrow, and a Move, Copy, exclusive acquisition, assignment or uniq/Self argument is their record. A
+    // program whose receiver uses are shared is accepted, a Field read through the helper borrow and a `ref/Self` method call included.
     [Theory]
     [InlineData("let whole = self@ref\n        Support.see(whole)", null)]
     [InlineData("Support.see(self)", null)]
+    [InlineData("let whole = self@ref\n        let n = whole.n\n        Support.see(self@ref)\n        let m = self.look()", null)]
     [InlineData("Support.take(self@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("Support.take(self)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("Support.sink(self@move)", DiagnosticCode.ExclusivePathTake_Kd)]
@@ -80,6 +82,7 @@ public class GenericDestructorEmissionTest
             struct Owner
                 var n: i32
                 public init() => self.n = 0
+                public func look(self: ref/Self) -> i32 => self.n
                 drop
                     {{use}}
             group Support
@@ -89,6 +92,7 @@ public class GenericDestructorEmissionTest
             ()
             """);
         Assert.Equal(code is { } expected ? [expected] : [], c.Binding.Issues.Select(static x => x.Code));
+        Assert.Equal(code is null, c.Accepts);
     }
 
     [Fact]

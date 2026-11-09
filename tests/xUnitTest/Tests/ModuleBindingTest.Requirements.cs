@@ -108,8 +108,8 @@ public partial class ModuleBindingTest
         var item = valid ? "i32" : "string";
         var library = form switch
         {
-            0 => "public struct Target\n    [2 of " + item + "] is Copy",
-            1 => "public struct Target<T>\n    [2 of T] is Copy",
+            0 => "public struct Target\n    " + item + " is Copy",
+            1 => "public struct Target<T>\n    T is Copy",
             2 => "public struct Target<T>\n    i32 is T",
             _ => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic contract R\n    Source.Origin.Item is Copy\npublic struct Target\n    Self is R",
         };
@@ -118,7 +118,7 @@ public partial class ModuleBindingTest
         if (form == 4)
         {
             library = "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item;
-            consumer = "struct Target\n    [2 of Source.Origin.Item] is Copy\n" + consumer;
+            consumer = "struct Target\n    Source.Origin.Item is Copy\n" + consumer;
         }
 
         library = "public group Api\n    " + library.Replace("\n", "\n    ", StringComparison.Ordinal);
@@ -190,8 +190,8 @@ public partial class ModuleBindingTest
     [InlineData(true, true)]
     public void ImportedClosedFunctionIdentityControlsTypeFormation(bool defaults, bool valid)
     {
-        var library = "public group Api\n    public struct Target\n        () -> bool is " + (valid ? "()" : "(())") + " -> bool";
-        const string consumer = "group Consumer\n    func take<T>() => ()\n    func call() => take<Target>()";
+        const string library = "public group Api\n    public struct Target<T>\n        T is () -> bool";
+        var consumer = "group Consumer\n    func take<T>() => ()\n    func call() => take<Target<" + (valid ? "()" : "(())") + " -> bool>>()";
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         VerifyImportedProjectionCertificate(c, false, valid);
     }

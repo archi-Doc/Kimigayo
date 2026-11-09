@@ -16,8 +16,8 @@ namespace Kimi.Compiler.Mir;
 /// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>), a
 /// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>) and an Adapt the operation its case selects (<see cref="Adapt"/>), the only
 /// case-dependent forms. The analyses that depend on the case (R4:
-/// A1, A4's local facts, A5) run once per view. Views are numbered as the old analysis numbers its case runs, the last binder advancing
-/// fastest, each through its admitted set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
+/// A1, A4's local facts, A5) run once per view. Views are numbered with the last binder advancing fastest, each through its admitted
+/// set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
 /// storage, so selecting views allocates nothing once it has held the widest body's binders.</summary>
 /// <param name="types">The Type context of the bodies, which interns the case Types.</param>
 internal sealed class MirCases(TyCtxt types)
@@ -34,6 +34,13 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="body">The body.</param>
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
+
+    /// <summary>Gets every view of a body, the one form of "every view" of its problems and verdicts (<see cref="MirProblem"/>'s views):
+    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count by
+    /// <see cref="PairBinder.CaseBound"/> (64), and the count is at least 1, a product from 1 of non-empty admitted sets.</summary>
+    /// <param name="body">The validated body.</param>
+    /// <returns>The views, bit i for view i.</returns>
+    internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
 
     /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
     /// <param name="body">The body.</param>
@@ -57,6 +64,22 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="type">The input's Type.</param>
     /// <returns>Whether the input is reserved.</returns>
     internal static bool Reserves(MirBody body, BoundType? type) => MirTypes.IsExclusive(type) || Binder(body, type) >= 0;
+
+    /// <summary>Gets the source Type of an Adapt as its body states it: its source token's (the constant of its second operand), which each
+    /// reader closes, under a view (<see cref="Adapt"/>) or in an item's instance, before <see cref="Operation"/>.</summary>
+    /// <param name="body">The Adapt's body.</param>
+    /// <param name="adapt">An Adapt of the body.</param>
+    /// <returns>The source token's Type.</returns>
+    internal static BoundType AdaptSource(MirBody body, in MirRvalue adapt) => body.Consts[body.Operands[adapt.Start + 1].Arg].Type;
+
+    /// <summary>Gets the operation an Adapt selects between its two Types, each closed by its reader (SPEC 8.14, 13.5.3): the one Binding
+    /// selects (<see cref="TyCtxt.Adaptation"/>), as a shorthand where the Adapt's bit says so.</summary>
+    /// <param name="source">The closed source Type (<see cref="AdaptSource"/>).</param>
+    /// <param name="target">The closed target Type.</param>
+    /// <param name="adapt">The Adapt.</param>
+    /// <returns>The operation; None where none is selected.</returns>
+    internal static ConversionBinding Operation(BoundType source, BoundType target, in MirRvalue adapt)
+        => TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
 
     /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
     /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
@@ -128,8 +151,7 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The views, bit i for view i.</returns>
     internal ulong Views(MirBody callee, Subst? subst)
     {
-        var count = Count(callee);
-        var views = ulong.MaxValue >> (64 - (int)count);
+        var (count, views) = (Count(callee), Every(callee));
         var weight = 1L; // A digit's weight in a view's number: the last binder advances fastest.
         for (var b = callee.Binders.Count - 1; b >= 0 && subst is not null; b--)
         {
@@ -188,9 +210,9 @@ internal sealed class MirCases(TyCtxt types)
     internal MirRvalue Adapt(in MirRvalue adapt, out ConversionBinding operation)
     {
         var operands = this.Body.Operands;
-        var source = this.Type(this.Body.Consts[operands[adapt.Start + 1].Arg].Type);
+        var source = this.Type(AdaptSource(this.Body, adapt));
         var target = this.Type(adapt.Type!);
-        operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
+        operation = Operation(source, target, adapt);
         return operation switch
         {
             ConversionBinding.None => adapt,

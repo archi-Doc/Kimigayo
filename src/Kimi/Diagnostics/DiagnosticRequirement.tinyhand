@@ -103,8 +103,8 @@
     Phrase="'open' modifier"
 
   + Name="Syntax.Decoration"
-    Description="the declaration takes no modifier or attribute"
-    Phrase="modifier or attribute"
+    Description="the declaration takes no modifier"
+    Phrase="modifier"
 
   + Name="Syntax.ReceiverParameter"
     Description="the receiver parameter is declared once, as self, without rename or default, in a struct or Contract"
@@ -128,10 +128,10 @@
 
   + Name="Syntax.ConstructorHeader"
     Description="init takes an access modifier and parameters only"
-    Phrase="Type parameters, result Type, attribute or non-access modifier on init"
+    Phrase="Type parameters, result Type or non-access modifier on init"
 
   + Name="Syntax.SpecializationHeader"
-    Description="the specialization names Type arguments and takes no modifier, attribute or Origin list"
+    Description="the specialization names Type arguments and takes no modifier"
     Phrase="specialization header"
 
   + Name="Syntax.BaseList"
@@ -607,9 +607,6 @@
   + Name="Ownership.Unsupported"
     Description="the operation lies inside the analyzed subset"
 
-  + Name="Ownership.ExpansionLimit"
-    Description="the deferred cleanup expansion stays within its limit"
-
   + Name="Ownership.ComparisonLoanConflict"
     Description="the operation does not conflict with an active loan"
 
@@ -652,6 +649,9 @@
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"
 
+  + Name="Binding.TypeHeightLimit"
+    Description="every Type the program forms stays within the implementation's height limit"
+
   + Name="Emission"
     Description="generation succeeds"
 
@@ -682,9 +682,6 @@
 
   + Name="Binding.UnprovenOverrideCondition"
     Description="the derived Type and original slot's premises imply the override's containing condition"
-
-  + Name="Binding.VirtualEffectBound"
-    Description="each original and override body satisfies the original slot's public effect bounds"
 
   + Name="Binding.BaseCall"
     Description="base names a direct instance call using the lexical derived receiver"

@@ -43,7 +43,7 @@ public sealed class TryKoto : MatchKoto
 
     internal ReturnKoto Failure { get; }
 
-    [Transitional("R6", Reason = "Binding plan flag forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Binding plan flag forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal bool SemanticsIndexed
     {
         get => HirTables.PlanOf(this).Flag;
@@ -65,7 +65,8 @@ public sealed class TryKoto : MatchKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("try ");
+        builder.Append(TokenKind.Try.ToText());
+        builder.Append(' ');
         this.Expression.WriteTo(ref builder);
     }
 
@@ -85,7 +86,7 @@ public sealed class TryKoto : MatchKoto
             return new(ref reader, span, KotoKind.CasePattern, string.Empty, [reference]);
         }
 
-        var binding = new SyntaxFormKoto(ref reader, new(span.Start, 0), KotoKind.BindingPattern, "let ", [Name(ref reader, span, name)]);
+        var binding = new SyntaxFormKoto(ref reader, new(span.Start, 0), KotoKind.BindingPattern, TokenKind.Let.ToText(), [Name(ref reader, span, name)]);
         var payload = new SyntaxFormKoto(ref reader, span, KotoKind.TuplePattern, "(", [binding], suffix: ")");
         return new(ref reader, span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);
     }

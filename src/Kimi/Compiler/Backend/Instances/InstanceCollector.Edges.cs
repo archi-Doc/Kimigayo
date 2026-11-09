@@ -13,7 +13,9 @@
 // without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
 // site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault.
+// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault;
+// a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
+// G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -54,7 +56,7 @@ internal sealed partial class InstanceCollector
             var (at, runtime) = this.sites[i];
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, block.Terminator)
+                ? this.Edge(program, item, body, at.Block, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -70,9 +72,8 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
-    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts and a
-    // LegacyRow item's declared needs (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a
-    // fault.
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -89,9 +90,6 @@ internal sealed partial class InstanceCollector
                 return;
             case MonoKind.DropGlue:
                 this.DestructionTargets(program, item, site, type);
-                return;
-            case MonoKind.LegacyRow:
-                this.RowTargets(program, item, site, type);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
@@ -116,15 +114,17 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
     // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
-    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue; an intrinsic's Type arguments uses where its row's
+    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
+    // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
     // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
-    private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
+    private int Edge(MirProgram program, int item, MirBody body, int block, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.Glue(item, subject, body.TypeOf(call.Place)!);
+            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed || Elided(program, body, block, this.Set.Items[item].View) ||
+                (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
         }
 
         if (callee.Kind == MirCalleeKind.Value)
@@ -162,7 +162,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Arg > 0)
         {
-            return program.Callee(callee) is { } template ? this.Admit(item, subject, template, subst) : -1;
+            return this.Admit(item, subject, program.Callee(callee)!, subst);
         }
 
         return this.Implementation(program, item, subject, callee.Symbol!, subst);
@@ -201,6 +201,11 @@ internal sealed partial class InstanceCollector
         return row.Target switch
         {
             IntrinsicTarget.None => -1,
+
+            // Temporary, removed with LegacyRuntimeHelpers.WriterKind, at R8-W2 (only the owning adapter's arms carry `amount + pending`
+            // and the heap hint): the runtime reserves a FixedBuffer's (kind 0) or a HeapBuffer's (kind 1) writer through its own arms,
+            // never through the reserve body, so that body is no target of the adapter (DECISIONS R8-M16).
+            IntrinsicTarget.Witness when LegacyRuntimeHelpers.WriterKind(argument) is 0 or 1 => -1,
             IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
             IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
             IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
@@ -213,24 +218,26 @@ internal sealed partial class InstanceCollector
     private int Descriptor(int item, SourceRef subject, BoundType payload)
         => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload, null);
 
-    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
-    // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
-    // creation does; any other operation none.
+    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (MirCases.Operation between its source
+    // token's Type, MirCases.AdaptSource, and its target, each closed in the instance, as MirCases.Adapt reads them under a view) creates
+    // an object targets its payload's descriptor, as every creation does; any other operation none.
     private int Adaptation(int item, SourceRef subject, MirBody body, in MirRvalue adapt)
     {
-        var token = body.Operands[adapt.Start + 1];
-        if (this.In(item, subject, body.Consts[token.Arg].Type) is not { } source || this.In(item, subject, adapt.Type!) is not { } target)
+        if (this.In(item, subject, MirCases.AdaptSource(body, adapt)) is not { } source ||
+            this.In(item, subject, adapt.Type!) is not { } target)
         {
             return -1;
         }
 
-        var operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
-        return operation == ConversionBinding.ObjectCreation ? this.Descriptor(item, subject, target.Components[0]) : -1;
+        return MirCases.Operation(source, target, adapt) == ConversionBinding.ObjectCreation
+            ? this.Descriptor(item, subject, target.Components[0])
+            : -1;
     }
 
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
     // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body, a Dictionary from none's
-    // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124);
+    // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124),
+    // a nonempty Array literal's growArray's (Declared);
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
@@ -269,7 +276,10 @@ internal sealed partial class InstanceCollector
             return (MirAggregateKind)rvalue.Op switch
             {
                 MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
-                _ when closed.Kind == BoundTypeKind.Dictionary => this.Declared(program, item, subject, LegacyRuntimeHelpers.Construction, null),
+                _ when closed.Kind == BoundTypeKind.Dictionary =>
+                    this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.DictionaryStorageInitialize)!, null),
+                MirAggregateKind.Array when rvalue.Count > 0 =>
+                    this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.StorageGrowArray)!, null),
                 _ => -1,
             };
         }

@@ -31,22 +31,22 @@ public sealed partial class Binding
 
     // The fixed width of an integer or wrapping integer Type that @bits accepts: 32 or 64, never a platform-dependent or
     // 128-bit one (SPEC 13.5.4).
-    private static int BitWidth(BoundType type, int pointerWidth)
+    private static int BitWidth(BoundType type)
     {
         if (!type.HasIntegerArithmetic || type.Underlying.Name is "isize" or "usize")
         {
             return 0;
         }
 
-        var width = ScalarTypes.Width(type, pointerWidth);
+        var width = ScalarTypes.Width(type);
         return width is 32 or 64 ? width : 0;
     }
 
     // SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
-    // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.
+    // or generic, without a check. A direct integer literal is wrapped at compile time from its exact value; it never fails.
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
-        var target = this.BindType(argument, scope);
+        var target = this.BindType(argument, scope) is { } bound ? this.SubstituteIdentityPremises(bound, scope) : null; // SPEC 8.2.3, as @Type's.
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var number = KotoHelper.SignedNumber(operand, out var negative);
         if (operation != Constants.WrapOperation)
@@ -56,24 +56,16 @@ public sealed partial class Binding
 
         if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
         {
-            var width = ScalarTypes.Width(target, this.compilation.PointerWidth);
-            if (width == 0)
-            {
-                // A generic U: the literal must fit every instance, so it is an ordinary generic literal and no wrapping happens.
-                conversion.ConversionBinding = ConversionBinding.Literal;
-                Complete(conversion.Right, target);
-                return Complete(conversion, this.BindNode(conversion.Left, scope, target) is null ? null : target);
-            }
-
             if (!number.TryGetIntegerMagnitude(out var magnitude))
             {
                 return this.Fail(conversion, BindingFailure.InvalidLiteral);
             }
 
-            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
+            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant; a U whose instance decides
+            // N (SPEC 8.7.4) keeps it modulo 2^128, whose low N bits are each instance's (ScalarTypes.Normalize).
             var payload = negative ? (UInt128)0 - magnitude : magnitude;
             Complete(conversion.Right, target);
-            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), width), ConversionBinding.Wrap);
+            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), ScalarTypes.Width(target)), ConversionBinding.Wrap);
         }
 
         var source = this.BindNode(conversion.Left, scope);
@@ -118,7 +110,7 @@ public sealed partial class Binding
                 var bits = ScalarTypes.Normalize(unchecked((Int128)(negative ? (UInt128)0 - magnitude : magnitude)), width);
                 folded = width == 32 ? (Int128)unchecked((uint)(long)bits) : (Int128)unchecked((long)bits);
             }
-            else if (!number.IsInteger && BitWidth(target, this.compilation.PointerWidth) is var width && width != 0)
+            else if (!number.IsInteger && BitWidth(target) is var width && width != 0)
             {
                 // The floating literal is rounded once to the floating-point Type of the target's width, and its bits are read as U.
                 if (!ScalarTypes.TryFloatLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
@@ -158,7 +150,7 @@ public sealed partial class Binding
 
         var sourceFloating = source.IsFloatingPoint;
         var targetFloating = target.IsFloatingPoint;
-        if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source, this.compilation.PointerWidth) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
+        if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
         {
             return this.Fail(conversion, BindingFailure.InvalidBitConversion);
         }
@@ -175,7 +167,7 @@ public sealed partial class Binding
     {
         var number = KotoHelper.SignedNumber(operand, out var negative)!;
         if (!number.TryGetTruncatedMagnitude(out var magnitude) ||
-            !ScalarTypes.TryLiteral(target, magnitude, negative, this.compilation.PointerWidth, out var bits))
+            !ScalarTypes.TryLiteral(target, magnitude, negative, out var bits))
         {
             this.Fail(operand, BindingFailure.InvalidLiteral);
             for (var node = conversion.Left; !ReferenceEquals(node, operand); node = ((UnaryKoto)node).Operand)

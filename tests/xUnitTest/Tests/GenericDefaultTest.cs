@@ -4,6 +4,7 @@ using System.Text;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -269,7 +270,7 @@ public class GenericDefaultTest
         {
             var c = MinimalEmissionTest.Analyze(Verification.VerificationWorkloads.GenericDefaults(axis, count));
             Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-            Assert.Equal(axis == "depth" ? 2 * (count + 1) : count, c.AnalyzeLegacyOwnership().Bodies.Max(static x => x.DefaultContexts?.Count ?? 0));
+            Assert.Equal(axis == "depth" ? 2 * (count + 1) : count, c.BuildMir().Bodies.ToArray().Max(static x => x.Scopes.ToArray().Count(static s => s.Kind == MirScopeKind.Inlined)));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));

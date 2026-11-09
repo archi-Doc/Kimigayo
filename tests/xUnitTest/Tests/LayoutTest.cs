@@ -520,39 +520,40 @@ public partial class LayoutTest
         Assert.Equal(new[] { 0, 8 }, value.Layout.FieldOffsets.ToArray());
     }
 
+    // SPEC 4.8.6, 4.9.5; IMPL 21.1.3's Handles (R8-R1b): a sequence handle is a row, 0 high, laid out as its one component, the library
+    // struct that states its words: the data pointer, then the length and further isize words, the same record for every element. Its
+    // length word, which a Len reads, is the component's `length` (a Dictionary's live count, DECISIONS R5-M124).
     [Theory]
-    [InlineData(BoundTypeKind.Slice, 2)]
-    [InlineData(BoundTypeKind.Array, 3)]
-    [InlineData(BoundTypeKind.Dictionary, 7)]
-    public void SequenceHandlesArePointerAlignedWordsForEveryElement(BoundTypeKind kind, int words)
+    [InlineData("Slice<i32>", "Slice<bool>", KimiDeclarationId.SliceRepr, 2, 8)]
+    [InlineData("Array<i32>", "Array<string>", KimiDeclarationId.ArrayRepr, 3, 8)]
+    [InlineData("Dictionary<string, i32>", "Dictionary<i32, bool>", KimiDeclarationId.DictionaryStorageHandle, 7, 24)]
+    public void SequenceHandlesArePlacedAsTheirComponentsForEveryElement(string type, string other, KimiDeclarationId id, int words, int length)
     {
-        // SPEC 4.8.6, 4.9.5: the buffer pointer, then the length and further words.
-        BoundType[] components = kind == BoundTypeKind.Dictionary ? [BoundType.String, BoundType.I32] : [BoundType.I32];
-        var sequence = new BoundType("s", kind, components: components);
-        var value = Layout.Row(sequence);
-        var storage = "{ [0 x i64], [" + (words * 8) + " x i8] }";
+        var c = CompilationTestHelper.BindSuccess("func probe(a: " + type + ", b: " + other + ") => ()");
+        var parameters = Parameters(c);
+        var value = c.Layout.Of(parameters[0]).Value!;
+        var storage = "{ ptr" + string.Concat(Enumerable.Repeat(", i64", words - 1)) + " }";
         Assert.Equal((storage, words * 8, 8, words * 8, storage, "ptr"), Row(value));
         Assert.Equal(Enumerable.Range(0, words).Select(static x => x * 8), value.Layout.FieldOffsets.ToArray());
-        Assert.Same(value, Layout.Row(new BoundType("s", kind, components: [.. components.Select(static _ => BoundType.Boolean)])));
+        Assert.Same(value, c.Layout.Of(parameters[1]).Value);
+        var component = c.Layout.Component(parameters[0])!;
+        Assert.Equal(id, component.Symbol!.LibraryDeclaration);
+        Assert.Same(value, c.Layout.Of(component).Value);
+        Assert.Equal(length, value.Layout.FieldOffsets.Span[AdtDef.IndexOf(component, "length")]);
+        Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(Wrap(c, parameters[0], 64)).Outcome);
+        Assert.Equal(Layout.Outcome.DepthLimit, c.Layout.Of(Wrap(c, parameters[0], 65)).Outcome);
     }
 
-    // SPEC 4.7.3, 22.2 (DECISIONS R5-M124): each handle row names its length word, which a Len reads: a Slice's and an Array's Field 1, a
-    // Dictionary's DictionaryStorage.Handle Field `length`, its live count; dictionaryStorage's {address, stride} Tuple lies at 0 and 8, the
-    // words P2a's DictionaryLayout kernel stores.
+    // IMPL 21.1.3 (DECISIONS R8-M1, O-43 (A)): Storage.StringRepr and the runtime's string row are a lasting pair, held equal here.
     [Fact]
-    public void TheHandlesLengthWordsAndTheDictionaryLayoutTupleAreTheKernelsWords()
+    public void StringReprIsPlacedAsTheStringRow()
     {
-        var c = MirBuildTest.Compile("func f(entries: uniq/Dictionary<i32, i64>) => entries.reserve(1)\n");
-        var dictionary = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
-            .Select(static x => TyCtxt.Layer(x, out var below, out _) == HirPlaceKind.Deref ? below! : x)
-            .First(static x => x.Kind == BoundTypeKind.Dictionary && !x.ContainsParameter);
-        var handle = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!.Components[0];
-        Assert.Equal(AdtDef.IndexOf(handle, "length"), Layout.LengthWord(dictionary));
-        Assert.Equal(3, Layout.LengthWord(dictionary));
-        Assert.Equal(1, Layout.LengthWord(new BoundType("a", BoundTypeKind.Array, components: [BoundType.I32])));
-        Assert.Equal(1, Layout.LengthWord(new BoundType("s", BoundTypeKind.Slice, components: [BoundType.I32])));
-        var tuple = c.Types.Tuple([c.Types.Pointer(dictionary), BoundType.ISize]);
-        Assert.Equal(new[] { 0, 8 }, c.Layout.Of(tuple).Value!.Layout.FieldOffsets.ToArray());
+        var c = CompilationTestHelper.BindSuccess("()");
+        var placed = c.Layout.Of(c.Library.GetSymbol(KimiDeclarationId.StringRepr)!.Type!);
+        Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
+        var (layout, row) = (placed.Value!.Layout, Layout.Row(BoundType.String).Layout);
+        Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));
+        Assert.Equal(row.FieldOffsets.ToArray(), layout.FieldOffsets.ToArray());
     }
 
     [Fact]
@@ -566,8 +567,7 @@ public partial class LayoutTest
         Assert.Equal(0, value.Layout.FieldOffsets.Length);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M121): borrowStorageUniq over a UniqSlice runs the Array's BorrowStorage helper, which reads the buffer and the
-    // length at an Array handle's words 0 and 8: a UniqSlice's storage and length lie there, its Loan zero-sized.
+    // SPEC 22.2: a UniqSlice's storage and length lie at words 0 and 8, an Array handle's and a SliceRepr's, its Loan zero-sized.
     [Fact]
     public void AUniqSlicesStorageAndLengthLieAtTheArrayHandlesWords()
     {
@@ -584,7 +584,7 @@ public partial class LayoutTest
     // compilation, an internal error.
     [Fact]
     public void ATypeWithoutARowIsAnInternalError()
-        => Assert.Throws<InvalidOperationException>(() => new Layout().Of(BoundType.Range));
+        => Assert.Throws<InvalidOperationException>(() => CompilationTestHelper.BindSuccess("()").Layout.Of(BoundType.Range));
 
     // SPEC 5.7, R5-M37 (DECISIONS BU-24): a raw Origin is no part of a layout; the memo is keyed by the interned Type, so a Type that
     // differs in a raw Origin alone is its own entry with the same layout.

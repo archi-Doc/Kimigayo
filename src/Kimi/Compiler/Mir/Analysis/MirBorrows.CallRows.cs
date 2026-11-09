@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -12,7 +13,8 @@ namespace Kimi.Compiler.Mir;
 // Output: Plan, in reused scratch: the result's kinds by operand position (resultKinds) and whether it is untied, the contract's
 // retention whose Writes the Call stores through (planned), its slots' operand positions (slotPositions) and the outputs the call writes only
 // where their receiver refers to (its referent stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a
-// callee's contract; Broken, a Value call whose declared signature does not number its operands; and PD13's view hold (held, R4-M148),
+// callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a raw parameter's covering inputs
+// by position (covering); and PD13's view hold (held, R4-M148),
 // which MirBorrows.Reports applies.
 // - A callee's contract: its records, slots to positions (Position: a Closure callee's input 0, its call receiver, at the callee operand,
 //   position call.Count, where TyCtxt.HasReceiverInput says the contract has it; every other slot as MirCallee.Position maps it), and an
@@ -24,6 +26,10 @@ namespace Kimi.Compiler.Mir;
 //   reachable Call before the checks replay records any problem; Run resets it per view. Removal: per-case callee acquisition (PLAN G13).
 // - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Plan maps no record of it and
 //   the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
+// - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a raw parameter's own stated layer addresses,
+//   Binding's reading of its members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). Only an
+//   argument A5 proves null (its value the empty set; PLAN G598, MirBorrows.Calls' Keep) drops its own first step, E; a null it cannot
+//   prove at the store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183).
 // - P9 (SPEC 7.2.3, R4-M93): a default template's call keeps each input's Content in its untied result: its inputs are the prologue's
 //   shared borrows of the slots, and each input's Content, its slot's value, reaches the result; no store (the omitting call's own
 //   records apply the default's raw stores, SPEC 7.2.3, 5.2.1 Retained dependencies; R4-M116 PQ-5).
@@ -33,6 +39,8 @@ namespace Kimi.Compiler.Mir;
 // Limit as a located Unsupported_Kd at the call (R4-M51, MirBorrows.Locations).
 internal sealed partial class MirBorrows
 {
+    private readonly List<int> covering = []; // By operand position: the inputs whose storage the store being kept also writes (Cover).
+    private readonly List<BoundType> coverInputs = []; // Cover's scratch: the callee's instantiated inputs.
     private RetentionKind[] resultKinds = []; // A Call's result kinds by operand position (Plan).
     private int[] slotPositions = []; // A Call's contract slots' operand positions (Plan).
     private int[] referentStores = []; // A Call's referent stores by operand position (Plan; CallRetention.ReferentStores).
@@ -105,6 +113,50 @@ internal sealed partial class MirBorrows
         this.held |= callee is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var closure] } &&
             types.ClosureReceiverIn(closure) == SemanticsKind.Ref;
         return call.Count;
+    }
+
+    // G338 (SPEC 5.2.1 "storage a pointer addresses `during o` is covered by the Loans of `o`", 5.7's table): into `covering`, the operand
+    // positions of the borrows a raw parameter's own stated layer belongs to among the call's inputs (TyCtxt.LayerMembers), whose holders
+    // the store through that layer writes (Referents, Writes) beside its argument's. None unless each member is an exclusive input's outer
+    // borrow: a slot keeper's or a shared member's storage has no first step here, so W stays its argument's. A Value callee's declaration
+    // is that of the Function Item it calls (TyCtxt.CalledItem), under its Item substitution (TyCtxt.SubstOfItem; SPEC 7.7.4, 15.6.4
+    // "for direct and indirect calls alike"; PLAN G584). None for another Value callee: a Closure's or an erased value's written Origin
+    // names an enclosing one, whose storage the call's inputs need not cover. A keeper only the declaring Type holds is no input of the call.
+    private void Cover(in MirTerminator call, int output, int count)
+    {
+        this.covering.Clear();
+        var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
+        var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
+            : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
+        if (symbol is null || TyCtxt.Signature(symbol, null, output, out _) is not { Semantics: SemanticsKind.Raw })
+        {
+            return;
+        }
+
+        this.coverInputs.Clear();
+        for (var slot = 0; slot < count; slot++)
+        {
+            var declared = TyCtxt.Signature(symbol, null, slot, out _);
+            if ((declared is null || subst is null ? declared : types.ReadableInstance(declared, subst)) is not { } input)
+            {
+                return;
+            }
+
+            this.coverInputs.Add(input);
+        }
+
+        var complete = types.LayerMembers(this.coverInputs[output], CollectionsMarshal.AsSpan(this.coverInputs), this.members);
+        foreach (var (input, referent, exclusive) in this.members)
+        {
+            complete &= exclusive && this.coverInputs[input] is { Semantics: SemanticsKind.Uniq, Components: [var to] } && ReferenceEquals(to, referent);
+            this.covering.Add(this.slotPositions[input]);
+        }
+
+        this.members.Clear();
+        if (!complete)
+        {
+            this.covering.Clear();
+        }
     }
 
     // G136 (R4-M148): whether a Value call's declared signature numbers inputs other than its operands, a broken contract.

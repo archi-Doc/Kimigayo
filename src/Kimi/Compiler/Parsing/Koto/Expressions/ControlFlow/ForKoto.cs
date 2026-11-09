@@ -29,7 +29,7 @@ public sealed class ForKoto : ExpressionKoto
     private readonly bool[]? mutableSlots;
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
-    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Iteration plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal SubjectMode Mode
     {
         get => (SubjectMode)HirTables.PlanOf(this).Mode;
@@ -37,7 +37,7 @@ public sealed class ForKoto : ExpressionKoto
     }
 
     /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
-    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Iteration plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal InvocationKoto? EntryCall
     {
         get => HirTables.PlanOf(this).Second as InvocationKoto;
@@ -45,7 +45,7 @@ public sealed class ForKoto : ExpressionKoto
     }
 
     /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
-    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Iteration plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundIteration? Iteration
     {
         get => HirTables.PlanOf(this).Plan as BoundIteration;
@@ -110,7 +110,7 @@ public sealed class ForKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(Constants.ForKeyword);
+        builder.Append(TokenKind.For.ToText());
         builder.AppendSpace();
         if (this.IsTupleBinding)
         {
@@ -126,7 +126,7 @@ public sealed class ForKoto : ExpressionKoto
 
             if (this.IsMutableSlot(i))
             {
-                builder.Append(Constants.VarKeyword);
+                builder.Append(TokenKind.Var.ToText());
                 builder.AppendSpace();
             }
 
@@ -139,7 +139,7 @@ public sealed class ForKoto : ExpressionKoto
         }
 
         builder.AppendSpace();
-        builder.Append(Constants.InKeyword);
+        builder.Append(TokenKind.In.ToText());
         builder.AppendSpace();
         this.Iterable.WriteTo(ref builder);
         this.Body.WriteBranchTo(ref builder);

@@ -75,6 +75,7 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(shape.InputOrigins);
         var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
+        var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
         try
         {
             var evaluation = new CallEvaluation
@@ -91,6 +92,7 @@ public sealed partial class Binding
                 Inputs = inputs,
                 Evaluated = evaluated,
                 Operations = operations,
+                ChildSlices = childSlices,
                 OperationStride = 1,
                 AllTypes = [],
                 AllLengths = [],
@@ -111,6 +113,9 @@ public sealed partial class Binding
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
             {
+                // SPEC 6.3.6: an omitted base selection's Unknown premise means no implicit constructor, not 10.1's obligation.
+                CallSelection.Selected when evaluated[winner].PremiseUnknown =>
+                    new(OmittedBaseOutcome.Unproven, Cause: evaluated[winner].ConstraintFailure?.Clause),
                 CallSelection.Selected => new(OmittedBaseOutcome.Selected, (FunctionKoto)evaluated[winner].Symbol!.Declaration),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
@@ -133,6 +138,7 @@ public sealed partial class Binding
             this.activeRequirementContract = requirementContract;
             (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.indexScratch.Return(childSlices);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
@@ -173,7 +179,7 @@ public sealed partial class Binding
 
         // An invalid base graph, including a cycle, or base clause Constraints that are not Proven leave the decision resting on the
         // base clause, whose own check reports them.
-        var clause = structure.Bases[0];
+        var clause = structure.BaseClause!;
         var constructor = structure.SynthesizedConstructor!;
         var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
         this.implicitConstructorDecisions.Add(structure, selection);
@@ -263,7 +269,9 @@ public sealed partial class Binding
     }
 
     // SPEC 6.3.6: the declaration-time decisions must hold after bodies. The selection is judged again, and an existing synthesized
-    // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause.
+    // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause. A signature kept Proven
+    // stays Proven here (DeclQueryKind.SignatureVerdict): a declaration that failed after the bodies is seen through its own record, not
+    // through a disagreement of this selection (PLAN G375).
     private void RevalidateImplicitConstructors()
     {
         foreach (var constructor in this.judgedConstructors)
@@ -273,7 +281,7 @@ public sealed partial class Binding
             if (this.SelectOmittedBaseConstructor(constructor) != decision ||
                 (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
-                this.Fail(structure.Bases[0], BindingFailure.Unsupported);
+                this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
             }
         }
     }

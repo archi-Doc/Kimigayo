@@ -44,17 +44,6 @@ public class ReturnedBorrowAncestryTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func change(p: uniq/Counter, q: uniq/Counter)\n    " + expression + ".value += 1\n    p.value += 1");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "change");
-        var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call && body.CallAt(i)?.Target.Name == "second");
-        var inputs = body.CallInputs(call).ToArray();
-        var expected = Assert.Single(inputs, x => x.Parameter == 1).Entry;
-        body.OperationStorage[call] = body.Operations[call] with { Source = body.Function };
-        foreach (var input in inputs)
-        {
-            body.OperationStorage[input.Entry] = body.Operations[input.Entry] with { Source = body.Function };
-        }
-
-        Assert.Equal(expected, body.ResultArgument(call));
     }
 
     [Fact]

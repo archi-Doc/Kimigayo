@@ -14,6 +14,18 @@ namespace XunitTest;
 /// column; the Transferable column waits for unit 2b-4.</summary>
 public class ComponentSummaryTest
 {
+    private const string SiteNodes = "contract Tree\n    associate Child is Tree\ncontract OTree: Tree, Owned\n    Self.(Tree).Child is OTree\nstruct TreeNode<T>\n    T is Tree\n    let v: T\n    let kids: Array<TreeNode<T.(Tree).Child>>\n";
+
+    private const string SiteCells = "struct Plain\n    let x: i32\nstruct OnlyCopy<T>\n    T is Copy\nfunc two<A, B>(a: A) -> ()\n    A is Owned\n    ()\n";
+
+    private const string SiteContract = "struct Plain\n    let x: i32\ncontract V\n    associate A is Owned\n    associate B is Copy\n";
+
+    private const string OwnerPair = "contract Has\n    associate Out\nstruct EP<s/T>\n    s is owner\n    T is Has\n    let v: s/T\n";
+
+    private const string ManyWide = "contract Many\n    associate A1 is Deep\nstruct Wide<T>\n    T is Many\n";
+
+    private const string InspectWide = "func inspect<U>(x: Wide<U>)\n    U is Many and Owned\n    need(x@move)\n";
+
     private const string Prelude =
         "struct Item\n    let x: i32\nopen struct Base\n    let x: i32\nstruct Box<T>\n    let value: T\nstruct Holder\n    let item: rc/Item\n" +
         "struct Phantom<T>\nenum Msg\n    A(i32)\n    B(rc/Item)\nstruct Hook\n    let next: Option<obj/Hook>\n    let call: () -> ()\n" +
@@ -177,8 +189,9 @@ public class ComponentSummaryTest
     }
 
     // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
-    // (the growth guard) and in a summary's walk (Error resting on the stored Type); the conformance has its own record, and Binding ends.
-    // A deeper instance of a declaration reached through another conformance is no such growth and stays exact.
+    // (the growth guard) and in a summary's walk (Error resting on the stored Type); the binding, which stores itself inline, has its own
+    // record (SPEC 6.2, DECISIONS BU-128), and Binding ends. A deeper instance of a declaration reached through another conformance is no
+    // such growth and stays exact.
     [Theory]
     [InlineData("n1", "func inspect(a: PH<W<i32>>)\n    need(a@move)", "PH<W<(X, X)>>", "Unknown")]
     [InlineData("n2", "struct S\n    let p: PH<W<i32>>\nfunc inspect(a: S)\n    need(a@move)", "PH<W<(X, X)>>", "Error")]
@@ -194,7 +207,7 @@ public class ComponentSummaryTest
         var f = Function(c, "inspect");
         Assert.Equal(owned, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f).ToString());
         Assert.True(complete == (owned == "Proven"), id);
-        Assert.Equal(!complete, records.Contains("UnprovenConstraint_Kd Self is Has2"));
+        Assert.Equal(!complete, records.Contains("InvalidInlineLayout_Kd Has2.Out is " + binding));
         Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
     }
 
@@ -228,23 +241,34 @@ public class ComponentSummaryTest
     }
 
     // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and check
-    // meets the existing generation limits with it, as with any value of that Type, on every pipeline (DECISIONS R5-M156): each call
+    // meets the existing generation limits with it, as with any value of that Type (DECISIONS R5-M156): each call
     // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
     // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
     // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form. Since the MIR
     // decides acceptance (R6-check H5), A5's walk over the value also meets its depth bound at each call, a located OwnershipDepthLimit_Kd
-    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13).
+    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13). A value moved into
+    // `need` is destroyed only in need's instance, which is the gap, so the moved-out `c`'s Drop destroys nothing and asks no glue (PLAN
+    // G641; Q13's false record at it removed); the limit's record is where the value is destroyed: at `c`'s scope exit when it stays, at a
+    // local it is moved into.
     [Fact]
     public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
-        var c = MinimalEmissionTest.Analyze(
-            "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" + Need +
-            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
+        const string Chain = "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n";
+        var c = MinimalEmissionTest.Analyze(Chain + Need + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(
-            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | " +
-                "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move",
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move)",
             MinimalEmissionTest.Problems(c));
+        var kept = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nConsole.writeLine(\"chain\")");
+        Assert.True(kept.Binding.Result.IsComplete, Describe(kept));
+        Assert.Equal(
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()",
+            MinimalEmissionTest.Problems(kept));
+        var destroyed = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nlet d = c@move\nConsole.writeLine(\"chain\")");
+        Assert.True(destroyed.Binding.Result.IsComplete, Describe(destroyed));
+        Assert.Equal(
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let d = c@move",
+            MinimalEmissionTest.Problems(destroyed));
     }
 
     // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.
@@ -258,6 +282,42 @@ public class ComponentSummaryTest
         Assert.Equal(complete, c.Binding.Bind(BindingMode.Final).IsComplete);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.3.2, 8.3.3 Limits (DECISIONS BU-22): an exact refutation in another operand decides, for a call's check, a function reference and a
+    // conformance's verification; alone, the limit stays the stored Type's located Unsupported_Kd (the n twins). g207-conf2 is the refutation without
+    // the limit.
+    [InlineData("guard", "g207-call", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<Plain>>(x@move)\n", "UnsatisfiedConstraint_Kd: two<TreeNode<U>, OnlyCopy<Plain>>(x@move) | ...")]
+    [InlineData("guard", "g207-calln", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+    [InlineData("C5", "g207-ref", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>\n    ()\n", "UnsatisfiedConstraint_Kd: let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>", Explicit = true)]
+    [InlineData("guard", "g207-refn", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<i32>>\n    ()\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+    [InlineData("C5", "g207-conf", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is TreeNode<U>\n    associate V.B is Plain\n", "UnsatisfiedConstraint_Kd: *", Explicit = true)]
+    [InlineData("guard", "g207-conf2", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is i32\n    associate V.B is Plain\n", "UnsatisfiedConstraint_Kd: *")]
+    [InlineData("guard", "g207-confn", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is TreeNode<U>\n    associate V.B is i32\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+
+    // SPEC 8.7.3, 8.1.1: a Proven ObjectPayload makes the Type an owner Type, so it fits `s is owner`; without the premise its Semantics is unknown.
+    [InlineData("C6", "g201", OwnerPair + "struct DP<X>\n    X is Has and ObjectPayload\n    let e: EP<X>\n", "", Explicit = true)]
+    [InlineData("guard", "g201n", OwnerPair + "struct DP<X>\n    X is Has\n    let e: EP<X>\n", "UnprovenConstraint_Kd: let e: EP<X>")]
+
+    // SPEC 15.2.3, 8.3.2: `contract Deep: Owned` proves every step of a stored projection of the formal; without it the step is Unknown.
+    [InlineData("C6", "g208-2", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
+    [InlineData("C6", "g208-8", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
+    [InlineData("guard", "g208n", "contract Deep\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "UnprovenConstraint_Kd: need(x@move)")]
+    public void LimitsAndStoredProjectionsHaveTheirVerdicts(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // A row's wildcards never admit a located Unsupported_Kd, which says the form is valid (SPEC 23.1.1); only an entry naming the code does.
+    [Theory]
+    [InlineData("*: let kids: Array<TreeNode<T.(Tree).Child>>", false)]
+    [InlineData("*: * | ...", false)]
+    [InlineData("Unsupported_Kd: * | ...", true)]
+    public void AWildcardNeverAdmitsAnUnsupportedRecord(string records, bool admitted)
+    {
+        const string Program = SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n()";
+        Assert.Equal(admitted, Record.Exception(() => CompilationTestHelper.AssertRecordsAtLines("wildcard", Program, records)) is null);
     }
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(f => f.Name == name);

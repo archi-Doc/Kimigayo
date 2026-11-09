@@ -36,14 +36,15 @@ public class EffectBoundReportTest
         Assert.Null(error.Note);
         Assert.Null(error.Related);
 
-        // A mutable static beside it is also the collector's StaticStorage record at its declaration, at check on every pipeline (DECISIONS
+        // A mutable static beside it is also the collector's StaticStorage record at its declaration, at check (DECISIONS
         // R5-M82, R5-M156); P42 reverts it.
         var others = result.Diagnostics.Where(static x => x.Code != nameof(DiagnosticCode.IncompatibleContractImplementation_Kd));
         Assert.Equal(
             storage.Length == 0 ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), declarations.IndexOf(storage, StringComparison.Ordinal), storage.Length)],
             others.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
 
-        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(declarations + Main), valid: false, "Self is Sink");
+        (DiagnosticCode, SyntaxLocation)[] storages = storage.Length == 0 ? [] : [(DiagnosticCode.Unsupported_Kd, MirTargetSide.At(storage))];
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(declarations + Main), valid: false, "Self is Sink", storages);
     }
 
     // The standard bounds are library declarations: their violations offer no change to them.

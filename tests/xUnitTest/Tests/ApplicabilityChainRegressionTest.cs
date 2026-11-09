@@ -12,7 +12,7 @@ using Xunit;
 namespace XunitTest;
 
 // PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.1.2.
-public class ApplicabilityChainRegressionTest
+public partial class ApplicabilityChainRegressionTest
 {
     private const string ControlFlowDeclarations =
         "func identity<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
@@ -241,7 +241,6 @@ public class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
     [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
     [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
-    [InlineData("takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "true")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("applyArg(if c => (func [] (v) => v, x) else => (func [] (w) => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
@@ -267,6 +266,19 @@ public class ApplicabilityChainRegressionTest
         var source = ControlFlowDeclarations + use + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // The same ranking for a closure position whose result mismatches (`true`), and, as an independent failure (SPEC 23.1.2; M's Q13
+    // call on PLAN G442), A1's record where takeFn receives the join's value: no path reaches the call, and the first arm leaves its
+    // Never part unplaced (SPEC 14.10.3, 15.1.3; the owner's O-99 (a)).
+    [Fact]
+    public void AControlFlowArgumentRanksAsItsKindBesideItsUnplacedPart()
+    {
+        const string use = "takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))";
+        var source = ControlFlowDeclarations + use + "\n";
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UninitializedPlace_Kd), use), (nameof(DiagnosticCode.TypeMismatch_Kd), "true")],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the
@@ -346,6 +358,98 @@ public class ApplicabilityChainRegressionTest
         var source = ControlFlowDeclarations + "func pair(value: (i32, i32)) -> () => ()\nfunc pair(value: (i64, i64)) -> () => ()\n" + use + "\n";
         var found = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
         Assert.Equal([(code, at), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "ready")], found);
+    }
+
+    // SPEC 23.1.2, 10.1 (DECISIONS U4b, PLAN G421): a call or Case construction that stops before some of its parts (a value call's
+    // failed callee, explicit Type arguments, arity or label, an earlier failed argument; a construction's earlier failed payload) binds
+    // each of them on its own, a nested call that defers there included, outside its consultation: its own problems are reported, and
+    // the call's own record (a payload callee's located Unsupported_Kd) rests on none of them, nor on a part its completion already
+    // reached (a contextual Case's payload, a control-flow part, a Tuple element). A named or method call prepares every argument
+    // first. Each row: Binding's errors.
+    [Theory]
+    [InlineData("func call(r: ref/(rc/((ref/i32) -> ()))) -> () => r@follow(undefinedName)\n", "Unsupported_Kd r@follow; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func call(r: ref/(rc/((ref/i32) -> ()))) -> () => r@follow(1 + true)\n", "Unsupported_Kd r@follow; NonNumericOperand_Kd 1 + true")]
+    [InlineData("func call(r: ref/(rc/((ref/i32) -> ())), p: ref/i32) -> () => r@follow(p)\n", "Unsupported_Kd r@follow")]
+    [InlineData("func call(r: ref/(rc/((Option<i32>) -> ()))) -> () => r@follow(.Some(undefinedName))\n", "Unsupported_Kd r@follow; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func call(c: bool, r: ref/(rc/((i32) -> ()))) -> () => r@follow(if c => undefinedName else => 1)\n", "Unsupported_Kd r@follow; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func call(r: ref/(rc/((Option<i32>) -> i32))) -> i32\n    let v = r@follow(.Some(undefinedName))\n    return v + 1\n", "Unsupported_Kd r@follow; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func call(r: ref/(rc/(((i32, i32)) -> ()))) -> () => r@follow((undefinedName, 1))\n", "Unsupported_Kd r@follow; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f() -> ()\n    let t: string = \"a\"\n    let c = func [t@move] (w: ref/i32) -> ()\n        let u = t@move\n        return\n    c(undefinedName)\n", "TransferRequired_Kd c; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName)\n", "NoApplicableOverload_Kd g(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName, 1 + true)\n", "UnresolvedBinding_Kd undefinedName; NonNumericOperand_Kd 1 + true")]
+    [InlineData("func f(g: (i32) -> ()) -> ()\n    g(v: 1 + true)\n", "NoApplicableOverload_Kd g(v: 1 + true); NonNumericOperand_Kd 1 + true")]
+    [InlineData("func f(g: (i32) -> ()) -> ()\n    g<i32>(1 + true)\n", "NoApplicableOverload_Kd g<i32>(1 + true); NonNumericOperand_Kd 1 + true")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(1 + true, undefinedName)\n", "NonNumericOperand_Kd 1 + true; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("enum E\n    A(i32, i32)\nfunc f() -> E\n    return .A(1 + true, undefinedName)\n", "NonNumericOperand_Kd 1 + true; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("enum E\n    A(i32, i32)\nfunc f() -> E\n    return E.A(true, undefinedName)\n", "TypeMismatch_Kd E.A(true, undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("enum E\n    A(i32)\nfunc f() -> E\n    return E.A<i32>(1 + true)\n", "NotCallable_Kd E.A<i32>(1 + true); NonNumericOperand_Kd 1 + true")]
+    [InlineData("func wrap<T>(v: Option<i32>) -> T => $abort(\"x\")\nfunc f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName, wrap(.Some(undefinedName2)))\n", "UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2")]
+    [InlineData("func wrap<T>(v: Option<i32>) -> T => $abort(\"x\")\nfunc take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(undefinedName, wrap(.Some(undefinedName2)))\n", "UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2")]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(undefinedName, 1 + true)\n", "UnresolvedBinding_Kd undefinedName; NonNumericOperand_Kd 1 + true")]
+    [InlineData("struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func m(self: ref/Self, v: i32, w: i32) -> () => ()\nfunc f(h: ref/H) -> ()\n    h.m(undefinedName, 1 + true)\n", "UnresolvedBinding_Kd undefinedName; NonNumericOperand_Kd 1 + true")]
+    public void AStoppedCallBindsTheRestOfItsPartsOnTheirOwn(string source, string errors)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
+    // SPEC 10.1, 10.1.1, 7.4.4, 23.1.2 (DECISIONS BU-79's G455 amendment, PLAN G500): beside an unprepared argument (an unbound failed
+    // part) a named, method, constructor or constraint-based value call runs only the checks SPEC 10.1 makes before inference, which
+    // read no argument's Type: the acquisition-shape contracts (7.4.4), the explicit Type arguments' own records, and NoApplicable when
+    // no candidate passes step 1 (the explicit Type arguments' count and kinds) and step 2 (argument matching, 10.1.1's `!` boundary
+    // included). Every other outcome rests on the part, in either argument order (the rows after `pair<3, Undefined>(5)`); the records
+    // lost so are PLAN G500's. Step 1 judges every kind before a failed Type argument rests (`pair<Undefined, 3>(5)`, no unprepared
+    // argument). A plain value call judges MapValueCallArguments before any part (PLAN G494 unit 2), so `g(undefinedName, v: 1)`
+    // reports its NoApplicable as `g(v: 1, undefinedName)` does. Each row: Binding's errors.
+    [Theory]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "NoApplicableOverload_Kd take(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take1(v: i32) -> () => ()\nfunc f() -> ()\n    take1(undefinedName, 2)\n", "NoApplicableOverload_Kd take1(undefinedName, 2); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take1(v: i32) -> () => ()\nfunc f() -> ()\n    take1(1, undefinedName)\n", "NoApplicableOverload_Kd take1(1, undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(w: undefinedName)\n", "NoApplicableOverload_Kd take(w: undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func takeD(v: i32, w: i32, z: i32 = 0) -> () => ()\nfunc f() -> ()\n    takeD(undefinedName)\n", "NoApplicableOverload_Kd takeD(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG(undefinedName)\n", "NoApplicableOverload_Kd takeG(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func m(self: ref/Self, v: i32, w: i32) -> () => ()\nfunc f(h: ref/H) -> ()\n    h.m(undefinedName)\n", "NoApplicableOverload_Kd h.m(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc take(v: i64, w: i64, x: i64) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "NoApplicableOverload_Kd take(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func other(v: i32) -> i32 => v\nfunc take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(other(true))\n", "NoApplicableOverload_Kd take(other(true)); NoApplicableOverload_Kd other(true)")]
+    [InlineData("func take(v: (i32, i32), w: i32) -> () => ()\nfunc f() -> ()\n    take((undefinedName, 1))\n", "NoApplicableOverload_Kd take((undefinedName, 1)); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n    F is Callable<(i64, i64) -> i32>\n    return action(undefinedName)\n", "NoApplicableOverload_Kd action(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("struct P\n    public var a: i32\n    public var b: i32\n    public init(a: i32, b: i32)\n        self.a = a\n        self.b = b\nfunc k() -> P\n    return P.init(undefinedName)\n", "NoApplicableOverload_Kd P.init(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("struct C<T>\n    public init(value: (T, i32), code: i32) => ()\n    public init(value: ref/(i64, T), name: string) => ()\nfunc k() -> ()\n    let c = C.init(undefinedName, 0)\n", "UnprovenAcquisitionCorrelation_Kd C.init(undefinedName, 0); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("struct C<T>\n    public init(value: (T, i32), code: i32) => ()\n    public init(value: ref/(i64, T), name: string) => ()\nfunc k() -> ()\n    let c = C.init(undefinedName)\n", "UnprovenAcquisitionCorrelation_Kd C.init(undefinedName); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG<Undefined>(undefinedName)\n", "UnresolvedBinding_Kd Undefined; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG<i32, i32>(undefinedName, 1)\n", "NoApplicableOverload_Kd takeG<i32, i32>(undefinedName, 1); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG<3>(undefinedName, 1)\n", "NoApplicableOverload_Kd takeG<3>(undefinedName, 1); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func pair<T, U>(v: T) -> () => ()\nfunc f() -> ()\n    pair<Undefined, 3>(5)\n", "NoApplicableOverload_Kd pair<Undefined, 3>(5); UnresolvedBinding_Kd Undefined")]
+    [InlineData("struct Item\n    public var value: i32\n    public init(value: i32) => self.value = value\nvar owner = Kimi.Intrinsics.makeRc(Item.init(1))\nvar other = Item.init(2)\nKimi.Intrinsics.exchange(owner@follow@uniq, other@uniq)\n", "NoApplicableOverload_Kd Kimi.Intrinsics.exchange(owner@follow@uniq, other@uniq); SharedPathAccess_Kd owner@follow@uniq")]
+    [InlineData("func pair<T, U>(v: T) -> () => ()\nfunc f() -> ()\n    pair<3, Undefined>(5)\n", "NoApplicableOverload_Kd pair<3, Undefined>(5); UnresolvedBinding_Kd Undefined")]
+    [InlineData("func takeD2(v: i32, w: i32 = 0) -> () => ()\nfunc f() -> ()\n    takeD2(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc take(v: bool) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(bool, bool) -> i32>\n    return action(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take(v: i32) -> () => ()\nfunc take(v: i64) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func identity<T>(v: T) -> T => v@move\nfunc f() -> ()\n    _ = identity(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n    F is Callable<(i64, i64) -> i32>\n    return action(true, undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n    F is Callable<(i64, i64) -> i32>\n    return action(undefinedName, true)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(true, undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName, v: 1)\n", "NoApplicableOverload_Kd g(undefinedName, v: 1); UnresolvedBinding_Kd undefinedName")]
+    public void ACallBesideAFailedPartReportsWhatReadsNoArgumentType(string source, string errors)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
+    // SPEC 23.1.2 (PLAN G421): as above, a part with a syntax error that the completion reaches is no prerequisite of the stopped call,
+    // so the call's own record stays direct beside the syntax error. Each row: the published errors.
+    [Theory]
+    [InlineData("func call(r: ref/(rc/((Option<i32>) -> ()))) -> () => r@follow(.Some(1 +))\n", "Unsupported_Kd r@follow; ExpectedSyntax_Kd )")]
+    [InlineData("func call(c: bool, r: ref/(rc/((i32) -> ()))) -> () => r@follow(if c => 1 + else => 1)\n", "Unsupported_Kd r@follow; ExpectedSyntax_Kd else")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(v: 1, undefinedName)\n", "NoApplicableOverload_Kd g(v: 1, undefinedName); MisplacedSyntax_Kd undefinedName")]
+    public void AStoppedCallsRecordRestsOnNoRecoveredPart(string source, string errors)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26): a literal position of a join argument takes its first literal's default after

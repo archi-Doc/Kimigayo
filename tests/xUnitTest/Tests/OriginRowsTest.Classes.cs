@@ -85,14 +85,15 @@ public sealed partial class OriginRowsTest
         Assert.Equal((kind, role), (slice.Atoms[row.Longer].Kind.ToString(), slice.Atoms[row.Longer].Role.ToString()));
     }
 
-    // Rows 1, 2', 8 and 9 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
-    // inference Inferred, a callee's own meet of Parameter atoms forms no edge (Unclassed, PLAN G195's located limit); an end a Binding
-    // failure left Unbound, and a meet of such ends, are Dependent (DECISIONS R4-M118).
+    // Rows 1, 2' and 8 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
+    // inference Inferred, and a call's meet of its call regions Inferred (MeetTrans' `t@uniq`; Unclassed while they were the callee's
+    // Parameter atoms, U3-design.md's twelfth amendment); an end a Binding failure left Unbound, and a meet of such ends, are Dependent
+    // (DECISIONS R4-M118).
     [Theory]
     [InlineData(EnvStoreConsuming, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]
     [InlineData(MeetTrans, "mt", "x", "Inferred")]
-    [InlineData(MeetTrans, "mt", "t@uniq", "Unclassed")]
+    [InlineData(MeetTrans, "mt", "t@uniq", "Inferred")]
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
@@ -105,8 +106,9 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
     // operands and their order, so the limit stays when the failure is repaired. No program forms such a meet: it is built in one
-    // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, meet-trans) or
-    // after it (an anchor formed in another body, `mt`), since a canonical meet orders its operands by kind.
+    // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, taken from its
+    // declaration, since a caller's rows name call regions instead) or after it (an anchor formed in another body, `mt`), since a canonical meet
+    // orders its operands by kind.
     [Fact]
     public void AnUnclassedOperandDecidesBeforeADependentOne()
     {
@@ -117,9 +119,11 @@ public sealed partial class OriginRowsTest
         var (unbound, site) = (slice.Atoms[row.Shorter].Atom, c.SyntaxOf(row.Site));
         var mtBody = Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body;
         var mt = c.Types.OriginRows(mtBody);
-        var foreign = mt.Atoms.First(static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter }).Atom;
+        var put = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "put");
+        var foreign = put.Parameters[1].Type.TypeOf()!.Origin!.Operands[0];
         var anchor = new BoundOrigin(OriginKind.Anchor, c.SyntaxOf(mt.Rows[0].Site)) { Body = mtBody };
         Assert.Equal(OriginKind.Unbound, unbound.Kind);
+        Assert.Equal((OriginKind.Parameter, OriginAtomKind.Unclassed), (foreign.Kind, Atom(c, f, foreign, site).Kind));
         Assert.Equal(OriginAtomKind.Unclassed, Atom(c, f, anchor, site).Kind);
         foreach (var (other, order) in new[] { (foreign, "Parameter Unbound"), (anchor, "Unbound Anchor") })
         {
@@ -154,7 +158,7 @@ public sealed partial class OriginRowsTest
         var getter = Bodies(c).Select(x => c.Types.OriginRows(x.Key.Body)).Single(x => x.Rows.Any(y => Site(c, y) == "storage@ref"));
         var storage = getter.Atoms[getter.Rows.First(x => Site(c, x) == "storage@ref").Longer];
         Assert.Equal((kind, ProjectionRole.Storage), (storage.Kind.ToString(), storage.Role));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // Row 6's Closure case through an accessor's storage (DECISIONS BU-25's exception): the getter's Borrow of its Property's storage is
@@ -172,13 +176,13 @@ public sealed partial class OriginRowsTest
             "            let f = func [c] () -> i32 => c@follow\n            return f()\n" + setter + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).Single(static x => x is ConversionKoto && First(x) == "storage@ref");
-        var storage = ((BoundType)HirTables.Meaning(borrow)!).Origin!;
+        var storage = HirTables.TypeOf(borrow)!.Origin!;
         var accessor = Bodies(c).Single(static x => x.Key is { Kind: MirBodyKind.Getter, Decl: { } decl } && InProgram(decl.Declaration));
         var getter = Atom(c, accessor.Key.Body, storage, borrow);
         var closure = Atom(c, Bodies(c).Single(IsProgramClosure).Key.Body, storage, borrow);
         Assert.Equal((kind, ProjectionRole.Storage), (getter.Kind.ToString(), getter.Role));
         Assert.Equal((OriginAtomKind.Fixed, ProjectionRole.Storage), (closure.Kind, closure.Role));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // Row 3's referent clause for a Place: the atom PlaceOrigin names for a Borrow of an expression read as its referent is Inferred.
@@ -216,7 +220,7 @@ public sealed partial class OriginRowsTest
         Assert.DoesNotContain(Rows(c, false), static x => x.Use is TypeKoto);
         var slice = c.Types.OriginRows(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key.Body);
         Assert.DoesNotContain(slice.Atoms, static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Input });
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
         if (omitted)
         {
             var header = KotoTree.Walk(c.Kotonoha.RootKoto).First(static x => x is TypeSemanticsKoto && InProgram(x) && First(x) == "ref/(ref/i32)");
@@ -251,8 +255,8 @@ public sealed partial class OriginRowsTest
     }
 
     // DECISIONS R4-M126 §2.5 (c), D-3: a Closure that is not classified (its capture failed, so no body was bound) has pending receiver and
-    // environment atoms, Dependent (R4-M118): never a source or a judged target. The view records a Dependent atom as a broken contract in
-    // a complete compilation only, which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
+    // environment atoms, Dependent (R4-M118): never a source or a judged target. A Dependent atom is a broken contract, which throws, in
+    // a complete compilation only (BU-102), which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
     [Theory]
     [InlineData("text", false, "Dependent")]
     [InlineData("text@move", true, "Fixed")]
@@ -264,7 +268,36 @@ public sealed partial class OriginRowsTest
         Assert.Equal(complete, c.Binding.Result.IsComplete);
         Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind.ToString());
         Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind.ToString());
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
+    }
+
+    // DECISIONS BU-102: the view is its own validator. Its contract holds by construction (a body stamps every non-declaration atom it
+    // forms; only a Binding failure leaves an Unbound one, but for BU-102's two unverified cases), so MIR's input is built directly: an
+    // atom MIR reads that no precedence row classes (E5: a Place atom formed outside every body) or a Dependent one (an Unbound end,
+    // R4-M118) throws in a complete compilation, and again on a later read, as nothing is stored; in an incomplete one it rests on a
+    // Binding failure, and the view keeps it, Unclassed or Dependent.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ABrokenContractThrowsInACompleteCompilationOnly(bool complete)
+    {
+        var c = MirBuildTest.Compile("func f(x: ref/i32) -> i32 => x@follow\n" + (complete ? string.Empty : "func g() -> i32 => missing\n") + Main);
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        var f = Bodies(c).Single(static x => x.Key.Decl?.Name == "f").Key.Body;
+        var site = ((FunctionKoto)f.Definition!.Declaration!).ExpressionBody!;
+        var atoms = new[] { (new BoundOrigin(OriginKind.Unbound, site), OriginAtomKind.Dependent), (new BoundOrigin(OriginKind.Projection, site), OriginAtomKind.Unclassed) };
+        foreach (var (atom, kind) in atoms)
+        {
+            if (complete)
+            {
+                Assert.Throws<InvalidOperationException>(() => c.Types.OriginAtom(f, atom, SourceRef.Of(site)));
+                Assert.Throws<InvalidOperationException>(() => c.Types.OriginAtom(f, atom, SourceRef.Of(site)));
+            }
+            else
+            {
+                Assert.Equal(kind, Atom(c, f, atom, site).Kind);
+            }
+        }
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.

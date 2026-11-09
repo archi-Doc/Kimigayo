@@ -43,7 +43,7 @@ public sealed partial class Binding
         }
         else if (callee is IdentifierNameKoto name)
         {
-            group = this.Lookup(name.IdentifierName, scope, name, false);
+            group = this.Lookup(name.IdentifierName, scope, name);
         }
         else if (callee is MemberAccessKoto member && member.Right is not NumberLiteralKoto)
         {
@@ -126,24 +126,28 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        if (unknownArgument)
+        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
+        var imports = this.importCandidates?.GetValueOrDefault(callee);
+        var candidates = new CallCandidates(group, requirementGroup, imports);
+        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
+        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
+
+        // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
+        // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
+        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver).
+        if (shape.Receiver && this.CallReceiver(callee) is { } callReceiver && Receiver(callReceiver) is { Whole: false })
         {
-            return Complete(call, null);
+            this.Fail(callReceiver, BindingFailure.InvalidAssignment);
         }
 
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
-        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
-        var imports = this.importCandidates?.GetValueOrDefault(callee);
         if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
         {
             // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 
-        var candidates = new CallCandidates(group, requirementGroup, imports);
-        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
         var candidateCount = shape.Count;
         var maxParameters = shape.Parameters;
         var maxGenerics = shape.Generics;
@@ -171,6 +175,8 @@ public sealed partial class Binding
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         var rows = this.rowScratch.Rent(candidateCount * argumentCount);
+        var childSlices = this.indexScratch.Rent(candidateCount * 2);
+        var childBase = this.childRows.Count;
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -186,7 +192,7 @@ public sealed partial class Binding
                         argumentName = UnwrapTypeSyntax(parentheses.Type);
                     }
 
-                    if (isLength && this.TypeName(argumentName, scope, false) is not null)
+                    if (isLength && this.TypeName(argumentName, scope, LookupRole.Any) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;
@@ -237,6 +243,7 @@ public sealed partial class Binding
                 Evaluated = evaluated,
                 Operations = operations,
                 Rows = rows,
+                ChildSlices = childSlices,
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
@@ -269,6 +276,15 @@ public sealed partial class Binding
             }
 
             var (selection, winnerIndex) = this.ClassifySelection(ref evaluation);
+            if (unknownArgument && AnyArgumentsMatch(evaluated.AsSpan(0, count), generic, explicitLengths))
+            {
+                // SPEC 10.1, 23.1.2 (DECISIONS BU-79, its G455 amendment): beside an unprepared argument the call reports only the checks
+                // SPEC 10.1 makes before inference, which read no argument's Type: the shape contracts and the explicit Type arguments'
+                // own records above, and NoApplicable below when no candidate passes step 1's count and kinds and step 2's matching;
+                // every other outcome rests on the part.
+                return Complete(call, null);
+            }
+
             if (selection == CallSelection.FailedSignature)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
@@ -377,6 +393,9 @@ public sealed partial class Binding
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
                 if (!this.CompleteWaiting(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
                 {
+                    // SPEC 10.8: a completed waiting part fills no outer slot, so the solution is selection's; no judgment reads a failed
+                    // part's Type, since a part without an AdaptedType is not fitted (JudgeCallFit) and a failed one rests (PartFailed).
+                    this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), waitingOperations, out defaults);
                     return Complete(call, null);
                 }
 
@@ -472,18 +491,13 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompleteArguments(call, scope, selectedOperations))
+            var completed = this.CompleteArguments(call, scope, selectedOperations);
+            var formed = this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), selectedOperations, out defaults);
+            if (!completed)
             {
                 return Complete(call, null);
             }
 
-            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources, a
-            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
-            var defaultCount = evaluated[winnerIndex].DefaultsUsed;
-            var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
-            var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
-            this.JudgeSelectedCall(call, solution, selectedOperations, defaults.AsSpan(0, formed ? defaultCount : 0));
             if (!formed)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -520,8 +534,14 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.Internal); // SPEC 22.1: the catalog links every linked constructor.
             }
 
+            if (RefusedReceiver(this.CallReceiver(callee)))
+            {
+                // Rule W (DECISIONS BU-79): the call's own verdict over its refused receiver rests on that record; it is never published.
+                return this.CompleteDependent(call, this.CallReceiver(callee)!);
+            }
+
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -541,6 +561,8 @@ public sealed partial class Binding
 
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.rowScratch.Return(rows, clearArray: true);
+            this.indexScratch.Return(childSlices);
+            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
@@ -583,6 +605,20 @@ public sealed partial class Binding
 
         (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
         return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
+    }
+
+    // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (DECISIONS BU-51, BU-96): the selected candidate's Origin relations, never part of its
+    // applicability, judged at their sources over the solution its selection fixed, a default's at the call; `defaults` is rented for the
+    // caller to return, and false when one has no Type. The written inputs are judged also then, and the clauses and the other inputs also
+    // when a part failed after selection: the call then forms no result and rests on that part.
+    private bool JudgeSelected(InvocationKoto call, in CallEvaluation evaluation, int winner, BoundType? declaringType, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundArgumentOperation> operations, out BoundDefaultArgument[]? defaults)
+    {
+        var count = evaluation.Evaluated[winner].DefaultsUsed;
+        var receiver = operations[^1];
+        var solution = this.Solution(evaluation, winner, (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration, declaringType);
+        var formed = this.SelectedDefaults(solution, mapping, receiver.Source is null ? -1 : receiver.ParameterIndex, count, out defaults);
+        this.JudgeSelectedCall(call, solution, operations, defaults.AsSpan(0, formed ? count : 0));
+        return formed;
     }
 
     // SPEC 7.2.3, 10.1 step 2: the `count` defaults the selected candidate uses (DefaultSlots), each with its instantiated parameter Type;

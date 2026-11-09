@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a mutable local's Type (LocalRegionSlot), the contract bounds
 // recorded on them, never a current value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the
 // value that brought a source in (LocalRegionSourceUse), and the relations judged through those sources (RegionContains,
-// VerifiedRegionOutlives, JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
+// JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
@@ -16,6 +16,9 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
     private int regionVersion;
+
+    // The region graph's version: every recorded bound moves it, so a body's last one is the whole-body graph.
+    internal int RegionVersion => this.regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
@@ -239,47 +242,6 @@ public sealed partial class Binding
             region.Values.Add(evidence);
             this.regionVersion++;
         }
-    }
-
-    // Lowering may reuse only relations already represented in the checked graph. A new finite fit needs ownership analysis.
-    // Its readers, lowering and the old analysis's RecordCallInput, run after Binding judged the fit in its body, so it judges in no body
-    // (DECISIONS BU-28).
-    private bool VerifiedRegionOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (this.ProvesOriginOutlives(longer, shorter, use))
-        {
-            return true;
-        }
-
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
-        if (this.HasRegionBounds(longer))
-        {
-            foreach (var source in this.LocalRegionSources(longer))
-            {
-                if (!this.ProvesOriginOutlives(source, shorter, use) && !this.RegionContains(shorter, source))
-                {
-                    return false;
-                }
-            }
-
-            return !this.OriginRelationFails(longer, shorter, use, default);
-        }
-
-        if (longer.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < longer.Operands.Count; i++)
-            {
-                if (!this.VerifiedRegionOutlives(longer.Operands[i], shorter, use))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return this.RegionContains(shorter, longer) && !this.OriginRelationFails(longer, shorter, use, default);
     }
 
     private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)

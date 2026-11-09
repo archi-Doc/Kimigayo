@@ -412,19 +412,26 @@ public abstract partial class Koto
     /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
     public virtual bool IsToplevel => false;
 
+    /// <summary>Gets the number of Type positions this node holds, as searched before binding (SPEC F.5): the Type kinds and a
+    /// PathSuffix's qualifier publish them once. It over-approximates what BindTypeStructure binds as Types: a GenericsKoto publishes
+    /// its head and its length arguments too (a GenericArgument's kind is the slot's), a RootName its path and a PathSuffix its
+    /// qualifier; no Origin argument is one.</summary>
+    internal virtual int TypeComponentCount => 0;
+
+    /// <summary>Gets one of the Type components (<see cref="TypeComponentCount"/>).</summary>
+    /// <param name="index">The component's index.</param>
+    /// <returns>The component.</returns>
+    internal virtual Koto TypeComponent(int index) => throw new ArgumentOutOfRangeException(nameof(index));
+
     #endregion
 
-    /// <summary>Initializes a new instance of the <see cref="Koto"/> class and takes the pending attribute chain from the reader.</summary>
+    /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The node span.</param>
     public Koto(ref TokenReader reader, SourceSpan range)
     {
         this.codeContext = reader.CodeContext;
         this.Span = range;
-        if (reader.AttributeKoto is not null)
-        {
-            this.SetAttributeChain(reader.PopAttribute());
-        }
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)
@@ -458,7 +465,7 @@ public abstract partial class Koto
     }
 
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BindingState BindingState
     {
         get => HirTables.State(this);
@@ -466,15 +473,15 @@ public abstract partial class Koto
     }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BoundType? BoundType
     {
-        get => HirTables.Meaning(this) as BoundType;
+        get => HirTables.TypeOf(this);
         internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BoundOrigin? BoundOrigin
     {
         get => HirTables.Meaning(this) as BoundOrigin;
@@ -482,34 +489,34 @@ public abstract partial class Koto
     }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BindingSymbol? BoundSymbol
     {
         get => HirTables.Symbol(this);
         internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
     }
 
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal bool HasCurrentBinding => HirTables.HasCurrentBinding(this);
 
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundType? ErasedFunctionType
     {
         get => HirTables.ErasedType(this);
         set => HirTables.Of(this).ErasedTypes[this.SyntaxId] = value;
     }
 
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundFormatting? FormattingStorage
     {
         get => HirTables.PlanOf(this).Formatting;
         set => HirTables.PlanFor(this, value is not null).Formatting = value;
     }
 
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BindingFailure BindingFailure
     {
         get => HirTables.Failure(this);
@@ -517,7 +524,7 @@ public abstract partial class Koto
     }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
-    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal object? BoundMeaning
     {
         get => HirTables.Meaning(this);

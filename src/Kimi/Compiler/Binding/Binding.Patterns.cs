@@ -270,7 +270,7 @@ public sealed partial class Binding
         this.CalculateMatchCoverage(plan, subject);
 
         var pendingBody = false;
-        var required = KotoHelper.IsResultRequiringSelection(match);
+        var required = IsResultRequiringSelection(match);
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
@@ -475,7 +475,7 @@ public sealed partial class Binding
 
                 break;
             default:
-                if (this.TryPatternLiteral(syntax, type, out var literal))
+                if (this.TryPatternLiteral(syntax, type, outer, out var literal))
                 {
                     position = position with { Kind = BoundPatternKind.Literal, Literal = literal };
                 }
@@ -522,7 +522,7 @@ public sealed partial class Binding
         }
 
         var qualifier = member.Left;
-        var definition = this.TypeName(qualifier, scope, true);
+        var definition = this.TypeName(qualifier, scope, LookupRole.NoContainer);
         if (definition is null || !ReferenceEquals(definition, expected.Symbol))
         {
             return null;
@@ -552,19 +552,19 @@ public sealed partial class Binding
         return symbol.EnumCase;
     }
 
-    private bool TryPatternLiteral(Koto syntax, BoundType type, out PatternLiteral literal)
+    private bool TryPatternLiteral(Koto syntax, BoundType type, BindingScope scope, out PatternLiteral literal)
     {
         literal = default;
         // A number or a negated number; TryDictionaryLiteralKey unwraps a key's unary + before this.
         var negative = syntax.Akind == KotoKind.PrefixMinus;
         if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, negative, this.compilation.PointerWidth))
+            if (!this.TryIntegerLiteral(number, negative, type, scope, out var bits))
             {
                 return false;
             }
 
-            literal = new(PatternLiteralKind.Integer, magnitude, negative && magnitude != 0);
+            literal = new(PatternLiteralKind.Integer, bits);
             Complete(number, type);
             return true;
         }
@@ -572,10 +572,10 @@ public sealed partial class Binding
         switch (syntax)
         {
             case BoolLiteralKoto boolean when ReferenceEquals(type, BoundType.Boolean):
-                literal = new(PatternLiteralKind.Boolean, boolean.Value ? (UInt128)1 : 0);
+                literal = new(PatternLiteralKind.Boolean, boolean.Value ? 1 : 0);
                 return true;
             case CharLiteralKoto { Value: { } scalar } when ReferenceEquals(type, BoundType.Char):
-                literal = new(PatternLiteralKind.Character, (UInt128)scalar.Value);
+                literal = new(PatternLiteralKind.Character, scalar.Value);
                 return true;
             case StringLiteralKoto text when ReferenceEquals(type, BoundType.String):
                 literal = new(PatternLiteralKind.String, Text: text.Literal);
@@ -614,23 +614,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (position.Kind != BoundPatternKind.Binding)
+                if (position.Kind == BoundPatternKind.Binding)
                 {
-                    continue;
-                }
-
-                // SPEC 15.1.6: a binding reached through a reference layer borrows its Place; an owned part is
-                // copied or transferred by its complete stored Type.
-                var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
-                var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
-                    : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
-                plan.PositionStorage[i] = position with { Acquisition = acquisition };
-                if (proof == ConstraintProof.Error)
-                {
-                    plan.Invalid = true;
-                    plan.Coverage = new(MatchCoverageState.Invalid);
-                    this.Fail(position.Source, BindingFailure.InvalidConstraint);
+                    this.AcquireBinding(plan, i);
                 }
             }
 
@@ -655,6 +641,24 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    // SPEC 15.1.6, 3.5.2: the one acquisition rule of a Pattern binding, a match arm's or a for loop's item (SPEC 14.6.2;
+    // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; an owned part is copied or
+    // transferred by its complete stored Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, is Deferred (HIR
+    // Failed). Its plan stays buildable and its coverage stays the Patterns' (Invalid means a located Pattern or guard failure; SPEC
+    // 14.8.4, 23.1.2; DECISIONS R4-M179). A binding has no Copy requirement of its own, so it records no failure: the proof reads the
+    // declaration's failed Constraint, whose record is reported (SPEC 23.1.2; DECISIONS BU-110).
+    private void AcquireBinding(BoundMatch plan, int index)
+    {
+        var position = plan.PositionStorage[index];
+        var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
+        var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
+            : proof == ConstraintProof.Proven ||
+                    (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(position.MatchedType, this.ConstraintScope(position.Source)))
+                ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+            : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
+        plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
 
     private void CalculateMatchCoverage(BoundMatch plan, BoundType? subject)
@@ -718,8 +722,8 @@ public sealed partial class Binding
             }
             else if (root.Literal.Kind == PatternLiteralKind.Boolean)
             {
-                hasTrue |= root.Literal.Magnitude != 0;
-                hasFalse |= root.Literal.Magnitude == 0;
+                hasTrue |= root.Literal.Bits != 0;
+                hasFalse |= root.Literal.Bits == 0;
             }
         }
 

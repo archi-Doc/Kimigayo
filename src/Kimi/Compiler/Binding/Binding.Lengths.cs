@@ -54,13 +54,15 @@ public sealed partial class Binding
 
         if (expression.Operation == KotoKind.PrefixMinus)
         {
-            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
-            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
+            return left.Value == long.MinValue ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
         }
 
-        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
             ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
     }
+
+    // SPEC 4.2: a BoundLength is a long, the profile's isize, so every nonnegative value is a length.
+    private static bool ValidLength(long value) => value >= 0;
 
     private static bool IsSignatureLength(Koto node, FunctionKoto function)
     {
@@ -219,8 +221,6 @@ public sealed partial class Binding
         return result;
     }
 
-    private bool ValidLength(long value) => value >= 0 && (this.compilation.PointerWidth == 64 || value <= int.MaxValue);
-
     private bool IsLengthArgument(Koto syntax, BindingScope scope)
     {
         syntax = UnwrapTypeSyntax(syntax);
@@ -242,7 +242,7 @@ public sealed partial class Binding
             return this.LengthArgumentSymbol(member, scope)?.Kind == BindingSymbolKind.Property;
         }
 
-        return name is not null && this.Lookup(name, scope, syntax, false) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
+        return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
     private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
@@ -280,7 +280,7 @@ public sealed partial class Binding
     {
         if (expression.IsConstant)
         {
-            return this.ValidLength(expression.Value);
+            return ValidLength(expression.Value);
         }
 
         if (expression.Parameter is not null)
@@ -415,8 +415,7 @@ public sealed partial class Binding
             return symbolic;
         }
 
-        var maximum = ((UInt128)1 << (this.compilation.PointerWidth - 1)) - 1;
-        if (value > maximum)
+        if (!ScalarTypes.TryLiteral(BoundType.ISize, value, false, out _))
         {
             this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
@@ -479,7 +478,7 @@ public sealed partial class Binding
     {
         value = 0;
         symbolic = null;
-        var width = ScalarTypes.Width(type, this.compilation.PointerWidth);
+        var width = ScalarTypes.Width(type);
         var signed = ScalarTypes.Signed(type);
         if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
         {
@@ -505,7 +504,7 @@ public sealed partial class Binding
         else if (KotoHelper.SignedNumber(syntax, out var negative) is { } literal)
         {
             if (!literal.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude) ||
-                !ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out _))
+                !ScalarTypes.TryLiteral(type, magnitude, negative, out _))
             {
                 return false;
             }
@@ -617,7 +616,7 @@ public sealed partial class Binding
     {
         if (syntax is TypeSemanticsKoto { Type: null } name)
         {
-            return this.Lookup(name.Identifier, scope, syntax, false) is { } symbol ? this.BindReference(syntax, symbol, scope) : null;
+            return this.Lookup(name.Identifier, scope, syntax) is { } symbol ? this.BindReference(syntax, symbol, scope) : null;
         }
 
         if (syntax is MemberAccessKoto member && member.Right is not IdentifierNameKoto)
@@ -639,14 +638,13 @@ public sealed partial class Binding
 
     private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
-        if (this.TypeName(member.Left, scope, false) is not { Declaration: GroupKoto } qualifier ||
+        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: GroupKoto } qualifier ||
             !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
         {
             return null;
         }
 
-        member.Left.BoundSymbol = qualifier;
-        member.Left.BindingState = BindingState.Resolved;
+        PublishQualifier(member.Left, qualifier);
         return members.Values.GetValueOrDefault(name);
     }
 }

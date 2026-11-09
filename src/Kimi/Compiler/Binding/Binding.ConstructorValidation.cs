@@ -95,6 +95,8 @@ public sealed partial class Binding
         var checkedCandidates = this.candidateScratch.Rent(count);
         var checkedOperations = this.argumentOperationScratch.Rent(count * stride);
         var rows = this.rowScratch.Rent(argumentCount);
+        var childSlice = this.indexScratch.Rent(2);
+        var childBase = this.childRows.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -152,6 +154,7 @@ public sealed partial class Binding
                         Inputs = inputs,
                         FixedConstruction = true,
                         Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
+                        ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
                     },
                     [],
                     mapping,
@@ -182,7 +185,8 @@ public sealed partial class Binding
                         }
 
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-                        var contextPattern = this.WasDeferred(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
+                        // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
+                        var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
@@ -240,6 +244,8 @@ public sealed partial class Binding
         finally
         {
             this.rowScratch.Return(rows, clearArray: true);
+            this.indexScratch.Return(childSlice);
+            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.argumentOperationScratch.Return(checkedOperations, clearArray: true);
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }

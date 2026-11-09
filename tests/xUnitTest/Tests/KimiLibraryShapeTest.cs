@@ -20,13 +20,26 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
+    // R8-S1 C1: what a witness group declares for each Contract it serves: the Contract's own requirement by name, with the group's `self`.
+    private static readonly (WitnessMembers Group, KimiDeclarationId Contract, string Header)[] WitnessRequirements =
+    [
+        (WitnessMembers.FixedArray, KimiDeclarationId.Iterable,
+            "public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.UniqIterable,
+            "public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.IntoIterable,
+            "public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>"),
+        (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
+        (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
+        (WitnessMembers.String, KimiDeclarationId.Comparable, "func compare(self: ref/string, other: ref/string) -> i32"),
+    ];
+
     // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
         (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
-        (KimiDeclarationId.StorageBorrowUniqSlice, "internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a"),
         (KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()"),
         (KimiDeclarationId.Exchange, "public func exchange<T>(target: uniq/T ! with => value: T) -> T"),
         (KimiDeclarationId.Swap, "public func swap<T>(first: uniq/T, second: uniq/T) -> ()"),
@@ -34,14 +47,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeArc, "public func makeArc<T>(value: T) -> arc/T\nT is ObjectPayload"),
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
-        (KimiDeclarationId.ArrayReserve, "public func reserve(self: uniq/Self, additional: isize)"),
-        (KimiDeclarationId.ArrayAppend, "public func append(self: uniq/Self, value: T)"),
-        (KimiDeclarationId.ArrayInsert, "internal func insertAt(self: uniq/Self, index: isize, value: T)"),
-        (KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>"),
-        (KimiDeclarationId.ArrayRemove, "internal func removeAt(self: uniq/Self, index: isize) -> T"),
-        (KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)"),
-        (KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)"),
-        (KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
         (KimiDeclarationId.TextFixed, "public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer"),
@@ -52,18 +57,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format"),
         (KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.TextRelease, "private func release(data: raw/u8)"),
-        (KimiDeclarationId.FixedBufferBytes, "public func bytes(self: ref/Self) -> Slice<u8>"),
-        (KimiDeclarationId.FixedBufferText, "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>"),
-        (KimiDeclarationId.FixedBufferValidate, "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>"),
-        (KimiDeclarationId.FixedBufferClear, "public func clear(self: uniq/Self)"),
-        (KimiDeclarationId.FixedBufferReserve, "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>"),
-        (KimiDeclarationId.FixedBufferIntoText, "public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>"),
-        (KimiDeclarationId.HeapBufferBytes, "public func bytes(self: ref/Self) -> Slice<u8>"),
-        (KimiDeclarationId.HeapBufferText, "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>"),
-        (KimiDeclarationId.HeapBufferValidate, "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>"),
-        (KimiDeclarationId.HeapBufferClear, "public func clear(self: uniq/Self)"),
-        (KimiDeclarationId.HeapBufferReserve, "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>"),
-        (KimiDeclarationId.HeapBufferIntoString, "public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>"),
         (KimiDeclarationId.WindowPush, "public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WindowAppend, "public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WindowLimit, "public func limit(self: owner/Self, maximum: isize) -> Self{r}\norigin r.source == self.source"),
@@ -71,31 +64,19 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
-        (KimiDeclarationId.StorageBorrowShared, "internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a"),
-        (KimiDeclarationId.StorageBorrowExclusive, "internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a"),
-        (KimiDeclarationId.StorageOwn, "internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>"),
-        (KimiDeclarationId.StorageBorrowDictionary, "internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a\nK is Equatable"),
-        (KimiDeclarationId.StorageBorrowDictionaryExclusive, "internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a\nK is Equatable"),
-        (KimiDeclarationId.StorageOwnDictionary, "internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>\nK is Equatable"),
-        (KimiDeclarationId.StorageKeyAt, "internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K"),
-        (KimiDeclarationId.StorageValueAt, "internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V"),
-        (KimiDeclarationId.StorageBorrowFixedShared, "internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a"),
-        (KimiDeclarationId.StorageBorrowFixedExclusive, "internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a"),
-        (KimiDeclarationId.StorageOwnFixed, "internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>"),
-        (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
-        (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)\nK is Equatable"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
         (KimiDeclarationId.StorageTryAllocateBytes, "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
         (KimiDeclarationId.StorageTransferBytes, "internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)"),
+        (KimiDeclarationId.StorageStride, "internal func stride<T>() -> isize"),
+        (KimiDeclarationId.StorageDestroyValues, "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
         (KimiDeclarationId.RawSlice, "public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s"),
         (KimiDeclarationId.StorageArgumentOutOfRange, "internal func argumentOutOfRange() -> Never"),
         (KimiDeclarationId.StorageIndexBounds, "internal func indexBounds() -> Never"),
-        (KimiDeclarationId.StorageSetArrayLength, "internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)"),
     ];
 
     public static TheoryData<KimiDeclarationId> CatalogEntries
@@ -132,7 +113,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(181, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -149,6 +130,12 @@ public partial class KimiLibraryShapeTest
         // SPEC 22.1: the Weak family is cataloged but not yet declared in source.
         Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
     }
+
+    // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
+    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root).
+    [Fact]
+    public void TheLibraryLiesWithinTheSyntaxNestingLimit()
+        => WithinTheSyntaxNestingLimit(Compilation.CreateForTest().Library.Kotonoha.RootKoto);
 
     // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
     // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
@@ -302,27 +289,6 @@ public partial class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
-    // F2c (DECISIONS R5-M28): the DictionaryStorage view names each function by the one symbol Binding declares for it, a source
-    // function declared once in the DictionaryStorage group; None names no function.
-    [Fact]
-    public void DictionaryStorageViewNamesTheDeclaredFunctions()
-    {
-        var c = Library.Value;
-        string[] names = ["findEntry", "clearEntries", "requireAbsent", "append", "initialize", "reserve"];
-        Assert.Equal(names.Length + 1, Enum.GetValues<DictionaryCallee>().Length);
-        for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
-        {
-            var symbol = c.Library.DictionaryStorage(callee);
-            var container = Container(symbol.Declaration);
-            Assert.Equal("DictionaryStorage", Path(container));
-            Assert.Same(symbol.Declaration, Assert.Single(Declarations(container, names[(int)callee - 1], true)));
-            Assert.Same(symbol, symbol.Declaration.SymbolOf());
-            Assert.True(HasBody(symbol.Declaration));
-        }
-
-        Assert.Throws<InvalidOperationException>(() => c.Library.DictionaryStorage(DictionaryCallee.None));
-    }
-
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
     // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), whether in place,
     // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan), and the
@@ -336,12 +302,13 @@ public partial class KimiLibraryShapeTest
             .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace} {x.Row.Calls}");
         Assert.Equal(
             [
-                "Replace  -1 0 True -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
-                "ArrayClear  -1 0 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "Replace  -1 0 True -1", "ArrayReserve  -1 -1 False -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
+                "ArrayClear  -1 0 False -1", "ArrayShrinkToFit  -1 -1 False -1", "ArraySwap  -1 -1 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
                 "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
                 "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
                 "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
-                "DictionaryIndexUniq equals 1 -1 False -1", "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayAppendCopies  -1 -1 False -1",
+                "DictionaryIndexUniq equals 1 -1 False -1", "StorageArrayCapacity  -1 -1 False -1", "DictionaryStorageCapacity  -1 -1 False -1",
+                "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayAppendCopies  -1 -1 False -1",
                 "ArrayTruncate  -1 0 False -1", "ArrayRemoveAll  -1 0 False 1", "ArrayInsertPosition  -1 -1 False -1", "ArrayAppendAll  -1 -1 False -1",
                 "ArrayRemovePosition  -1 -1 False -1", "ArraySwapPositions  -1 -1 False -1", "ArraySwapRemove  -1 -1 False -1", "ArrayReverse  -1 -1 False -1",
             ],
@@ -425,6 +392,48 @@ public partial class KimiLibraryShapeTest
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Library.Value.Library.GetSymbol(id)!.Declaration));
 
+    // SPEC 4.9.3, 4.9.5, 22.2 (R8-A1a, A1b): the operations that became bodies keep the headers their compiler function rows held.
+    [Theory]
+    [InlineData(KimiDeclarationId.ArrayReserve, "public func reserve(self: uniq/Self, additional: isize)")]
+    [InlineData(KimiDeclarationId.ArrayAppend, "public func append(self: uniq/Self, value: T)")]
+    [InlineData(KimiDeclarationId.StorageGrowArray, "internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)")]
+    [InlineData(KimiDeclarationId.ArrayInsert, "internal func insertAt(self: uniq/Self, index: isize, value: T)")]
+    [InlineData(KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>")]
+    [InlineData(KimiDeclarationId.ArrayRemove, "internal func removeAt(self: uniq/Self, index: isize) -> T")]
+    [InlineData(KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)")]
+    [InlineData(KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.StorageShrinkArray, "internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)")]
+    [InlineData(KimiDeclarationId.StorageDestroyArray, "internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)")]
+    [InlineData(KimiDeclarationId.StorageDestroyDictionary, "internal unsafe func destroyDictionary<K, V>(handle: raw/DictionaryStorage.Handle)")]
+    [InlineData(KimiDeclarationId.StorageReleaseDictionary, "internal unsafe func releaseDictionary(handle: raw/DictionaryStorage.Handle)")]
+    [InlineData(KimiDeclarationId.DictionaryStorageInitialize, "unsafe func initialize(handle: raw/Handle)")]
+    [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
+    [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
+    public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
+        => Assert.Equal(header, Line(Library.Value.Library.GetSymbol(id)!.Declaration));
+
+    // SPEC 22.9.3, 22.9.4 (R8-W1a): the buffer operations that became bodies keep the headers their compiler function rows held, found
+    // by their struct and name, since most of them have no catalog entry.
+    [Theory]
+    [InlineData(KimiDeclarationId.FixedBuffer, "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
+    [InlineData(KimiDeclarationId.FixedBuffer, "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
+    [InlineData(KimiDeclarationId.FixedBuffer, "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
+    [InlineData(KimiDeclarationId.FixedBuffer, "clear", "public func clear(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.FixedBuffer, "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    [InlineData(KimiDeclarationId.FixedBuffer, "intoText", "public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "clear", "public func clear(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    [InlineData(KimiDeclarationId.HeapBuffer, "intoString", "public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>")]
+    public void BufferOperationsKeepTheirHeaders(KimiDeclarationId buffer, string name, string header)
+    {
+        var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(Library.Value.Library.GetSymbol(buffer)!.Declaration);
+        Assert.Equal(header, Line(Assert.Single(container.Members.OfType<FunctionKoto>(), x => x.Name == name)));
+    }
+
     // SPEC 22.1 and its formatting and arithmetic profiles: the compiler reaches these requirements by name and position.
     [Theory]
     [InlineData(KimiDeclarationId.Copy, "public contract Copy")]
@@ -463,15 +472,18 @@ public partial class KimiLibraryShapeTest
     // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
     // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
-    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
-    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
-    [InlineData("Storage.OwnedRemainder", "internal struct OwnedRemainder<E>\ninternal let storage: raw/E during self\ninternal var position: isize\ninternal var count: isize\ninternal var capacity: isize\ndrop")]
-    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
-    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
-    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
-    [InlineData("DictionaryStorage.Handle", "struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
+    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
+    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
+    [InlineData("ArrayOwningIterator", "public struct ArrayOwningIterator<T>\nvar array: Storage.ArrayRepr<T>\nvar position: isize = 0\nvar count: isize\ndrop")]
+    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
+    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
+    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal var handle: DictionaryStorage.Handle\ndrop")]
+    [InlineData("DictionaryStorage.Handle", "internal struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
+    [InlineData("Storage.ArrayRepr", "internal struct ArrayRepr<T>\ninternal var data: raw/T during self\ninternal var length: isize\ninternal var capacity: isize")]
+    [InlineData("Storage.SliceRepr", "internal struct SliceRepr<T>\ninternal var data: raw/T\ninternal var length: isize")]
+    [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
-    [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize\ninternal var count: isize\ndrop")]
+    [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize = 0\ninternal var count: isize\ndrop")]
     [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
     [InlineData("ResolvedRange", "public struct ResolvedRange\npublic let start: isize\npublic let end: isize")]
     [InlineData("FromEnd", "public struct FromEnd<T>\npublic let offset: T")]
@@ -484,8 +496,8 @@ public partial class KimiLibraryShapeTest
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic let written: isize\npublic let remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
-    [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nlet data: raw/u8 during self\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\ndrop")]
+    [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
+    [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
     [InlineData("Text.InvalidUtf8", "public struct InvalidUtf8")]
     public void RecordFieldsAreFixed(string path, string shape)
@@ -590,6 +602,20 @@ public partial class KimiLibraryShapeTest
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
             Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+        }
+    }
+
+    // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows.
+    [Fact]
+    public void EachWitnessGroupDeclaresItsContractsRequirements()
+    {
+        var library = Library.Value.Library;
+        Assert.Equal(Enum.GetValues<WitnessMembers>(), WitnessRequirements.Select(static x => x.Group).Distinct());
+        foreach (var (group, contract, header) in WitnessRequirements)
+        {
+            var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;
+            var overloads = Declarations(library.Members(group)!, requirement.Name, true);
+            Assert.Equal(header, Line(Assert.Single(overloads, static x => x is FunctionKoto { IsSpecialization: false })));
         }
     }
 
@@ -717,4 +743,7 @@ public partial class KimiLibraryShapeTest
     }
 
     private static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
+
+    private static void WithinTheSyntaxNestingLimit(Koto root)
+        => Assert.InRange(SyntaxNestingTest.Depth(root), 0, SyntaxNesting.Limit);
 }

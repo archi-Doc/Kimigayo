@@ -151,10 +151,10 @@ defaulttemplate evaluate#1 @139
   bb21:
       StorageDead(_4) @151 s1
       StorageDead(_3) @150 s1
-      drop _2 -> bb22 @142 s1
+      drop _2 -> bb22 [elide] @142 s1
   bb22:
       StorageDead(_2) @142 s1
-      unreachable check bb1 @141
+      unreachable @141
 fn init @6
   _0: Box return (Receiver) @6
   _1: i32 arg size @7
@@ -200,6 +200,7 @@ fn pick @37
   _2: T arg b @43
   _3: T temp @48 s1
   _4: T temp (Result) @37
+  _5: T temp @48 s1
   s1: lexical in s0 @46
   bb0:
       StorageLive(_3) @48 s1
@@ -225,7 +226,8 @@ fn pick @37
       _4 = move _3 @47 s1
       goto bb6 @47 s1
   bb9:
-      drop _3 -> bb10 @48 s1
+      _5 = move _3 @47 s1
+      drop _3 -> bb10 [elide] @48 s1
   bb10:
       StorageDead(_3) @48 s1
       drop _2 -> bb11 @43
@@ -576,10 +578,10 @@ fn replicas @169
   bb22:
       StorageDead(_6) @151 s3
       StorageDead(_5) @150 s3
-      drop _4 -> bb23 @142 s3
+      drop _4 -> bb23 [elide] @142 s3
   bb23:
       StorageDead(_4) @142 s3
-      unreachable check bb2 @141 s2
+      unreachable @141 s2
   bb24:
       StorageDead(_3) @173 s1
       drop _2 -> bb25 [elide] @175 s1
@@ -661,7 +663,7 @@ fn replicas @169
       goto bb48 @142 s7
   bb48:
       StorageDead(_14) @142 s7
-      unreachable check bb27 @141 s6
+      unreachable @141 s6
   bb49:
       StorageDead(_13) @178 s1
       StorageDead(_12) @180 s1

@@ -20,9 +20,6 @@ public sealed partial class Binding
         return HirTables.HasCurrentBinding(use) && this.objectErasures is not null && this.objectErasures.TryGetValue(use, out evidence);
     }
 
-    internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
-        => this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(source));
-
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
@@ -212,7 +209,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
-            if (IsBarePlace(conversion.Left) && this.ProveCopy(actual, conversion) != ConstraintProof.Proven)
+            if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }

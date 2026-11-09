@@ -10,9 +10,9 @@ namespace XunitTest;
 public class ReferenceBindingAssignmentTest
 {
     [Theory]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n += 1\n        yield n\n    .None => 0", DiagnosticCode.SharedBindingAssignment_Kd)]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0", DiagnosticCode.SharedBindingAssignment_Kd)]
-    [InlineData("func f(x: Option<i32>) => match x\n    .Some(var n) => n++\n    .None => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n += 1\n        yield n\n    .None => 0\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(x: Option<i32>) => match x\n    .Some(var n) => n++\n    .None => ()\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values\n    v += 1", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@uniq\n    v += 1", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
     [InlineData("var count: i32 = 1\nmatch count@uniq\n    var n => n = 5", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
@@ -22,8 +22,8 @@ public class ReferenceBindingAssignmentTest
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(code, issue.Code);
 
-        // The failed assignment reports no dependent control-flow mismatch for its right operand.
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        // The failed assignment reports no dependent mismatch for its right operand: the published Errors are exactly its record.
+        Assert.Equal([code.ToString()], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     [Theory]

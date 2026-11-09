@@ -68,7 +68,8 @@ internal static class OriginProofMeasurements
         Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    // One case: a cold check with its proof counters per phase, then warm repetitions while each stays short.
+    // One case: a cold check with Binding's proof counters (Analyze asks for no Origin proof), then warm repetitions while each stays
+    // short.
     internal static void RunCase(string family, int size)
     {
         var source = OriginProofWorkloads.Create(family, size);
@@ -88,17 +89,15 @@ internal static class OriginProofMeasurements
         var bindingRequests = metrics.Requests;
         var bindingClosures = metrics.Closures;
         start = Stopwatch.GetTimestamp();
-        var verified = compilation.AnalyzeLegacyOwnership().Result.IsVerified;
-        var ownership = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.AnalyzeLegacyOwnership().Issues.Select(static x => x.Code.ToString())).ToArray();
+        var verified = compilation.Analyze().IsVerified;
+        var analyze = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.Problems.Select(static x => x.Code.ToString())).ToArray();
         var cold = new
         {
             bindingMilliseconds = binding,
-            ownershipMilliseconds = ownership,
+            analyzeMilliseconds = analyze,
             bindingRequests,
             bindingClosures,
-            ownershipRequests = metrics.Requests - bindingRequests,
-            ownershipClosures = metrics.Closures - bindingClosures,
             entries = metrics.Entries,
             nestedClosures = metrics.NestedClosures,
             nodes = metrics.Nodes,
@@ -118,7 +117,7 @@ internal static class OriginProofMeasurements
         // Warm repetitions only while one check stays below a second, under the fixed counts above.
         double[]? warm = null;
         (double Check, double Closures)? warmClosures = null;
-        if (binding + ownership < 1000)
+        if (binding + analyze < 1000)
         {
             compilation.Binding.OriginProofMetrics = null;
             for (var i = 0; i < Warmup; i++)
@@ -162,7 +161,7 @@ internal static class OriginProofMeasurements
         {
             compilation.Bind();
             compilation.Binding.CheckStartup(OutputKind.Application);
-            compilation.AnalyzeLegacyOwnership();
+            compilation.Analyze();
         }
     }
 }

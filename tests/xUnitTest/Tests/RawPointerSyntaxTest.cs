@@ -35,9 +35,9 @@ public class RawPointerSyntaxTest
     [Fact]
     public void UnsafeIsNoSemanticsName()
     {
-        Assert.True(CompilerHelper.TryParse("raw", out var raw));
+        Assert.True(SemanticsMaskHelper.TryParse("raw", out SemanticsKind raw));
         Assert.Equal(SemanticsKind.Raw, raw);
-        Assert.False(CompilerHelper.TryParse("unsafe", out _));
+        Assert.False(SemanticsMaskHelper.TryParse("unsafe", out SemanticsKind _));
         Assert.Equal("raw", SemanticsKind.Raw.ToText());
     }
 
@@ -231,9 +231,9 @@ public class RawPointerSyntaxTest
     // SPEC 8.1.1, 5.7 (DECISIONS BU-34): what a pair slot binds for a raw argument, the unstated pointer, is what each position the pair
     // supplies reads, so returning it as stating the dropped Origin is a claim: an Origin relation error at the value, read through an
     // inferred or explicit call, a Field, an annotated result, a Case payload, nested instances, a Type slot forwarding the pair, an Option
-    // of it, an inferred constructor, a binder with another slot, a nested Type, a generic caller, a Closure parameter, an Origin slot's
-    // Field or Case payload and an associated Type. A Type slot keeps the argument's Origin, and a borrow argument's inner layers keep
-    // theirs.
+    // of it, an inferred constructor, a binder with another slot, a nested Type, a generic caller, a Function Type parameter given a
+    // Function Item (a Closure there is not erased, ErasureAfterSelectionTest's e08), an Origin slot's Field or Case payload and an
+    // associated Type. A Type slot keeps the argument's Origin, and a borrow argument's inner layers keep theirs.
     [Theory]
     [InlineData(Identities + "func f(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => id(p)", "UnsatisfiedOriginRelation_Kd: id(p)")]
     [InlineData(Identities + "func f(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => id<raw/i32 during x>(p)", "UnsatisfiedOriginRelation_Kd: id<raw/i32 during x>(p)")]
@@ -248,7 +248,7 @@ public class RawPointerSyntaxTest
     [InlineData("struct Anchored<s/T, U> {a}\n    s is owner or ref or uniq or raw\n    public var anchor: ref/i32 during a\n    public var value: s/T\n    public var other: s/U during a\nfunc f(x: ref/i32, h: ref/Anchored<raw/i32 during x, i64> during x) -> raw/i32 during x => h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
     [InlineData("struct Outer<s/T>\n    public struct Inner\n        public var v: s/T\nfunc f(x: ref/i32, i: ref/Outer<raw/i32 during x>.Inner) -> raw/i32 during x => i.v", "UnsatisfiedOriginRelation_Kd: i.v")]
     [InlineData(PairHolder + "func g<U>(x: ref/i32, h: ref/Holder<raw/U during x>) -> raw/U during x => h.value", "UnsatisfiedOriginRelation_Kd: h.value")]
-    [InlineData("func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => call(p, func (w) => w)", "UnsatisfiedOriginRelation_Kd: call(p, func (w) => w)")]
+    [InlineData("func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc same(w: raw/i32) -> raw/i32 => w\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => call(p, same)", "UnsatisfiedOriginRelation_Kd: call(p, same)")]
     [InlineData(PairHolder + "struct Box {a}\n    public var r: ref/i32 during a\n    public var h: Holder<raw/i32 during a>\nfunc f(x: ref/i32, b: ref/Box during x) -> raw/i32 during x => b.h.value", "UnsatisfiedOriginRelation_Kd: b.h.value")]
     [InlineData(PairHolder + "enum E {a}\n    Some(Holder<raw/i32 during a>, ref/i32 during a)\n    None\nfunc f(x: ref/i32, e: ref/E during x) -> raw/i32 during x\n    match e\n        .Some(let h, _) => return h.value\n        .None => return null", "UnsatisfiedOriginRelation_Kd: h.value")]
     [InlineData(PairHolder + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Holder<raw/i32 during static>\nfunc g(v: ref/S.(C).Item) -> raw/i32 during static => v.value", "UnsatisfiedOriginRelation_Kd: v.value")]

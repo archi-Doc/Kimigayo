@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // compared operand (CompareInPlace).
 // - Inputs: the bound syntax, the selected index calls, a Place's path authority (Binding.PlaceAuthority) and Origin (Binding.PlaceOrigins).
 // - Outputs: the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which ElementAccess.AccessType and IsSynthesizedAccess
-//   publish to Binding, the HIR publisher and the old paths.
+//   publish to Binding and the HIR publisher.
 // - Invariants: a node keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the
 //   Type declaring the member, never a layer.
 // - Prohibitions: nothing here reports a diagnostic, selects a candidate or changes a Type.

@@ -7,8 +7,9 @@ namespace Kimi.Compiler.Mir;
 // activates is unique at its effect rows, W6) and syntactically by Place prefix, with the route rule for a Loan in its reservation holder,
 // never a raw Place borrow's Loan, its fresh anchor's (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), a Loan its template owns skipped
 // (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a value live after it that keeps its
-// guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate or marker only the drop
-// tier found (MirBorrows.CheckSets) is the answer only where no real one is, as the depth limit (R4-M153).
+// guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate or marker a real pass
+// found is the decided answer, and one only the drop tier found (MirBorrows.CheckSets) the Deep one: a check joins what met
+// (MirOutcome) and is the depth limit only where the Join is Deep (R4-M153).
 // Must not list or classify a location's accesses (MirBorrows.Accesses) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -57,17 +58,20 @@ internal sealed partial class MirBorrows
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
     // with rule W's elements the scan goes on past the first: the access is derived exactly when every conflicting candidate is
-    // (MirBorrows.Causes' Derived, R4-M96), its causes then left for its record, else none. A candidate only the drop tier takes is passed
-    // over, so it hides no real one, and is the answer only where no real one conflicts (Report records it as the depth limit, R4-M153).
+    // (MirBorrows.Causes' Derived, R4-M96), its causes then left for its record, else none. The conflicting candidates' outcomes
+    // (Candidate.Outcome) are joined: the first decided one is the answer, where the scan stops at the top, else the first Deep one, which
+    // only the drop tier takes and so hides no real one (Report records it as the depth limit, R4-M153).
     private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
-        var (first, dropped) = (None, None);
+        var (first, dropped, met) = (None, None, MirOutcome.None);
         this.causes.Clear();
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
             if (this.Conflicts(c, root, steps, kind, taking) && !this.Covered(scope, this.candidates[c].Loan, reservation))
             {
-                if (!this.candidates[c].Tags.Takes(taking))
+                var outcome = this.candidates[c].Outcome(taking);
+                met = met.Join(outcome);
+                if (outcome.IsDeep)
                 {
                     dropped = dropped == None ? c : dropped;
                     continue;
@@ -82,7 +86,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return first == None ? dropped : first;
+        return met.IsDecided ? first : dropped;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
@@ -159,24 +163,27 @@ internal sealed partial class MirBorrows
 
     // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
     // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped
-    // borrows), anchored at the candidate; a copy's template reports it where the EndBorrow and the candidate lie in one copy (D12). A γ only
-    // the drop tier saw is the depth limit at its holder's declaration (R4-M153).
+    // borrows), anchored at the candidate; a copy's template reports it where the EndBorrow and the candidate lie in one copy (D12). Its
+    // sightings are joined, a real pass's decided and the drop tier's Deep: a γ only the drop tier saw is the depth limit at its holder's
+    // declaration (R4-M153).
     private void Ended(MirLocation at, int candidate)
     {
         var mark = Markers + candidate;
-        var seen = this.markSeen[mark] == this.stamp;
-        if ((seen || (this.drops.Count > 0 && this.markDropped[mark].Stamp == this.stamp)) &&
-            !this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
+        var met = (this.markSeen[mark] == this.stamp ? MirOutcome.Decided : MirOutcome.None)
+            .Join(this.drops.Count > 0 && this.markDropped[mark].Stamp == this.stamp ? MirOutcome.Deep : MirOutcome.None);
+        if (met.IsNone || this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
         {
-            if (!seen)
-            {
-                this.Limit(this.Declaration(this.markDropped[mark].Via), MirOutcome.Deep);
-                return;
-            }
-
-            var anchor = this.body.Subject(this.body.Locals[candidate].Source);
-            this.EndedCauses(candidate, mark);
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
+            return;
         }
+
+        if (!met.IsDecided)
+        {
+            this.Limit(this.Declaration(this.markDropped[mark].Via), met);
+            return;
+        }
+
+        var anchor = this.body.Subject(this.body.Locals[candidate].Source);
+        this.EndedCauses(candidate, mark);
+        this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
     }
 }

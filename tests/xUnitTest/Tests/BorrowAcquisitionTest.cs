@@ -110,10 +110,12 @@ public class BorrowAcquisitionTest
 
     // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare argument is acquired by its bare acquisition, so a pair layer without
     // a plan in some case (its exclusive case through a shared path, or an owner whose target is not proven Copy) is Binding's
-    // TransferRequired_Kd at the Place; the acquiring binder's own layers on the path are exclusive in that case, so an exclusive path, an
-    // own-binder path and a direct pair keep their plans. Each row: Binding's errors.
+    // TransferRequired_Kd at the Place, as a stored `uniq` reached through `ref` is (SPEC 3.5.1, PLAN G262); the acquiring binder's own
+    // layers on the path are exclusive in that case, so an exclusive path, an own-binder path and a direct pair keep their plans. Each
+    // row: Binding's errors.
     [Theory]
     [InlineData("s/T", "x: ref/(s/T during a) during b", "s is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
+    [InlineData("s/T", "x: ref/(uniq/i32 during a) during b", "s is ref", "x@follow", "TransferRequired_Kd x@follow")]
     [InlineData("s/T, r/U", "x: r/(s/T during a) during b", "s is ref or uniq\n    r is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
     [InlineData("s/T", "x: s/T", "s is owner or uniq", "x", "TransferRequired_Kd x")]
     [InlineData("s/T", "x: s/(s/T during a) during b", "s is ref or uniq", "x@follow", "")]
@@ -127,16 +129,24 @@ public class BorrowAcquisitionTest
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
+    // SPEC 3.5.1, 8.15.2 (DECISIONS BU-45): the pair layer's Reborrow through an exclusive path, and through the acquiring binder's own
+    // layers into a payload, keeps its plan in every case, so check accepts the program.
+    [Theory]
+    [InlineData("x: uniq/(s/T during a) during b", "let y = x@follow\n    _ = y@move")]
+    [InlineData("x: s/(s/T during a) during b", "let o = Option<s/T during a>.Some(x@follow)\n    _ = o@move")]
+    public void APairLayersReborrowThroughExclusiveLayersIsAccepted(string parameters, string use)
+        => Assert.Empty(DiagnosticCorpus.Check($"func f<s/T>({parameters})\n    s is ref or uniq\n    {use}\npublic func main() => ()\n").Diagnostics);
+
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
-    // through `ref` in the uniq case, an owned `q` at `uniq/i32`) whose Origin also misfits has both records, each twin one of them; a
-    // misfit only in Origins is the relation at the payload, a structural one the construction's mismatch with no acquisition record.
-    // A value call's Origin relation is the old path's, lost beside Binding's rejection until R6-check and H3 (DECISIONS BU-45). Each row:
-    // Binding's errors.
+    // through `ref` in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) whose Origin also misfits has both
+    // records, each twin one of them; a misfit only in Origins is the relation at the payload, a structural one the construction's mismatch
+    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(uniq/i32 during a) during b", "s is ref", "let o = Option<uniq/i32 during a>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during b>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
-    [InlineData("x: ref/(s/T during a) during b, g: (s/T) -> ()", "s is ref or uniq", "g(x@follow)", "TransferRequired_Kd x@follow")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q; UnsatisfiedOriginRelation_Kd q")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q@uniq)\n    _ = o@move", "UnsatisfiedOriginRelation_Kd q@uniq")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i64> = .Some(q)\n    _ = o@move", "TypeMismatch_Kd .Some(q)")]
@@ -146,6 +156,64 @@ public class BorrowAcquisitionTest
         var c = CompilationTestHelper.ParseSuccess(source);
         c.Bind();
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
+    // SPEC 10.1 step 5, 23.1.2 (PLAN G453): a construction of an Origin-carrying structure is a named call, so a bare Place without its
+    // spelling (`x@follow` through `ref`, an owned `q` at `uniq/i32`) is its acquisition record only when it is the candidate's one
+    // obstacle, as at a plain function; beside a mismatching `true` the selection fails. Each row: Binding's errors.
+    [Theory]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b) -> ()\n    let h = Holder3.init(x@follow, true)\n", "NoApplicableOverload_Kd Holder3.init(x@follow, true)")]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b) -> ()\n    let h = Holder3.init(x@follow, 1)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q, true)\n", "NoApplicableOverload_Kd Holder3.init(q, true)")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q, 1)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q@uniq, 1)\n", "")]
+    public void AConstructionsAcquisitionIsRecordedOnlyAsItsOneObstacle(string body, string errors)
+    {
+        var source = "struct Holder3 {a}\n    public let v: uniq/i32 during a\n    public init(v: uniq/i32 during a, flag: i32) => self.v = v@move\n" + body;
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
+    // SPEC 3.8, 10, 23.1.2 (PLAN G421, DECISIONS BU-96): a value call selects no callee, so an argument's failed acquisition (a bare Place
+    // without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: each argument's Origin relation,
+    // A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; a twin with the spelling has
+    // the relation alone, one without a relation problem the acquisition alone. A failed callee (a Consuming call's missing `c@move`, a
+    // payload callee through a reference) stops the call, so its own record rests on no argument. A named function or method call is no
+    // value call: a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the relations judged after selection
+    // rest on it. Rule W (DECISIONS BU-79; PLAN G421 (ii), G494 unit 2): a failed or misfitting part, before or after the others, one
+    // or two, at a Function-typed parameter or a Closure value, is a wildcard: every other part is still fitted and its relation
+    // recorded (ab15 `g(p, undefinedName)`). Each row: the published records in order; an accepted program has none.
+    [Theory]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b, y: ref/i32 during c, g: (uniq/i32 during c) -> ()) -> ()\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (s/T, ref/i32 during static) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (ref/i32 during static, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(p, x@follow)\n", "UnprovenOriginRelation_Kd p; TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, y: ref/(s/T during a) during b, g: (s/T, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, y@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd y@follow")]
+    [InlineData("func f(x: string, p: ref/i32, g: (string, ref/i32 during static) -> ()) -> ()\n    g(x, p)\n", "TransferRequired_Kd x; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    let h = func (v: s/T, w: ref/i32 during static) => ()\n    h(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f(x: i32, p: ref/i32, g: (uniq/i32, ref/i32 during static) -> ()) -> ()\n    var y: i32 = x\n    g(y, p)\n", "ExclusiveBorrowRequired_Kd y; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f(p: ref/i32) -> ()\n    let t: string = \"a\"\n    let c = func [t@move] (w: ref/i32 during static) -> ()\n        let u = t@move\n        return\n    c(p)\n", "TransferRequired_Kd c")]
+    [InlineData("group State\n    public var counter: i32 = 0\nfunc call(r: ref/(rc/((ref/i32) -> ()))) -> () => r@follow(State.counter)\n", "Unsupported_Kd var counter: i32 = 0; Unsupported_Kd r@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref\n    g(x@follow)\n", "UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T during a) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T during a) -> ()) -> ()\n    s is ref\n    g(x@follow)\n", "")]
+    [InlineData("func f<F>(x: string, p: ref/i32, g: F) -> ()\n    F is Callable<(string, ref/i32) -> ()>\n    g(x, p)\n", "TransferRequired_Kd x")]
+    [InlineData("func g<s/T>(y: s/T) -> ()\n    s is ref or uniq\n    return\nfunc f<s/T>(x: ref/(s/T during a) during b) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func take<s/T>(v: s/T, w: ref/i32 during static) -> ()\n    s is ref or uniq\n    return\nfunc f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func take<s/T>(self: ref/Self, v: s/T, w: ref/i32 during static) -> ()\n        s is ref or uniq\n        return\nfunc f<s/T>(h: ref/H, x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    h.take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func take(v: string, w: ref/i32 during static) -> () => ()\nfunc f(x: string, p: ref/i32) -> ()\n    take(x, p)\n", "TransferRequired_Kd x")]
+    [InlineData("func f(x: string, p: ref/i32, g: (ref/i32 during static, string) -> ()) -> ()\n    g(p, undefinedName)\n", "UnprovenOriginRelation_Kd p; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(p: ref/i32, g: (string, ref/i32 during static) -> ()) -> ()\n    g(undefinedName, p)\n", "UnresolvedBinding_Kd undefinedName; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f(p: ref/i32, g: (string, ref/i32 during static, string) -> ()) -> ()\n    g(undefinedName, p, 1 + true)\n", "UnresolvedBinding_Kd undefinedName; UnprovenOriginRelation_Kd p; NonNumericOperand_Kd 1 + true")]
+    [InlineData("func f(g: (string, string) -> ()) -> ()\n    g(undefinedName, 5)\n", "UnresolvedBinding_Kd undefinedName; TypeMismatch_Kd 5")]
+    [InlineData("func f(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during static, y: string) -> i32 => 5\n    return c(p, undefinedName)\n", "UnprovenOriginRelation_Kd p; UnresolvedBinding_Kd undefinedName")]
+    public void AValueCallsAcquisitionAndRelationsAreEachRecorded(string body, string records)
+    {
+        var source = body + "public func main() => ()\n";
+        var check = DiagnosticCorpus.Check(source);
+        Assert.Equal(records, string.Join("; ", check.Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+        Assert.Equal(records.Length == 0, check.Accepted);
     }
 
     // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose
@@ -162,9 +230,11 @@ public class BorrowAcquisitionTest
 
     // SPEC 3.5.1, 10.2.2 (PLAN G232): at a fixed expected Type that it fits, a bare Place storing an exclusive reference, `uniq/T` or
     // `objuniq/T`, Reborrows as at a bare acquisition position, contained in the layers reaching it (DECISIONS BU-27): the leak is the
-    // Origin relation's, the twin with the relation is accepted, at a `return` and an annotated `let`. Through a shared layer it has no
-    // Reborrow (TransferRequired_Kd), and a pair layer keeps its by-case plan. Each row: the records.
+    // Origin relation's, the twin with the relation is accepted, at a `return`, an annotated `let` and a payload. Through a shared layer it
+    // has no Reborrow (TransferRequired_Kd at the Place, SPEC 3.5.1), and a pair layer keeps its by-case plan. Each row: the records.
     [Theory]
+    [InlineData("func f(x: uniq/(uniq/i32 during a) during b) -> Option<uniq/i32 during a>\n    origin b outlives a\n    return .Some(x@follow)\n", "")]
+    [InlineData(View + "func f(h: ref/(H2 during a) during s) -> Option<objuniq/P during a>\n    origin s outlives a\n    return .Some(h.o)\n", "TransferRequired_Kd h.o")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    origin s outlives a\n    return h.o\n", "")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    return h.o\n", "UnprovenOriginRelation_Kd h.o")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> ()\n    origin s outlives a\n    let x: objuniq/P during a = h.o\n    x.x = 3\n", "")]

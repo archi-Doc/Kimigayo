@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 internal readonly record struct RawMember(int Input, BoundType Referent, bool Exclusive);
 
 // Raw Origins, member borrows and slot keepers (SPEC 5.7 Origins, Calls, 15.3.5; D15; DECISIONS BU-24; contract in Binding.RawOrigins.cs):
-// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin and StoredMembers read, and the
+// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin, StoredMembers and LayerMembers read, and the
 // borrows keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
 public sealed partial class Binding
 {
@@ -45,6 +45,11 @@ public sealed partial class Binding
 
         return complete;
     }
+
+    // SPEC 5.2.1, 5.7's table (PLAN G338): RawMembers of the Origin a raw layer states within a contract's inputs; none for `self`, `static`
+    // or an unstated layer. Reached through TyCtxt.LayerMembers.
+    internal bool LayerMembers(BoundType layer, ReadOnlySpan<BoundType> inputs, List<RawMember> members)
+        => OwnedOrigin(layer) is not { Kind: not (OriginKind.Static or OriginKind.Unstated) } origin || this.RawMembers(origin, inputs, members);
 
     // SPEC 5.7, 15.3.5 (D15; design-final §4; DECISIONS BU-44): during the requirement fixed point's visit of a declaration's Types
     // (AccumulateRequirements), a borrow layer whose Origin is a slot of `schema` keeps that slot with its referent `kept`, a pair layer

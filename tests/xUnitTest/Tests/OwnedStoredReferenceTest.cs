@@ -55,17 +55,15 @@ public class OwnedStoredReferenceTest
     public void StoredReferenceArgumentsReborrowThroughTheSlot(string name, string source)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceArgument" + name, Calls + source, string.Empty);
 
+    // A live child conflicts at the call's activation, or, for a shared inspection, at the argument. The MIR's record (H5, DECISIONS
+    // R5-M185) relates the child's Borrow, its later use and, at an activation, the reservation.
     [Theory]
-    [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", true)]
-    [InlineData("both(item.0, item.0)", true)]
-    [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", false)]
-    public void StoredReferenceArgumentsRespectLiveChildren(string body, bool? activation)
+    [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", DiagnosticCode.CallActivationConflict_Kd, "change(item.0)", null, "borrow 6:13 item.0@follow@ref | loan 8:9 child == 42 | reservation 7:8 item.0")]
+    [InlineData("both(item.0, item.0)", DiagnosticCode.CallActivationConflict_Kd, "both(item.0, item.0)", null, "borrow 6:14 item.0 | loan 6:1 both(item.0, item.0) | reservation 6:6 item.0")]
+    [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", DiagnosticCode.ComparisonLoanConflict_Kd, "item.0", "item.0)", "borrow 6:13 item.0@follow@uniq | loan 8:1 child@follow = 1")]
+    public void StoredReferenceArgumentsRespectLiveChildren(string body, DiagnosticCode code, string text, string? at, string related)
     {
-        var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
-            (activation is null || x.Activation == activation));
+        var c = CallReservationTest.AssertMirRecord(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body, code, text, related, at);
         Assert.False(c.Generate(TextWriter.Null));
     }
 
@@ -94,27 +92,27 @@ public class OwnedStoredReferenceTest
         Assert.Equal(!write, c.Analysis.IsVerified);
         if (write)
         {
-            // Both preparations reserve the same stored referent; report their overlap at the second lending point.
-            var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-            Assert.Equal(DiagnosticCode.CallReservationConflict_Kd, issue.Code);
-            Assert.Equal("item.0", issue.Source.ToString());
-            Assert.Equal("poke(item.0)", issue.Input?.Call.ToString());
-            Assert.Equal("change3(item.0, poke(item.0))", issue.ConflictingReservation?.Call.ToString());
+            // Both preparations reserve the same stored referent: one overlap, at the later input's call (H5; H3b T44: at its `item.0`
+            // before), relating the earlier reservation's Borrow and call and the later input's own reservation, as for a local
+            // (CallReservationTest.OverlappingExclusiveInputsConflictOnceAtTheCall), without the implicit acquisitions' Note (A6 has no
+            // acquisition fact, PLAN G433).
+            CallReservationTest.AssertMirRecord(source, DiagnosticCode.CallReservationConflict_Kd, "poke(item.0)", "borrow 9:17 item.0 | loan 9:9 change3(item.0, poke(item.0)) | reservation 9:30 item.0");
         }
     }
 
+    // A reserved stored reference is acquired exclusively: an overlapping input, a write or a Move during preparation conflicts with its
+    // reservation, and a live child with its activation (H5; H3b T46: activation conflicts at the overlap and the write before), each
+    // without the implicit acquisition's Note (A6 has no acquisition fact, PLAN G433). The Move's record has no `reservation` related:
+    // the reservation it meets is the Loan, related as `borrow` (DIAGNOSTICS A6's `Reservation` is an activation's or a destruction's).
     [Theory]
-    [InlineData("twice(item.0, item.0)", true)]
-    [InlineData("change3(item.0, poke(item.0))", true)]
-    [InlineData("change3(item.0, take(item@move))", false)]
-    [InlineData("let child = item.0@follow@ref\nchange3(item.0, inspect(item.0))\nrequire child == 1 else => $abort(\"child\")", true)]
-    public void AReservedStoredReferenceActivatesExclusively(string body, bool activation)
+    [InlineData("twice(item.0, item.0)", DiagnosticCode.CallReservationConflict_Kd, "twice(item.0, item.0)", null, "borrow 10:15 item.0 | loan 10:1 twice(item.0, item.0) | reservation 10:7 item.0")]
+    [InlineData("change3(item.0, poke(item.0))", DiagnosticCode.CallReservationConflict_Kd, "poke(item.0)", null, "borrow 10:9 item.0 | loan 10:1 change3(item.0, poke(item.0)) | reservation 10:22 item.0")]
+    [InlineData("change3(item.0, take(item@move))", DiagnosticCode.CallReservationConflict_Kd, "item", "item@move", "borrow 10:9 item.0 | loan 10:1 change3(item.0, take(item@move))")]
+    [InlineData("let child = item.0@follow@ref\nchange3(item.0, inspect(item.0))\nrequire child == 1 else => $abort(\"child\")", DiagnosticCode.CallActivationConflict_Kd, "change3(item.0, inspect(item.0))", null, "borrow 10:13 item.0@follow@ref | loan 12:9 child == 1 | reservation 11:9 item.0")]
+    public void AReservedStoredReferenceActivatesExclusively(string body, DiagnosticCode code, string text, string? at, string related)
     {
         const string helpers = "func twice(target: uniq/i32, other: uniq/i32) => target@follow = 1\nfunc take(t: (uniq/i32 during a, i32)) -> i32 => 1\nfunc poke(t: uniq/i32) -> i32\n    t@follow = 3\n    return 1\n";
-        var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
+        var c = CallReservationTest.AssertMirRecord(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body, code, text, related, at);
         Assert.False(c.Generate(TextWriter.Null));
     }
 

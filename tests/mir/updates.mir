@@ -189,7 +189,7 @@ fn divergentReplacement @52
       StorageLive(_10) @70 s5
     * goto bb11 @70 s5
   bb10:
-      unreachable check bb1 @67 s1
+      unreachable @67 s1
   bb11:
       goto bb12 check bb13 @70 s5
   bb12:
@@ -207,7 +207,7 @@ fn divergentReplacement @52
   bb14:
       _1[0] = move _3 @61 s1
       _2 = const () @61 s1
-      drop _3 -> bb15 @62 s1
+      drop _3 -> bb15 [elide] @62 s1
   bb15:
       StorageDead(_3) @62 s1
       StorageDead(_2) @61 s1
@@ -285,7 +285,7 @@ fn divergentReplacementIndex @75
       StorageLive(_12) @93 s5
     * goto bb11 @93 s5
   bb10:
-      unreachable check bb1 @90 s1
+      unreachable @90 s1
   bb11:
       goto bb12 check bb13 @93 s5
   bb12:
@@ -306,7 +306,7 @@ fn divergentReplacementIndex @75
       StorageDead(_15) @85 s1
       StorageDead(_5) @87 s1
       StorageDead(_4) @85 s1
-      drop _3 -> bb15 @85 s1
+      drop _3 -> bb15 [elide] @85 s1
   bb15:
       StorageDead(_3) @85 s1
       StorageDead(_2) @84 s1
@@ -368,3 +368,243 @@ fn noncompletingWrite @99
       StorageDead(_3) @103 s2
       StorageDead(_2) @102 s1
       unreachable check bb1 @102 s1
+fn updateIndex @110
+  _0: isize return @111
+  bb0:
+    * _0 = const 0_isize @112
+      return @112
+fn updateRight @113
+  _0: i32 return @114
+  bb0:
+    * _0 = const 2_i32 @115
+      return @115
+fn orderedUpdate @116
+  _0: i32 return @117
+  _1: [1 of i32] var mut a @119 s1
+  _2: () temp @126 s1
+  _3: i32 temp @131 s1
+  _4: ref/[1 of i32] temp @127 s1
+  _5: isize temp @129 s1
+  _6: isize temp @127 s1
+  _7: uniq/i32 temp @126 s1
+  _8: i32 temp @134 s1
+  _9: i32 temp (Result) @116
+  s1: lexical in s0 @118
+  bb0:
+      StorageLive(_1) @119 s1
+    * _1 = FixedArray(const 40_i32): [1 of i32] @124 s1
+      StorageLive(_2) @126 s1
+      StorageLive(_3) @131 s1
+    * _3 = updateRight() -> bb1 @131 s1
+  bb1:
+      StorageLive(_4) @127 s1
+      _4 = &_1: ref/[1 of i32] @127 s1
+      StorageLive(_5) @129 s1
+      _5 = updateIndex() -> bb2 @129 s1
+  bb2:
+      StorageLive(_6) @127 s1
+      _6 = move _5 @129 s1
+      EndBorrow(_4) @127 s1
+      StorageLive(_7) @126 s1
+      _7 = &uniq two-phase _1[_6]: uniq/i32 @126 s1
+      (*_7) = Add(copy (*_7), move _3) @126 s1
+      _2 = const () @126 s1
+      StorageDead(_7) @126 s1
+      StorageDead(_6) @127 s1
+      StorageDead(_5) @129 s1
+      StorageDead(_4) @127 s1
+      StorageDead(_3) @131 s1
+      StorageDead(_2) @126 s1
+      StorageLive(_8) @134 s1
+    * _8 = copy _1[0] @134 s1
+      goto bb7 check bb8 @133 s1
+  bb3:
+      return @116
+  bb4:
+      _0 = move _9 @116
+      goto bb3 @116
+  bb5:
+      StorageDead(_1) @119 s1
+      goto bb4 @116
+  bb6:
+      StorageDead(_8) @134 s1
+      goto bb5 @116
+  bb7:
+      _9 = move _8 @133 s1
+      goto bb6 @133 s1
+  bb8:
+      StorageDead(_8) @134 s1
+      StorageDead(_1) @119 s1
+      unreachable @118
+fn wholeLocal @137
+  _0: () return @137
+  _1: i32 var mut x @139 s1
+  _2: i32 var mut y @143 s1
+  _3: () temp @148 s1
+  _4: uniq/i32 temp @154 s1
+  _5: i32 temp @159 s1
+  _6: uniq/i32 temp @165 s1
+  _7: () temp @170 s1
+  _8: uniq/i32 temp @176 s1
+  _9: uniq/i32 temp @179 s1
+  s1: lexical in s0 @138
+  bb0:
+      StorageLive(_1) @139 s1
+    * _1 = const 1_i32 @142 s1
+      StorageLive(_2) @143 s1
+    * _2 = const 2_i32 @146 s1
+      StorageLive(_3) @148 s1
+      StorageLive(_4) @154 s1
+    * _4 = &uniq two-phase _1: uniq/i32 @154 s1
+      _3 = replace<i32>(move _4, const 2_i32) -> bb1 @148 s1
+  bb1:
+      StorageDead(_4) @154 s1
+      StorageDead(_3) @148 s1
+      StorageLive(_5) @159 s1
+      StorageLive(_6) @165 s1
+    * _6 = &uniq two-phase _1: uniq/i32 @165 s1
+      _5 = exchange<i32>(move _6, const 2_i32) -> bb2 @159 s1
+  bb2:
+      StorageDead(_6) @165 s1
+      StorageDead(_5) @159 s1
+      StorageLive(_7) @170 s1
+      StorageLive(_8) @176 s1
+    * _8 = &uniq two-phase _1: uniq/i32 @176 s1
+      StorageLive(_9) @179 s1
+      _9 = &uniq two-phase _2: uniq/i32 @179 s1
+      _7 = swap<i32>(move _8, move _9) -> bb3 @170 s1
+  bb3:
+      StorageDead(_9) @179 s1
+      StorageDead(_8) @176 s1
+      StorageDead(_7) @170 s1
+      _0 = const () @138 s1
+      StorageDead(_2) @143 s1
+      StorageDead(_1) @139 s1
+      return @138
+fn wholeBorrowed @182
+  _0: () return @182
+  _1: uniq/i32 arg x @183
+  _2: uniq/i32 arg y @185
+  _3: () temp @189 s1
+  _4: uniq/i32 temp @195 s1
+  _5: i32 temp @198 s1
+  _6: uniq/i32 temp @204 s1
+  _7: () temp @207 s1
+  _8: uniq/i32 temp @213 s1
+  _9: uniq/i32 temp @214 s1
+  s1: lexical in s0 @187
+  bb0:
+      StorageLive(_3) @189 s1
+      StorageLive(_4) @195 s1
+    * _4 = &uniq two-phase (*_1): uniq/i32 @195 s1
+      _3 = replace<i32>(move _4, const 2_i32) -> bb1 @189 s1
+  bb1:
+      StorageDead(_4) @195 s1
+      StorageDead(_3) @189 s1
+      StorageLive(_5) @198 s1
+      StorageLive(_6) @204 s1
+    * _6 = &uniq two-phase (*_1): uniq/i32 @204 s1
+      _5 = exchange<i32>(move _6, const 2_i32) -> bb2 @198 s1
+  bb2:
+      StorageDead(_6) @204 s1
+      StorageDead(_5) @198 s1
+      StorageLive(_7) @207 s1
+      StorageLive(_8) @213 s1
+    * _8 = &uniq two-phase (*_1): uniq/i32 @213 s1
+      StorageLive(_9) @214 s1
+      _9 = &uniq two-phase (*_2): uniq/i32 @214 s1
+      _7 = swap<i32>(move _8, move _9) -> bb3 @207 s1
+  bb3:
+      StorageDead(_9) @214 s1
+      StorageDead(_8) @213 s1
+      StorageDead(_7) @207 s1
+      _0 = const () @187 s1
+      return @187
+fn conditionalReplacement @215
+  _0: () return @215
+  _1: bool arg c @216
+  _2: string var mut s @218 s1
+  _3: () temp @221 s1
+  _4: bool temp @222 s1
+  _5: () temp @224 s2
+  _6: string temp @225 s2
+  _7: () temp @227 s1
+  _8: string temp @228 s1
+  _9: () temp @230 s1
+  _10: string temp @231 s1
+  s1: lexical in s0 @217
+  s2: lexical in s1 @223
+  flags 1
+  bb0:
+      StorageLive(_2) [clear f0] @218 s1
+      StorageLive(_3) @221 s1
+      StorageLive(_4) @222 s1
+    * _4 = copy _1 @222 s1
+      switch copy _4 [0: bb3, otherwise: bb2] @222 s1
+  bb1:
+      StorageDead(_3) @221 s1
+      StorageLive(_7) @227 s1
+      StorageLive(_8) @228 s1
+    * _8 = const "b" @229 s1
+      drop _2 -> bb6 [flag f0] [clear f0] @227 s1
+  bb2:
+      StorageDead(_4) @222 s1
+      StorageLive(_5) @224 s2
+      StorageLive(_6) @225 s2
+    * _6 = const "a" @226 s2
+      drop _2 -> bb4 [elide] [clear f0] @224 s2
+  bb3:
+      StorageDead(_4) @222 s1
+      _3 = const () @221 s1
+      goto bb1 @221 s1
+  bb4:
+      _2 = move _6 [set f0] @224 s2
+      _5 = const () @224 s2
+      drop _6 -> bb5 [elide] @225 s2
+  bb5:
+      StorageDead(_6) @225 s2
+      StorageDead(_5) @224 s2
+      _3 = const () @223 s2
+      goto bb1 @223 s1
+  bb6:
+      _2 = move _8 [set f0] @227 s1
+      _7 = const () @227 s1
+      drop _8 -> bb7 [elide] @228 s1
+  bb7:
+      StorageDead(_8) @228 s1
+      StorageDead(_7) @227 s1
+      StorageLive(_9) @230 s1
+      StorageLive(_10) @231 s1
+    * _10 = move _2 [clear f0] @233 s1
+      drop _2 -> bb8 [elide] [clear f0] @230 s1
+  bb8:
+      _2 = move _10 [set f0] @230 s1
+      _9 = const () @230 s1
+      drop _10 -> bb9 [elide] @231 s1
+  bb9:
+      StorageDead(_10) @231 s1
+      StorageDead(_9) @230 s1
+      _0 = const () @217 s1
+      drop _2 -> bb10 [keep] [clear f0] @218 s1
+  bb10:
+      StorageDead(_2) [clear f0] @218 s1
+      return @217
+fn scalarSelfAssignment @235
+  _0: () return @235
+  _1: i32 var mut x @237 s1
+  _2: () temp @240 s1
+  _3: i32 temp @241 s1
+  s1: lexical in s0 @236
+  bb0:
+      StorageLive(_1) @237 s1
+    * _1 = const 1_i32 @239 s1
+      StorageLive(_2) @240 s1
+      StorageLive(_3) @241 s1
+    * _3 = copy _1 @242 s1
+      _1 = move _3 @240 s1
+      _2 = const () @240 s1
+      StorageDead(_3) @241 s1
+      StorageDead(_2) @240 s1
+      _0 = const () @236 s1
+      StorageDead(_1) @237 s1
+      return @236

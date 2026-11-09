@@ -12,27 +12,6 @@ public sealed partial class Binding
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
-    // Whether a Type's Origins, its raw layers' included, name an Origin of `binder`: a test of its Origin summary's nodes
-    // (Binding.OriginSummaries).
-    private bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
-    {
-        var summary = this.SummaryOf(type);
-        return Names(summary.Nodes, binder) || Names(summary.RawNodes, binder);
-
-        static bool Names(BoundOrigin[] nodes, Koto binder)
-        {
-            for (var i = 0; i < nodes.Length; i++)
-            {
-                if (ReferenceEquals(nodes[i].Binder, binder))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
@@ -60,14 +39,14 @@ public sealed partial class Binding
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) ||
+            (ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable) || WitnessGroup(type, KimiDeclarationId.Equatable) is not null ||
                 (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(equality);
         }
 
         if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
-            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) ||
+            (ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Comparable) || WitnessGroup(type, KimiDeclarationId.Comparable) is not null ||
                 (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false, out _) == ConstraintProof.Proven)))
         {
             Add(ordering);
@@ -227,25 +206,21 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.SubstituteType(type, CallSlotOwner(binder), arguments, lengths);
-        if (result is not null)
+        for (var i = 0; i < InputCount(binder) && i < inputs.Length; i++)
         {
-            for (var i = 0; i < InputCount(binder) && i < inputs.Length; i++)
+            if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
+                ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
             {
-                if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
-                    ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
-                    arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
-                {
-                    inputs[i] = BoundOrigin.Static;
-                }
+                inputs[i] = BoundOrigin.Static;
             }
-
-            result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(
-                result, binder, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
         }
 
-        return result;
+        // PLAN G457: the callee's Type slots and its Origins and inputs in one pass, so a Type argument naming the callee's own Origin (a call
+        // in its own body) keeps the caller's; then normalized in the caller's terms.
+        var result = this.SubstituteType(
+            type, CallSlotOwner(binder), arguments, lengths, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))), binder);
+        return result is null ? null : this.ContractType(result, scope, self);
     }
 
     private sealed class RequirementGroup

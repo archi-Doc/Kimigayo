@@ -176,14 +176,14 @@ public class DivisionEmissionTest
     [InlineData("/", "1", true)]
     [InlineData("%", "-1", true)]
     [InlineData("%", "0", false)]
-    public void ConstantLengthChecksUseTheTargetWidth(string op, string divisor, bool valid)
+    public void ConstantLengthChecksUseTheProfileWidth(string op, string divisor, bool valid)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("i686-unknown-linux-gnu"));
-        var expression = $"(-2147483647 - 1) {op} {divisor}";
+        var expression = $"(-9223372036854775807 - 1) {op} {divisor}";
         if (op == "/" && valid)
         {
-            expression = $"({expression}) + 2147483647 + 1";
+            expression = $"({expression}) + 9223372036854775807 + 1";
         }
 
         c.Kotonoha.AddSource(new SourceDocument("Length.kimi", $"func f(x: [({expression}) of i32]) => ()"));

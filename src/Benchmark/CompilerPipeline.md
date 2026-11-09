@@ -13,31 +13,34 @@ is outside timing.
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` (with the HIR publication at the end of its Final pass, DECISIONS BU-81) and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); and the instance collector, which lays out every by-value use of the items it admits (R5; on every pipeline since DECISIONS BU-48) |
-| 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; on every pipeline it reuses stage 3's MIR and checked set, memoized, and keeps them for generation |
-| 5 | `EmissionLowering` | empty: the collector lays out every by-value use in stage 3 (the old generator's lowering until R6-gen's G4) |
+| 3 | `MirPublishBuildValidate` | `Compilation.ConstructMir`, `BuildMir`'s first step: MIR construction and validation of every body, the source's and the Kimi library's |
+| 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: over stage 3's memoized MIR, the MIR analyses (R4; V18 later times them as their own intervals) and the instance collector, which lays out every by-value use of the items it admits (R5; DECISIONS BU-48); it keeps them for generation |
+| 5 | `EmissionLowering` | empty: the collector lays out every by-value use in stage 4 (the old generator's lowering until R6-gen's G4) |
 | 6 | `LlvmIrWriting` | `Compilation.Generate`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
-order. Stage 3 builds, validates and analyzes the MIR and collects its checked set
-(`Compilation.BuildMir`), each memoized per program version, so stage 4's `Analyze`
-reuses them on either pipeline; the old analysis still decides (R3-R6). Since DECISIONS
-R5-M156 every pipeline's `Analyze` builds, analyzes and collects the MIR and publishes its
-records, so `KIMI_PIPELINE` changes no stage: stage 3 is work every check runs.
+order. Stage 3 builds and validates the MIR (`Compilation.ConstructMir`), memoized per
+program version, and stage 4's `Analyze` analyzes and collects that program and keeps it
+for generation; the MIR decides (DECISIONS R5-M185). Since DECISIONS R5-M156 `Analyze`
+builds, analyzes and collects the MIR and publishes its records, so stages 3 and 4 are
+work every check runs. From R6-check
+H9 stage 3 is construction and validation alone and stage 4 the analyses and collection;
+earlier reports timed both in stage 3 and memo checks in stage 4 (until H5 the legacy
+ownership pass), so only the sum of stages 3 and 4 compares across the break.
 Each result reports `mirBodies`, the bodies stage 3
 builds, and the stage's mean time and allocation per body (`mirMeanMicrosecondsPerBody`,
 `mirMeanAllocatedBytesPerBody`): a fresh compilation's builder starts empty, so these are
 first-build costs, which a warm rebuild of the same compilation does not pay.
 Stage 2 includes lazy Binding construction and embedded Kimi library loading and
 parsing; it is not exclusively semantic analysis of user source. Stage 4 similarly
-includes lazy emitter initialization. Success checks belong to their respective
-stages; stage 3 requires a MIR without construction records or validator findings.
+includes the lazy creation of the MIR analyses and the collector. Success checks belong
+to their respective stages; stage 3 requires a MIR without construction records or
+validator findings.
 The compiler implementation and public APIs are unchanged.
 
-A process follows `KIMI_PIPELINE`, and the report's `compiler` names the non-default
-pipeline (`[mir]`). `--compiler-pipeline` measures MIR code generation, the one code
+`--compiler-pipeline` measures MIR code generation, the one code
 generator since R6-gen's G4 (DECISIONS R5-M160): the collector lays out every by-value use
-in stage 3 and code generation reads those layouts as it writes, so stage 5 is empty and
+in stage 4 and code generation reads those layouts as it writes, so stage 5 is empty and
 stage 6 is the whole generation entry; the stage names stay, so reports remain comparable
 with earlier ones of the old generator (DECISIONS R5-M94). An input that MIR code generation
 does not generate fails the run with the entry's failure. Its cost against an old
@@ -74,8 +77,8 @@ fraction of a fresh compilation. Other feature-specific benchmarks are unchanged
 
 ## Check cost (`--analyze-cost`)
 
-`--analyze-cost` measures the check of the `Generic` shape (sizes 1, 32, 64 and 128) on the process's pipeline (the report's
-`compiler` names a non-default one; schema version 3). Every pipeline's `Analyze` builds, validates, analyzes and collects the MIR
+`--analyze-cost` measures the check of the `Generic` shape (sizes 1, 32, 64 and 128; schema version 3). `Analyze` builds,
+validates, analyzes and collects the MIR
 and publishes every record of its checked set (DECISIONS BU-48, R5-M156), so its former `legacy`, `mir` and `sel` configurations
 measured the same check and one remains (DECISIONS R5-M160). `freshCheck` is one fresh compilation's
 `Bind`, `CheckStartup` and `Analyze` (the stages 2 to 4 above; preparation and parsing are untimed); `warmAnalyze` repeats
@@ -88,7 +91,7 @@ measurement protocol below and save `--analyze-cost` output beside it.
 ## Collection cost (`--collection-cost`)
 
 `--collection-cost` times the instance collector inside one compilation, for each of the twelve inputs above (PLAN10-P3's
-collection share at the R5, R6-gen and R6-check exits; DECISIONS R5-M148). Each operation binds a fresh mir-pipeline compilation
+collection share at the R5, R6-gen and R6-check exits; DECISIONS R5-M148). Each operation binds a fresh compilation
 and builds, validates and analyzes its MIR untimed with the two components `Compilation.BuildMir` composes (`MirBuilder`,
 `MirAnalysis`), not with `BuildMir`, which also collects. It then times three fresh collectors over that program in order:
 `cold`, the compilation's first collection, with its `Layout` (the collection-and-layout share and the check-time cost of

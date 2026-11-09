@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
         => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&
@@ -21,6 +23,18 @@ public sealed partial class Binding
         return node;
     }
 
+    // A transparent wrapper (a TypeSemanticsKoto the parser adds around a written Type, IsTransparentWrapper) is the Type it wraps: the one
+    // unwrap of it, for an associated head, a qualifier and the node a requirement's failure rests on.
+    private static Koto? UnwrapTransparentType(Koto? syntax)
+    {
+        while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            syntax = inner;
+        }
+
+        return syntax;
+    }
+
     private static string? TypeSpelling(Koto syntax) => syntax switch
     {
         IdentifierNameKoto identifier => identifier.IdentifierName,
@@ -28,273 +42,17 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // A qualified Type Name selects the declarations of the qualifier's scope, never its generic parameters (SPEC 9.1).
-    private static BindingSymbol? QualifiedTypeMember(BindingSymbol? head)
+    // A Container's direct Type members named `name`, as a path (SPEC 9.6) or an opening alias (18.2.1) reaches them: never its formal
+    // parameters, which only the scope walk finds at their declaring position (9.5).
+    private static BindingSymbol? MemberTypes(BindingScope container, string name)
     {
+        var head = container.Types.GetValueOrDefault(name);
         while (head is not null && IsGenericParameter(head))
         {
             head = head.Next;
         }
 
         return head;
-    }
-
-    private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false, int arity = 0, TypeLookupRole role = TypeLookupRole.Any)
-    {
-        this.importCandidates?.GetValueOrDefault(use)?.Clear();
-        if (role != TypeLookupRole.Semantics)
-        {
-            this.qualificationStops?.Remove((use, type));
-        }
-
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (type)
-            {
-                var candidates = default(TypeCandidates);
-                this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, core, arity, role: role);
-                if (candidates.First is not null)
-                {
-                    return this.SelectTypeCandidate(candidates, use);
-                }
-
-                if (this.StopInheritedLookup(current, scope, use, name, type, core, arity, role))
-                {
-                    return null;
-                }
-
-                continue;
-            }
-
-            if (current.Values.TryGetValue(name, out var symbol))
-            {
-                for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
-                {
-                    if (core && candidate.Kind == BindingSymbolKind.Container)
-                    {
-                        continue;
-                    }
-
-                    if (candidate.Kind == BindingSymbolKind.Local && candidate.Declaration.Span.End > use.Span.Start)
-                    {
-                        continue;
-                    }
-
-                    if (!this.ParameterVisible(candidate))
-                    {
-                        continue;
-                    }
-
-                    if (!this.Accessible(candidate, scope))
-                    {
-                        continue;
-                    }
-
-                    if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) && !this.HasReceiverlessCandidate(symbol, scope, core))
-                    {
-                        this.RecordQualificationStop(use, type, new(current, scope, candidate, name, type, core, arity));
-                        return null;
-                    }
-
-                    return candidate;
-                }
-            }
-
-            if (this.StopInheritedLookup(current, scope, use, name, type, core, arity))
-            {
-                return null;
-            }
-        }
-
-        if (type && !core && this.ModuleReference(use, name) is { } reference)
-        {
-            return reference;
-        }
-
-        if (this.aliasResolutionDepth != 0)
-        {
-            return null;
-        }
-
-        return type
-            ? this.LookupImportedType(name, scope, use, core, arity, role)
-            : this.LookupImportedValue(name, scope, use, core);
-    }
-
-    // SPEC 13.5.1: each role fixes its own first eligible lookup stage before the two roles are compared.
-    // Operand or target fitting never resolves an ambiguity or reopens either search.
-    private BindingSymbol? LookupAdaptationTarget(Koto syntax, BindingScope scope, out bool semantics)
-    {
-        semantics = false;
-        if (TypeSpelling(syntax) is not { } name)
-        {
-            return null;
-        }
-
-        if (name == "Self")
-        {
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Owner is DeclarationContainerKoto and not GroupKoto)
-                {
-                    return current.Owner.BoundSymbol;
-                }
-            }
-
-            return null;
-        }
-
-        var target = this.Lookup(name, scope, syntax, true, true, role: TypeLookupRole.Type);
-        if (syntax.BindingState == BindingState.Invalid)
-        {
-            return null;
-        }
-
-        var parameter = this.Lookup(name, scope, syntax, true, true, role: TypeLookupRole.Semantics);
-        if (syntax.BindingState == BindingState.Invalid)
-        {
-            return null;
-        }
-
-        if (target is not null && parameter is not null)
-        {
-            this.Fail(syntax, BindingFailure.Ambiguous, true);
-            return null;
-        }
-
-        semantics = parameter is not null;
-        // Preserve the ordinary wrong-role or missing-name diagnostic when neither role applies.
-        var selected = parameter ?? target ?? this.Lookup(name, scope, syntax, true, true);
-        syntax.BoundSymbol = selected;
-        return selected;
-    }
-
-    // The symbol a Type name selects. It binds none of the name's syntax: a qualifier is bound once, in the role of the form its name
-    // selects, by BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base, which the projection's
-    // position completes (SPEC 15.4.2).
-    private BindingSymbol? TypeName(Koto syntax, BindingScope scope, bool core, int arity = 0)
-    {
-        while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
-        {
-            syntax = inner;
-        }
-
-        if (syntax is GenericsKoto generic)
-        {
-            return this.TypeName(generic.Identifier!, scope, core, generic.TypeArguments.Count);
-        }
-
-        var name = TypeSpelling(syntax);
-        if (name is not null)
-        {
-            if (name == "Self")
-            {
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    if (current.Owner is DeclarationContainerKoto and not GroupKoto)
-                    {
-                        return current.Owner.BoundSymbol;
-                    }
-                }
-            }
-
-            var target = syntax;
-            while (target.Parent is TypeSemanticsKoto { IsTransparentWrapper: true } wrapper)
-            {
-                target = wrapper;
-            }
-
-            if (target.Parent is ConversionKoto conversion && ReferenceEquals(conversion.Right, target))
-            {
-                return this.LookupAdaptationTarget(syntax, scope, out _);
-            }
-
-            return this.Lookup(name, scope, syntax, true, core, arity);
-        }
-
-        if (syntax is ParenthesizedTypeKoto parentheses)
-        {
-            return this.TypeName(parentheses.Type, scope, core, arity);
-        }
-
-        if (syntax is MemberAccessKoto member)
-        {
-            var qualifier = this.TypeName(member.Left, scope, false);
-            if (qualifier is not null && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName &&
-                this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
-            {
-                var right = member.Right;
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
-                right.BoundSymbol = target;
-                right.BindingState = BindingState.Resolved;
-                return target;
-            }
-
-            // The declaration's own Type selects the inherited member: a qualifier's arguments and Origins never change the selection.
-            if (qualifier?.Declaration is StructKoto && TypeSpelling(member.Right) is { } inheritedName &&
-                this.LookupTypeMember(this.SelfType(qualifier), inheritedName, scope, typeRole: true) is { Member: { } inherited })
-            {
-                member.Left.BoundSymbol = qualifier;
-                member.Right.BoundSymbol = inherited;
-                member.Right.BindingState = BindingState.Resolved;
-                return this.SelectTypeCandidate(inherited, scope, syntax, core, arity);
-            }
-        }
-
-        if (syntax is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1)
-        {
-            var resolved = this.RootTypeName(root.Operands[0], core, arity);
-            if (resolved is not null)
-            {
-                root.Operands[0].BoundSymbol = resolved;
-                root.Operands[0].BindingState = BindingState.Resolved;
-            }
-
-            return resolved;
-        }
-
-        return null;
-    }
-
-    private BindingSymbol? RootTypeName(Koto syntax, bool core, int arity = 0)
-    {
-        syntax = UnwrapTypeSyntax(syntax);
-        if (syntax is GenericsKoto generic)
-        {
-            return this.RootTypeName(generic.Identifier!, core, generic.TypeArguments.Count);
-        }
-
-        if (TypeSpelling(syntax) == "Kimi")
-        {
-            return this.Library.Module;
-        }
-
-        var scope = this.ModuleScope(syntax);
-        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName)
-        {
-            var target = this.SelectTypeCandidate(members.Types.GetValueOrDefault(rightName), scope, syntax, core, arity);
-            if (target is not null && (!this.Accessible(target, scope) || (core && target.Kind == BindingSymbolKind.Container)))
-            {
-                return null;
-            }
-
-            member.Left.BoundSymbol = qualifier;
-            member.Left.BindingState = BindingState.Resolved;
-            member.Right.BoundSymbol = target;
-            member.Right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
-            member.BoundSymbol = target;
-            member.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
-            return target;
-        }
-
-        if (TypeSpelling(syntax) is { } name)
-        {
-            var target = this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), scope, syntax, core, arity) ?? this.ModuleReference(syntax, name);
-            return target is not null && (!core || target.Kind != BindingSymbolKind.Container) && this.Accessible(target, scope) ? target : null;
-        }
-
-        return null;
     }
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
@@ -313,6 +71,31 @@ public sealed partial class Binding
             return null; // A failed local inference request is not a Type name to look up again.
         }
 
+        // SPEC 15.3.4: a named function's set binds inside its header's Origin declaration, whose relations complete it in any order, so
+        // the first binding of one, an occurrence or a use's pull, demands the header (Binding.DeclQuery's Signature): NotStarted binds it;
+        // Running (inside it, the common case) and Done return at once. The header is its declaration's, never the consulting Type's
+        // prerequisite (SPEC 23.1.2), so the demand runs with the consultation frame suspended. After a Running or Done demand
+        // syntax.BoundType is null: the first test above returned a known Type, and its closure-header exception's syntax has an
+        // anonymous Origin owner, which this test excludes.
+        if (syntax is TypeSemanticsKoto { BindingSetName: not null } &&
+            OriginOwner(syntax) is FunctionKoto { IsAnonymous: false, BoundSymbol: { } function })
+        {
+            var consultation = this.SuspendConsultation();
+            try
+            {
+                this.BindHeader(function);
+            }
+            finally
+            {
+                this.ResumeConsultation(consultation);
+            }
+
+            if (syntax.BoundType is { } bound)
+            {
+                return bound;
+            }
+        }
+
         if (!this.resolvingTypes.Add(syntax))
         {
             return this.Fail(syntax, BindingFailure.Cycle, true);
@@ -324,7 +107,7 @@ public sealed partial class Binding
         {
             var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
-            var type = this.BindTypeStructure(syntax, scope, context);
+            var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
@@ -335,6 +118,11 @@ public sealed partial class Binding
             if (type is null)
             {
                 RestPendingOn(originDeclaration, syntax);
+                if (syntax.BindingState == BindingState.Resolved)
+                {
+                    syntax.BindingState = BindingState.Unresolved; // A lookup's Resolved (PublishQualifier) yields to its binder's outcome.
+                }
+
                 return null;
             }
 
@@ -345,6 +133,12 @@ public sealed partial class Binding
 
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
+            if (OverHeight(type))
+            {
+                RestPendingOn(originDeclaration, syntax);
+                return this.HeightChecked(syntax, type);
+            }
+
             Complete(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
@@ -367,7 +161,7 @@ public sealed partial class Binding
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
                 return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
-                var rootDefinition = this.RootTypeName(rootedGeneric, true);
+                var rootDefinition = this.TypeName(root, scope, LookupRole.NoContainer);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
@@ -397,7 +191,7 @@ public sealed partial class Binding
                             targetSyntax = grouped.Type;
                         }
 
-                        var target = this.TypeName(targetSyntax, scope, true);
+                        var target = this.TypeName(targetSyntax, scope, LookupRole.NoContainer);
                         if (target?.Kind == BindingSymbolKind.SemanticsTarget &&
                             targetSyntax is not TypeSemanticsKoto { HasOrigin: true })
                         {
@@ -422,7 +216,8 @@ public sealed partial class Binding
                             inner = this.BindType(semantics.Type, scope, innerContext);
                         }
 
-                        var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true, role: TypeLookupRole.Semantics);
+                        var mark = this.nameSteps.Count;
+                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.Semantics, 0), mark);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -467,9 +262,14 @@ public sealed partial class Binding
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
-                        else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
+                        else if (this.RenouncedObjectTarget(syntax, inner))
                         {
-                            return this.FailObjectPayload(syntax, renounced);
+                            return null;
+                        }
+                        else if (!this.clausesBindable)
+                        {
+                            // A Constraint's Type is formed before the opt-outs are published: judged again once they are (VerifyEarlyObjectForms).
+                            (this.earlyObjectForms ??= []).Add((syntax, inner));
                         }
                     }
 
@@ -504,11 +304,11 @@ public sealed partial class Binding
             case OriginApplicationKoto application:
                 return this.BindAssociatedApplication(application, scope);
             case GenericsKoto generic:
-                var definition = this.TypeName(generic, scope, true);
+                var definition = this.TypeName(generic, scope, LookupRole.NoContainer);
                 return this.BindConstructedType(generic, definition, scope, context);
         }
 
-        var symbol = this.TypeName(syntax, scope, true);
+        var symbol = this.TypeName(syntax, scope, LookupRole.NoContainer);
         if (syntax is MemberAccessKoto projection && symbol is null)
         {
             var associated = this.BindAssociatedProjection(projection, scope);
@@ -526,7 +326,7 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return this.FailMissingType(syntax, scope);
+            return this.FailMissing(syntax, scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
@@ -580,20 +380,14 @@ public sealed partial class Binding
 
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
-        if (definition is null)
+        var container = definition?.Declaration as DeclarationContainerKoto;
+        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            // The generic's Name is what is missing; the application is not formed from it.
-            return this.FailMissingType(generic.Identifier!, scope);
-        }
-
-        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
-        {
-            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
-        }
-
-        if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
-        {
-            return this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
+            // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
+            this.BindUnappliedArguments(generic, scope, context.Nested);
+            return definition is null ? this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType)
+                : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
+                : this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
         }
 
         generic.Identifier!.BoundSymbol = definition;
@@ -615,6 +409,21 @@ public sealed partial class Binding
         }
 
         return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+    }
+
+    // SPEC 9.7, 23.1.2: explicit Type arguments resolve in the use-site context, whatever their head, so a head or arity that forms no
+    // application (a Type's or a Contract reference's) never hides their own failures; only a formed application interns them.
+    private void BindUnappliedArguments(GenericsKoto? written, BindingScope scope, TypeBindingContext context)
+    {
+        if (written is null)
+        {
+            return;
+        }
+
+        foreach (var argument in written.TypeArguments)
+        {
+            this.BindType(argument, scope, context);
+        }
     }
 
     private BoundType? BindTypeList(

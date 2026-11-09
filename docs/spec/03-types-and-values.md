@@ -26,7 +26,7 @@ An **integer Type** is an integer Core under `owner` Semantics, a **wrapping int
 | `i32`, `u32`, `f32` | 32 bits |
 | `i64`, `u64`, `f64` | 64 bits |
 | `i128`, `u128` | 128 bits |
-| `isize`, `usize` | The target's pointer size |
+| `isize`, `usize` | The target's pointer size; for validity, [§22](22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions) |
 
 The only valid `bool` bit patterns are `0x00` (`false`) and `0x01` (`true`); reading any other as `bool` is undefined behavior ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places)).
 
@@ -310,7 +310,7 @@ A member access, an index and a method receiver select a Place from their operan
 
 - Selection uses Types alone; a later acquisition or Loan failure never returns to another layer. Each selected layer keeps its capabilities, Origins and Loans.
 - An object handle or object borrow has its View Target's declarations, so selection stops there ([§13.5.5](13-operators-and-assignment.md#1355-follow), [§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection), [§12.6](12-expressions.md#126-object-member-calls)).
-- The same selection applies to a borrowing `for` entry ([§14.6.2](14-control-flow.md#1462-iteration-protocol)) and to structural Patterns ([§14.8.1](14-control-flow.md#1481-patterns)). A value read and a comparison select the terminal instead.
+- The same selection applies to a borrowing `for` entry ([§14.6.2](14-control-flow.md#1462-iteration-protocol)) and to structural Patterns ([§14.8.1](14-control-flow.md#1481-patterns)). A value read and a comparison select the terminal instead; a raw-pointer index `p[n]` selects no layer and takes its receiver's own Type ([§5.3](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing)).
 - In a generic body, a Type parameter or associated Type whose shape the Constraints do not determine is the terminal; only the capabilities its Constraints declare are used, and instantiation never selects another layer. A shape proven by a declared equality may be followed. A pair layer is followed unless its complete Type has the required declaration.
 - Bare acquisition, a single-name binding (a `let` or `var` declaration, a single `for` slot) and Type inference never select a referent or follow a pair layer; a Binding Pattern follows one only as [§14.8.1](14-control-flow.md#1481-patterns) states. An update requirement such as that of `matrix[f()][j] = value` propagates only along the selected path, never into `f()` or behind a function or getter.
 

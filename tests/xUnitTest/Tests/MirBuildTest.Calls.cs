@@ -55,15 +55,15 @@ public sealed partial class MirBuildTest
     public void ReservedCallInputsAreTwoPhase()
     {
         var source = "func take(a: uniq/i32, b: i32) => ()\nfunc f()\n    var p: i32 = 1\n    take(p@uniq, p + 1)\n    take((p@uniq), 2)\n" +
-            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2]\n" +
+            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2, 3: 4]\n" +
             "struct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
             "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
             "    take(if p > 0 => p@uniq else => p@uniq, 4)\nstruct Bag\n    public var items: Array<i32>\n    public var count: i32\n" +
             "    public init()\n        self.items = []\n        self.count = 0\nfunc fill()\n    var bag = Bag.init()\n    bag@uniq.items.append(bag.count)\n";
         Assert.Equal(
-            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared, MirRefKind.Shared,
-                MirRefKind.TwoPhaseUniq],
+            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared,
+                MirRefKind.Shared, MirRefKind.TwoPhaseUniq],
             Refs(Body(source, "f")).Select(static x => x.Kind));
         var g = Body(source, "g");
         var lent = Refs(g).ToArray();
@@ -303,6 +303,38 @@ public sealed partial class MirBuildTest
         });
     }
 
+    // SPEC 8.2.3, 13.4 (R8-OT): a comparison operand whose Type an identity premise makes layered (T is ref/string or uniq/string, ref/U
+    // over U is ref/string, under an explicit ref, uniq or pair layer, on either side, in a Closure or before a Literal Pattern) compares
+    // the terminal string: each comparison is its witness's call (no equality BinaryOp; an ordering compares compare's i32 with 0), walked
+    // from a borrow retyped to the premised Type (Viewed), with no finding (fail-before: InternalInvariant_Kd where the other side reaches
+    // the witness, else a BinaryOp at T); a conflict through the retyped view is the analysis' record.
+    [Theory]
+    [InlineData("func same<s/U, T>(x: ref/string during o, value: s/T) -> bool\n    s is ref or uniq\n    T is ref/string during o\n    return value == \"x\"\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, l: T) -> bool\n    T is ref/string during o\n    return \"x\" == l\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, a: ref/string, l: T) -> bool\n    T is ref/string during o\n    return a == l\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T) -> bool\n    T is uniq/string during o\n    return \"x\" == l\n", false)]
+    [InlineData("func f<T>(x: ref/string during o, l: T) -> bool\n    T is ref/string during o\n    let c = func [l] () => l == \"a\"\n    return c()\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: U) -> bool\n    T is ref/string during o\n    U is string\n    return l == r and r <= l\n", false)]
+    [InlineData("func pick<T>(x: ref/string during o, l: T) -> i32\n    T is ref/string during o\n    if l == \"a\" => return 1\n    match l\n        \"b\" => return 2\n        _ => return 3\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: T) -> bool\n    U is string\n    T is ref/U during o\n    return l == \"a\" or l < r\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, v: uniq/T) -> bool\n    T is ref/string during o\n    return v == \"a\"\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, v: ref/T) -> bool\n    T is uniq/string during o\n    return v == \"a\"\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T, r: T) -> bool\n    T is uniq/string during o\n    return l == r or l < r\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: ref/T, r: ref/T) -> bool\n    T is uniq/string during o\n    return l == r\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, l: T, r: T) -> bool\n    T is ref/(ref/string during o) during o\n    return l == r\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: T) -> bool\n    U is ref/string during o\n    T is ref/U during o\n    return l == r or l < r\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T, r: T) -> bool\n    T is uniq/string during o\n    return l == r\n", false)]
+    [InlineData("func f<T>(x: ref/string during o, v: uniq/T) -> bool\n    T is ref/string during o\n    let u = v@follow@uniq\n    let b = v == \"a\"\n    u@follow = x\n    return b\n", true)]
+    public void APremiseGivenLayerIsWalkedToTheComparedPlace(string source, bool conflict)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "same" or "pick" or "f" });
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Eq or (byte)MirBinaryOp.Ne });
+        Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+    }
+
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
     // Function Type with its own Origins, not the call's, whose result is bound to the argument.
     [Fact]
@@ -380,8 +412,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
-    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
-    // located at its key (fail-before: the handle and the placement at its value).
+    // reports the entry's key expression, as its duplicate key does: each later entry's lookup (the first has none, SPEC 12.4.3, PLAN G442
+    // U1), its literal's storage handle and its placement are located at its key (fail-before: the handle and the placement at its value).
     [Fact]
     public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
     {
@@ -390,10 +422,10 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var steps = body.Blocks.ToArray().Select(static x => x.Terminator)
-            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "dictionaryStorage" or "placeEntry")
+            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "placeEntry")
             .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
         Assert.Equal(
-            ["findEntry key()", "dictionaryStorage key()", "placeEntry key()", "findEntry 2", "dictionaryStorage 2", "placeEntry 2"],
+            ["placeEntry key()", "findEntry 2", "placeEntry 2"],
             steps);
     }
 

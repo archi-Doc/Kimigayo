@@ -9,11 +9,10 @@ using Kimi.Compiler;
 namespace Benchmark;
 
 // The check-time cost of the Generic shape (R5 K4b): a fresh check (Bind, CheckStartup and Analyze, the compiler pipeline's stages 2 to 4)
-// and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP server repeats it. One configuration,
-// the process's: every pipeline's Analyze builds, analyzes and collects the MIR and publishes its records (DECISIONS BU-48, R5-M156), and
-// MIR code generation is the one code generator (R5-M160), so the former legacy, mir and sel rows measured one check; `compiler` names a
-// non-default pipeline. Retained memory is the managed heap after full collections with the compilation alive: after its first check,
-// and the growth over its warm Analyzes.
+// and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP server repeats it. One configuration:
+// Analyze builds, analyzes and collects the MIR and publishes its records (DECISIONS BU-48, R5-M156), and MIR code generation is the one
+// code generator (R5-M160), so the former legacy, mir and sel rows measured one check. Retained memory is the managed heap after full
+// collections with the compilation alive: after its first check, and the growth over its warm Analyzes.
 internal static partial class AnalyzeCostMeasurements
 {
     private const int Warmups = 4;
@@ -32,7 +31,7 @@ internal static partial class AnalyzeCostMeasurements
         {
             schemaVersion = 3,
             measuredAtUtc = DateTimeOffset.UtcNow,
-            compiler = Compilation.CompilerIdentity,
+            compiler = Compilation.CompilerVersion,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
             processors = Environment.ProcessorCount,

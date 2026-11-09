@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
@@ -45,6 +46,52 @@ public sealed class MirDumpTest
         Golden("every-form", text.ToString());
     }
 
+    // SPEC 14.6.1 (PLAN G427): an iteration body Binding rejected (Op Error; tests/diagnostics/syntax.json `while-header-cut`) is a
+    // statement's value, its derived Opaque value in one temp of its own, ended before the next iteration.
+    [Fact]
+    public void ARejectedIterationBodyIsOneStatementValue()
+    {
+        var c = CompilationTestHelper.Parse("public func main()\n    while", "Program.kimi");
+        c.Bind();
+        _ = c.Binding.CheckStartup(OutputKind.Application);
+        var program = c.BuildMir();
+        var main = Array.FindIndex(program.Bodies.ToArray(), static x => x.Key.Decl?.Name == "main");
+        Assert.Equal(
+            """
+            fn main
+              _0: () return
+              _1: () temp s1
+              _2: bool temp s1
+              _3: () temp s1
+              s1: lexical in s0
+              opaque 0:
+              opaque 1:
+              bb0:
+                  StorageLive(_1) s1
+                * goto bb1 s1
+              bb1:
+                  StorageLive(_2) s1
+                  _2 = opaque 0: bool s1
+                  switch copy _2 [0: bb3, otherwise: bb2] s1
+              bb2:
+                  StorageDead(_2) s1
+                  StorageLive(_3) s1
+                * _3 = opaque 1: () s1
+                  StorageDead(_3) s1
+                  goto bb1 s1
+              bb3:
+                  StorageDead(_2) s1
+                  _1 = const () s1
+                  goto bb4 s1
+              bb4:
+                  StorageDead(_1) s1
+                  _0 = const () s1
+                  return
+
+            """.ReplaceLineEndings("\n"),
+            Unsited(program, main));
+    }
+
     // A golden's program, including deliberate syntax recovery, compiled as a test build when it has a #Test.
     internal static Compilation Compile(string name)
     {
@@ -62,6 +109,14 @@ public sealed class MirDumpTest
         var text = new StringBuilder();
         MirDump.Write(c.BuildMir(), 0, text);
         return text.ToString();
+    }
+
+    // One body's dump without its sites (` @` and a syntax id), which a spelling or an edit changes (R6-check H8a D10).
+    internal static string Unsited(MirProgram program, int ordinal)
+    {
+        var text = new StringBuilder();
+        MirDump.Write(program.Bodies[ordinal], text, program.Drops, ordinal);
+        return Regex.Replace(text.ToString(), @" @\d+", string.Empty);
     }
 
     private static void Golden(string name, string actual)

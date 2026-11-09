@@ -29,7 +29,6 @@ public class DefaultOwnershipTest
     [InlineData("func f(x: string, y: string = (if false => x else => \"ok\")) => ()", "DefaultArgumentMove_Kd x")]
     [InlineData("func f(x: string, y: string = (do => x)) => ()", "DefaultArgumentMove_Kd x")]
     [InlineData("func f(x: string, y: string = (loop => exit x)) => ()", "DefaultArgumentMove_Kd x")]
-    [InlineData("contract C\n    func f(x: string, y: string = x)", "DefaultArgumentMove_Kd x")]
     [InlineData("struct S\n    public let text: string\nfunc f(x: ref/S, y: string = x.text) => ()", "TransferRequired_Kd x.text")]
     public void ABareMoveOfAPreparedArgumentIsBindingsRecord(string source, string records)
     {

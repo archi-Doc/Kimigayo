@@ -2,8 +2,7 @@
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
 // of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the DictionaryStorage symbol view the instance collector reads (F2c, until
-// R8) TyCtxt.DictionaryStorage.cs's.
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
@@ -27,7 +26,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private BoundType[] pairScratch = [];
 
     // SPEC 3.1.2 (DECISIONS R4-M154, r2.2): the stored content of a built-in Core Type, whose layout is hidden, the one fact such a Type
-    // publishes to retention's walks (Binding.HeldParts, read for the positions and the sources alike): a `string`'s value holds its text's
+    // publishes to retention's walks (Binding.Holdings, read for the positions and the sources alike): a `string`'s value holds its text's
     // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
     internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
 
@@ -68,7 +67,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     }
 
     // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
-    // Binding compares Types there.
+    // Binding compares Types there: the one premising (Binding.CallableContractType), which Binding.OperandTerminal applies too.
     internal static BoundType Premised(BindingSymbol definition, BoundType type)
     {
         var binding = definition.Declaration.CodeContext.Compilation.Binding;

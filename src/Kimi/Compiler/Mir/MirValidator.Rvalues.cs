@@ -1,14 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+
 namespace Kimi.Compiler.Mir;
 
 // Rvalues and operands (plan 5.4).
 // - Responsibility: an rvalue's kind row, operand range, marked Use (a PairAcquire's only, A3 E13 (4)), Opaque site and arity by its
 //   kind and Type (Rvalue, Arity), an aggregate's by its shape, the one rule of its operand count and each operand's Type (Shape), a
 //   Discriminant's enum Place and a Len's sequence Place (IsSequence); and each operand MirUses reports (Operand): its kind row, a
-//   constant in range, a PairAcquire only as a marked Use's whole rvalue and of its Place's pair binder, a function item constant only
-//   as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding proves Copy under the body definition's
-//   premises (its TyCtxt.Copies; DECISIONS BU-88).
+//   constant in range and an Integer constant its Type's canonical payload or of the widthless family MirTypes.HoldsIntegerConstant
+//   publishes, ranged by its member (Holds, G620, G644), a PairAcquire only as a marked Use's whole rvalue and of its Place's pair
+//   binder, a function item constant only as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding
+//   proves Copy under the body definition's premises (its TyCtxt.Copies; DECISIONS BU-88).
 // - Inputs: an Assign's rvalue with its destination's Type; each location's operands, with the positions Statement marks.
 // - Outputs: UnknownKind, OperandRange, Operation, Opaque, Arity, Discriminant, Len, Const and Binder findings; each Opaque value
 //   counted for Finish; an rvalue whose arity holds goes to the Type tier (MirValidator.Types), which reads an aggregate's shape.
@@ -30,7 +34,7 @@ internal sealed partial class MirValidator
             {
                 this.Report(MirViolation.UnknownKind);
             }
-            else if (operand.Kind == MirOperandKind.Const && (uint)operand.Arg >= (uint)body.Consts.Length)
+            else if (operand.Kind == MirOperandKind.Const && ((uint)operand.Arg >= (uint)body.Consts.Length || !Holds(body.Consts[operand.Arg])))
             {
                 this.Report(MirViolation.Const);
             }
@@ -41,6 +45,10 @@ internal sealed partial class MirValidator
             else if (operand.Kind == MirOperandKind.Const && body.Consts[operand.Arg].Kind == MirConstKind.FnItem && !this.used)
             {
                 this.Report(MirViolation.Operation); // G154: the collector finds a function item's edge only at a Use (K 4.8).
+            }
+            else if (operand.Kind == MirOperandKind.Const && body.Consts[operand.Arg].IsRecord && !this.calling)
+            {
+                this.Report(MirViolation.Operation); // ConstantRecords: a constant record is only a Call's input.
             }
             else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
                 operand.Arg,
@@ -53,6 +61,18 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.Operation); // DECISIONS BU-88: Binding's proof under the definition's premises, read, never made.
             }
         }
+
+        // G620, G644: an Integer constant has a Type of the family MirTypes.HoldsIntegerConstant publishes and holds a value of it: (i) a
+        // Type with a width its canonical N-bit payload, sign-extended for every Type (ScalarTypes.Normalize, MirConstKind.Integer; an
+        // unsigned value of 2^(N-1) and above is negative), isize and usize at the profile's width; (ii) char a Unicode scalar value (SPEC
+        // 3.1); (iii) a raw pointer null, 0 (SPEC 5.1); (iv) a Type whose instance decides it a generic literal, 0 through 127, a value of
+        // every instance (SPEC 8.7.4; Binding types a literal it fits through an identity premise at the complete Type, BU-72); else a
+        // finding.
+        private static bool Holds(in MirConst constant) => constant.Kind != MirConstKind.Integer ||
+            (ScalarTypes.Width(constant.Type) is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
+            : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
+                ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
+                : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)));
 
         private static BindingSymbol? PairBinderOf(BoundType? type)
         {
@@ -105,6 +125,7 @@ internal sealed partial class MirValidator
         private bool Rvalue(in MirRvalue rvalue, BoundType? destination)
         {
             if (!MirDescriptors.Of(rvalue.Kind).Defined || (rvalue.Kind == MirRvalueKind.Ref && rvalue.Op > (byte)MirRefKind.Raw) ||
+                (rvalue.Kind == MirRvalueKind.Storage && rvalue.Op != (byte)MirRefKind.Raw) ||
                 (rvalue.Kind == MirRvalueKind.Adapt && rvalue.Op > (MirRvalue.AdaptShorthand | MirRvalue.AdaptInput)))
             {
                 this.Report(MirViolation.UnknownKind);

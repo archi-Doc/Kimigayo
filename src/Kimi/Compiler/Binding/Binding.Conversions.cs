@@ -62,7 +62,8 @@ public sealed partial class Binding
             else
             {
                 return grouped && syntax is TypeSemanticsKoto { Type: null } bare &&
-                    !(CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+                    !(SemanticsMaskHelper.TryParse(bare.Identifier, out SemanticsKind semantics) &&
+                    semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
                     ? conversion.Right : syntax;
             }
         }
@@ -93,7 +94,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
+        if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -108,7 +109,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!OffersTake(conversion.Left) ||
-            (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
+            (ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -346,7 +347,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
+            if (!this.CopiesInEveryCase(copied, this.ConstraintScope(conversion)))
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
@@ -355,7 +356,8 @@ public sealed partial class Binding
             return Complete(conversion, copied);
         }
 
-        if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
+        if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand &&
+            SemanticsMaskHelper.TryParse(shorthand.Identifier, out SemanticsKind semantics))
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
@@ -467,7 +469,7 @@ public sealed partial class Binding
         var signed = KotoHelper.SignedNumber(operand, out _);
         var literal = signed is { IsInteger: true };
         var floatingLiteral = signed is { IsInteger: false };
-        if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target, this.compilation.PointerWidth) != 0)
+        if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target) != 0)
         {
             return this.BindTruncatedLiteral(conversion, target, operand);
         }
@@ -568,10 +570,10 @@ public sealed partial class Binding
             // SPEC 13.5.4: an integer conversion is checked against the target's range, whatever its width; only lowering
             // needs the width of isize and usize.
             if (!(source.IsInteger && target.IsInteger) &&
-                (ScalarTypes.Width(source, this.compilation.PointerWidth) == 0 || ScalarTypes.Width(target, this.compilation.PointerWidth) == 0))
+                (ScalarTypes.Width(source) == 0 || ScalarTypes.Width(target) == 0))
             {
                 var integer = source.IsInteger ? source : target;
-                if (ScalarTypes.Width(integer, this.compilation.PointerWidth) is > 0 and <= 64)
+                if (ScalarTypes.Width(integer) is > 0 and <= 64)
                 {
                     conversion.ConversionBinding = ConversionBinding.Numeric;
                     return Complete(conversion, target);

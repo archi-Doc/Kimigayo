@@ -86,15 +86,15 @@ public sealed partial class Binding
     internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
         => this.StorageInstance(type, subst) is { } result && this.PrepareTypeStorage(result) != StorageOutcome.Limit ? result : null;
 
-    // A declared Type in the instance a substitution makes: its binder's slots, then its stored Origins substituted, normalized in the
-    // binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null where one of these
-    // steps does not complete. Its storage is not prepared.
+    // A declared Type in the instance a substitution makes: its binder's slots and stored Origins substituted in one pass (PLAN G457),
+    // normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null
+    // where one of these steps does not complete. Its storage is not prepared.
     internal BoundType? StorageInstance(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
-        var originBinder = binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder;
-        var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
+        var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
+        var result = this.MemberType(type, subst.Declaring) is { } member
+            ? this.SubstituteType(member, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder) : null;
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
@@ -107,11 +107,13 @@ public sealed partial class Binding
     // (DECISIONS BU-15); null for a node or symbol naming no such receiver. Every special receiver writes its own initialized Fields
     // (Writable), no part of it gives up a Non-Copy value (CompleteTransfer) and no capture entry takes it (Binding.Closures).
     // Parts: the authority its path gives every part (PathAuthority). Whole: whether a use of the whole receiver is judged by the
-    // general rules under Parts (BindReference), a borrow of the whole receiver then being the helper borrow (HelperOrigin), which no
-    // Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
-    // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
-    // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
-    //   G166 models the Loans the old analysis and A5 lack (6.3.4's "Field borrows end before completion"); LendsFields then goes.
+    // general rules under Parts (BindReference; a method call's Receiver Expression, BindCall), a borrow of the whole receiver then
+    // being the helper borrow (HelperOrigin), which no Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields
+    // are lent exclusively (BorrowablePlace); where SPEC lends them but Binding does not, the exclusive borrow is a located
+    // Unsupported_Kd (AccessFailure).
+    // - Construction (6.3.4): an owner's path; the whole receiver is never named or acquired by a method call. Its Fields are not
+    //   lent exclusively until PLAN G166 models the Loans A5 lacks (6.3.4's "Field borrows end before completion"); LendsFields
+    //   then goes.
     // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
     //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment), the helper borrow.
     private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);
@@ -123,6 +125,10 @@ public sealed partial class Binding
             { IsDestructor: true } => new(SemanticsKind.Uniq, Whole: true, LendsFields: true),
             _ => null,
         } : null;
+
+    // A special receiver whose row refuses its whole use and which carries that record, BindCall's for a method call's Receiver
+    // Expression (SPEC 6.3.4): the failed input that the call's adaptations and verdict read without judging it again (rule W).
+    private static bool RefusedReceiver(Koto? node) => Receiver(node) is { Whole: false } && node!.BindingFailure != BindingFailure.None;
 
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
     private static ReceiverAuthority? ReceiverOfPart(Koto place)
@@ -139,6 +145,12 @@ public sealed partial class Binding
             Receiver(left) is not null ? receiver : null!;
         return function is not null;
     }
+
+    // SPEC 10.8.1, 6.5.2: the Origin arguments an expected result supplies to a construction of `declaration`, only by direct structural
+    // match with an owner Type of that declaration (never by inverting a borrow, object creation, upcast, conversion or associated
+    // projection); null for any other expected Type. Structure and Case constructions both read it.
+    private static IReadOnlyList<BoundOrigin>? ExpectedConstructionOrigins(BoundType? expected, BindingSymbol? declaration)
+        => expected is { Semantics: SemanticsKind.Owner } && ReferenceEquals(expected.Symbol, declaration) ? expected.OriginArguments : null;
 
     // SPEC 16.3.1: the Origin of the helper borrow, a borrow of the whole receiver of a row with Whole (the destruction row): the
     // destructor's HelperSlot Projection (H), so every value that carries the helper borrow carries H (SPEC 15.6), while the receiver's
@@ -319,7 +331,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, false, arity: -1);
+        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any, arity: -1);
         if (qualifier is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
@@ -428,7 +440,7 @@ public sealed partial class Binding
     {
         var type = absence.Type;
         var name = DiagnosticTypeName(type);
-        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { Bases: [var clause, ..] })
+        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { BaseClause: { } clause })
         {
             // The decision is made once, from the derived declaration, so its Types are the declaration's own.
             var declared = DiagnosticTypeName(this.SelfType(type.Symbol));
@@ -476,7 +488,12 @@ public sealed partial class Binding
     // A construction or base call of a Type without constructors: the Type, and for a derived structure its omitted base selection.
     private readonly record struct ConstructorAbsence(BoundType Type, OmittedBaseSelection? Decision);
 
-    private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)
+    // SPEC 6.3, 10.1: the constructed Type, its Origins formed from the arguments before the candidate's trial. Each argument is adapted
+    // as the trial adapts it, a missing spelling deferred, and the probe keeps no acquisition fact: the trial records its own, which names
+    // the spelling only when it is the candidate's one obstacle (SPEC 10.1 step 5; PLAN G453). A slot no argument fixes is no mismatch
+    // (SPEC 10.8; PLAN G463): the expected result fills it by direct match with an owner Type of this declaration (SPEC 10.8.1), and any
+    // other one (after a Never or waiting argument, or none) is a region of the call (SPEC 15.3.6, DECISIONS BU-104), which its uses bound.
+    private BoundType ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping, BoundType? expected)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
@@ -488,6 +505,7 @@ public sealed partial class Binding
             return type;
         }
 
+        var acquisition = this.acquisitionFailure;
         var origins = this.originScratch.Rent(count);
         Array.Clear(origins, 0, count);
         for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -501,18 +519,16 @@ public sealed partial class Binding
             {
                 var slot = mapping[i];
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
-                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _))
+                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.MatchInputOrigins(this.StoredType(pattern, type)!, adapted, owner, origins, []);
                 }
             }
 
+            var supplied = ExpectedConstructionOrigins(expected, type.Symbol);
             for (var i = 0; i < count; i++)
             {
-                if (origins[i] is null)
-                {
-                    return null;
-                }
+                origins[i] ??= i < supplied?.Count ? supplied[i] : this.CallRegion(call.Method, i);
             }
 
             return this.WithOrigins(type, null, origins.AsSpan(0, count));
@@ -520,6 +536,7 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(origins, clearArray: true);
+            this.acquisitionFailure = acquisition;
         }
     }
 

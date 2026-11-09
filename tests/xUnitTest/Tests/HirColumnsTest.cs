@@ -7,9 +7,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
-/// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
-/// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
-/// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
+/// every node of the tree has an Op, every call Op its call, every jump its target, every evaluated node its completion and its Place,
+/// every consumed child its Adjust, every match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
 /// its pair binders and every call target its disposition; a Final pass publishes them itself and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
@@ -82,19 +81,83 @@ public sealed class HirColumnsTest
         Assert.True(cold > 0 && cold == warm, $"{cold} facts cold, {warm} warm");
     }
 
+    // DECISIONS BU-106: a warm publish of a rejected labeled do that no jump goes to, whose parts the walk over its jumps (Keeps) visits
+    // to its end before keeping them, allocates nothing: the walk is one visitor reused across passes.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmPublishOfARejectedDoAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let y: i32 = label done: do\n        if c => return 1\n" +
+            "        require c else => ()\n    return 1\n");
+        HirTables.Publish(c);
+        var work = c.Binding.KeptTargetWork;
+        Assert.True(work > 0, "the walk did not run");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            HirTables.Publish(c);
+        }));
+        Assert.True(c.Binding.KeptTargetWork > work, "the warm publish did not walk");
+    }
+
     // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a user loop their
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
     // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
-    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a closure has its
-    // environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a built-in
-    // witness (a Shim), and an Abort or Fail call diverges.
+    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a row states the mode of
+    // the target of an operation taking the child, which only such a row states and no shared member's contradicts; the erasure an
+    // operation's quality states is the one the column applies (DECISIONS BU-83): an erasing value operation's Source holds exactly one
+    // ErasedType node, itself or below its groups, which takes the Erasure, and no other operation's Source holds one; a closure has
+    // its environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a
+    // built-in witness (a Shim), and an Abort or Fail call diverges.
+    // SPEC 7.2.3: Res is a read of the symbol (HirTables.ResOf): a parameter's read walks its parents up to its function and no further, so
+    // the work of a publish's reads grows with the reads, each bounded by its depth below the function, not with what surrounds the function.
+    [Fact]
+    public void AParameterReadWalksOnlyToItsFunction()
+    {
+        var few = Walked(reads: 40, nesting: 0);
+        Assert.Equal(2 * few, Walked(reads: 80, nesting: 0));
+        Assert.Equal(few, Walked(reads: 40, nesting: 12));
+
+        static long Walked(int reads, int nesting)
+        {
+            var text = new System.Text.StringBuilder();
+            for (var i = 0; i < nesting; i++)
+            {
+                text.Append(' ', 4 * i).Append("func outer() -> ()\n");
+            }
+
+            var indent = new string(' ', 4 * nesting);
+            text.Append(indent).Append("func f(a: i32) -> isize\n").Append(indent).Append("    let t: Array<i32> = ").Append('(', 100).Append('[')
+                .AppendJoin(", ", Enumerable.Repeat("a", reads)).Append(']').Append(')', 100).Append('\n').Append(indent).Append("    return t.length\n");
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", text.ToString()));
+            c.Bind();
+            HirTables.Publish(c);
+            var work = 0L;
+            var found = 0;
+            foreach (var node in Reachable(c.Kotonoha))
+            {
+                if (node is IdentifierNameKoto && HirTables.ResOf(node) == HirRes.Param)
+                {
+                    Assert.False(DefaultParameters.InLaterDefault(node, HirTables.Symbol(node)!, out var walked));
+                    (work, found) = (work + walked, found + 1);
+                }
+            }
+
+            Assert.Equal(reads, found);
+            return work;
+        }
+    }
+
     internal static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
         var binding = module.Compilation.Binding;
         var problems = new List<string>();
         var operations = new Dictionary<Koto, HashSet<HirAdaptation>>(ReferenceEqualityComparer.Instance);
+        var modes = new Dictionary<Koto, HashSet<bool>>(ReferenceEqualityComparer.Instance);
         void Expect(Koto source, HirAdaptation adaptation)
         {
             if (!binding.TryGetAdaptation(source, out _))
@@ -102,6 +165,27 @@ public sealed class HirColumnsTest
                 (operations.TryGetValue(source, out var set) ? set : operations[source] = []).Add(adaptation);
             }
         }
+
+        void ExpectOperation(Koto source, in BoundArgumentOperation operation)
+        {
+            var erasing = operation is { Kind: ArgumentOperationKind.Value, Adaptation: ArgumentAdaptation.Erasure };
+            var erased = 0;
+            for (Koto? group = source; group is not null; group = group is LabeledKoto label ? label.Target : (group as ParenthesizedKoto)?.Operand)
+            {
+                erased += HirTables.ErasedType(group) is null ? 0 : 1;
+            }
+
+            if (Parsed(source) && erased != (erasing ? 1 : 0))
+            {
+                problems.Add($"{source.CodeContext.SourceDocument?.Path}:{source.Span.Start} {source.Akind} holds {erased} erasures for {operation.Kind}/{operation.Adaptation}");
+            }
+
+            Expect(source, erasing && HirTables.ErasedType(source) is not null ? HirAdaptation.Erasure : HirAdjust.Of(operation));
+            ExpectMode(source, operation);
+        }
+
+        void ExpectMode(Koto source, in BoundArgumentOperation operation)
+            => (modes.TryGetValue(source, out var targets) ? targets : modes[source] = []).Add(binding.Exclusive(operation.AdaptedType ?? operation.ParameterType));
 
         bool Parsed(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId <= table.ParsedCount;
         foreach (var node in table.Hir.Broken ?? [])
@@ -122,12 +206,6 @@ public sealed class HirColumnsTest
             if (op == HirOp.Unset)
             {
                 problems.Add(where);
-            }
-
-            if (node.SymbolOf() is { } symbol &&
-                (HirTables.ResOf(node) == HirRes.None || (HirTables.ResOf(node) == HirRes.PreparedParam) != DefaultParameters.InLaterDefault(node, symbol)))
-            {
-                problems.Add($"{where} {symbol.Kind} {HirTables.ResOf(node)}");
             }
 
             if (op is HirOp.Jump or HirOp.Continue && !HoldsItsTarget((JumpKoto)node))
@@ -192,7 +270,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if (op == HirOp.Closure && (((FunctionKoto)node).ClosureDefinition is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
+            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
                 problems.Add($"{where} without its closure definition");
             }
@@ -240,15 +318,23 @@ public sealed class HirColumnsTest
 
                 if (call.Kind != CalleeKind.Value && call.Receiver is { } receiver)
                 {
-                    Expect(receiver, HirAdjust.Of(call.ReceiverOperation));
+                    ExpectOperation(receiver, call.ReceiverOperation);
                 }
 
                 foreach (var argument in call.ArgumentOperations)
                 {
                     if (argument.Source is { } source)
                     {
-                        Expect(source, HirAdjust.Of(argument));
+                        ExpectOperation(source, argument);
                     }
+                }
+            }
+
+            if (BoundEnumConstruction.Of(node) is { } construction)
+            {
+                foreach (ref readonly var payload in construction.PayloadOperations)
+                {
+                    ExpectMode(payload.Source!, payload);
                 }
             }
 
@@ -261,6 +347,23 @@ public sealed class HirColumnsTest
                         problems.Add($"{where} binds {position.Source.Span.Start} {position.Acquisition} as {HirTables.AdjustOf(position.Source)}");
                     }
                 }
+            }
+        }
+
+        foreach (var node in Reachable(module))
+        {
+            // A $tryWrite's writer is the one operation a test cannot name here: its macro's formatting plan keeps it.
+            if (Parsed(node) && HirTables.AdjustOf(node) is { ExclusiveMode: true } stated && ((!modes.ContainsKey(node) && node.Parent is not { Parent: MacroKoto }) || stated.Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ReferentRead))
+            {
+                problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} states a mode no operation gave it: {stated}");
+            }
+        }
+
+        foreach (var (source, targets) in modes)
+        {
+            if (Parsed(source) && HirTables.Op(source) != HirOp.Error && HirTables.AdjustOf(source) is var adjust && !targets.Contains(adjust.ExclusiveMode))
+            {
+                problems.Add($"{source.CodeContext.SourceDocument?.Path}:{source.Span.Start} {source.Akind} takes {adjust} for a target's mode {string.Join(',', targets)}");
             }
         }
 
@@ -279,10 +382,9 @@ public sealed class HirColumnsTest
     // row is a transfer at which Binding publishes InvalidJumpTarget_Kd or UnlabeledYieldTarget_Kd.
     internal static bool HoldsItsTarget(JumpKoto jump)
     {
-        var target = KotoHelper.ResolveTransferTarget(jump);
         if (HirTables.PlanOf(jump).Plan is Koto row)
         {
-            return ReferenceEquals(row, target) && KotoHelper.IsValidTransfer(jump, target);
+            return ReferenceEquals(row, Binding.TransferTarget(jump));
         }
 
         return CompilationTestHelper.BindingErrors(jump.CodeContext.Compilation)
@@ -317,7 +419,7 @@ public sealed class HirColumnsTest
         var found = 0;
         foreach (var node in nodes)
         {
-            var type = HirTables.Meaning(node) as BoundType;
+            var type = HirTables.TypeOf(node);
             for (var i = 0; i < HirTables.PlaceOf(node).Layers; i++)
             {
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
@@ -375,7 +477,7 @@ public sealed class HirColumnsTest
         return own.Concat(calls).Concat(payloads);
 
         // A body or operand that supplies its construct's value.
-        static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+        static Koto? Result(Koto? source) => source is not null && Binding.IsValueContext(source) ? source : null;
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type

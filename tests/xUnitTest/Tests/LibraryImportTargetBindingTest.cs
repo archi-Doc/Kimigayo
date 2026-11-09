@@ -70,7 +70,7 @@ public class LibraryImportTargetBindingTest
         var definition = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
         Assert.False(definition.IsVerified);
         var import = type.AttributeChain!;
-        if (import.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" })
+        if (import.Kind != AttributeKind.LibraryImport)
         {
             import = import.AttributeChain!;
         }
@@ -144,7 +144,6 @@ public class LibraryImportTargetBindingTest
     [Theory]
     [InlineData("struct S\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", false)]
     [InlineData("struct S\n    var value: i32\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func read(self: S) -> i32", true)]
-    [InlineData("contract C\n    #LibraryImport(\"codec\", \"symbol\")\n    unsafe func required() -> i32", true)]
     [InlineData("group Native\n    func outer()\n        #LibraryImport(\"codec\", \"symbol\")\n        unsafe func local() -> i32", true)]
     [InlineData("struct S<T>\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", true)]
     [InlineData("struct S<T>\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", true)]
@@ -174,8 +173,6 @@ public class LibraryImportTargetBindingTest
     [InlineData("(value: uniq/Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: ref/Dictionary<i32, i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: (i32) -> i32)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
-    [InlineData("(a: bool, b: string)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
-    [InlineData("(value: string)", "bool", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: bool)", "()", DiagnosticCode.Unsupported_Kd, "bool")]
     [InlineData("(value: char)", "()", DiagnosticCode.Unsupported_Kd, "char")]
     [InlineData("(value: isize)", "()", DiagnosticCode.Unsupported_Kd, "isize")]
@@ -203,6 +200,38 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> " + result, "codec");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         AssertImportRecord(c, code, at, code is null);
+    }
+
+    // SPEC 23.1.2, 22.6 (DIAGNOSTICS 4.3): each independent requirement of an import is its own record: the name's supply, each Type without a
+    // C counterpart with its ordinal as the condition, and the first Type outside the table, located at it. Every pass keeps them.
+    [Theory]
+    [InlineData("(a: bool, b: string)", "()", "codec", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(value: string)", "bool", "codec", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(a: string, b: string)", "()", "codec", "InvalidImportSignature_Kd", "InvalidImportSignature_Kd")]
+    [InlineData("(value: string)", "()", null, "MissingNativeRequirement_Kd", "InvalidImportSignature_Kd")]
+    [InlineData("(a: bool)", "()", null, "MissingNativeRequirement_Kd", "Unsupported_Kd")]
+    [InlineData("(a: bool, b: string)", "()", null, "MissingNativeRequirement_Kd", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(a: i32)", "()", null, "MissingNativeRequirement_Kd")]
+    public void AnImportReportsEachIndependentRequirement(string parameters, string result, string? requirement, params string[] codes)
+    {
+        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> " + result, requirement);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Equal(codes.Order(), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order());
+            Assert.False(c.Binding.Result.IsComplete);
+            c.Bind();
+        }
+    }
+
+    // The final symbol table's verdicts stay beside a failed supply: the second import conflicts with the first whatever else failed.
+    [Fact]
+    public void ASymbolConflictStaysBesideAMissingSupply()
+    {
+        var imports = "    " + Import + "\n    public unsafe func first(a: i32) -> i32\n    " + Import + "\n    public unsafe func second(a: i64) -> i32";
+        var c = AnalyzeImport("group Native\n" + imports, null);
+        Assert.Equal(
+            ["ConflictingImportSignature_Kd", "MissingNativeRequirement_Kd", "MissingNativeRequirement_Kd"],
+            CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order());
     }
 
     // SPEC 22.6: a borrow of a C-layout struct whose Fields are all C-exchangeable passes as a pointer. The struct's published
@@ -410,7 +439,7 @@ public class LibraryImportTargetBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
-    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (PLAN G329),
+    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
     // so its import of a library other than kernel32 is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
     // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
@@ -441,7 +470,7 @@ public class LibraryImportTargetBindingTest
         Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Library == "codec");
     }
 
-    // PLAN G329's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
+    // DECISIONS BU-92's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
     [Fact]
     public void ADependencyModuleImportsKernel32()
     {

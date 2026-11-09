@@ -5,7 +5,7 @@ using Xunit;
 namespace XunitTest;
 
 // A5-F4's verdicts on the OriginProof families (2a0-D §10's 2a-4): the twin of OriginProofScalingTest and OriginObligationVerdictTest,
-// which read the default pipeline's records and Binding's judge.
+// which read the published records and Binding's judge.
 public sealed partial class MirOriginsTest
 {
     // SPEC 15.3.4-15.3.7, 15.6.1, 15.6.5: on the MIR side a relation the visible premises prove is accepted and one they do not is one
@@ -17,8 +17,7 @@ public sealed partial class MirOriginsTest
         foreach (var size in new[] { 1, 2, 8 })
         {
             var c = MinimalEmissionTest.Analyze(Verification.OriginProofWorkloads.Create(family, size));
-            var (common, _, _, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-            Assert.Equal(code is null ? [] : [code], common.Concat(mir).Select(static x => x.Code.ToString()));
+            Assert.Equal(code is null ? [] : [code], MirTargetSide.MirSide(c).Select(static x => x.Code.ToString()));
         }
     }
 }

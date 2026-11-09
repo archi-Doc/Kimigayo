@@ -43,10 +43,9 @@ internal enum CapabilityGap : byte
     ExclusiveInheritedWitness,
 
     // A requirement call or requirement Item whose witness is a function without a MIR body (SPEC 8.6.4, 7.7.4; DECISIONS R5-M146,
-    // R5-M148): FixedBuffer's or HeapBuffer's reserve through BufferWriter (SPEC 22.9.4) until R8 gives them Kimigayo bodies, or a
-    // #LibraryImport function (SPEC 22.6) until R8 too, when the collector publishes the import as the call's target; a witness runs as a
-    // body item or a shim item.
-    [Transitional("R8", Reason = "R8 gives the buffers' reserve Kimigayo bodies and publishes an import as its call's target (R5-M146, R5-M148).")]
+    // R5-M148): a #LibraryImport function (SPEC 22.6) until R8's G2, when the collector publishes the import as the call's target; a witness
+    // runs as a body item or a shim item. FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies since R8-W1a.
+    [Transitional("R8", Reason = "R8's G2 publishes an import as its call's target (R5-M146, R5-M148).")]
     BodylessWitness,
 
     // A static whose storage P42 has not brought (SPEC 22.4, 22.4.4; STATUS "Static members"): one a root module declares that can be set,

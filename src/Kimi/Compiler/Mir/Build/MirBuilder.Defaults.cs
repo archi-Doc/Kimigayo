@@ -13,7 +13,6 @@ namespace Kimi.Compiler.Mir;
 // component of the omission graph, found once by Tarjan's algorithm), a call of the template.
 internal sealed partial class MirBuilder
 {
-    private const int ExpansionLimit = 65_536; // No copy takes a body past this many MIR statements (IMPL 21.3.2).
     private readonly Dictionary<DefaultDecl, int> visited = new(); // Each default's node in the omission graph.
     private readonly List<Omission> omissions = []; // The nodes in visit order.
     private readonly List<int> component = []; // The nodes whose component is open (Tarjan's stack).
@@ -93,8 +92,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
-    // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the copy would take the
-    // body past the limit (the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
+    // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the body budget refuses
+    // the copy (Refuses: the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
     // copy is written, a Limit only: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported; over storage Binding rejected the copy
     // is built, as a non-generic template over it is, DECISIONS R4-M139). A default that does not complete reaches no later
     // default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
@@ -105,7 +104,7 @@ internal sealed partial class MirBuilder
             var decl = DefaultDecl.Of(omitted);
             var slot = this.Hold(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
             var template = this.visited.TryGetValue(decl, out var index) ? this.omissions[index] : default;
-            var limit = template is { Body: { } copy, Recursive: false } && this.body.Statements.Length + copy.Statements.Length > ExpansionLimit;
+            var limit = template is { Body: { } copy, Recursive: false } && this.Refuses(copy.Statements.Length, node);
             var unsupported = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null &&
                 !this.Instantiates(made, subst);
             var at = this.arguments.Count;
@@ -115,7 +114,7 @@ internal sealed partial class MirBuilder
                 this.roots.Clear();
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.roots.Add(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
+                    this.Root(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
                 }
 
                 if (unsupported)
@@ -125,11 +124,6 @@ internal sealed partial class MirBuilder
                 else
                 {
                     this.Site(node, slot, completes);
-                }
-
-                if (limit)
-                {
-                    this.Record(node, DiagnosticCode.DefaultExpansionLimit_Kd);
                 }
             }
             else
@@ -180,7 +174,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            if (node is not FunctionKoto { ClosureDefinition: not null } function)
+            if (node is not FunctionKoto function || BoundClosure.Of(function) is null)
             {
                 node.VisitChildren(this);
             }

@@ -11,6 +11,13 @@ public sealed partial class Binding
     private static bool SameShapeBinding(BoundType a, BoundType b)
         => ReferenceEquals(a, b) || (IsSubtype(a, b) && IsSubtype(b, a));
 
+    // SPEC 10.8, 10.3: whether CollectTypes enters a pattern node against a Type, an argument's or the expected result's: the same head
+    // and arity; neither projections nor adaptations are inverted. SameArgumentEvidence's Reached follows the same rule.
+    private static bool CollectionEnters(BoundType pattern, BoundType actual)
+        => pattern.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) &&
+            pattern.Kind == actual.Kind && pattern.Symbol == actual.Symbol && pattern.Semantics == actual.Semantics &&
+            pattern.Components.Count == actual.Components.Count;
+
     private static bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
     {
         if (pattern.Symbol != expected.Symbol || expected.Semantics != SemanticsKind.Owner || pattern.Components.Count != expected.Components.Count)
@@ -29,22 +36,129 @@ public sealed partial class Binding
         return true;
     }
 
-    // The source node is common by argument index. Every occurrence must have the same structural
-    // path and extraction rule; an extra candidate-specific witness prevents common-symbol reuse.
-    private bool CommonUnresolvedEvidence(InvocationKoto call, FunctionKoto left, FunctionKoto right, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap)
+    // SPEC 7.4.4: whether both candidates take the same evidence for the slot; null when they do not, else whether some evidence
+    // reaches it. Each argument is read at its positions by the kinds ArgumentKinds publishes, as the evidence walk reads it
+    // (SlotSolution.InferPosition): a typed position other than Never by its parameter Type's occurrences and, at a callable slot,
+    // its call signature's; a Literal one likewise; an aggregate or a classified join by its child positions, each candidate's
+    // `ref/` layer dropped (InferComposite); an anonymous function by the Types its header writes (SPEC 10.5.4); a waiting or failed
+    // position (DECISIONS BU-78) none but the callable slot it stands at (DECISIONS BU-2). A single part's own Type decides the
+    // rest, as in InferPosition, which reads it the same way. `expected` is the expected result only where its fill (CollectTypes,
+    // SPEC 10.8) reached the slot, and then the occurrences that fill reaches in the candidates' results are compared too (Reached).
+    // Every occurrence must have the same structural path and extraction rule; an extra candidate-specific source fails.
+    private bool? SameArgumentEvidence(
+        InvocationKoto call, ShapePair pair, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, BoundType? expected)
     {
-        var found = false;
+        var (left, right) = (pair.Left, pair.Right);
+        var hits = 0;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var a = leftMap[i] < 0 ? null : left.Parameters[leftMap[i]].Type.BoundType;
             var b = rightMap[i] < 0 ? null : right.Parameters[rightMap[i]].Type.BoundType;
-            if (!Paths(a, b))
+            var start = this.OpenPosition(call.ArgumentNodes[i]);
+            var same = Position(start, a, b);
+            this.ClosePosition(start);
+            if (!same)
             {
-                return false;
+                return null;
             }
         }
 
-        return found;
+        return expected is null || left.IsConstructor || Reached(left.BoundSymbol!.Type, right.BoundSymbol!.Type, expected) ? hits > 0 : null;
+
+        bool Position(int start, BoundType? a, BoundType? b)
+        {
+            var end = this.positionParts.Count;
+            if (end == start)
+            {
+                return true; // Never in every source.
+            }
+
+            var node = KotoHelper.UnwrapParentheses(this.positionParts[start]);
+            BoundType? type = null;
+            var kind = end - start == 1 ? this.KindOf(node) : this.PositionKind(start, end, out type);
+            if (kind is PartKind.Aggregate or PartKind.Join)
+            {
+                return Composite(start, end, Referent(a), Referent(b));
+            }
+
+            if (end - start == 1 && kind != PartKind.Literal)
+            {
+                if (node is FunctionKoto { IsAnonymous: true } closure)
+                {
+                    return Paths(CallableSlot(a, left), CallableSlot(b, right)) && Header(closure, a, b);
+                }
+
+                (kind, type) = node.BoundType is null || this.WasDeferred(node) ? (PartKind.Call, null) : (PartKind.Typed, node.BoundType);
+            }
+
+            if (kind == PartKind.Call)
+            {
+                return Paths(CallableSlot(a, left), CallableSlot(b, right)); // A waiting or failed position (DECISIONS BU-78).
+            }
+
+            if (kind != PartKind.Literal && (type is null || ReferenceEquals(type, BoundType.Never)))
+            {
+                return true;
+            }
+
+            return Paths(a, b) && (kind == PartKind.Literal || Paths(Signature(a, left), Signature(b, right)));
+        }
+
+        // SPEC 10.8, 4.3.1: a composite by its child positions; at a bare slot the whole, only when every part is evidence.
+        bool Composite(int start, int end, BoundType? a, BoundType? b)
+        {
+            if (a?.Kind == BoundTypeKind.Parameter || b?.Kind == BoundTypeKind.Parameter)
+            {
+                if (this.IndependentPositionType(start, fitLiterals: true) is not null)
+                {
+                    return Paths(a, b);
+                }
+            }
+
+            for (var i = 0; i < this.ChildPositions(start, end); i++)
+            {
+                var child = this.positionParts.Count;
+                var eb = this.AddChildPosition(start, end, i, b);
+                this.ClosePosition(child);
+                var ea = this.AddChildPosition(start, end, i, a);
+                var same = Position(child, ea, eb);
+                this.ClosePosition(child);
+                if (!same)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool Header(FunctionKoto closure, BoundType? a, BoundType? b)
+        {
+            var sa = a is null ? null : this.ExpectedCallSignature(left, a);
+            var sb = b is null ? null : this.ExpectedCallSignature(right, b);
+            for (var p = 0; p < closure.Parameters.Count; p++)
+            {
+                if (closure.Parameters[p].Type.BoundType is not null && !Paths(SignaturePart(sa, p), SignaturePart(sb, p)))
+                {
+                    return false;
+                }
+            }
+
+            return closure.ReturnType?.BoundType is null || Paths(SignaturePart(sa, -1), SignaturePart(sb, -1));
+        }
+
+        BoundType? Signature(BoundType? pattern, FunctionKoto function)
+            => CallableSlot(pattern, function) is { } slotted ? this.ExpectedCallSignature(function, slotted) : null;
+
+        static BoundType? CallableSlot(BoundType? pattern, FunctionKoto function)
+            => pattern is not null && CallableSlotType(pattern, CallSlotOwner(function)) is not null ? pattern : null;
+
+        static BoundType? Referent(BoundType? pattern)
+            => pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : pattern;
+
+        static BoundType? SignaturePart(BoundType? signature, int index)
+            => signature is { Kind: BoundTypeKind.Function, Components: [var parameters, var returns] }
+                ? (index < 0 ? returns : index < parameters.Components.Count ? parameters.Components[index] : null) : null;
 
         bool Paths(BoundType? a, BoundType? b)
         {
@@ -62,7 +176,7 @@ public sealed partial class Binding
 
             if (a.Kind == BoundTypeKind.Parameter)
             {
-                found = true;
+                hits++;
                 return this.InfersReadReferent(a, left) == this.InfersReadReferent(b, right);
             }
 
@@ -89,7 +203,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (type.Kind == BoundTypeKind.Parameter && type.Symbol is { } parameter && ContainerSlot(CallSlotOwner(function), parameter) == slot)
+            if (IsSlot(type, function))
             {
                 return true;
             }
@@ -104,10 +218,65 @@ public sealed partial class Binding
 
             return false;
         }
+
+        // The slot's occurrences in both results that the expected result's fill reaches, by CollectionEnters: along the same paths.
+        bool Reached(BoundType? a, BoundType? b, BoundType expected)
+        {
+            var x = Reaches(a, expected, left);
+            var y = Reaches(b, expected, right);
+            if (!x || !y || a is null || b is null)
+            {
+                return x == y;
+            }
+
+            if (IsSlot(a, left) || IsSlot(b, right))
+            {
+                hits++;
+                return IsSlot(a, left) && IsSlot(b, right);
+            }
+
+            for (var p = 0; p < a.Components.Count; p++)
+            {
+                if (!Reached(a.Components[p], b.Components[p], expected.Components[p]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool Reaches(BoundType? type, BoundType expected, FunctionKoto function)
+        {
+            if (type is null || IsSlot(type, function))
+            {
+                return type is not null;
+            }
+
+            if (!CollectionEnters(type, expected))
+            {
+                return false;
+            }
+
+            for (var p = 0; p < type.Components.Count; p++)
+            {
+                if (Reaches(type.Components[p], expected.Components[p], function))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool IsSlot(BoundType type, FunctionKoto function)
+            => type.Kind == BoundTypeKind.Parameter && type.Symbol is { } parameter && ContainerSlot(CallSlotOwner(function), parameter) == slot;
     }
 
     // This phase reads the whole resolved group. Applicability, defaults and literal defaults
     // supply no evidence; a failure at another source position does not discard a binding here.
+    // A slot not fixed in both candidates needs the same evidence (SameArgumentEvidence, the expected
+    // result's included) before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
     private bool CheckCallShapeContracts(InvocationKoto call, GenericsKoto? generic, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
         var needed = false;
@@ -130,9 +299,10 @@ public sealed partial class Binding
         }
 
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
+        // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
         var bindings = this.typeScratch.Rent(slotStride);
-        var fixedSlots = this.flagScratch.Rent(slotStride);
+        var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
         {
@@ -149,7 +319,7 @@ public sealed partial class Binding
                 var count = CallSlotCount(function);
                 var declaring = function.IsConstructor && call.Method is MemberAccessKoto member ? member.Left.BoundType : candidates[c].DeclaringType;
                 this.InitializeCallSlots(call, function, declaring, bindings);
-                fixedSlots.AsSpan(0, slotStride).Clear();
+                fixedSlots.AsSpan(c * slotStride, slotStride).Clear();
                 for (var g = 0; g < count; g++)
                 {
                     if (!function.IsConstructor && generic is not null && g < generic.TypeArguments.Count)
@@ -157,7 +327,7 @@ public sealed partial class Binding
                         bindings[g] = generic.TypeArguments[g].BoundType;
                     }
 
-                    fixedSlots[g] = bindings[g] is not null;
+                    fixedSlots[(c * slotStride) + g] = bindings[g] is not null;
                     if (bindings[g] is { } fixedType)
                     {
                         modes[(c * slotStride) + g] = (int)this.ShapeOf(fixedType, function, true).Modes;
@@ -250,7 +420,7 @@ public sealed partial class Binding
                     if (pattern.Kind == BoundTypeKind.Parameter && pattern.Symbol is { } parameter && ContainerSlot(owner, parameter) is var slot && slot >= 0 && slot < count)
                     {
                         var at = (c * slotStride) + slot;
-                        if (fixedSlots[slot] || (fillOnly && modes[at] != 0))
+                        if (fixedSlots[at] || (fillOnly && modes[at] != 0))
                         {
                             return;
                         }
@@ -271,14 +441,13 @@ public sealed partial class Binding
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
                         }
 
-                        modes[at] |= mode;
+                        modes[at] |= fillOnly ? mode | 16 : mode; // 16: the expected result's fill reached the slot (SPEC 10.8).
                         return;
                     }
 
-                    if (pattern.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
-                        pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics || pattern.Components.Count != actual.Components.Count)
+                    if (!CollectionEnters(pattern, actual))
                     {
-                        return; // Neither projections nor adaptations are inverted.
+                        return;
                     }
 
                     for (var p = 0; p < pattern.Components.Count; p++)
@@ -317,9 +486,16 @@ public sealed partial class Binding
                         var b = (c * slotStride) + slot;
                         var ma = (AcquisitionModes)(modes[a] & 7);
                         var mb = (AcquisitionModes)(modes[b] & 7);
-                        if ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
+                        if ((fixedSlots[a] && fixedSlots[b] ? true : this.SameArgumentEvidence(
+                                call,
+                                contract.Pair,
+                                slot,
+                                allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                ((modes[a] | modes[b]) & 16) != 0 ? expected : null)) is { } occurs &&
+                            ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
                             (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
-                            (modes[a] == 0 && modes[b] == 0 && this.CommonUnresolvedEvidence(call, contract.Pair.Left, function, slot, allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count), allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count))))
+                            (modes[a] == 0 && modes[b] == 0 && occurs)))
                         {
                             continue;
                         }

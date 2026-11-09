@@ -91,9 +91,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
     public int NameBoundaryIndex { get; internal set; } = -1;
 
-    internal bool AllowsPositionalArgument(int index)
-        => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
-
     internal int FindParameter(string name)
     {
         var parameters = this.parameters;
@@ -128,40 +125,6 @@ public sealed class FunctionKoto : DeclarationKoto
         return this.parameterIndices.GetValueOrDefault(name, -1);
     }
 
-    internal bool TryMapArgument(string? label, ref int next, ref bool named, Span<bool> used, out int slot)
-    {
-        if (label is not null)
-        {
-            named = true;
-            slot = this.FindParameter(label);
-        }
-        else
-        {
-            slot = -1;
-            if (named)
-            {
-                return false;
-            }
-
-            // Only a receiver can already be supplied during the positional prefix.
-            while (next < this.Parameters.Count && used[next])
-            {
-                next++;
-            }
-
-            slot = next++;
-        }
-
-        if ((uint)slot >= (uint)this.Parameters.Count || used[slot] ||
-            (label is null && !this.AllowsPositionalArgument(slot)))
-        {
-            return false;
-        }
-
-        used[slot] = true;
-        return true;
-    }
-
     /// <summary>Gets the return type, if specified.</summary>
     public Koto? ReturnType { get; private set; }
 
@@ -174,8 +137,9 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
     public Koto? ExpressionBody { get; private set; }
 
-    /// <summary>Gets or sets a value indicating whether the body is missing because of a syntax Error; the checks of a body skip the function,
-    /// since that Error explains everything its body would have established (SPEC 23.1.2).</summary>
+    /// <summary>Gets or sets a value indicating whether a declaration's body is missing because of a syntax Error; the checks of a body skip
+    /// the function, since that Error explains everything its body would have established (SPEC 23.1.2). A function expression's missing
+    /// body is supplied instead (<see cref="Parse(ref TokenReader)"/>).</summary>
     internal bool MissingBody { get; set; }
 
     private List<string>? origins;
@@ -246,16 +210,17 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1), R4-M152): its latest binding's plan once that binding bound the
     /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
-    /// bound. Every reader that needs the closure's definition (its signature, parts or body) reads it (BoundClosure's contract).</summary>
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
-    internal BoundClosure? ClosureDefinition => this.ClosureStorage is { Signature: not null } plan ? plan : null;
+    /// bound. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
+    /// takes (BoundClosure's contract; DECISIONS R5-M193).</summary>
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
+    internal BoundClosure? ClosureDefinition => BoundClosure.Of(this);
 
     /// <summary>Gets the closure as created at this literal (DECISIONS R4-M152): its definition while the creation is Resolved, null
     /// when the creation failed. Only a reader that asks whether the creation at this position succeeded reads it.</summary>
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureAsCreated => this.BindingState == BindingState.Resolved ? this.ClosureDefinition : null;
 
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundClosure;
@@ -409,6 +374,10 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal BoundAccessor? Accessor { get; }
 
+    // SPEC 15.6.4, DECISIONS R4-M154 r2.1: the declaration whose syntax binds this function's Origins and its inputs' Origins, an erased
+    // signature's Binder: an accessor view's BoundAccessor.Binder, else the function.
+    internal Koto OriginBinder => (Koto?)this.Accessor?.Binder ?? this;
+
     internal bool IsPropertyWitness { get; private set; }
 
     internal void SetPropertyWitnessBody(Koto expression, BoundType result)
@@ -452,14 +421,17 @@ public sealed class FunctionKoto : DeclarationKoto
             return;
         }
 
-        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        // A declaration whose body is missing is bodyless (MissingBody). A function expression is a value whose Closure is built with
+        // its body, so its indented body, present or missing, is a required body as every body-bearing expression's is: a token left
+        // on its header's line and a missing body follow ParseRequiredBlock, the latter a supplied, recorded recovery (DIAGNOSTICS §4.4).
+        if (!this.IsAnonymous && !reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.Expect(SyntaxForm.Body);
             this.MissingBody = true;
             return;
         }
 
-        this.Body = Parser.ParseFunctionBlock(ref reader, this);
+        this.Body = Parser.ParseRequiredBlock(ref reader, this);
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }
@@ -561,7 +533,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (!this.IsDestructor && !this.IsConstructor)
         {
-            builder.Append(Constants.FuncKeyword);
+            builder.Append(TokenKind.Func.ToText());
             builder.AppendSpace();
         }
 
@@ -579,7 +551,8 @@ public sealed class FunctionKoto : DeclarationKoto
 
                 if (captures[i].IsMutable)
                 {
-                    builder.Append("var ");
+                    builder.Append(TokenKind.Var.ToText());
+                    builder.Append(' ');
                 }
 
                 builder.Append(captures[i].Name);

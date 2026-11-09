@@ -7,25 +7,13 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<BindingSymbol> importDeclarations = new();
+    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    private readonly List<string?> importSignatures = new();
 
     /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
     /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
     internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
-
-    // SPEC 22.6: whether a function carries the import Attribute; its validity is checked separately.
-    internal static bool IsLibraryImport(FunctionKoto function)
-    {
-        for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {
@@ -71,7 +59,7 @@ public sealed partial class Binding
 
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
+        this.ClearFailure(attribute);
         attribute.BindingState = BindingState.Unvisited;
         attribute.BoundType = null;
         this.nodes.Add(attribute);
@@ -95,11 +83,10 @@ public sealed partial class Binding
         string? target = null;
         var symbols = this.importSymbols;
         symbols.Clear();
-        this.importDeclarations.Clear();
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is not AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } attribute ||
+            if (this.nodes[i] is not AttributeKoto { Kind: AttributeKind.LibraryImport } attribute ||
                 AttributeTarget(attribute) is not FunctionKoto function)
             {
                 continue;
@@ -159,7 +146,7 @@ public sealed partial class Binding
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (name != WindowsProfile.Kernel32Library || declared != signature))
                 {
-                    this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
+                    this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
 
                 // SPEC 21.2: one final symbol table; same-named declarations share only an equal physical
@@ -169,16 +156,16 @@ public sealed partial class Binding
                     var previous = symbols[symbol];
                     if (previous.Signature != signature)
                     {
-                        this.Fail(attribute, BindingFailure.ConflictingImportSignature);
+                        this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
                     }
                     else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
                     {
-                        this.Fail(attribute, BindingFailure.ConflictingImportSupply);
+                        this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
                     }
                 }
             }
 
-            // A dependency module's supplies are not linked yet (PLAN G329), but the reserved kernel32 one: the import's limit, the located
+            // A dependency module's supplies are not linked yet, but the reserved kernel32 one: the import's limit, the located
             // Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
             if (name is not WindowsProfile.Kernel32Library && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
             {
@@ -199,8 +186,7 @@ public sealed partial class Binding
         {
             // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.6).
             if (function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
-                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 ||
-                function.IsSpecialization || function.IsConstructor || function.IsDestructor || function.IsAnonymous || function.IsRequirement)
+                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 || function.IsAnonymous)
             {
                 return false;
             }
@@ -231,7 +217,7 @@ public sealed partial class Binding
             var imports = 0;
             for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" } && ++imports > 1)
+                if (attribute.Kind == AttributeKind.LibraryImport && ++imports > 1)
                 {
                     return true;
                 }
@@ -271,8 +257,8 @@ public sealed partial class Binding
 
     // SPEC 22.6: the signature is one physical code per result and parameter (PhysicalCode), Unit only as the result; it is null
     // when a Type failed to bind or its decision rests on a failed struct, either having its own diagnostic, and when the import
-    // fails. A Type without a C counterpart makes the import an error; otherwise a Type outside the table makes it Unsupported,
-    // located at the first such Type. The attribute keeps one failure (DIAGNOSTICS rule 4), so the error takes precedence.
+    // fails. Each Type without a C counterpart is an error of its own, its ordinal among them its condition (SPEC 23.1.2, DIAGNOSTICS 4.3),
+    // and a Type outside the table makes the import Unsupported beside them, located at the first such Type.
     private string? ImportAbi(AttributeKoto attribute, FunctionKoto function, int ordinal)
     {
         if (ordinal == this.importSignatures.Count)
@@ -283,6 +269,7 @@ public sealed partial class Binding
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
+        ushort invalid = 0;
         Koto? unsupported = null;
         for (var i = 1; i <= count; i++)
         {
@@ -293,8 +280,8 @@ public sealed partial class Binding
             }
             else if ((codes[p] = p == 0 && ReferenceEquals(type, BoundType.Unit) ? 'v' : this.PhysicalCode(type)) == '\0')
             {
-                this.Fail(attribute, BindingFailure.InvalidImportSignature);
-                return null;
+                this.Record(attribute, BindingFailure.InvalidImportSignature, [], invalid++);
+                complete = false;
             }
             else
             {
@@ -305,7 +292,7 @@ public sealed partial class Binding
 
         if (unsupported is not null)
         {
-            this.FailExplained(ref this.unsupportedSpans, attribute, BindingFailure.Unsupported, unsupported.Span);
+            this.RecordLocated(attribute, unsupported.Span);
             return null;
         }
 
@@ -406,7 +393,7 @@ public sealed partial class Binding
             var valid = true;
             for (var attribute = container.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (attribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "Layout" })
+                if (attribute.Kind != AttributeKind.Layout)
                 {
                     continue;
                 }
@@ -459,7 +446,7 @@ public sealed partial class Binding
 
             // The published facts, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
             var selected = mode == "C" && valid;
-            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0);
+            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.BaseClause is not null || instanceFields == 0);
             var adt = container.BoundSymbol!.Adt ??= new();
             adt.IsCLayout = selected && !unavailable;
             adt.CLayoutUnavailable = unavailable;

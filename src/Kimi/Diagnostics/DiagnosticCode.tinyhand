@@ -187,8 +187,8 @@
     Category="Proof"
     Message="Operator {0} cannot select a unique {1} requirement"
     Arguments="operator:Text,contract:Text"
-    Evidence="provider:Type,counterpart:Text,condition:Text"
-    Label="{4}; provider: {2}; counterpart: {3}"
+    Evidence="provider:Type,counterpart:Text,cause:Enumeration"
+    Label="provider: {2}; counterpart: {3}"
 
   + Name="ArithmeticDirection_Kd"
     Category="Language"
@@ -201,8 +201,7 @@
     Category="Language"
     Message="Type {0} does not establish the provider conditions of arithmetic Contract {1}"
     Arguments="type:Type,contract:Text"
-    Evidence="condition:Text"
-    Label="{2}"
+    Evidence="cause:Enumeration"
 
   + Name="NotObjectPayload_Kd"
     Category="Language"
@@ -746,10 +745,6 @@
     Evidence="case:Text"
     Label="the owning value may leave its holder here"
 
-  + Name="DeferredExpansionLimit_Kd"
-    Category="Resource"
-    Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
-
   + Name="InternalInvariant_Kd"
     Category="Internal"
     Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
@@ -786,9 +781,19 @@
     Message="String interpolation nesting exceeds the limit of {0}"
     Arguments="limit:Number"
 
-  + Name="DefaultExpansionLimit_Kd"
+  + Name="NestingLimit_Kd"
     Category="Resource"
-    Message="Expanding the omitted defaults of this call exceeds the implementation limit of 65536 MIR statements per function body"
+    Message="Syntax nesting exceeds the implementation limit of {0}"
+    Arguments="limit:Number"
+
+  + Name="TypeHeightLimit_Kd"
+    Category="Resource"
+    Message="A Type formed here is higher than the implementation limit of {0}"
+    Arguments="limit:Number"
+
+  + Name="ExpansionLimit_Kd"
+    Category="Resource"
+    Message="This expansion is not built: its function body has passed, or would pass, the implementation limit of 65536 MIR statements"
 
   + Name="OwnershipStorageLimit_Kd"
     Category="Resource"
@@ -833,7 +838,7 @@
 
   + Name="CheckFaulted_Kd"
     Category="Internal"
-    Message="The compiler failed internally while checking: {0}"
+    Message="The compiler failed internally: {0}"
     Arguments="fault:Enumeration"
 
   + Name="PositionAlwaysFails_Kd"
@@ -1001,8 +1006,7 @@
   + Name="InvalidVirtualDeclaration_Kd"
     Category="Language"
     Message="This declaration cannot introduce or implement a virtual slot"
-    Evidence="condition:Text"
-    Label="{0}"
+    Evidence="cause:Enumeration"
 
   + Name="MissingOverrideTarget_Kd"
     Category="Language"
@@ -1034,5 +1038,4 @@
   + Name="InvalidBaseCall_Kd"
     Category="Language"
     Message="This use of base is not a direct base instance call"
-    Evidence="condition:Text"
-    Label="{0}"
+    Evidence="cause:Enumeration"

@@ -12,7 +12,7 @@ namespace XunitTest;
 /// <summary>Drop elaboration on MIR (A2, SPEC 16.2, 16.3.2, 15.1.3, 14.10.3; docs/dev/DECISIONS.md R4-M6a): each verdict and each
 /// destructor rule with a valid program and an invalid one, through the dump of the named body (<c>MirDump</c>: its flags, each Drop's
 /// verdict groups and each location's flag points, without source suffixes) and the problems <c>Compilation.BuildMir</c> finds.</summary>
-public sealed partial class MirDropTest(ITestOutputHelper output)
+public sealed partial class MirDropTest
 {
     // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
     internal const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
@@ -141,17 +141,20 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     // Plan 5.6.1: the Type rule is per view: a pair-generic value is destroyed in its owner case and owns nothing in a reference case, so
     // its Drop has a group per view class, a part moved out of it included (GenericCleanupCaseTest's select). A default copy keeps the Drops
     // its instance Type may need (an abstract U's, judged by their state; none of i32), the call's result before its slots (SPEC 3.6,
-    // DECISIONS R4-M129).
+    // DECISIONS R4-M129). A Drop only the checks reach, after the return, is Elide where nothing of it is initialized (PLAN G641).
     [Fact]
     public void TheTypeRuleIsPerView()
     {
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
+        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]", "drop _2 -> bb9 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(
+            ["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]", "drop _2 -> bb13 [elide]",
+                "drop _4 -> bb14 [elide]", "drop _3 -> bb15 [elide]"],
+            Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
@@ -271,52 +274,6 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         });
     }
 
-    // V16 (plan "New V-checks"): A2 is linear in the body: N 16/32/64 locals each initialized on one branch need N flags, and the cold analysis
-    // of the body (fresh components, as MirInitTest's) allocates linearly. MirBuildTest.WarmRebuildAllocatesNothing covers the warm
-    // re-analysis.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void DropFlagsScaleLinearly()
-    {
-        var (sizes, flags) = (new[] { 16, 32, 64 }, new long[3]);
-        var analyses = new (MirBody Body, MirProgram Sink)[3];
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc work(flag: bool)\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                text.Append("    var v").Append(n).Append(": string\n    if flag => v").Append(n).Append(" = text(").Append(n).Append(")\n");
-            }
-
-            var c = MirBuildTest.Compile(text.ToString());
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
-            var drops = new MirDrops(moves, cases);
-            var init = new MirInit(flow, moves, cases, drops);
-            analyses[i] = (body, sink);
-            return () =>
-            {
-                flow.Begin(body);
-                moves.Build(body, flow);
-                drops.Begin(body, sink);
-                cases.Select(body, 0);
-                Assert.True(init.Run(body, 0, sink.Problems));
-                drops.Judge(0);
-                drops.End();
-            };
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (_, sink) = analyses[i];
-            Assert.Equal(0, sink.Problems.All.Length);
-            flags[i] = sink.Drops.FlagsOf(0);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");
-        Assert.Equal([16L, 32L, 64L], flags);
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
-    }
-
     // DECISIONS R4-M102, V16: a warm rebuild of a program whose bodies are marked allocates nothing (MirBuildTest's measurement): the mark is
     // stored with each closed body's ends, and the table keeps its storage.
     [Trait("Purpose", "Allocation")]
@@ -394,4 +351,54 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
 
     [GeneratedRegex(@" \[(set|clear|keep|elide|flag|open)")]
     private static partial Regex Annotation();
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16 (plan "New V-checks"): A2 is linear in the body: N 16/32/64 locals each initialized on one branch need N flags, and the cold analysis
+        // of the body (fresh components, as MirInitTest's) allocates linearly. MirBuildTest.WarmRebuildAllocatesNothing covers the warm
+        // re-analysis.
+        [Fact]
+        public void DropFlagsScaleLinearly()
+        {
+            var (sizes, flags) = (new[] { 16, 32, 64 }, new long[3]);
+            var analyses = new (MirBody Body, MirProgram Sink)[3];
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc work(flag: bool)\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    text.Append("    var v").Append(n).Append(": string\n    if flag => v").Append(n).Append(" = text(").Append(n).Append(")\n");
+                }
+
+                var c = MirBuildTest.Compile(text.ToString());
+                var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
+                var drops = new MirDrops(moves, cases);
+                var init = new MirInit(flow, moves, cases, drops);
+                analyses[i] = (body, sink);
+                return () =>
+                {
+                    flow.Begin(body);
+                    moves.Build(body, flow);
+                    drops.Begin(body, sink);
+                    cases.Select(body, 0);
+                    Assert.True(init.Run(body, 0, sink.Problems));
+                    drops.Judge(0);
+                    drops.End();
+                };
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (_, sink) = analyses[i];
+                Assert.Equal(0, sink.Problems.All.Length);
+                flags[i] = sink.Drops.FlagsOf(0);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");
+            Assert.Equal([16L, 32L, 64L], flags);
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
+        }
+    }
 }

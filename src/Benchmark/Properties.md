@@ -8,10 +8,11 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --property-plans > artifa
 
 The input is the Milestone 36 (former 24) source: Non-Copy replacement, borrowing getters,
 Contract storage-borrow witnesses and consuming functions. The shared compiler-plan runner
-measures Binding, ownership analysis and IR emission separately, with 32 warm-ups and seven
+measures Binding, the check and IR emission separately, with 32 warm-ups and seven
 samples of 64 iterations per phase. Collection is outside each sample; every operation must
-succeed. Reports include source SHA-256, compiler/benchmark module identities, all samples
-and retained Loan-storage sizes. Run in isolation, without builds or other measurements.
+succeed. Reports include source SHA-256, compiler/benchmark module identities and all samples
+(until R6-check H9 also retained Loan-storage sizes). From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass.
+Run in isolation, without builds or other measurements.
 
 These are warm whole-phase observations, including bundled-library work, not cold startup,
 native execution timing or evidence of a speedup. PropertyWitnessEmissionTest separately

@@ -48,15 +48,15 @@ public sealed partial class Binding
         return node;
     }
 
-    // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a transfer's operand, or
-    // null; the inverse of FindResultEvidence's sources.
+    // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a valid transfer's operand
+    // (TransferTarget), or null; the inverse of FindResultEvidence's sources.
     private static Koto? ResultTarget(Koto source)
     {
         var node = ResultSourceForm(source);
 
         return node.Parent switch
         {
-            JumpKoto jump when jump is not ContinueKoto && ReferenceEquals(jump.Expression, node) => KotoHelper.ResolveTransferTarget(jump),
+            JumpKoto jump when jump is not ContinueKoto && ReferenceEquals(jump.Expression, node) => TransferTarget(jump),
             IfKoto or MatchKoto when KotoHelper.IsSelectionBody(node.Parent, node) => node.Parent,
             DoKoto scoped when ReferenceEquals(scoped.Body, node) => scoped,
             FunctionKoto function when ReferenceEquals(function.ExpressionBody, node) => function,
@@ -148,6 +148,7 @@ public sealed partial class Binding
             context.Conflict();
         }
 
+        context.HasTyped = context.Evidence.Count > 0;
         context.Evidence.Clear();
         context.Collecting = true; // The survey binds what it reads at once; the sources bound after it collect.
     }
@@ -214,7 +215,7 @@ public sealed partial class Binding
 
                 return this.BindType(conversion.Right, conversionScope);
             case IdentifierNameKoto name:
-                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
+                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name);
                 if (symbol?.Kind == BindingSymbolKind.Function)
                 {
                     // A declaration's Type is its return contract, not the Type of a reference to that declaration.
@@ -249,7 +250,7 @@ public sealed partial class Binding
 
                 return null;
             case InvocationKoto { Method: IdentifierNameKoto callee }:
-                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
+                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee);
                 return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? this.CallResultEvidence(function.Type, scope, readConversions) : null;
             case InvocationKoto { Method: MemberAccessKoto member } when !this.MayBeValueQualifier(member.Left is GenericsKoto generic ? generic.Identifier! : member.Left, this.NodeScope(member, scope)):
                 // A Type-qualified, fully formed container supplies its constructor/Case result without surveying arguments
@@ -311,7 +312,7 @@ public sealed partial class Binding
             return false;
         }
 
-        terminal = this.ArithmeticTerminal(operand, type);
+        terminal = this.OperandTerminal(operand, type);
         return this.BuiltinNumeric(terminal, scope);
     }
 
@@ -362,7 +363,7 @@ public sealed partial class Binding
     {
         scope = this.NodeScope(body, scope);
         var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        if (expression is not CodeBlockKoto && KotoHelper.IsValueContext(expression))
+        if (expression is not CodeBlockKoto && IsValueContext(expression))
         {
             this.SourceEvidence(expression, scope, context);
         }
@@ -429,7 +430,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && KotoHelper.ResolveTransferTarget(jump) == target)
+        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && TransferTarget(jump) == target)
         {
             this.SourceEvidence(expression, scope, context);
         }

@@ -119,8 +119,8 @@ internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, str
 /// <param name="Basis">Why the code, when neither DIAGNOSTICS nor a catalog message states the rule.</param>
 internal sealed record SpecRecord(string Code, string Line, bool Dependent = false, string? Basis = null);
 
-/// <summary>The MIR's records of a variant where they differ from the SPEC, with the class the difference ledger would give the difference
-/// ((a) an old-path error, which goes with the old path at R6-check; (b) a new-path error, including Binding's, which both paths share;
+/// <summary>The MIR's records of a variant where they differ from the SPEC, with the difference category (COMPILER_ARCHITECTURE) of the difference
+/// ((a) an old-path error, which went with the old path at R6-check H10b; (b) a new-path error, including Binding's;
 /// (c) a SPEC ambiguity; (d) an intended change, a rule the SPEC changed that MIR alone implements, plan §9.2; or (e) a form MIR does not
 /// build yet) and the SPEC clause.</summary>
 /// <param name="Records">The MIR's Error records.</param>
@@ -200,14 +200,35 @@ internal static class DiagnosticCorpus
     /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="source">The source text of <c>Program.kimi</c>.</param>
     /// <returns>The finalized output.</returns>
-    internal static CheckOutput Check(string source)
+    internal static CheckOutput Check(string source) => Check(source, "Application");
+
+    /// <summary>Counts a Library program's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="source">The program.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(string source) => RecordProfile(source, "Library");
+
+    /// <summary>Counts a program's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(string source, string outputKind)
+    {
+        var records = Check(source, outputKind).Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
+        return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
+    }
+
+    /// <summary>Checks a program of an output kind.</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <returns>The check's output.</returns>
+    internal static CheckOutput Check(string source, string outputKind)
     {
         var folder = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),

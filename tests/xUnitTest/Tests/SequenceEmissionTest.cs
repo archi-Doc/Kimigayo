@@ -69,7 +69,7 @@ public class SequenceEmissionTest
     [InlineData("let a: [1 of string] = [\"a\"]\nlet s = a[..]\n_ = a[0]@move\ns.length")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet s = make()[..]\nlet n = s[0]")]
     [InlineData("let s = label scope: do\n    let a: [1 of i32] = [1]\n    exit to scope a[..]\nlet n = s[0]")]
-    [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\nlet n = s[(label work: do\n    a[0] = 2\n    exit to work 0)]")]
+    [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\nlet n = s[(label work: do\n    a[0] = 2\n    exit to work 0\n)]")]
     public void RejectsInvalidOrUnsupportedInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

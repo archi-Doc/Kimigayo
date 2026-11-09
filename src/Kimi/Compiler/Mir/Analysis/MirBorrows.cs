@@ -3,8 +3,8 @@
 // Owns A5's Loan stratum (SPEC 15.6–15.8, 7.2.3; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M66) per body and Semantics
 // case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
-// verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains), published rows (TyCtxt.Published), stored parts and their raw
-// layers' steps, members and statement (TyCtxt.StoredParts, RawStep, RawMembers, RawStated), A4's key rows of the program version
+// verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains), published rows (TyCtxt.Published), what a value holds
+// (TyCtxt.Holdings), a stored raw layer's step and members (TyCtxt.StoredStep, RawMembers), A4's key rows of the program version
 // (MirEffects.Keys), and the Origin stratum's causes and classes of the body it judged before (MirOrigins.Causes, Refutes, Fixed; rule W,
 // R4-M132).
 // Output: each Loan conflict at its access, activation or Call's or Drop's effects, coded by A3 5's A6 table (CallReservationConflict_Kd
@@ -36,8 +36,10 @@
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
 // (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
-// indirect markers, an ending removes (Φ_E, Φ_W, the per-local markers of the role table, Marker, and rule W's indirect markers,
-// MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170). An
+// indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, the per-local markers of the role table, Marker, and rule W's indirect markers,
+// MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170); Φ_N is in
+// every state a store gives an exposed holder (MirBorrows.Loans' Exposed), its own Place's or through a reference or a call's W, and in
+// every call result, so the empty set is a value null on every path, A5's must-null fact (PLAN G598; MirBorrows.Calls' Keep). An
 // Opaque site's value is {Φ_E, Φ_W}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
 // Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
 // (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,
@@ -70,7 +72,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
 {
     private const int Escaped = 0; // E's slot, and the element of the marker Φ_E.
     private const int Writable = 1; // The element of the marker Φ_W, E reached through no shared layer (SPEC 15.6.4; DECISIONS R4-M170).
-    private const int Markers = 2; // The element of local 0's marker, after Φ_E and Φ_W: local L's is Markers + L, which its role decides (Marker).
+    private const int Unformed = 2; // The element of the marker Φ_N: bytes A5 did not see formed (PLAN G598), read by no check.
+    private const int Markers = 3; // The element of local 0's marker, after Φ_E, Φ_W and Φ_N: local L's is Markers + L, which its role decides (Marker).
 
     private readonly MirLoanSets sets = new();
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
@@ -81,6 +84,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private int loanBase; // The element of Loan 0: after Φ_E, Φ_W and the per-local markers.
     private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is formed.
     private int writableSet; // The set {Φ_W}, which a read through a shared Loan drops (MirBorrows.Reach).
+    private int unformedSet; // The set {Φ_N}: in an exposed holder's stored states and every call result (MirBorrows.Flow, .Calls).
 
     /// <summary>What a local's marker, element <see cref="Markers"/> plus the local, is: the role table of the per-local markers (R4-M70),
     /// by the local's role (<see cref="MarkerOf"/>).</summary>

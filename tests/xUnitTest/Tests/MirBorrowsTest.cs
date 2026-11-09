@@ -225,6 +225,59 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static DiagnosticCode[] LoanCodes => [DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticCode.CallReservationConflict_Kd,
         DiagnosticCode.CallActivationConflict_Kd, DiagnosticCode.PlacementActivationConflict_Kd];
 
+    // SPEC 4.8.1, 15.6 (G597): a view's storage is its receiver's, so the Loans its elements hold end with the view's last use: a fixed
+    // array, an Array and a Slice of references, each read through a whole view and a prefix view, and written while an element is live.
+    [Fact]
+    public void AViewHoldsItsReceiversElementLoans()
+        => Assert.Equal(
+            ["fixedWrite: x = 5", "arrayWrite: x = 5", "sliceWrite: x = 5"],
+            Problems("""
+                func fixedRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: [2 of ref/i32] = [x@ref, y@ref]
+                    let s = arr[..]
+                    inspect(s[i])
+                func fixedWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: [2 of ref/i32] = [x@ref, y@ref]
+                    let s = arr[..1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                func arrayRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let s = arr[..]
+                    inspect(s[i])
+                func arrayWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let s = arr[..^1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                func sliceRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let t = arr[1..]
+                    let s = t[..]
+                    inspect(s[i])
+                func sliceWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let t = arr[1..]
+                    let s = t[..1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                """));
+
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
     // disjoint.
@@ -273,6 +326,100 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let r = s@ref
                     let t = s@move
                     inspect(r)
+                """));
+
+    // SPEC 15.6, 15.6.1, 15.2.3 (PLAN G405): a Loan is live while a value that carries it may be used, and the carriers are the borrow,
+    // its Copies, references derived from it and the aggregates, Closures or storage holding one of these; Origin regions and `outlives`
+    // relations never keep a Loan live (15.6), so 15.6.1's Liveness puts a later use of a value whose Type names `y` only in y's Origin's
+    // region, and a signature's or Type's Origins are dependencies that imply no Loan (15.2.3). `x = 7` is therefore valid while a Closure,
+    // a Function value, an empty Option, a Tuple holding the Closure or a nested function names `y` but holds nothing of it (each also
+    // called before the write), and while a Function value whose result names `y` returns what its argument carries; a value holding `y`
+    // (`.Some(y)`, a `[y]` capture) carries its Loan, so the write conflicts.
+    [Fact]
+    public void ATypeThatNamesALocalOriginKeepsNoLoanLive()
+        => Assert.Equal(
+            ["someCarryingY: x = 7", "closureCapturingY: x = 7"],
+            Problems("""
+                func take(s: Option<ref/i32 during a>) -> i32 => 0
+                func closureNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    x = 7
+                    return h(w@ref)
+                func closureNamingYCalledBeforeTheWrite() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let v = h(w@ref)
+                    x = 7
+                    return v
+                func functionTypeNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> i32 = func (p) => p@follow@follow
+                    x = 7
+                    return f(w@ref)
+                func functionTypeNamingYCalledBeforeTheWrite() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> i32 = func (p) => p@follow@follow
+                    let v = f(w@ref)
+                    x = 7
+                    return v
+                func noneNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let s: Option<ref/i32 during y> = .None
+                    x = 7
+                    return take(s)
+                func someCarryingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let s: Option<ref/i32 during y> = .Some(y)
+                    x = 7
+                    return take(s)
+                func functionTypeResultNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> ref/i32 during y = func (p) => p@follow
+                    x = 7
+                    let r = f(w@ref)
+                    return r@follow
+                func tupleHoldingAClosureNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let t = (h@move, 1)
+                    x = 7
+                    return t.0(w@ref)
+                func nestedFunctionNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    func g(p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let h = g
+                    x = 7
+                    return h(w@ref)
+                func closureCapturingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let h = func [y] () -> i32 => y@follow
+                    x = 7
+                    return h()
                 """));
 
     // SPEC 4.3.3, 4.4.2, 15.6 (DECISIONS R4-M81): a fill holds its value's Loans, at a generic length (which may be positive), at a
@@ -424,7 +571,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 3.5.1, 15.6.3: a bare read of a holder of `uniq/i32` is a Reborrow, a child Loan whose access path the holder prefixes, so
     // Moving the holder while the child is live is an error, whether the holder is a parameter or a local, the child is written or only read
     // after the Move, or a Closure captures it; a child used before the Move or never, and a Copy of a shared `ref` holder, are valid.
-    // PLAN G268: the old analysis accepts the four errors until R6-check (its Loans are keyed by the root referent; frozen, D5).
+    // PLAN G268: before H5 the old analysis accepted the four errors (its Loans were keyed by the root referent; frozen, D5).
     [Fact]
     public void MovingAHolderConflictsWithItsLiveReborrow()
         => Assert.Equal(
@@ -870,9 +1017,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry through placeEntry, whose handle
-    // `raw/Dictionary<K, V>` admits K and V and addresses the Dictionary's holder (dictionaryStorage's handle), so an element keeps its
-    // Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry by one call of placeEntry over its
+    // exclusive borrow (R8-K1b-2), an insertion's published effect that stores the key and the value in the Dictionary, so an element
+    // keeps its Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
     [Fact]
     public void ADictionaryLiteralKeepsItsElementsLoans()
         => Assert.Equal(
@@ -887,6 +1034,35 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var value = 42
                     let entries = [1: value@ref]
                     value = 99
+                """));
+
+    // PLAN G255 (C2) (SPEC 4.9.6, 12.4.3, 15.6.4; DECISIONS R8-K1b-2): from the second entry on, a literal's placement is the same one
+    // call, so a raw layer beside an entry's Loan reaches no earlier entry's holder: a write after the Dictionary is dead and two `uniq`
+    // Loans of distinct locals are valid (fail-before: ComparisonLoanConflict_Kd at the writes, and at the locals' declarations), while a
+    // write while it is used afterwards keeps its one record (fail-before: also one at the second local's declaration).
+    [Fact]
+    public void ADictionaryLiteralOfRawLayersKeepsOnlyItsEntriesLoans()
+        => Assert.Equal(
+            ["live: x = 3"],
+            Problems("""
+                func dead(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, ref/i32)> = [1: (q, x@ref), 2: (q, y@ref)]
+                    inspect(d@ref)
+                    x = 3
+                    y = 4
+                func distinct(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, uniq/i32)> = [1: (q, x@uniq), 2: (q, y@uniq)]
+                    inspect(d@ref)
+                func live(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, ref/i32)> = [1: (q, x@ref), 2: (q, y@ref)]
+                    x = 3
+                    inspect(d@ref)
                 """));
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
@@ -2312,18 +2488,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the block or `if` it leaves, is witnessed by its
-    // declaration, the value retaining the Loan: an undecided holder and its decided twin (BlockEscapeLoanTest), a chain between body Origins
-    // (OriginRelationDiagnosticTest) and a fixed input's capture (InputDependentValueCallTest).
+    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
+    // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
+    // (InputDependentValueCallTest).
     [Theory]
-    [InlineData(
-        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
-        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o: Option<ref/i32> = .Some(z@ref)")]
-    [InlineData(
-        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
-        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o = z@ref")]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
@@ -2333,14 +2501,22 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
         "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
     public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
-    {
-        var c = MirBuildTest.Compile(source);
-        var program = Analyze(c);
-        Assert.Equal(
-            [problem],
-            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
-                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
-    }
+        => Assert.Equal([problem], Witnessed(source));
+
+    // DIAGNOSTICS A6 `Use`: an undecided holder and its decided twin (BlockEscapeLoanTest) leave a labeled do by its exits only, whose
+    // drop chain reaches the holder's next use, which witnesses: since R4-M175 the body end of a do that is no Never form has no check
+    // edge, where the walk stopped at the declaration witness before (a record-selection move, DECISIONS Q13: same code, subject, count).
+    [Theory]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
+        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Use o@ref")]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
+        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Use o@ref")]
+    public void AHolderLeavingADoByItsExitsIsWitnessedByItsUse(string source, string problem)
+        => Assert.Equal([problem], Witnessed(source));
 
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
@@ -2410,7 +2586,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var at = new Dictionary<(int N, int K), (long Work, long Bytes)>();
         foreach (var (n, k) in new[] { (32, 32), (64, 32), (128, 32), (32, 64), (128, 64), (32, 128) })
         {
-            at[(n, k)] = this.Measured(Prelude + Expand(template, n, k));
+            at[(n, k)] = Measured(Prelude + Expand(template, n, k));
         }
 
         var mixed = at[(128, 64)].Work - at[(128, 32)].Work - at[(32, 64)].Work + at[(32, 32)].Work;
@@ -2432,7 +2608,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     {
         const string Chain = "func shape(flag: bool)\n    var x = 1\n    var y = 2\n    var r0 = x@ref\n    let q = y@ref\n«K:    var r{1} = q\n»" +
             "    while flag\n«R:        r{1} = r{0}\n»«K:    inspect(r{1})\n»";
-        var runs = new[] { 32, 64, 128 }.Select(k => this.Measured(Prelude + Expand(Chain, 0, k))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(k => Measured(Prelude + Expand(Chain, 0, k))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"K 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
@@ -2449,9 +2625,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     {
         const string Overlap = "func shape(flag: bool)\n    var p0 = Pair.init()\n«K:    var p{1} = Pair.init()\n»    let h0 = p0.a@ref\n" +
             "«K:    let h{1} = if flag => h{0} else => p{1}.a@ref\n»«N:    p0.b = {0}\n»«K:    inspect(h{1})\n»";
-        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + Expand(Overlap, n, 32)).Work)];
+        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => Measured(Prelude + Expand(Overlap, n, 32)).Work)];
         long[] writes = [.. new[] { 32, 64, 128 }.Select(k =>
-            this.Measured(Prelude + Expand(Overlap, 64, k)).Work - this.Measured(Prelude + Expand(Overlap, 32, k)).Work)];
+            Measured(Prelude + Expand(Overlap, 64, k)).Work - Measured(Prelude + Expand(Overlap, 32, k)).Work)];
         output.WriteLine($"N at K 32: work {string.Join(", ", inN)}; 32 writes at K 32, 64, 128: {string.Join(", ", writes)}");
         Assert.True(Grows(inN, 2), $"work in N {string.Join(", ", inN)}");
         Assert.True(Grows(writes, 5), $"writes in K {string.Join(", ", writes)}");
@@ -2558,6 +2734,23 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n"));
     }
 
+    // Whether a measure over three sizes, each double the one before, grows over the second doubling at most a factor times as much as
+    // over the first, with a constant's slack.
+    internal static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+
+    // A5's work and Loan-set bytes on a program with no Loan problem.
+    internal static (long Work, long Bytes) Measured(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(c.Binding.Issues);
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
+    }
+
     // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {
@@ -2605,6 +2798,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     private static string Line(Compilation c, SourceRef site) => c.SyntaxOf(site).ToString().Split('\n')[0].Trim();
 
+    // A program's Loan problems in its own module, each "subject: fact kind and site, ...", the witnesses A6 selects (A3 6.4).
+    private static string[] Witnessed(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        return program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
+            $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}").ToArray();
+    }
+
     // A shape's source at N and K: each «N:text» or «K:text» run repeated N or K times, «R:text» K times in reverse order, {0} the index
     // and {1} the index plus one.
     private static string Expand(string template, int n, int k)
@@ -2617,9 +2819,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         };
         return Regex.Replace(template, "«([NKR]):(.*?)»", runs, RegexOptions.Singleline);
     }
-
-    // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
-    private static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
     // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.
@@ -2642,24 +2841,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 }
             }
 
-            (work[i], bytes[i]) = this.Measured(text.ToString());
+            (work[i], bytes[i]) = Measured(text.ToString());
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
         return (work, bytes);
-    }
-
-    // A5's work and Loan-set bytes on a program with no Loan problem.
-    private (long Work, long Bytes) Measured(string source)
-    {
-        var c = MirBuildTest.Compile(source);
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        Assert.Empty(c.Binding.Issues);
-        var stratum = new Stratum(c.Types);
-        stratum.Run(program);
-        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
-        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
     }
 
     // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57),

@@ -8,6 +8,9 @@ namespace XunitTest;
 
 public class ComparisonContractTest
 {
+    private const string PairTarget = "func f<s/T>(a: s/T, b: ref/T) -> bool\n    s is ref or uniq\n    T is ";
+    private const string Chain = "contract Holder\n    associate Item\nfunc f<H, T>(a: ref/T, b: ref/T) -> ";
+
     [Fact]
     public void LibraryDeclarationsHaveRecognizedIdentitiesAndRefinement()
     {
@@ -61,6 +64,46 @@ public class ComparisonContractTest
         var c = MinimalEmissionTest.Analyze("struct Key\n    Self is Equatable\n    " + member);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == diagnostic);
+    }
+
+    // SPEC 8.2.3, 13.4, 4.7.1 (OT2; PLAN G157 (29)): an operand is compared and indexed at the Type its own scope's premises make it
+    // (Binding.OperandTerminal premises by CallableContractType, as MIR reads it), so the pair target T under `T is string` or `T is i32`
+    // compares as string or i32 (t2, t3), as T does under the chain `T is H.Item`, `H.Item is f64` (nf1), and their mismatches are the
+    // Language records at the premised Types (x6, x7; nb1, bool has no ordering). An index through a ref layer on a chain-premised
+    // [2 of i32] is the implementation limit (nc3), and on i32 is NotIndexable_Kd. Before, t2, t3, x6 and x7 were UnprovenConstraint_Kd,
+    // nf1 and nb1 UnsatisfiedConstraint_Kd and nc3 NotIndexable_Kd.
+    [Theory]
+    [InlineData("t2", PairTarget + "string\n    return b == \"x\"\n", "")]
+    [InlineData("t3", PairTarget + "i32\n    return b < 1\n", "")]
+    [InlineData("x6", PairTarget + "string\n    return b == 3\n", "TypeMismatch_Kd: return b == 3")]
+    [InlineData("x7", PairTarget + "i32\n    return b < \"x\"\n", "TypeMismatch_Kd: return b < \"x\"")]
+    [InlineData("nf1", Chain + "bool\n    H is Holder\n    H.Item is f64\n    T is H.Item\n    return a < b\n", "")]
+    [InlineData("nb1", Chain + "bool\n    H is Holder\n    H.Item is bool\n    T is H.Item\n    return a < b\n", "OperatorNotDefined_Kd: return a < b")]
+    [InlineData("nc3", Chain + "i32\n    H is Holder\n    H.Item is [2 of i32]\n    T is H.Item\n    return a[1]\n", "Unsupported_Kd: return a[1]")]
+    [InlineData("nc4", Chain + "i32\n    H is Holder\n    H.Item is i32\n    T is H.Item\n    return a[1]\n", "NotIndexable_Kd: return a[1]")]
+    public void AnOperandIsReadAtItsPremisedTerminal(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
+
+    // SPEC 8.2.3, 13.4 (OT2): under the chain `T is H.Item`, `H.Item is f64`, T is f64, so `==` and `!=` on NaN are the source operators'
+    // (false, true), as under `T is f64`; before, the chain compared by the Contract's NaN-reflexive mapping (true, false).
+    [Fact]
+    public void AChainPremisedFloatComparesByItsOperators()
+    {
+        const string Source = """
+            contract Holder
+                associate Item
+            struct Src
+                Self is Holder
+                associate Item is f64
+            func rel<H, T>(a: ref/T, b: ref/T) -> string
+                H is Holder
+                H.Item is f64
+                T is H.Item
+                return "\(a == b) \(a != b)"
+            let nan: f64 = 0.0 / 0.0
+            Console.writeLine(rel<Src, f64>(nan@ref, nan@ref))
+            """;
+        ScalarEmissionTest.EmitFixture("ComparisonContractChainPremise", Source, "false true\n");
     }
 
     [Fact]

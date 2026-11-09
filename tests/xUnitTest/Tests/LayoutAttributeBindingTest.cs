@@ -86,7 +86,7 @@ public partial class LayoutAttributeBindingTest
     // CLayoutUses.cs), which Layout judges.
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S")]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var count: i32 = 0")]
     [InlineData("#Layout(\"C\")\nopen struct S\n    var n: i32")]
     [InlineData("open struct B\n    var n: i32\n#Layout(\"C\")\nstruct S: B\n    var m: i32")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var n: i32\n    var empty: ()")]
@@ -112,9 +112,29 @@ public partial class LayoutAttributeBindingTest
     // empty C struct with a written init is accepted, a called constructor is a record at the let that holds its value, and a Field
     // initializer that constructs one is a record at its construction expression in the implicit constructor that runs it (6.3.3). Any
     // other value of the struct's Type in its own constructor stays a use. A function's result is a record at its result Type
-    // occurrence and a parameter's at its own (settled (a); `keep`'s two, settled (b)). On default, mir and sel.
-    public static TheoryData<string, string, string> ConstructorRows => new()
+    // occurrence and a parameter's at its own (settled (a); `keep`'s two, settled (b)). On default, mir and sel. SPEC 16.3.1 (BU-48,
+    // amended by G283): a destructor's receiver is like the construction receiver, so an uncalled drop is no use, nor is a Field read
+    // through its self or the destruction of its layer's parts (a Field or base with its own drop, also over the size limit); any other
+    // value of the struct's Type in it stays a use, and a construction is the use, not the drop.
+    public static TheoryData<string, string, string> ReceiverRows => new()
     {
+        { "drop-unused", "#Layout(\"C\")\nstruct S\n    drop => ()\nlet zz = 1\n", string.Empty },
+        { "drop-part", "#Layout(\"C\")\nstruct C\n    var n: i32\n    var u: ()\n    drop => ()\nstruct D\n    var c: C\n    drop => ()\nlet zz = 1\n", string.Empty },
+        { "drop-base", "#Layout(\"C\")\nopen struct O\n    var n: i32\n    drop => ()\nstruct D: O\n    var m: i32\n    drop => ()\nlet zz = 1\n", string.Empty },
+        {
+            "drop-part-limit",
+            "struct Big\n    var a: [300000000 of i64]\n    drop => ()\nstruct D\n    var b: Big\n    drop => ()\nlet zz = 1\n",
+            string.Empty
+        },
+        {
+            "drop-base-constructed",
+            "#Layout(\"C\")\nopen struct O\n    public var n: i32\n    public init() => self.n = 1\n    drop => ()\n" +
+                "struct D: O\n    public var m: i32\n    public init() => self.m = 2\n    drop => ()\nlet d = D.init()\n",
+            "InvalidCLayout_Kd let d = D.init()"
+        },
+        { "drop-field", "#Layout(\"C\")\nopen struct S\n    var n: i32\n    drop\n        let k = self.n\nlet zz = 1\n", string.Empty },
+        { "drop-other", "#Layout(\"C\")\nstruct S\n    var n: i32\n    var u: ()\n    drop\n        var other: S\nlet zz = 1\n", "InvalidCLayout_Kd var other: S" },
+        { "drop-constructed", "#Layout(\"C\")\nstruct S\n    drop => ()\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
         { "init-unused", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet zz = 1\n", string.Empty },
         { "init-called", "#Layout(\"C\")\nstruct S\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
         { "init-written-called", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
@@ -134,12 +154,35 @@ public partial class LayoutAttributeBindingTest
     };
 
     [Theory]
-    [MemberData(nameof(ConstructorRows))]
-    public void AConstructorsReceiverIsNoUseItsConstructionIs(string form, string source, string records)
+    [MemberData(nameof(ReceiverRows))]
+    public void AReceiverIsNoUseItsConstructionIs(string form, string source, string records)
         => AssertUses(form, source, records);
 
+    // SPEC 8.15.3, 5.2.3 (BU-48 amended by G283): a pointee reached through a receiver's raw pointer Field is not the receiver's storage, so
+    // replacing it in a drop or init destroys it in place as a use, as in a free function: two records at the assignment, its in-place
+    // destruction's and its new value's (fail-before at d829c06c3: the destruction's lost in drop and init).
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32\n    var n: i32")]
+    [InlineData("drop")]
+    [InlineData("init")]
+    [InlineData("function")]
+    public void APointeeThroughAReceiversRawFieldIsNoPartOfItsStorage(string form)
+    {
+        var (holder, body, target) = form switch
+        {
+            "drop" => ("struct H\n    public var p: raw/E\n    public var q: raw/E\n", "    drop\n", "*self.p"),
+            "init" => ("struct H\n    public var p: raw/E\n    public var q: raw/E\n", "    public init(p: raw/E, q: raw/E)\n        self.p = p\n        self.q = q\n", "*self.p"),
+            _ => (string.Empty, "func f(p: raw/E, q: raw/E)\n", "*p"),
+        };
+        var indent = form == "function" ? "    " : "        ";
+        var statement = $"{target} = ({target.Replace('p', 'q')})@move";
+        var c = Check("#Layout(\"C\")\nstruct E\n    drop => ()\n" + holder + body + indent + "unsafe\n" + indent + "    " + statement + "\nlet zz = 1\n");
+        Assert.Equal(
+            [$"InvalidCLayout_Kd {target}", $"InvalidCLayout_Kd {statement}"],
+            Errors(c).Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var count: i32 = 0\n    var n: i32")]
     [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T")]
     public void CLayoutFormationAllowsStaticAndDependentFields(string source)
     {
@@ -188,6 +231,52 @@ public partial class LayoutAttributeBindingTest
         Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
         Assert.Equal("#Layout(\"C\")", error.Text);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLayoutAttribute_Kd);
+    }
+
+    // SPEC 6.7, 6.4.1, 8.13.2, 16.3 and F.6.2: no Contract item, constructor, specialization, override or drop takes an attribute. The
+    // parser reports each one written before such a declaration and keeps it in no node (DECISIONS R9-M3), so its record is the only
+    // one, its Name is never looked up, and the declaration stays valid for its conformance, dispatch and uses (G557: `#Test` before a
+    // requirement or an override crashed Binding).
+    [Theory]
+    [InlineData("#Test", "contract C\n    {A}\n    func g(self: ref/Self) -> i32\nstruct W\n    Self is C\n    public func g(self: ref/Self) -> i32 => 1")]
+    [InlineData("#Foo", "contract C\n    {A}\n    func g(self: ref/Self) -> i32\nstruct W\n    Self is C\n    public func g(self: ref/Self) -> i32 => 1")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")", "contract C\n    {A}\n    unsafe func required() -> i32")]
+    [InlineData("#Layout(\"C\")", "contract C\n    {A}\n    func g(self: ref/Self) -> i32")]
+    [InlineData("#Test", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1\nfunc use<T>(t: ref/T) -> i32\n    T is Counted\n    return t.count")]
+    [InlineData("#Layout(\"C\")", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1")]
+    [InlineData("#Test", "struct S\n    {A}\n    drop => ()")]
+    [InlineData("#LibraryImport(\"codec\", \"d\")", "struct S\n    {A}\n    drop => ()")]
+    [InlineData("#Test", "struct S\n    var v: i32\n    {A}\n    public init()\n        self.v = 1")]
+    [InlineData("#Test", "func classify<T>(value: T) -> i32 => 0\n{A}\nspecialize func classify<i32>(value: i32) -> i32 => 1\nfunc use() -> i32 => classify(5)")]
+    [InlineData("#Test", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10\nfunc use() -> i32\n    let d = Derived.init()@obj\n    return d.score()")]
+    [InlineData("#Layout(\"C\")", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10")]
+    public void AnAttributeBeforeADeclarationThatTakesNoneIsInNoNode(string attribute, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source.Replace("{A}", attribute, StringComparison.Ordinal));
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal(attribute, error.Text);
+        Assert.Empty(c.Binding.Issues);
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Empty(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AttributeKoto>());
+    }
+
+    // SPEC 19.4 checks Attribute placement in excluded syntax too, and 6.4.1 gives an override no attribute: G557 newly rejects these
+    // invalid programs, which dev accepted (x1, x23, x37: in `#if false`; x25, x32: an override outside a derived struct, read as a test
+    // and never judged). The attribute's record rejects each; the misplaced override keeps its own, independent record.
+    [Theory]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    #if false\n        #Test\n        override func score(self: objref/Self, bonus: i32) -> i32\n            return base.score(bonus) + 10", false)]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        return 1\nstruct Derived : Base\n    #Test\n    #if false\n    override func score(self: objref/Self) -> i32\n        return 2", false)]
+    [InlineData("group G\n    public open struct Base\n        public virtual func score(self: objref/Self) -> i32\n            return 1\n    #if false\n    struct Derived : Base\n        #Test\n        override func score(self: objref/Self) -> i32\n            return 2", false)]
+    [InlineData("#Test\noverride func f() => ()", true)]
+    [InlineData("group G\n    #Test\n    override func t() => ()", true)]
+    public void AnAttributeBeforeAnOverrideRejectsTheProgram(string source, bool misplacedOverride)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal("#Test", error.Text);
+        Assert.Equal(misplacedOverride, c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd));
     }
 
     [Theory]
@@ -254,7 +343,7 @@ public partial class LayoutAttributeBindingTest
     [InlineData("struct S\n    var a: i32", false, false)]
     [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false, true)]
     [InlineData("open struct B\n    var n: i32\n#Layout(\"C\")\nstruct S: B\n    var a: i32", false, true)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var a: i32", false, true)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var a: i32 = 0", false, true)]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S", false, false)]
     [InlineData("#Layout(\"C\")\n#Layout(\"C\")\nstruct S", false, false)]
     public void CLayoutFactMarksValidatedCLayoutStructs(string source, bool expected, bool unavailable)

@@ -4,28 +4,37 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Conformance registration (SPEC 8.6.1, 8.6.2, 8.8): the owner of the conformance tables. Self clauses register their direct and
-// refinement paths here; conditional blocks (BindConditionalDeclarations) and inherited paths (RegisterInheritedConformances) add
-// theirs through RegisterConformanceDeclaration and RegisterConformance.
-// Input: bound Self clauses, conditional blocks and a base's paths. Output: `conformances` (one identity per Type and Contract),
-// `conformancePaths` (one path per Type, Contract, declaration and root Contract), `conformancesByType` and `activeConformancePaths`;
-// each Type's ObjectPayload opt-out, its own or inherited (SPEC 8.7.3); the Self-clause failures: a closed or intrinsic Contract's
-// grant, an invalid negated clause and a colliding direct conformance (SPEC 8.7, 8.7.1, 8.9.1).
-// Invariants: a path joins the lists only at its own registration, so they follow its caller's order and a derived Type's equal its
-// base's; the caller that registers a path registers its root path; each key keeps one object across binds.
+// Conformance registration (SPEC 8.6.1, 8.6.2, 8.8): the Self-clause and conditional-block registrar of ImplTable. Self clauses register
+// their direct and refinement paths here; conditional blocks (BindConditionalDeclarations) add theirs through
+// RegisterConformanceDeclaration, inherited paths (RegisterInheritedConformances) through ImplTable.Register.
+// Input: bound Self clauses, conditional blocks. Output: their paths in ImplTable; each Type's ObjectPayload opt-out, its own or inherited
+// (SPEC 8.7.3), and the object forms formed before it (VerifyEarlyObjectForms); the Self-clause failures: a closed or intrinsic
+// Contract's grant, an invalid negated clause and a colliding direct conformance (SPEC 8.7, 8.7.1, 8.9.1).
+// Invariants: a clause registers its direct path before its ancestors' paths, in the Contract's ancestor order.
 // Must not: verify a path (ContractMatching, InheritedConformances) or decide availability at a use (ResolveConformance).
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> conformances = new();
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> conformancePaths = new();
-    private readonly List<BoundConformancePath> activeConformancePaths = new();
-    private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
+    private readonly ImplTable impls = new();
+
+    // Projections over a declared struct or enum that found no associated Type before this pass's conformance declarations registered
+    // (VerifyEarlyProjections). Temporary (G621): removed when R7-D2 d3 reads conformance declarations by demand.
+    private readonly List<(MemberAccessKoto Use, BoundType Type, BindingScope Scope, string Name, BindingSymbol? Qualifier)> earlyProjections = new();
+
+    // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
+    private List<(Koto Use, BoundType Target)>? earlyObjectForms;
+
+    // Whether this pass's conformance declarations have registered (RegisterConformances, after BindConstraints' pass 0).
+    private bool conformancesRegistered;
+
+    // SPEC 8.6.1: `Self is C` in a Type declaration declares conformance; RegisterConformances registers exactly these clauses.
+    private static bool DeclaresConformance(IsKoto clause)
+        => clause.Parent is StructKoto or EnumKoto && IsSelfConstraint(clause);
 
     private void RegisterConformances()
     {
         for (var n = 0; n < this.nodes.Count; n++)
         {
-            if (this.nodes[n] is not DeclarationContainerKoto container || container is not (StructKoto or EnumKoto))
+            if (this.nodes[n] is not DeclarationContainerKoto container)
             {
                 continue;
             }
@@ -33,22 +42,16 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint)
+                if (DeclaresConformance(clause) && clause.BoundConstraint is { } constraint)
                 {
                     Register(constraint, container.BoundSymbol!, clause, true);
                 }
             }
         }
 
-        // SPEC 8.7.3: derived structs inherit the opt-out. Bases are resolved by name here,
-        // before headers bind, so that every later object formation sees the effective state.
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is StructKoto { Bases.Count: > 0 } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
-            {
-                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
-            }
-        }
+        this.conformancesRegistered = true;
+        this.VerifyEarlyProjections();
+        this.PublishInheritedOptOuts();
 
         void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
         {
@@ -84,29 +87,82 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 8.6.1, 8.5.2 (G621's limit): an unqualified projection over a declared Type that found no associated Type before the
+    // conformance declarations registered (its candidates come from the conformance table) and finds one now names an existing member;
+    // its conformance declaration bound before the table filled, which is an analysis limit: a located Unsupported_Kd that stays
+    // unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps its missing-Type
+    // record, which VerifyEarlyReads may read again. A qualified projection searches its Contract, so it finds an existing member before
+    // registration.
+    private void VerifyEarlyProjections()
+    {
+        foreach (var (use, type, scope, name, qualifier) in this.earlyProjections)
+        {
+            if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
+            {
+                use.BindingFailure = BindingFailure.None;
+                this.prerequisites.Remove(use);
+                this.Fail(use, BindingFailure.Unsupported, true);
+            }
+        }
+
+        this.earlyProjections.Clear();
+    }
+
+    // SPEC 8.7.3: derived structs inherit the opt-out. Nominal bases are read here, before headers bind, so that every later object
+    // formation sees the effective state; a clause not ready ends the chain, and this runs again once clauses are bindable.
+    private void PublishInheritedOptOuts()
+    {
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is StructKoto { BaseClause: not null } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
+            {
+                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
+            }
+        }
+    }
+
+    // SPEC 8.7.3: an object form over a concrete Type formed while the Constraints bind, before the opt-outs are published, is judged
+    // again by the same rule once they are (an early read of the opt-out, as BaseLayers' early reads; removed with them at R7-D2 d3, when
+    // a declaration's opt-out is read by demand).
+    private void VerifyEarlyObjectForms()
+    {
+        if (this.earlyObjectForms is not { Count: > 0 } forms)
+        {
+            return;
+        }
+
+        foreach (var (use, target) in forms)
+        {
+            if (use.BindingFailure == BindingFailure.None)
+            {
+                this.RenouncedObjectTarget(use, target);
+            }
+        }
+
+        forms.Clear();
+    }
+
+    // SPEC 8.7.3: the one read of an object form's concrete target against the opt-out, its own or inherited: an opted-out target fails
+    // the form with NotObjectPayload_Kd naming the declaring Type. BindType reads it at formation and VerifyEarlyObjectForms once more.
+    private bool RenouncedObjectTarget(Koto form, BoundType target)
+    {
+        if (target.Symbol?.ObjectPayloadOptOut is not { } renounced)
+        {
+            return false;
+        }
+
+        this.FailObjectPayload(form, renounced);
+        return true;
+    }
+
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
     {
-        // The current language has one inline base. The bound limits invalid cycles too.
-        for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
+        foreach (var layer in this.BaseLayers(structure))
         {
-            var syntax = structure.Bases[0];
-            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
-            if (type is null)
+            if (layer.ObjectPayloadOptOut is { } optOut)
             {
-                return null;
+                return optOut;
             }
-
-            if (type.ObjectPayloadOptOut is not null)
-            {
-                return type.ObjectPayloadOptOut;
-            }
-
-            if (type.Declaration is not StructKoto next)
-            {
-                return null;
-            }
-
-            structure = next;
         }
 
         return null;
@@ -114,7 +170,7 @@ public sealed partial class Binding
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        if (this.conformancesByType.TryGetValue(type, out var previousBindings))
+        if (this.impls.OfType(type) is { } previousBindings)
         {
             foreach (var identity in previousBindings)
             {
@@ -127,7 +183,7 @@ public sealed partial class Binding
             }
         }
 
-        var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
+        var direct = this.impls.Register(type, contract, contract, use, scope, premises);
         if (direct.Identity.DirectClause is { } previous)
         {
             direct.Identity.Invalid = true;
@@ -138,58 +194,7 @@ public sealed partial class Binding
         var shape = contract.Contract!;
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
-            this.RegisterConformance(type, shape.Ancestors[i], contract, use, scope, premises);
+            this.impls.Register(type, shape.Ancestors[i], contract, use, scope, premises);
         }
-    }
-
-    private BoundConformancePath RegisterConformance(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
-    {
-        var result = this.ConformancePath(type, contract, use, root);
-        if (!result.Active)
-        {
-            var identity = result.Identity;
-            result.Active = true;
-            result.InheritedFrom = null;
-            result.AdditionalInheritedSources?.Clear();
-            result.InheritedBase = null;
-            result.Use = use;
-            result.Declaration = use;
-            result.RootContract = root;
-            // The root path is named here and registered by its own call, so the lists below follow the caller's order whichever
-            // path comes first: an inherited base's order, where a refinement may follow its parent Contract's own conformance.
-            result.RootPath = ReferenceEquals(contract, root) ? result : this.ConformancePath(type, root, use, root);
-            result.Premises = premises;
-            result.Scope.Parent = scope;
-            this.activeConformancePaths.Add(result);
-            if (identity.PathStorage.Count == 0)
-            {
-                if (!this.conformancesByType.TryGetValue(type, out var list))
-                {
-                    this.conformancesByType.Add(type, list = new());
-                }
-
-                list.Add(identity);
-            }
-
-            identity.PathStorage.Add(result);
-        }
-
-        return result;
-    }
-
-    // One path per Type, Contract, declaration and root Contract, created when first named; only its registration activates it.
-    private BoundConformancePath ConformancePath(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingSymbol root)
-    {
-        if (!this.conformances.TryGetValue((type, contract), out var identity))
-        {
-            this.conformances.Add((type, contract), identity = new(type, contract));
-        }
-
-        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
-        {
-            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
-        }
-
-        return result;
     }
 }

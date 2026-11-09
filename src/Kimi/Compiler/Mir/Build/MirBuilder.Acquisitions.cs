@@ -19,9 +19,10 @@ internal sealed partial class MirBuilder
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
-    // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38): any acquisition takes the Never value as it is, which fits any operand position; a
-    // named Place of Type Never that Binding acquires with no adaptation, a Copy or a Move, is acquired so into a fresh Never temp and gives
-    // that Never value, so whatever takes it places nothing; an adapted one (a borrow) is built as Binding publishes it and keeps its Loan.
+    // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38, R4-M175): any acquisition takes the Never value as it is, which fits any operand
+    // position; a named Place of Type Never that a Never form acquires with no adaptation, a Copy or a Move, is acquired so into a fresh
+    // Never temp and gives that Never value, so whatever takes it places nothing; an adapted one (a borrow), or one a node that is no
+    // Never form acquires (a Pattern binding, a capture), is built as Binding publishes it.
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         if (this.IsNeverValue(place))
@@ -29,7 +30,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(place);
         }
 
-        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None)
+        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node))
         {
             return this.Acquired(adjust, place, expected, input, node, into);
         }
@@ -100,8 +101,7 @@ internal sealed partial class MirBuilder
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
             var temp = this.Temp(stored, node);
             this.opaqueTemps.Add(temp.Root);
-            this.roots.Clear();
-            this.roots.Add(place.Root);
+            this.SiteRoots(place);
             this.Site(node, temp, Completes(node));
             return MirOperand.Move(temp);
         }
@@ -129,7 +129,7 @@ internal sealed partial class MirBuilder
         => this.Unlent(place, reference) ?? MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
 
     // SPEC 23.1.2, 3.6 (DECISIONS R4-M149): an Opaque temp is no storage, so an rvalue of a Type that would lend a Place in one (a Ref, a
-    // pair-case acquisition, a case adaptation) is its consumer's derived value instead: an Opaque located at the temp's node whose site
+    // pair-case acquisition, a case adaptation, a view's Storage) is its consumer's derived value instead: an Opaque located at the temp's node whose site
     // names only the temp, built already; null for a Place in other storage.
     private MirRvalue? Unlent(MirPlace place, BoundType type) => this.opaqueTemps.Contains(place.Root)
         ? MirRvalue.Opaque(type, this.body.AddOpaque(this.body.Locals[place.Root].Source.Syntax, [place.Root])) : null;

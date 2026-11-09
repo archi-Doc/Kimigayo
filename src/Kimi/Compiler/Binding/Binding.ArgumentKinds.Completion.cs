@@ -8,16 +8,17 @@ namespace Kimi.Compiler;
 // output of Binding.ArgumentKinds.cs. CompleteWaiting takes each argument of the selected candidate (TakeArgument), completes its
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
-// CompleteValueCallPart completes a value call's part at its one candidate's parameter Type; CompleteUnselected binds on its own each
-// part of a call that completes none. The selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in
-// Binding.ArgumentKinds.cs.
+// CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
+// the instantiated parameter; CompleteUnselected binds on its own each
+// part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
+// CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
 {
     // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
     // arguments against its Types, and the waiting callables of its Tuple and array literal arguments and of its control-flow
     // arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone kept waiting then decided (DecideTaken; DECISIONS
     // BU-43). A body or capture failure never retries another candidate, and an inferred result never supplies outer signature
-    // evidence. False when one fails.
+    // evidence. Every part is completed, a failed one being its own record (SPEC 23.1.2, PLAN G418); false when one fails.
     private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var call = evaluation.Call;
@@ -26,6 +27,7 @@ public sealed partial class Binding
         var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
+        var completed = true;
         try
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -37,22 +39,16 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is null)
-                    {
-                        return false;
-                    }
+                    completed &= this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is not null;
                 }
                 else
                 {
                     var awaited = this.AwaitsPosition(argument);
-                    if (!this.TakeWaiting(argument, pattern, solution.SlotOwner, solution) || (awaited && !this.DecideTaken(argument)))
-                    {
-                        return false;
-                    }
+                    completed &= this.TakeWaiting(argument, pattern, solution.SlotOwner, solution) && (!awaited || this.DecideTaken(argument));
                 }
             }
 
-            return true;
+            return completed;
         }
         finally
         {
@@ -82,11 +78,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
-    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
-    // failing erasure is reported, since the call rests on it and another candidate is never selected.
+    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. Every part is completed; false
+    // when one fails. Every failing part is reported, since the call rests on it and another candidate is never selected.
     private bool CompleteArguments(InvocationKoto call, BindingScope scope, Span<BoundArgumentOperation> operations)
     {
-        var erased = true;
+        var completed = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
@@ -99,7 +95,8 @@ public sealed partial class Binding
                 this.activeRequirementContract = selectedContract;
                 if (argument.BindingState != BindingState.Resolved)
                 {
-                    return false;
+                    completed = false;
+                    continue;
                 }
 
                 operations[i] = operations[i] with { SourceType = argument.BoundType };
@@ -107,12 +104,12 @@ public sealed partial class Binding
             else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
                 operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)
             {
-                erased &= this.ErasePart(argument, closureType, erasedType);
+                completed &= this.ErasePart(argument, closureType, erasedType);
                 operations[i] = operations[i] with { SourceType = erasedType };
             }
         }
 
-        return erased;
+        return completed;
     }
 
     // SPEC 7.7.4, 10.5: a Closure or Function Item part completed at a common Function Type is converted to it; its signature, Shared
@@ -130,43 +127,71 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument) and completed at its
-    // known parameter Type with no selection probe, since a value call has one candidate: a Typed part keeps its own Type, which the
-    // call adapts; every other part is bound at the parameter Type, a Literal at its literal input Type. Null when it fails.
+    // SPEC 10.5.1, 10.5.4, 7.7.4, 15.6.4 step 2 (PLAN G494): whether a value call's prepared part waits for the call's solve, to be completed
+    // at its instantiated parameter, as a named call completes its waiting parts and erasures after selection (CompleteWaiting,
+    // CompleteArguments): every part CompleteValueCallPart binds at its parameter or erases there, but a Literal, whose input Type names no
+    // Origin. An aggregate or a join its call classifies waits too: its typed parts are the solve's evidence by its rows (PLAN G504,
+    // SolveValueCallOrigins).
+    private bool WaitsForValueCallSolve(Koto part, BoundType parameter) => this.KindOf(part) switch
+    {
+        PartKind.Literal => false,
+        PartKind.Typed => part.BoundType is not { } typed ||
+            (typed.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && parameter.Kind == BoundTypeKind.Function),
+        _ => true,
+    };
+
+    // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument, by its caller, which
+    // composes its rows in between) and completed at its known parameter Type with no selection probe, since a value call has one
+    // candidate: a Typed part keeps its own Type, which the call adapts; every other part is bound at the parameter Type, a Literal at
+    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter. Null
+    // when it fails.
     private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
     {
         var literal = IsUnfittedLiteral(part);
-        if (!this.PrepareArgument(part, scope, null, callableContext: true))
-        {
-            return null;
-        }
-
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
         {
             return this.BindNode(part, scope, literal ? LiteralInputType(parameter) : parameter);
         }
 
-        // SPEC 7.7.4, 10.5, 10.7: a Closure or Function Item completed at a Function Type is converted to it, as at a named call: its
-        // signature is the call's applicability, a misfit left to the call's adaptation, and the rest is judged after selection (ErasePart).
-        if (typed.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || !this.ErasureSignatureFits(typed, parameter, part, out _))
+        // SPEC 7.7.4, 10.5, 10.7 (PLAN G494, DECISIONS BU-107): a Closure or Function Item completed at a Function Type is converted to
+        // it, as after a named call's selection (ErasePart). Its erasure is decided once, here, by ErasesToFunction under the use's
+        // premises; a failed one keeps its own Type and its published outcome, from which the call's fit records it (RecordMismatch).
+        if (typed.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || parameter.Kind != BoundTypeKind.Function ||
+            !this.ErasesToFunction(part, typed, parameter))
         {
             return typed;
         }
 
-        return this.ErasePart(part, typed, parameter) ? parameter : null;
+        part.ErasedFunctionType = parameter;
+        return parameter;
     }
 
-    // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,
-    // binds each argument part still unbound on its own under the argument probe, so that the part's own problems are reported once
-    // and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that would wait
-    // stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed alike. A
-    // control-flow part already bound in this pass is not bound again. Anonymous functions stay unbound (PLAN R1e); no candidate is selected
-    // again (SPEC 10.1); a deferred call is completed by its outer call.
+    // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
+    // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are
+    // reported once and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that
+    // would wait stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed
+    // alike, as is a Typed part no preparation reached (after a value call's or a construction's stop). The call was decided before and
+    // reads no result of these parts, so they are bound with its consultation suspended: none is its prerequisite, and its own record
+    // (a failed callee's) stays direct. A control-flow part already bound in this pass is not bound again. Anonymous functions stay
+    // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
     private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
     {
-        for (var i = 0; type is null && !this.IsWaitingPart(call) && i < call.ArgumentNodes.Count; i++)
+        if (type is not null || this.IsWaitingPart(call))
         {
-            this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
+            return type;
+        }
+
+        var consultation = this.SuspendConsultation();
+        try
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
+            }
+        }
+        finally
+        {
+            this.ResumeConsultation(consultation);
         }
 
         return type;
@@ -200,6 +225,12 @@ public sealed partial class Binding
             return;
         }
 
+        // Unprepared, as a waiting Case's payload is: bound on its own; a nested call that defers under the probe is completed below.
+        if (ClassifyPart(part) == PartKind.Typed && part.BindingState == BindingState.Unvisited && this.BindIndependentArgument(part, scope) is not null)
+        {
+            return;
+        }
+
         var waitingCase = this.KindOf(node) == PartKind.Case;
         IReadOnlyList<Koto>? parts = node switch
         {
@@ -210,14 +241,7 @@ public sealed partial class Binding
         };
         for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            if (waitingCase && ClassifyPart(parts[i]) == PartKind.Typed && parts[i].BindingState == BindingState.Unvisited)
-            {
-                this.BindIndependentArgument(parts[i], scope); // A waiting Case's own payload, bound on its own.
-            }
-            else
-            {
-                this.CompleteUnselectedPart(parts[i], scope);
-            }
+            this.CompleteUnselectedPart(parts[i], scope);
         }
     }
 

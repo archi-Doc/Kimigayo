@@ -251,11 +251,5 @@ public class ContextualLabelTest
     }
 
     private static TestDiagnostic[] Publish(string source)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return TestDiagnostics.Of(c, "Hello.kimi").Where(x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
-    }
+        => [.. TestDiagnostics.Of(MinimalEmissionTest.Check(source), "Hello.kimi").Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
 }

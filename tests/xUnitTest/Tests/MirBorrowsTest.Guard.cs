@@ -752,8 +752,8 @@ public sealed partial class MirBorrowsTest
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
     // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
-    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which reads AdtDef's view, gives each form its twin's record (none: it
-    // accepts the stated forms until R6-check, DECISIONS BU-46).
+    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
+    // accepted the stated forms, DECISIONS BU-46) until R6-check H10b deleted it.
     [Fact]
     public void ACompletedProjectionGivesItsSubjectsLayer()
     {
@@ -878,7 +878,7 @@ public sealed partial class MirBorrowsTest
     // `HK<Range<T, T>>` (range) and `HK<[2 of T]>` (fixedArray), each with its closed use. Before (ca97a317e's final none), the generic
     // declaration's storage was Rejected and A4's retention over it gave its limit verdict, Unsupported_Kd at the generic function's
     // signature, its local, the init and the return: a problem of the whole MIR analysis, which Binding's issues, the program's findings,
-    // the collector's records and the Loan stratum alone never observe. The old path accepts each too.
+    // the collector's records and the Loan stratum alone never observe. The old path accepted each too (deleted at H10b).
     [Fact]
     public void APendingProjectionIsCompletedByTheInstanceAUseForms()
     {
@@ -1105,6 +1105,203 @@ public sealed partial class MirBorrowsTest
                 "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
                 "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
                 "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 15.6.4 item 1, 5.2.1 condition 3 (DECISIONS R4-M177, PLAN G474): a call's store writes no holder that only a shared Loan names,
+    // at its first step, past a holder or at a Deep step (MirBorrowsTest.DepthLimit). s = w@ref is a body-local shared borrow, so what is
+    // reached through it is read-only and z = 5 conflicts with nothing: a raw layer past it in a Tuple (ss8) or an instance (ss8i), s
+    // itself beside an exclusive part whose holder is not read after (ss8s, ss8mv), the same by value (ss8v, ss8vr), and a concrete callee
+    // whose parameter writes Origin-less raw layers, w reached only through s (r1cv; another holder's address beside it). FAIL-FIRST: each
+    // erred at `z = 5`. The exclusive routes still write: the exclusive part's holder read after (ss8m, ss8vb), an exclusive and a shared
+    // Loan on parts of one holder (ss8g, by value ss8gv; shared at the first step and exclusive past h, r1a), w's plain address (ss8a; one
+    // level down through r1cv's callee, r1c), an exclusive Loan past a holder beside a shared one (ss8c) and the holder a second argument
+    // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w).
+    [Fact]
+    public void AStoreWritesNoHolderOnlyASharedLoanNames()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+                public func put<U>(self: uniq/Self, v: U) => ()
+            func putAny<U, V>(t: uniq/U, v: V) => ()
+            func putAnyV<U, V>(t: U, v: V) => ()
+            func putTwo<U, V, W>(t: U, u: uniq/V, v: W) => ()
+            func stp(t: uniq/((raw/(ref/i32 during a), uniq/((raw/(ref/i32 during a), i32)) during c)) during e, v: ref/i32 during a) => ()
+            func ss8()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var t = (s@follow@raw, 0)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func ss8i()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var h = Wrap.init(s@follow@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func ss8s()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var t = (s, v@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func ss8mv()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var t = (s@follow@raw, v@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func ss8v()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                putAnyV((s, v@uniq), z@ref)
+                z = 5
+                inspect(w)
+            func ss8vr()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                putAnyV((s@follow@raw, 0), z@ref)
+                z = 5
+                inspect(w)
+            func ss8m()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var t = (s@follow@raw, v@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func ss8vb()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                putAnyV((s, v@uniq), z@ref)
+                z = 5
+                inspect(v)
+            func ss8g()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                var t = (g.0@ref, g.1@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func ss8gv()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                putAnyV((g.0@ref, g.1@uniq), z@ref)
+                z = 5
+                inspect(g)
+            func ss8a()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var t = (s@follow@raw, w@raw)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func ss8c()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                let s = w@ref
+                var t = (s, r@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func ss8two()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                putTwo(g.0@ref, g.1@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func r1a()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                var h = g.1@uniq
+                var t = (g.0@ref, h@uniq)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func r1c()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var q: (raw/(ref/i32), i32) = (w@raw, 0)
+                var t: (raw/(ref/i32), uniq/((raw/(ref/i32), i32))) = (s@follow@raw, q@uniq)
+                stp(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func r1cv()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var u: ref/i32 = y@ref
+                let s = w@ref
+                var q: (raw/(ref/i32), i32) = (u@raw, 0)
+                var t: (raw/(ref/i32), uniq/((raw/(ref/i32), i32))) = (s@follow@raw, q@uniq)
+                stp(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func ss8w()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var t = (s@follow@raw, 0)
+                putAny(t@uniq, z@ref)
+                w = y@ref
+                inspect(s)
+            """);
+        Assert.Equal(
+            [
+                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5",
+                "ss8c: z = 5", "ss8c: inspect(v)", "ss8two: z = 5", "r1a: z = 5", "r1a: g", "r1c: z = 5", "ss8w: w = y@ref",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

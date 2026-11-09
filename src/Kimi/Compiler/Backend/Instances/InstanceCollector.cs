@@ -5,14 +5,14 @@
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
-// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, and an item's view for a PairLayer's
-// case); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and Need columns
-// of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the compilation's Layout (Indirect), whose outcomes the
-// collector alone maps (R5-M37).
+// SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
+// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
+// MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the
+// compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, the program's
 // collection records (MirProgram.Report with MirRecordClass.Collection, once per code and subject; R6-check H3-1), which Core's publisher
-// (Compilation.Publication) publishes at check on every pipeline (K4b; DECISIONS BU-48, R5-M156, R5-M184); for code generation (R5 C0b1) also an
+// (Compilation.Publication) publishes at check (K4b; DECISIONS BU-48, R5-M156, R5-M184); for code generation (R5 C0b1) also an
 // item's Types (TypeOf), the location of a record at a site of its body (Subject)
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
@@ -23,16 +23,11 @@
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
-// and the erased Self, or a gap); a bodyless callee whose legacy row writes its call in its instance (the Array operations and storage
-// kinds, placeEntry) targets its function instance's LegacyRow item (AdmitRow: the function and the erased Subst, no body, represented by
-// the storage its handle parameter designates; DECISIONS R5-M121, R5-M124); a Dictionary from none targets the body of the
-// DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared, through TyCtxt's F2c view); a
+// and the erased Self, or a gap); a Dictionary from none targets the body of DictionaryStorage.initialize (Declared); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts, a Dictionary's the clearEntries instance its Drop row declares when an entry may need a drop,
-// and a LegacyRow's declared callee and needs, placeEntry's append body and an ElementGlue need its Element parts' glue;
-// InstanceCollector.Witnesses.cs: a comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a
-// property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
-// glue and VTable, a VTable's slot bodies by VTableDef and Applies).
+// a DropGlue's direct parts, DropGlue.Parts, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
+// comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a property-witness setter's Field glue;
+// InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
 // P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
@@ -61,7 +56,7 @@
 // R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
-// a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's declaration) on an admission chain, its height grown
+// a 17th generation of an identity (a body's definition, a DropGlue's declaration) on an admission chain, its height grown
 // at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.

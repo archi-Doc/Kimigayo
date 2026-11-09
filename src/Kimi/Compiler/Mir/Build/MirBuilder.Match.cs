@@ -21,7 +21,7 @@ internal sealed partial class MirBuilder
         var plan = BoundMatch.Of(match)!;
         if (plan.Invalid || plan.Pending)
         {
-            this.Opaque(match, destination); // Binding rejected a Pattern of it.
+            this.Opaque(match, destination); // A Pattern or guard of it failed.
             return;
         }
 
@@ -57,10 +57,10 @@ internal sealed partial class MirBuilder
             this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
             var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
-            this.Result(destination, arm.Syntax.Body, arm.Syntax.Body, input);
-            this.CloseScope(bindings);
+            var value = this.TargetBody(arm.Syntax.Body, input);
             this.scope = outer;
-            this.Join(after, arm.Syntax.Body);
+            this.End(arm.Syntax.Body, value);
+            this.Pop(bindings);
             this.current = next;
         }
 
@@ -129,7 +129,8 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.8.1, 13.4: a Literal position's test, the comparison of the value its Place holds with the literal's (a string's inspected
-    // through a shared borrow); a mismatch goes on to the next arm.
+    // through a shared borrow, by the witness an operator calls: no Temporary arises, a Pattern being no expression); a mismatch goes on to
+    // the next arm.
     private void LiteralTest(in BoundPattern position, MirPlace place, int next)
     {
         var literal = position.Literal;
@@ -140,18 +141,29 @@ internal sealed partial class MirBuilder
             operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
         }
 
-        var operands = this.body.AddOperand(operand);
-        var magnitude = (Int128)literal.Magnitude;
-        this.body.AddOperand(
+        var start = this.arguments.Count;
+        this.arguments.Add(operand);
+        this.arguments.Add(
             MirOperand.Const(
             this.body.Const(
             literal.Kind switch
         {
             PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
-            PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
-            _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
+            PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, literal.Bits),
+            _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Bits),
         })));
-        this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
+        // The position is both operands' node: the literal has none, and Binding's pattern layer selection already stood the Place at its
+        // terminal as far as its MIR Type shows (a layer an identity premise gives is walked by the query and Viewed), and a Place is never
+        // the Never value that would read the right one.
+        if (this.Witnessed(MirBinaryOp.Eq, start, position.Source, position.Source) is { } comparison)
+        {
+            this.Compared(value, comparison, MirBinaryOp.Eq, start, position.Source);
+        }
+        else
+        {
+            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, this.Flush(start), proven: true), position.Source);
+        }
+
         this.Pass(MirOperand.Copy(this.Made(value)), 1, next, position.Source);
     }
 
@@ -165,6 +177,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
     // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
+    // A failed one (Failed: a match or for binding whose Copy proof is Error) takes a value derived from that failure, as Operand gives
+    // (BU-103, BU-110, R4-M179).
     private void Bind(BoundMatch plan, int pattern, int start)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
@@ -176,7 +190,9 @@ internal sealed partial class MirBuilder
                 var place = this.selected[start + i];
                 var mutable = Binding.Reassignable(symbol);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
-                this.Use(new(local), this.Acquire(adjust, place, type, input: false, binding, new(local)), binding);
+                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Unsupported(binding, derived: true, type))
+                    : this.Acquire(adjust, place, type, input: false, binding, new(local));
+                this.Use(new(local), value, binding);
                 this.locals[symbol] = local;
             }
         }

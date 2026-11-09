@@ -29,7 +29,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
     public void SharedObjectBaseCallsUseTheOriginalHeaderAndLoan(string name, string body)
         => ScalarEmissionTest.EmitFixture("InheritedObject" + name, Types + body, string.Empty);
 
-    // SPEC 3.4.3, 9.6.1, 13.5.5 (E9, P34_REMAINING R1; DECISIONS R5-M114): an inherited base getter and ref/Self method reached through
+    // SPEC 3.4.3, 9.6.1, 13.5.5 (E9, PLAN U7's R1; DECISIONS R5-M114): an inherited base getter and ref/Self method reached through
     // reference layers read the base subobject of the value or object below them, and a virtual call there dispatches on that object.
     [Theory]
     [InlineData("RefRef", "ref/(ref/Leaf during a)", "var owner = Leaf.init()\nlet view = owner@ref\n", "view@ref", false)]

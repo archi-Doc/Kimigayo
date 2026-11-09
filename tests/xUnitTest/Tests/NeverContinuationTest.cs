@@ -26,6 +26,9 @@ public class NeverContinuationTest
         "func f() -> i32\n    var a: [1 of string] = [\"old\"]\n    var b: [1 of S] = [S.init()]\n    var other = \"other\"\n    let n: [1 of [1 of i32]] = [[1]]\n" +
         "    let t: [1 of (i32, bool)] = [(1, true)]\n    var u: [1 of Counter] = [Counter.init(1)]\n    ";
 
+    // A construct's value with a Never part on one path (PLAN G442's X).
+    private const string Joined = "(if c => (a, (return 1)) else => (a, a))";
+
     // The program of JoinedLiteralsRunAtTheirJoinsType.
     private const string JoinedLiterals =
         "struct P\n    public var x: i64 = 5\n" +
@@ -136,7 +139,7 @@ public class NeverContinuationTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
+        Assert.Equal("(i32, i32)", TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
     }
 
     // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): an element access is no Never form, so an owned fixed-array element whose key diverges has its
@@ -167,14 +170,16 @@ public class NeverContinuationTest
 
     // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
     // assumed path by its reachable twin's Move rules, with the twin's codes at the element: an explicit Move into a local or into a
-    // call has no static Move Path, and a bare consume is TransferRequired_Kd beside the element path's Unsupported_Kd (fail-before: each
-    // accepted, the old analysis checking nothing there). A part of a temporary is moved as its twin `take(make2(42).0@move)` is, with no
+    // call has no static Move Path, nor has a dynamic Array's element (4.7.1, 15.1.5: an index through a conformance never offers Take)
+    // (fail-before: each accepted, the old analysis checking nothing there; the Array row is a guard). A part of a temporary is moved as
+    // its twin `take(make2(42).0@move)` is, with no
     // record (1a, the owner's list of 2026-11-03: the old analysis's StaticMovePathRequired_Kd there went with H5, the MIR deciding
     // acceptance). A Copy element, a Tuple element's or an element's own, is read as its twin is, with no record. A program without a
     // record is generated as a Library, one with a record is not.
     [Theory]
     [InlineData("let s = a[(return 42)]@move", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(a[(return 42)]@move)", "a[(return 42)]", "StaticMovePathRequired_Kd")]
+    [InlineData("var xs: Array<string> = [\"a\"]\n    let s = xs[(return 42)]@move", "xs[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "")]
     [InlineData("let k = t[(return 42)].1", "t[(return 42)].1", "")]
     [InlineData("let c = n[0][(return 42)]", "n[0][(return 42)]", "")]
@@ -216,7 +221,7 @@ public class NeverContinuationTest
     {
         var c = MirBuildTest.Compile(Elements + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
         var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
         Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type));
         BuildsWithoutRecords(c);
@@ -227,7 +232,8 @@ public class NeverContinuationTest
     // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; where no source
     // supplies a candidate, the Type is formed part by part over the sources other than Never (step 2; DECISIONS R4-M134, BU-43): Tuples
     // by element, arrays as Array<T>, fills at their length and Dictionaries by key and value, through nested selections, `do` and `loop`;
-    // MIR builds it at that Type with no record and no finding.
+    // MIR builds it at that Type with no record and no finding, also where each exit or yield of an indented body is an assumed delivery
+    // (SPEC 14.10.3; DECISIONS R4-M175).
     [Theory]
     [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a)", "((return 2), a)")]
     [InlineData("let t = match c\n        true => (a, (return 1))\n        false => ((return 2), a)", "((return 2), a)")]
@@ -236,6 +242,9 @@ public class NeverContinuationTest
     [InlineData("let t = if c => (a, (return 1)) else if d => ((return 2), a) else => ((return 3), (return 4))", "((return 2), a)")]
     [InlineData("let t = if c => (do => (a, (return 1))) else => ((return 2), a)", "(a, (return 1))")]
     [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label s: match c\n        true\n            yield to s (a, (return 1))\n        false\n            yield to s ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label s: if c\n        yield to s (a, (return 1))\n    else\n        yield to s ((return 2), a)", "((return 2), a)")]
     [InlineData("let g = func [a] (e: bool) => if e => (a, $abort(\"x\")) else => ($abort(\"y\"), a)", "($abort(\"y\"), a)")]
     [InlineData("let t = if c => ((a, (return 1)), a) else => (((return 2), a), a)", "((return 2), a)")]
     [InlineData("let t = if c => [(a, (return 1))] else => [((return 2), a)]", "[((return 2), a)]", "Array<(i64, i64)>")]
@@ -266,7 +275,7 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(node)!));
         BuildsWithoutRecords(c);
     }
 
@@ -356,14 +365,15 @@ public class NeverContinuationTest
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
-    // forms its Type over it and a later use keeps its own record.
+    // forms its Type over it and a later use keeps its own record. The read is unreachable and only the first arm places `t.0`, so it is
+    // also UninitializedPlace_Kd, as in SPEC 14.9.2's `pick` (14.10.3 per part; the owner's 「A で進める（推奨）」, DECISIONS R4-M175).
     [Fact]
     public void AnUnreadableLiteralIsATypedPartOfItsJoin()
     {
         const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ('ab', (return 1)) else => ((return 2), 'x')\n    let z: i64 = t.0\n    return 0\n" +
             "public func main() => ()\n";
         var codes = DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code).Order();
-        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], codes);
+        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UninitializedPlace_Kd)], codes);
     }
 
     // DECISIONS BU-9 r1, BU-43: a failed part is no waiting part, so no Type is formed over it and no literal is bound twice; its join
@@ -427,12 +437,12 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
-        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+        Assert.Equal("(i64, i64)", TyCtxt.Name(HirTables.TypeOf(tuple)!));
         BuildsWithoutRecords(c);
     }
 
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
-    // a Type is a Copy. The old path's Unsupported_Kd for every Place of a Type holding Never stays its only record until R6-check.
+    // a Type is a Copy. The MIR accepts every row (R6-check H5).
     [Theory]
     [InlineData("func f()\n    var t = (1, stop())\n", "t", 0)]
     [InlineData("func f()\n    let a: Option<Never> = .None\n", "a", 0)]
@@ -443,7 +453,7 @@ public class NeverContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
         Assert.Empty(c.Binding.Issues);
-        Assert.All(LegacyRecords.Of(c).Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)), static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x));
+        Assert.Empty(c.Problems);
         HirTables.Publish(c);
         var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == place && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
         Assert.Equal(copies, reads.Length);
@@ -461,7 +471,7 @@ public class NeverContinuationTest
         var operand = moves ? HirAcquire.Move : HirAcquire.Copy;
         var c = MinimalEmissionTest.Analyze("func pass(x: Never, y: Never) => ()\nfunc absurd(x: Never) => pass(" + acquisition + ", x)\n");
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(moves, LegacyRecords.Of(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
+        Assert.Equal(moves, MirTargetSide.MirSide(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
         HirTables.Publish(c);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Equal((HirOp.Group, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
@@ -471,17 +481,18 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.3, 14.10.3, 13.5.6: an explicit borrow of a Place of Type Never forms its Loan like any explicit borrow and supplies no
-    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path.
+    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path. `var y = x` supplies no value either
+    // (SPEC 14.10.3), so the exclusive borrows read an uninitialized `y`: the MIR's UninitializedPlace_Kd at the borrow (ledger row a1-c3).
     [Theory]
-    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", true)]
-    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", true)]
-    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", false)]
-    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", false)]
-    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, bool conflict)
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", DiagnosticCode.ComparisonLoanConflict_Kd, "x@move", "x")]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", DiagnosticCode.ComparisonLoanConflict_Kd, "x@move", "x")]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", DiagnosticCode.UninitializedPlace_Kd, "y@(uniq/Never)", null)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", DiagnosticCode.UninitializedPlace_Kd, "y@uniq", null)]
+    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, DiagnosticCode code, string at, string? subject)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(conflict, LegacyRecords.Of(c).Any(static x => x.Code.IsLoanConflict()));
+        MirTargetSide.Check(c, (code, MirTargetSide.At(at, subject)));
         HirTables.Publish(c);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(x => x.ToString() == borrow);
         Assert.Equal((HirOp.Borrow, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
@@ -506,6 +517,156 @@ public class NeverContinuationTest
     {
         var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
         Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "a"), (DiagnosticCode.TransferRequired_Kd, "a")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
+    // SPEC 14.9.1, 14.10.3 (the owner's 「SPEC's letter」; DECISIONS R4-M175): an explicit source in unreachable code counts and is assumed
+    // delivered, and a construct that is no Never form gets no completion from its body's end arrival, so a do and a loop whose bodies end
+    // after a transfer or a Never call initialize their local through their exits (fail-before: UninitializedPlace_Kd at `r`). An
+    // assumed completion initializes nothing: a value end or a delivery of a Never value places nothing, and a Never form (a `loop` or an
+    // `if` whose condition diverges) nothing it is placed into, so each read below is UninitializedPlace_Kd; an exit's drop tree runs.
+    // After `return`, a loop whose other exit's operand does not complete initializes its local only on the completing exit's path, as
+    // a labeled do does (fail-before: accepted, the Never exit built no transfer); its reachable twin is accepted.
+    [Theory]
+    [InlineData("func f() -> i32\n    let r = label w: do\n        return 1\n        exit to w 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    let r = loop\n        return 1\n        exit 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    let r = label w: do\n        fail()\n        exit to w 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    var p: i32\n    let r = label w: do\n        return 1\n        exit to w 3\n    return p\n", "UninitializedPlace_Kd p")]
+    [InlineData("func f() -> i32\n    let r: i32 = label w: do\n        return 1\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> i32\n    let r: i32 = label w: do\n        exit to w fail()\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func g()\n    let r = loop => fail()\n    let s = r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    return 9\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "UninitializedPlace_Kd t")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "")]
+    [InlineData("func f() -> i32\n    let r = if (return 1) => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f() -> i32\n    let r = if fail() => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> i32\n    return 0\n    let r = if c => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func g(c: bool) -> i32\n    let r = match fail()\n        _ if c => fail()\n        _ => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> bool\n    return true\n    let b = c and fail()\n    return b\n", "UninitializedPlace_Kd b")]
+    [InlineData(
+        "struct T\n    drop => ()\nfunc take(x: T) => ()\nfunc f(x: T) -> i32\n    label w: do\n        defer => take(x@move)\n        exit to w fail()\n" +
+        "    take(x@move)\n    return 1\n",
+        "MovedPlace_Kd x")]
+    public void AnAssumedSourceCountsAndInitializesNothing(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.10.3 per part (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a construction holding a Never part places its other parts
+    // and nothing into the Never part, as a value end, through an exit (an assumed delivery places its operand's value) and nested, in any
+    // position, a Tuple or a fixed array; a read of a placed part is valid, of the Never part UninitializedPlace_Kd. Each read is
+    // unreachable (after `return`, or after an `if` whose arms both diverge). Fail-before on dev 66de6a02a: it rejected the do rows'
+    // placed-part reads (an exit holding a Never part built no delivery) and accepted every Never-part read but the do's, and the whole read.
+    // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's element has no Place of its own, so
+    // `arr[1]` is accepted: the stated limit (STATUS). A construct nested in an aggregate gives its component what each path placed (the
+    // owner's 「修正して進める」): on a real path the read is valid (fail-before at 878717d52: UninitializedPlace_Kd, the parts applied on every
+    // path); after `return` the Never part's read is UninitializedPlace_Kd, also through a part of the construct's value (dev: accepted).
+    [Theory]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, fail())\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.0", "")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.1 + t.2", "")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.0 + t.2", "")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.0 + t.1", "")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.2", "UninitializedPlace_Kd t.2")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.0 + t.1", "")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[0]", "")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[1]", "UninitializedPlace_Kd t[1]")]
+    [InlineData("return 9\n    let t = (a, (return 1))\n    let u = t\n    return u.0", "UninitializedPlace_Kd t")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit a\n        exit (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t = label s: if c\n        yield to s a\n    else\n        yield to s (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "")]
+    [InlineData("let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = ((if c => (a, fail()) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "")]
+    [InlineData("let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "")]
+    [InlineData("let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.0", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].0", "")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "UninitializedPlace_Kd t[1].1")]
+    [InlineData("return 9\n    let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "UninitializedPlace_Kd t.1.1")]
+    [InlineData("return 9\n    let t = (if c => (a, (return 1)) else => (a, a)).1\n    return t", "UninitializedPlace_Kd ( | UninitializedPlace_Kd t")]
+    public void AConstructionHoldingANeverPartPlacesItsOtherParts(string body, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\nfunc f(c: bool, a: i64) -> i64\n    " + body + "\n", output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // PLAN G442 (SPEC 14.10.3, 15.1.2, 15.1.3, 3.4; DECISIONS R4-M175): A1 checks a temp's use as a program Place's but for its own bit,
+    // so a construct's value whose Never part no path placed is reported where a call, a comparison or a read of the part consumes it; a
+    // placing location takes a whole temp without a use: an aggregate (an Array or tuple literal) and a Dictionary literal's insertion, a
+    // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1). The reachable twins and the Never value consumed directly
+    // (M's Q2) stay valid; a part read of a temp absent on one assumed path is rejected as its Var twin is (SPEC 14.10.3's
+    // `let y: i32 = fail()`); a Dictionary literal received whole keeps no component path (the Array literal's stated limit).
+    [Theory]
+    [InlineData("return 9\n    g(" + Joined + ")", "UninitializedPlace_Kd g((")]
+    [InlineData("g(" + Joined + ")", "")]
+    [InlineData("return 9\n    let b = " + Joined + " == (a, a)", "UninitializedPlace_Kd (")]
+    [InlineData("let b = " + Joined + " == (a, a)", "")]
+    [InlineData("g((a, (return 1)))", "UninitializedPlace_Kd g((a, (return 1)))")]
+    [InlineData("return 9\n    h(" + Joined + ".0)", "")]
+    [InlineData("return 9\n    h(" + Joined + ".1)", "UninitializedPlace_Kd h((")]
+    [InlineData("h(" + Joined + ".1)", "")]
+    [InlineData("return 9\n    return " + Joined + ".1", "UninitializedPlace_Kd (")]
+    [InlineData("return 9\n    h((return 1))", "")]
+    [InlineData("return 9\n    h(if c => a else => (return 1))", "")]
+    [InlineData("return 9\n    h((if c => (a, a) else => fail()).0)", "UninitializedPlace_Kd h((")]
+    [InlineData("h((if c => (a, a) else => fail()).0)", "")]
+    [InlineData("return 9\n    _ = d.tryInsert(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.tryInsert(\"j\", (")]
+    [InlineData("return 9\n    _ = d.insertOrReplace(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.insertOrReplace(\"j\", (")]
+    [InlineData("return 9\n    d[\"j\"] = " + Joined, "")]
+    [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, (return 4)): 1]", "")]
+    [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, a): 1, (a, (return 4)): 2]", "UninitializedPlace_Kd (a, (return 4))")]
+    [InlineData("let x = [\"j\": (a, (return 4)), \"k\": (a, a)]", "")]
+    [InlineData("let x: Dictionary<string, Dictionary<string, (i64, i64)>> = [\"j\": [\"k\": (a, (return 4))], \"m\": [\"n\": (a, a)]]", "")]
+    [InlineData("return 9\n    let x = if c => [\"j\": " + Joined + "] else => [\"j\": (a, a)]", "")]
+    [InlineData("return 9\n    let x = [\"j\": g2(" + Joined + ")]", "UninitializedPlace_Kd g2((")]
+    [InlineData("return 9\n    let x = [\"j\": " + Joined + ".1]", "UninitializedPlace_Kd (")]
+    [InlineData("return 9\n    take([\"j\": (a, (return 4))])", "")]
+    [InlineData("return 9\n    let x = [" + Joined + "]", "")]
+    [InlineData("return 9\n    let t = (" + Joined + ", a)", "")]
+    public void ATempsUnplacedPartIsReportedWhereItIsConsumed(string body, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "func fail() -> Never => fail()\nfunc g(x: (i64, i64)) => ()\nfunc g2(x: (i64, i64)) -> i64 => 0\nfunc h(x: i64) => ()\n" +
+            "func take(d: Dictionary<string, (i64, i64)>) => ()\n" +
+            "func f(c: bool, a: i64, d: uniq/Dictionary<string, (i64, i64)>) -> i64\n    " + body + "\n    return 0\n",
+            output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.9.1, 14.9.2 (DECISIONS BU-101, R4-M175): a construct whose every transfer Binding rejected has no source and is a Never form,
+    // so its join is reached and the MIR adds no InternalInvariant_Kd: the program keeps its two published records.
+    [Theory]
+    [InlineData("func f(c: bool)\n    match c\n        true\n            yield 1\n        false\n            yield 2\n")]
+    [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n    let z = 1\n")]
+    public void AConstructOfRejectedTransfersIsANeverForm(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [nameof(DiagnosticCode.UnlabeledYieldTarget_Kd), nameof(DiagnosticCode.UnlabeledYieldTarget_Kd)],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code));
     }
 
     [Fact]

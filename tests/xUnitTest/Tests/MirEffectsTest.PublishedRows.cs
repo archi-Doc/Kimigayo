@@ -16,21 +16,31 @@ public sealed partial class MirEffectsTest
     // emptied by pops destroys no element, or the body is rewritten so that its items stay within None.
     private const string AppendAllDropsItsEmptiedSource = "appendAll: Drop T";
 
+    // SPEC 4.9.7 (PLAN G126): destroyValues is a destruction of its Type argument in A4, the item clear's row covers.
+    [Fact]
+    public void DestroyValuesIsADestructionOfItsTypeArgument()
+    {
+        var c = MirBuildTest.Compile("public func main() => ()\n");
+        var (effects, _, program) = Analyzed(c);
+        var clear = program.Callee(new(MirCalleeKind.Fn, c.Library.GetSymbol(KimiDeclarationId.ArrayClear)!))!;
+        Assert.Contains(effects.Items(clear, 0, out _).ToArray(), static x => x.Kind == MirEffects.Drop && x.Type.Name == "T");
+    }
+
     // SPEC 4.9.6: each Kimi body with a row stays within it in A4's items, with abstract Type parameters: an atom is the row's requirement
     // on the Type below its parameter, a shared call through its Callable input, or a destruction the row's target or Callable input
     // reaches or the premises prove Copy (as A4 resolves an atom at the top); an Unknown only a call of the row's requirement on that Type
     // (A4 judges a direct requirement call by the premises, SPEC 8.11.3), in the body or a body without a row it enters; no other class.
-    // A linked constructor's row is its implementation's, and a compiler function with the row None keeps Binding's class, Inputs.
+    // A linked constructor's row is its implementation's.
     [Fact]
     public void EachRowOperationsBodyStaysWithinItsRow()
     {
         var c = MirBuildTest.Compile("public func main() => ()\n");
         var (effects, flow, program) = Analyzed(c);
-        var (outside, bodies, functions) = (new List<string>(), 0, 0);
+        var (outside, bodies) = (new List<string>(), 0);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             var operation = c.Library.GetSymbol(entry.Id)!;
-            if (KimiLibraryCatalog.Row(operation) is not { } row)
+            if (KimiLibraryCatalog.Row(operation) is null)
             {
                 continue;
             }
@@ -44,15 +54,10 @@ public sealed partial class MirEffectsTest
                 Check(entry.Name, operation, body);
                 bodies++;
             }
-            else if (row == new PublishedRow(Runs: null))
-            {
-                Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(operation));
-                functions++;
-            }
         }
 
         Assert.Equal([AppendAllDropsItsEmptiedSource], outside);
-        Assert.Equal((20, 4), (bodies, functions));
+        Assert.Equal(30, bodies);
 
         void Check(string name, BindingSymbol operation, MirBody body)
         {

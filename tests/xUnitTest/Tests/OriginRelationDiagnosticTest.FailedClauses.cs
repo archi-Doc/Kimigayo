@@ -22,7 +22,7 @@ public partial class OriginRelationDiagnosticTest
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + " ";
 
     // The MIR's records since the flip (R6-check H5): its twin of Binding's record at Binding's row (the clause, or `return p.q` beside
-    // `p.q`) until H11 (H0b §5.4, DECISIONS R4-M108), its record at `let k` where Binding rests the slot (R5-M184), and its record at the
+    // `p.q`) until R7 (H0b §5.4, DECISIONS R4-M108), its record at `let k` where Binding rests the slot (R5-M184), and its record at the
     // statement `let p` where Binding records none.
     private const string InitRecord = Unsatisfied + "P.init(a, l@ref)";
 

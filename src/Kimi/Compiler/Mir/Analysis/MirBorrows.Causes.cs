@@ -287,14 +287,14 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The record's Cause facts after its other facts (MirFact's order), the conflict's causes consumed.
+    // The record's Cause facts after its other facts (ProblemFact's order), the conflict's causes consumed.
     private int CauseFacts(int count)
     {
         var problems = this.program.Problems.All;
         MirDataflow.Grow(ref this.facts, count + this.causes.Count);
         foreach (var p in this.causes)
         {
-            this.facts[count++] = new(MirFactKind.Cause, problems[p].Subject, p);
+            this.facts[count++] = new(ProblemFactKind.Cause, problems[p].Subject, p);
         }
 
         this.causes.Clear();

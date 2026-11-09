@@ -34,7 +34,7 @@ public sealed partial class Binding
     internal static BoundType? DeclaredResult(Koto boundary) => boundary switch
     {
         FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
-        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
+        FunctionKoto function => DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
         PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
         PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
         PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
@@ -97,13 +97,13 @@ public sealed partial class Binding
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
         target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
 
-    // SPEC 14.5.2: a transfer's lexical target, which the jump binding writes to the jump's target row when the transfer may go there
-    // (KotoHelper.IsValidTransfer). A null row is a jump the HIR lints record as invalid (rows 9-10), so no transfer is built from it.
+    // SPEC 14.5.2, 14.9.1 (DECISIONS BU-101): the construct a transfer goes to (TransferTarget), which the jump binding writes
+    // to the jump's target row. A null row is a jump the HIR lints record as invalid (rows 9-10): it supplies no result source and its
+    // operand has no expected Type, and no transfer is built from it.
     private static Koto? BindTransferTarget(JumpKoto jump)
     {
-        var target = KotoHelper.ResolveTransferTarget(jump);
-        var valid = KotoHelper.IsValidTransfer(jump, target);
-        HirTables.PlanFor(jump, valid).Plan = valid ? target : null;
+        var target = TransferTarget(jump);
+        HirTables.PlanFor(jump, target is not null).Plan = target;
         return target;
     }
 
@@ -111,7 +111,7 @@ public sealed partial class Binding
     // the bounds resolved by LocalOrigins. A discard position and while/for fix Unit.
     private static BoundType? ResultExpectation(Koto target, BoundType? expected)
     {
-        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
+        if ((target is not (TryKoto or FunctionKoto) && !IsValueContext(target)) || target is WhileKoto or ForKoto)
         {
             return BoundType.Unit;
         }
@@ -209,7 +209,7 @@ public sealed partial class Binding
     private void AddBodyResult(Koto body, ResultContext context, StructuralCompletion structural)
     {
         var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
+        if (KotoHelper.IsBodyExpression(item) && IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
             context.Add(body, this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
@@ -311,28 +311,21 @@ public sealed partial class Binding
 
         BoundType? failed = null;
         var failure = default(ComparisonFailure);
+        var conflict = false;
         if (common is null)
         {
-            common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            if (conflict && this.ConflictWaits(node))
-            {
-                context.Wait(this.SourcesAwait(context));
-                return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.
-            }
-
-            if (conflict)
-            {
-                context.Conflict();
-            }
+            common = this.SelectCommonType(types, this.ConstraintScope(node), out conflict);
         }
         else
         {
             // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
+            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
+            // their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                if (!(this.HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                var regional = this.HasLocalRegion(common) || this.HasLocalRegion(types[i]);
+                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)
@@ -341,6 +334,20 @@ public sealed partial class Binding
                     }
                 }
             }
+        }
+
+        // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
+        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended); under its
+        // call's argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
+        if (conflict ? this.ConflictWaits(node) : context.HasTyped && context.Cause is not null && this.ClassifiedByCall(node, null))
+        {
+            context.Wait(this.SourcesAwait(context));
+            return Complete(node, null);
+        }
+
+        if (conflict)
+        {
+            context.Conflict();
         }
 
         // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
@@ -426,6 +433,10 @@ public sealed partial class Binding
 
         internal bool HasLiteral { get; set; }
 
+        // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
+        // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
+        internal bool HasTyped { get; set; }
+
         internal bool PartialEvidence { get; set; }
 
         internal bool HasNever { get; set; }
@@ -439,7 +450,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;

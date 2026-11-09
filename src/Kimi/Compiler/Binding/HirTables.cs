@@ -18,8 +18,8 @@ namespace Kimi.Compiler;
 /// Type or an Origin, which occupy different namespaces), selected symbol, erased Function Type and the index of its plan row.
 /// The module's <see cref="SyntaxTable"/> sizes them with its ids, keeps them across warm rebinds and moves each row, plan row
 /// included, with its node when it renumbers. A node without an id has the default row; its first write gives it one.
-/// The published columns, <see cref="Ops"/>, <see cref="Res"/>, <see cref="Completions"/>, <see cref="Adjusts"/> and
-/// <see cref="Places"/>, are empty until <see cref="Publish"/> fills them for a pass.
+/// The published columns, <see cref="Ops"/>, <see cref="Completions"/>, <see cref="Adjusts"/> and <see cref="Places"/>, are
+/// empty until <see cref="Publish"/> fills them for a pass.
 /// </summary>
 internal struct HirTables
 {
@@ -30,7 +30,6 @@ internal struct HirTables
     internal BoundType?[] ErasedTypes;
     internal int[] PlanIndexes;
     internal HirOp[]? Ops;
-    internal HirRes[]? Res;
     internal HirCompletion[]? Completions;
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
@@ -67,6 +66,9 @@ internal struct HirTables
 
     internal static object? Meaning(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Meanings[node.SyntaxId] : null;
 
+    // The node's resolved Type: its Meaning when that is a Type, else null (an Origin, an unresolved node).
+    internal static BoundType? TypeOf(Koto node) => Meaning(node) as BoundType;
+
     internal static BindingSymbol? Symbol(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Symbols[node.SyntaxId] : null;
 
     internal static BoundType? ErasedType(Koto node) => node.SyntaxOwner is { } table ? table.Hir.ErasedTypes[node.SyntaxId] : null;
@@ -74,7 +76,18 @@ internal struct HirTables
     // A node the latest publish did not reach, such as one synthesized after it, reads as unpublished.
     internal static HirOp Op(Koto node) => node.SyntaxOwner?.Hir.Ops is { } ops && node.SyntaxId < ops.Length ? ops[node.SyntaxId] : default;
 
-    internal static HirRes ResOf(Koto node) => node.SyntaxOwner?.Hir.Res is { } res && node.SyntaxId < res.Length ? res[node.SyntaxId] : default;
+    // What a node's selected symbol names, derived from the symbol, so no column repeats it; a parameter read in the default of a later
+    // parameter of its function names the prepared slot (SPEC 7.2.3).
+    internal static HirRes ResOf(Koto node) => Symbol(node) is not { } symbol ? HirRes.None : symbol.Kind switch
+    {
+        BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate => HirRes.Local,
+        BindingSymbolKind.Parameter => DefaultParameters.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
+        BindingSymbolKind.Capture => HirRes.Capture,
+        BindingSymbolKind.Storage => HirRes.Field,
+        BindingSymbolKind.Property => Binding.IsStatic(symbol) ? HirRes.Static : HirRes.Field,
+        BindingSymbolKind.EnumCase => HirRes.Variant,
+        _ => HirRes.Decl,
+    };
 
     internal static HirCompletion CompletionOf(Koto node) => node.SyntaxOwner?.Hir.Completions is { } completions && node.SyntaxId < completions.Length ? completions[node.SyntaxId] : default;
 
@@ -87,10 +100,10 @@ internal struct HirTables
     /// is the identical complete Type Binding resolved the access on; null for any other node.</summary>
     /// <param name="node">The node.</param>
     /// <returns>The interned identity, or null.</returns>
-    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
-    /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
+    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
@@ -211,11 +224,19 @@ internal struct PlanRow
     /// <summary>The node's Adjust that the Adjust column cannot hold (DECISIONS R4-M145): the earlier of two calls of one consumer that take
     /// it by different Adjusts, whose later one the column keeps, a compound update's getter beside its setter (SPEC 13.7.2, 11.3; DECISIONS
     /// R4-M109), written at each call input of each pass; or a Place in Discard Context's bare acquisition (SPEC 14.2.2), written at each such
-    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise. A node three or more
+    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise: a publish clears every
+    /// row's first, so it is always that publish's, a read of a take's claim (Binding.Claimed) included. A node three or more
     /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
-    // An Int128 would align the row to 16 bytes; two halves keep it at 48.
+    /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-98), at the Place
+    /// it takes (the outermost group): the Type the Place supplies (<c>Binding.SuppliedType</c>), a stored exclusive reference's Reborrow
+    /// by Binding's name (DECISIONS BU-27), which no consumer states for a discard; an explicit discard's operand included, whose Adjust
+    /// is the column's. Every publish writes it for every node it reaches: null for any other node (a value statement holds its Meaning)
+    /// and for a discarded Place Binding did not resolve, so a row never keeps an earlier pass's Type, also after an in-place edit.</summary>
+    internal BoundType? DiscardedType;
+
+    // An Int128 would align the row to 16 bytes; two halves keep it at 56.
     private bool folded;
     private ulong foldedHigh;
     private ulong foldedLow;
@@ -227,4 +248,7 @@ internal struct PlanRow
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;
         set => (this.folded, this.foldedHigh, this.foldedLow) = value is { } constant ? (true, (ulong)(constant >> 64), (ulong)constant) : (false, 0UL, 0UL);
     }
+
+    /// <summary>Gets a conversion's kind, which its row's Mode holds.</summary>
+    internal readonly ConversionBinding Conversion => (ConversionBinding)this.Mode;
 }

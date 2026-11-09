@@ -33,7 +33,7 @@ internal sealed partial class TyCtxt
     private BoundLength?[] noLengths = [];
 
     // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
-    // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and R4-M118's OriginFinding.
+    // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and the C1-F4 view's (BU-102).
     internal bool BindingComplete => binding.Result.IsComplete;
 
     // DECISIONS BU-60: the Type instance a Closure Type's context holds (HeldContext); null for a context a function's instance made, and
@@ -102,8 +102,8 @@ internal sealed partial class TyCtxt
     // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
     // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' at R6-check and Binding's own with R7's CallPlan
-    // pipeline (DECISIONS R5-M36).
+    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own go with R7's
+    // CallPlan pipeline (DECISIONS R5-M36).
     [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
@@ -161,10 +161,10 @@ internal sealed partial class TyCtxt
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
-    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
-    // a generic body (InstantiateForwardedCall), so Instance(t, Compose(inner, outer).Subst) is that call's instantiation of t; with the
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, so applying
+    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
     // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
-    // keeps the composed substitution, as the forwarded call keeps its Types; null and Limit when the outer instance does not substitute an
+    // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
     // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
     // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
     // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so

@@ -112,6 +112,42 @@ public class ContractSelfTest
         Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString())));
     }
 
+    // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
+    // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
+    // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
+    // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit on` runs all of them.
+    [Theory]
+    // SPEC 8.4, 8.3.2's refinement row: a Contract's Self in a reference's arguments is the conforming Type; D's clause on its argument gives T.(C).X no
+    // `k` (stale3).
+    [InlineData("guard", "stale0", "contract D<U>\n    associate N\ncontract C\n    associate X is D<i32>\nfunc needs<V, W>(v: ref/V)\n    V is D<W>\n    ()\nfunc probe<T>(value: ref/T.(C).X)\n    T is C\n    needs<T.(C).X, i32>(value)\n", "")]
+    [InlineData("guard", "stale3", "contract K\n    func k(self: ref/Self) -> i32\ncontract D<U>\n    U is K\ncontract C: K\n    associate X is D<Self>\nfunc probe<T>(value: ref/T.(C).X) -> i32\n    T is C\n    return value.k()\n", "*: return value.k()")]
+
+    // SPEC 8.3.3 Expanding recursion: D<U>'s reference to D passes U inside a projection's Contract argument, an expanding pass on a one-Contract
+    // cycle, so D is a Language error whatever the limits; records of the uses resting on it stay open. The same argument passed to a Contract
+    // that refers to none has no cycle (h6f), and a flat pass is a valid recursive Contract (h6u).
+    [InlineData("C2", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: associate N is D<Self.(D<U>).M> | ...", Explicit = true)]
+    [InlineData("guard", "h6f", "contract E\ncontract F<W>\ncontract D<U>\n    U is E\n    associate N is F<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
+    [InlineData("guard", "h6u", "contract E\ncontract D<U>\n    U is E\n    associate N is D<U>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
+
+    // SPEC 8.4, 8.3.1: `F<Self>` proves a clause on `Self`, and does not prove one on `Self.X` (cs1bad, whose resting records stay open).
+    [InlineData("C2", "cs1", "contract F<W>\ncontract D<U>\n    associate N is F<U>\ncontract G<Z, W>\n    Z is F<W>\ncontract C\n    associate X is D<Self>\n    associate Q is G<Self.X.(D<Self>).N, Self>\n", "", Explicit = true)]
+    [InlineData("guard", "cs1bad", "contract F<W>\ncontract D<U>\n    associate N is F<U>\ncontract G<Z, W>\n    Z is F<W>\ncontract C\n    associate X is D<Self>\n    associate Q is G<Self.X.(D<Self>).N, Self.X>\n", "UnprovenConstraint_Kd: associate Q is G<Self.X.(D<Self>).N, Self.X> | ...")]
+
+    // SPEC 8.15.1, 8.3.1 (DECISIONS R4-M166): the clause of a declaration's own reference is required there and only its expansion would supply it, so
+    // it is Unknown at the `associate`; the records resting on it stay open.
+    [InlineData("guard", "exp1", "contract E\n    func e(self: ref/Self) -> i32\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate X is D<Self.Y>\nfunc probe<T>(value: ref/T.(C).Y) -> i32\n    T is C\n    return value.e()\n", "UnprovenConstraint_Kd: associate X is D<Self.Y> | ...")]
+    [InlineData("guard", "exp2", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate X is D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Y)\n    T is C\n    needs<T.(C).Y>(value)\n", "UnprovenConstraint_Kd: associate X is D<Self.Y> | ...")]
+    [InlineData("guard", "exp2bad", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate Z\n    associate X is D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Z)\n    T is C\n    needs<T.(C).Z>(value)\n", "InvalidConstraint_Kd: contract C | UnprovenConstraint_Kd: associate X is D<Self.Y> | InvalidConstraint_Kd: func probe<T>(value: ref/T.(C).Z) | InvalidConstraint_Kd: needs<T.(C).Z>(value)")] // DECISIONS: G572 U2a (Q13): the call rests at Final; the two dependent records are N3's
+
+    // SPEC 8.4, 8.6.1: a concrete Type's ancestor reference names that Type and `D<i32>` is none of its paths (SPEC 8.3.2 Closed world). v2 replaces the
+    // NoApplicableOverload_Kd pin of the theory above when its unit lands.
+    [InlineData("C3", "v2", "contract D<U>\ncontract C: D<Self>\nstruct S\n    Self is C\nfunc needs<V, W>(v: ref/V)\n    V is D<W>\n    ()\nfunc probe(s: ref/S)\n    needs<S, S>(s)\n", "", Explicit = true)]
+    [InlineData("guard", "v2bad", "contract D<U>\ncontract C: D<Self>\nstruct S\n    Self is C\nfunc needs<V, W>(v: ref/V)\n    V is D<W>\n    ()\nfunc probe(s: ref/S)\n    needs<S, i32>(s)\n", "*: needs<S, i32>(s)")]
+    [InlineData("C3", "v3", "contract D<U>\n    associate N\ncontract C: D<Self>\nstruct S\n    Self is C\n    associate D<S>.N is i32\n", "", Explicit = true)]
+    [InlineData("guard", "v3bad", "contract D<U>\n    associate N\ncontract C: D<Self>\nstruct S\n    Self is C\n    associate D<i32>.N is i32\n", "AssociatedTypeInferenceFailed_Kd: Self is C | InvalidAssociatedType_Kd: associate D<i32>.N is i32")]
+    public void ADeclarationsContractReferenceNamesItsConformingType(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
     // An instantiated Contract reference is bound once and kept (boundContracts), so a warm rebind of the forms above allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Theory]

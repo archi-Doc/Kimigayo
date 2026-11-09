@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<BindingSymbol> qualificationVisiting = new(ReferenceEqualityComparer.Instance);
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
     private Dictionary<Koto, QualificationFact>? qualificationFailures;
 
@@ -23,7 +22,18 @@ public sealed partial class Binding
         Inherited,
     }
 
-    private readonly record struct QualificationFact(BindingScope Container, BindingScope Scope, BindingSymbol Member, string Name, bool Type, bool Core, int Arity, Koto? At = null, Koto? BaseClause = null);
+    private readonly record struct QualificationFact(
+        BindingScope Container,
+        BindingScope Scope,
+        BindingSymbol Member,
+        string Name,
+        LookupRole Role,
+        int Arity,
+        Koto? At = null,
+        Koto? BaseClause = null)
+    {
+        internal bool Type => this.Role != LookupRole.Value;
+    }
 
     private static bool IsInstanceMember(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 || (symbol.Kind == BindingSymbolKind.Property && symbol.Scope.Owner is StructKoto or ContractKoto or EnumKoto);
@@ -75,11 +85,11 @@ public sealed partial class Binding
         return null;
     }
 
-    private bool HasReceiverlessCandidate(BindingSymbol head, BindingScope scope, bool core)
+    private bool HasReceiverlessCandidate(BindingSymbol head, BindingScope scope, LookupRole role)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if (!IsInstanceMember(candidate) && (!core || candidate.Kind != BindingSymbolKind.Container) && this.Accessible(candidate, scope))
+            if (!IsInstanceMember(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope))
             {
                 return true;
             }
@@ -88,8 +98,8 @@ public sealed partial class Binding
         return false;
     }
 
-    private void RecordQualificationStop(Koto use, bool type, QualificationFact fact)
-        => (this.qualificationStops ??= new())[(use, type)] = fact with { At = use };
+    private void RecordQualificationStop(Koto use, QualificationFact fact)
+        => (this.qualificationStops ??= new())[(use, fact.Type)] = fact with { At = use };
 
     // Namespace exploration is provisional: report only if the actual binding fails, not when another path succeeds.
     private QualificationFact? QualificationStop(Koto node)
@@ -112,72 +122,43 @@ public sealed partial class Binding
         };
     }
 
-    private bool StopInheritedLookup(BindingScope container, BindingScope scope, Koto use, string name, bool type, bool core, int arity, TypeLookupRole role = TypeLookupRole.Any)
+    private QualificationFact? InheritedStop(BindingScope container, BindingScope scope, Koto use, string name, LookupRole role, int arity)
     {
-        if (role == TypeLookupRole.Semantics || container.Owner is not StructKoto structure || structure.Bases.Count == 0)
+        if (role == LookupRole.Semantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
         {
-            return false;
+            return null;
         }
 
-        for (var i = 0; i < structure.Bases.Count; i++)
+        if (IsWithin(use, clause))
         {
-            if (IsWithin(use, structure.Bases[i]))
-            {
-                return false; // A base clause never searches its own base layers, including its arguments.
-            }
+            return null; // A base clause never searches its own base layers, including its arguments.
         }
 
-        if (this.InheritedDeclaration(structure, name, scope, type, core, out var baseClause, role) is not { } member)
-        {
-            return false;
-        }
-
-        this.RecordQualificationStop(use, type, new(container, scope, member, name, type, core, arity, BaseClause: baseClause));
-        return true;
+        return this.InheritedDeclaration(structure, name, scope, role) is { } member
+            ? new(container, scope, member, name, role, arity, BaseClause: clause) : null;
     }
 
-    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, bool core, out Koto? baseClause, TypeLookupRole role = TypeLookupRole.Any)
+    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, LookupRole role)
     {
-        baseClause = null;
-        if (!this.qualificationVisiting.Add(structure.BoundSymbol!))
+        // Declaration names only: no generic argument substitution or conditional proof selects a member.
+        foreach (var layer in this.BaseLayers(structure))
         {
-            return null;
-        }
-
-        try
-        {
-            for (var i = 0; i < structure.Bases.Count; i++)
+            if (layer.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
             {
-                var syntax = structure.Bases[i];
-                // Resolve only declaration names; no generic argument substitution or conditional proof selects a member.
-                var parent = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], true);
-                if (parent?.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
-                {
-                    continue;
-                }
-
-                for (var candidate = (type ? members.Types : members.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
-                {
-                    if (!IsGenericParameter(candidate) && (!core || candidate.Kind != BindingSymbolKind.Container) && HasTypeLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
-                    {
-                        baseClause = syntax;
-                        return candidate;
-                    }
-                }
-
-                if (this.InheritedDeclaration(baseDeclaration, name, scope, type, core, out _, role) is { } inherited)
-                {
-                    baseClause = syntax;
-                    return inherited;
-                }
+                return null;
             }
 
-            return null;
+            var names = role == LookupRole.Value ? members.Values : members.Types;
+            for (var candidate = names.GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
+            {
+                if (!IsGenericParameter(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
+                {
+                    return candidate;
+                }
+            }
         }
-        finally
-        {
-            this.qualificationVisiting.Remove(structure.BoundSymbol!);
-        }
+
+        return null;
     }
 
     private void ReportQualification(Koto node, DiagnosticRequirement requirement)
@@ -205,7 +186,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.HasReceiverlessCandidate(fact.Member, fact.Scope, fact.Core))
+        if (this.HasReceiverlessCandidate(fact.Member, fact.Scope, fact.Role))
         {
             for (var scope = fact.Scope; scope is not null; scope = scope.Parent)
             {
@@ -221,8 +202,8 @@ public sealed partial class Binding
             }
 
             if (qualifier is null && container.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: 0, OriginNames.Count: 0 } &&
-                ReferenceEquals(this.Lookup(container.Name, fact.Scope, node, true), container) &&
-                (fact.Type || this.Lookup(container.Name, fact.Scope, node, false) is null))
+                ReferenceEquals(this.ProbePath(container.Name, fact.Scope, node, LookupRole.Any), container) &&
+                (fact.Type || this.ProbePath(container.Name, fact.Scope, node, LookupRole.Value) is null))
             {
                 qualifier = container.Name + ".";
             }
@@ -271,7 +252,7 @@ public sealed partial class Binding
 
             for (var member = (fact.Type ? scope.Types : scope.Values).GetValueOrDefault(fact.Name); member is not null; member = member.Next)
             {
-                if (!IsInstanceMember(member) && !IsGenericParameter(member) && (!fact.Core || member.Kind != BindingSymbolKind.Container) && this.Accessible(member, fact.Scope))
+                if (!IsInstanceMember(member) && !IsGenericParameter(member) && HasLookupRole(member, fact.Role) && this.Accessible(member, fact.Scope))
                 {
                     Add(path, member);
                     break;
@@ -298,7 +279,7 @@ public sealed partial class Binding
             if (fact.Type)
             {
                 var candidates = default(TypeCandidates);
-                this.AddTypeCandidates(ref candidates, member.Scope.Types.GetValueOrDefault(fact.Name), fact.Scope, fact.Core, fact.Arity);
+                this.AddTypeCandidates(ref candidates, MemberTypes(member.Scope, fact.Name), fact.Scope, fact.Role, fact.Arity);
                 selected = !candidates.Ambiguous && candidates.Match is not null;
                 if (!selected)
                 {

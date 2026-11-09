@@ -33,8 +33,8 @@ public sealed partial class Binding
     private readonly List<ComponentSite> neededSites = [];
     private readonly List<(ComponentSummary Summary, int Slot)> linkPending = [];
     private readonly HashSet<(ComponentSummary Summary, int Slot)> linkSeen = [];
-    private readonly TypeMemo<bool> summaryParts = new(); // The parts one summary walk met.
-    private readonly TypeMemo<bool> scannedParts = new(); // The parts one storage scan met.
+    private readonly TypeMemo<BoundType, bool> summaryParts = new(); // The parts one summary walk met.
+    private readonly TypeMemo<BoundType, bool> scannedParts = new(); // The parts one storage scan met.
     private readonly List<BoundType> resolvingSteps = []; // The steps the walk in progress resolved through conformance hops.
     private int summaryEpoch;
     private bool solvingSummaries;

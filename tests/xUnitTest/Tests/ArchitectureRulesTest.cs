@@ -1,6 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.RegularExpressions;
+using Kimi.Compiler.Lexing;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace XunitTest;
@@ -21,15 +25,24 @@ public class ArchitectureRulesTest
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.OriginSummaries.cs=2;" +
         "Binding/Binding.PlaceAuthority.Raw.cs=1;" +
         "Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
-        "Binding/Binding.Retention.Atoms.cs=1;Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
-    // A read of the old analysis, through its transitional entry, its only path (R6-check H0b §2.1, review B3; H5 D3).
-    private const string LegacyOwnership = @"\.AnalyzeLegacyOwnership\(\)\.";
+    // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE. R6-check H14 (D7): the names
+    // of the Koto semantic slots, except Formatting, Adaptation, Mode, Iteration and BasePath, whose names live members of other types share.
+    private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
+        "BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|" +
+        "EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|" +
+        "ImplementationStorage|ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|" +
+        "AdaptationStorage";
 
-    // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
-    private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
+    // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
+    // static `BoundType.X` argument is neither).
+    private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=11;" +
+        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;Koto/Expressions/InvocationKoto.cs=4;" +
+        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=4";
 
     // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
@@ -37,6 +50,25 @@ public class ArchitectureRulesTest
     private const string DeletedByR6Gen =
         @"\b(?:BodyLowerin[g]|EmissionModul[e]|EmissionOpcod[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|StaticScalarEntr[y]|" +
         @"(?:Object|Virtual|Default)GenerationPla[n]|CompilerFunctionAdapter[s]|WindowsLowerin[g]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
+
+    // DECISIONS R5-M189 (R6-check H10b, D8): the old ownership analysis H10b deleted, as its files' top-level types, its transitional
+    // entry and its limit code. A letter in brackets keeps the pattern from matching its source.
+    private const string DeletedByH10b =
+        @"\b(?:Ownershi[p](?:Analysis|Body|Call|CallInput|CallReservation|CleanupPlan|CleanupStep|ComparisonLoan|ConstructionPlan|" +
+        @"DeferredPlan|Edge|EdgeKind|ElementUpdate|Flow|Identity|Issue|Lending|MatchArmPlan|MatchPlan|Operation|OperationKind|PhiInput|" +
+        @"Place|PlaceKind|Projection|Result|Sequence|Storage|StorageLimitException|Transfers|Value|ValueKind)|AcquisitionKin[d]|" +
+        @"BorrowLivenes[s]|CallResultSourc[e]|Cleanu[p](?:Action|Reason)|InterpretationContex[t]|MovePat[h]|PackedAnalysisTabl[e]|" +
+        @"Plac[e](?:State|UseKind)|PlacementKin[d]|SequenceOperatio[n]|AnalyzeLegacyOwnershi[p]|DeferredExpansionLimit_K[d])\b";
+
+    // DECISIONS R5-M189 (R6-check H10b-2, H10b D8; H8b D9): the old control-flow analysis H10b-2 deleted, as its file's top-level types,
+    // its Compilation entry and Binding's lint Error count its last stopped test read. A letter in brackets keeps the pattern from
+    // matching its source.
+    private const string DeletedByH10b2 = @"\b(?:ControlFlowAnalysi[s]|ControlFlowIssu[e]|ControlFlowNodeInf[o]|AnalyzeControlFlo[w]|LintError[s])\b";
+
+    // R8-S1a (RP6): the paths the library witness table replaced, one rule and one witness kind for a built-in Type's library conformance.
+    private const string ReplacedByWitnessTable = @"\w*FixedArrayEntry\b|" +
+        @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
+        @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
 
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
@@ -52,26 +84,64 @@ public class ArchitectureRulesTest
     // from matching its source.
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
-    // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
-    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: the control-flow structure is read
-    // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old
-    // analysis is read only through its transitional entry, AnalyzeLegacyOwnership (D3 deleted Compilation's property).
-    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 15)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 28)]
-    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 1)]
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Benchmark references to R6-gen's deleted components", "src/Benchmark", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Playground references to R6-gen's deleted components", "src/Playground", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Test references to R6-gen's deleted components", "tests", "*.cs", DeletedByR6Gen, 0)]
+    // R6-check H10b (D8): the same for the deleted old ownership analysis, replacing the test-read rows of its transitional entry; the
+    // compiler's row is H11a's (D8), landing when the last Binding comment naming it goes.
+    [InlineData("Compiler references to the old ownership analysis", "src/Kimi", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Test references to the old ownership analysis", "tests", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Benchmark references to the old ownership analysis", "src/Benchmark", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Playground references to the old ownership analysis", "src/Playground", "*.cs", DeletedByH10b, 0)]
+    // R6-check H10b-2 (H10b D8): the same for the deleted old control-flow analysis, replacing the test-call row of its entries
+    // (R4-M13a), which PLAN G428's fix brought to 0.
+    [InlineData("Compiler references to the old control-flow analysis", "src/Kimi", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Test references to the old control-flow analysis", "tests", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Benchmark references to the old control-flow analysis", "src/Benchmark", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
+    // R8-S1a (RP6): no second statement of a table row; the test class FixedArrayEntryTest keeps its own name.
+    [InlineData("Compiler references to the paths the library witness table replaced", "src/Kimi", "*.cs", ReplacedByWitnessTable, 0)]
+    // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
+    [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
+    // The root helpers, each by its file (SourceFiles recurses), and the other areas outside Binding.
+    [InlineData("ComparisonTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ComparisonTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("DefaultParameters reads of Koto semantic slots", "src/Kimi/Compiler", "DefaultParameters.cs", SemanticSlotReads, 0)]
+    [InlineData("ElementAccess reads of Koto semantic slots", "src/Kimi/Compiler", "ElementAccess.cs", SemanticSlotReads, 0)]
+    [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
+    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Compiler/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Testing reads of Koto semantic slots", "src/Kimi/Testing", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Benchmark reads of Koto semantic slots", "src/Benchmark", "*.cs", SemanticSlotReads, 0)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).
     [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.EvaluatingBody\b", 0)]
     [InlineData("Premise edges written outside the premise catalog's writer", "src/Kimi/Compiler", "*.cs", @"(?<!this)\.AddEdge\(", 1)]
+    // DECISIONS BU-105 (R7-D1): BindingSymbol.Resolving is the variable binding's own Running flag until R7-D2 d4 makes the variable
+    // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
+    [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
+    // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
+    // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
+    [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
+    // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
+    [InlineData("Lookup entries replaced by ResolvePath", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:RootTypeName|LookupImportedType|LookupImportedValue|StopInheritedLookup|SelectTypeCandidate)\b", 0)]
+    // R7-N2d (RP6): one reading of a clause as a declaration and one walk of those readings; the guards and the copies stay gone.
+    [InlineData("Base-walk guards", "src/Kimi/Compiler/Binding", "*.cs", @"\bmemberLookupVisiting\b|\bqualificationVisiting\b", 0)]
+    [InlineData("A clause read as a declaration", "src/Kimi/Compiler/Binding", "*.cs", @"BoundType\?\.Symbol \?\? this\.TypeName\(", 0)]
+    // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
+    [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
+    // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).
+    [InlineData("Private walks of what a value holds", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:HeldParts|BorrowShaped|BorrowTarget|PartPlace|HeldPart|Stores)\b(?=\()|\bPartPlace\b", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -84,15 +154,37 @@ public class ArchitectureRulesTest
     // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
     // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
     // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
-    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.RawStep, a stored layer's from its declaration (design-final §15).
+    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.StoredStep, a stored layer's from its declaration (design-final §15),
+    // and its members only through TyCtxt.RawMembers and TyCtxt.LayerMembers, never its Origin.
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
-    // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, or MeasureOnce for one run that cannot
-    // repeat, which retire the thread's allocation context first; a window that reads the thread's counter itself can be charged a
-    // runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps
-    // the pattern from matching its source.
-    [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=4")]
+    // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
+    // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
+    [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
+    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions, and is read outside the component
+    // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
+    [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
+    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row and its requirement exclusion; the walk's declaration
+    // is the third count. All three go at R7-C2 (PLAN G375). A conformance computes none (the owner's O-44).
+    [InlineData("Computes of a declared signature", "src/Kimi/Compiler", @"\bFormSignature\(", "Binding/Binding.ConstraintValidation.Formation.cs=3")]
+    // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, MeasureOnce for one run that cannot
+    // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M178), which retire the thread's allocation context first; a window
+    // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks
+    // (src/Benchmark) are not tests. A letter in brackets keeps the pattern from matching its source.
+    [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=7")]
+    // R7-N4 (RP6): the parser classifies an attribute by its Name once, so AttributeKoto.Classify is the one read of the Name, and Binding
+    // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
+    [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
+    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
+    // R7-N2a (RP6): a struct has one base clause (SPEC 6.2.2), read through StructKoto.BaseClause. `.Bases` stays only where the container may
+    // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
+    [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
+    // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
+    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
+    [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -101,6 +193,68 @@ public class ArchitectureRulesTest
             .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
             .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // R9-F4 (the owner's O-98, O-99, O-100 and O-106, (a)): TokenHelper's spelling table is the one statement of an F.3 keyword, so no
+    // other Lexing or Parsing literal starts with one, alone or after '#' (SPEC F.11 writes "#" "if" and "#" "switch" with the keyword
+    // tokens). Roslyn reads every literal token, those in interpolation holes included: string, UTF-8 string, char, raw string and the
+    // text parts of interpolated strings, each by its value. The spellings come from the table itself (TokenKind.ToText over the keyword
+    // kinds). A '$' name inside the quotes does not start with a spelling: after '$', F.3 matches a Composition Root operation name by
+    // spelling ($require, $expect), and $try.value and $try.error are synthesized names. Each allowed site is a file, its member and the
+    // literal, with the reason SPEC fixes its text. Bounded: the two folders only.
+    [Fact]
+    public void KeywordSpellingsStayInTheTable()
+    {
+        string[] sites =
+        [
+            // '_' as a Name character (SPEC 2.5), not the keyword.
+            "Lexing/Tokenizer.cs|ScanAsciiIdentifierLength|'_'",
+
+            // The destructor's Name (SPEC 16.2.1).
+            "Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs|TryParsePropertyOrFunction|\"drop\"",
+
+            // A constructor's Name (SPEC 6.3).
+            "Parsing/Koto/Declarations/FunctionKoto.cs|FunctionKoto|\"init\"",
+            "Parsing/Parser.Functions.cs|TryParseFunctionName|\"init\"",
+
+            // The discard Name (SPEC 14.8.1).
+            "Parsing/Parser.ControlFlow.cs|TryParseForBinding|\"_\"",
+            "Parsing/Parser.Syntax.cs|ParsePattern|\"_\"",
+
+            // The Origin names static and _ (SPEC 15.2.1, 15.2.3).
+            "Parsing/Parser.Origins.cs|ParseTypeOrigin|\"static\"",
+            "Parsing/Parser.Origins.cs|ParseTypeOrigin|\"_\"",
+            "Parsing/Parser.AssociatedTypes.cs|ValidateAssociatedParameters|\"static\"",
+            "Parsing/Parser.AssociatedTypes.cs|ValidateAssociatedParameters|\"_\"",
+        ];
+        SyntaxKind[] literals =
+        [
+            SyntaxKind.StringLiteralToken, SyntaxKind.Utf8StringLiteralToken, SyntaxKind.CharacterLiteralToken,
+            SyntaxKind.SingleLineRawStringLiteralToken, SyntaxKind.MultiLineRawStringLiteralToken, SyntaxKind.Utf8SingleLineRawStringLiteralToken,
+            SyntaxKind.Utf8MultiLineRawStringLiteralToken, SyntaxKind.InterpolatedStringTextToken,
+        ];
+        var spellings = Enumerable.Range(1, (int)TokenKind.Identifier - 1).Select(static x => ((TokenKind)x).ToText()).Where(static x => x.Length > 0);
+        var spelling = new Regex(@"^\s*#?(?:" + string.Join("|", spellings.OrderByDescending(static x => x.Length).Select(Regex.Escape)) + @")(?!\w)");
+        var root = Path.Combine(Repository.Root, "src/Kimi/Compiler");
+        var actual = SourceFiles("src/Kimi/Compiler/Lexing", "*.cs").Concat(SourceFiles("src/Kimi/Compiler/Parsing", "*.cs"))
+            .Where(static x => Path.GetFileName(x) != "TokenHelper.cs")
+            .SelectMany(file => CSharpSyntaxTree.ParseText(File.ReadAllText(file), new CSharpParseOptions(LanguageVersion.Preview)).GetRoot()
+                .DescendantTokens().Where(x => literals.Contains(x.Kind()) && spelling.IsMatch(x.ValueText))
+                .Select(x => $"{Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/')}|{Member(x)}|" +
+                    (x.IsKind(SyntaxKind.CharacterLiteralToken) ? $"'{x.ValueText}'" : $"\"{x.ValueText}\"")))
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Order(StringComparer.Ordinal).SequenceEqual(actual), $"Keyword spellings outside the table: {string.Join("; ", actual)}.");
+
+        // The nearest named declaration around a token: its method, constructor, property, field or type.
+        static string Member(SyntaxToken token) => token.Parent!.AncestorsAndSelf().Select(static x => x switch
+        {
+            MethodDeclarationSyntax method => method.Identifier.Text,
+            ConstructorDeclarationSyntax constructor => constructor.Identifier.Text,
+            PropertyDeclarationSyntax property => property.Identifier.Text,
+            FieldDeclarationSyntax field => field.Declaration.Variables[0].Identifier.Text,
+            BaseTypeDeclarationSyntax type => type.Identifier.Text,
+            _ => null,
+        }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
     // A directory that does not exist (deleted, or not yet created) has no files.

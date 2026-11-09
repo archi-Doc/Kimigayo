@@ -247,11 +247,9 @@ internal sealed partial class FunctionCodegen
 
     // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
     // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
-    // carries: a runtime routine through the one call writer (Invoke), the row's or, for an Array operation or storage kind and placeEntry,
-    // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124) or a formatting routine
+    // carries: a runtime routine through the one call writer (Invoke), the row's (Routine) or a formatting routine
     // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
-    // site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a Dictionary's storage kernel
-    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays). The call's substitution is its direct call's or its Item's
+    // site's location; a whole-value update (FunctionCodegen.Updates). The call's substitution is its direct call's or its Item's
     // (SubstOfItem), whose Types a row's TypeArguments need names (LayoutNeeds; DECISIONS R5-M149).
     private void Legacy(in MirTerminator call, LegacyRow row, int target, Subst? subst)
     {
@@ -261,33 +259,15 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (row.DictionaryKernel)
-        {
-            this.DictionaryKernel(call, row.Writer, subst!);
-            return;
-        }
-
         if (this.Routine(row, target, call.Source, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
             return;
         }
 
-        if (row.InInstance || row.Fixed)
+        if (!row.Fixed)
         {
-            return; // Recorded (Routine): a broken contract.
-        }
-
-        switch (row.Writer)
-        {
-            case LegacyWriter.FixedStorage:
-                this.FixedStorage(call);
-                return;
-            case LegacyWriter.Length:
-                this.ArrayLength(call);
-                return;
-            default:
-                throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
+            throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
         }
     }
 

@@ -13,9 +13,9 @@ namespace XunitTest;
 public class PropertyParseTest
 {
     [Theory]
-    [InlineData("i32", null)]
-    [InlineData("#Type i32", "Type")]
-    public void DiagnosesAndRecoversAttributesInsidePropertySyntax(string type, string? typeAttribute)
+    [InlineData("i32")]
+    [InlineData("#Type i32")]
+    public void DiagnosesAndRecoversAttributesInsidePropertySyntax(string type)
     {
         var source = "public open struct TestStruct<s/C, D> {a, b}\n"
             + $"    public static #Test1 var #Test2 x: {type} = #One 1\n"
@@ -25,30 +25,27 @@ public class PropertyParseTest
         Assert.NotEmpty(diagnostics);
         var property = Assert.IsType<PropertyKoto>(structure.Members.First());
         Assert.Equal(ModifierKind.Public | ModifierKind.Static, property.Modifier);
-        Assert.Equal("Test1", AttributeName(property));
         Assert.Equal("x", property.NameKoto.IdentifierName);
-        Assert.Equal("Test2", AttributeName(property.NameKoto));
-        Assert.Equal(typeAttribute, AttributeName(property.TypeKoto!));
-        Assert.Equal("One", AttributeName(Assert.IsType<NumberLiteralKoto>(property.InitializerKoto)));
+
+        // Misplaced attributes attach to nothing (owner decision O-85 (a), DIAGNOSTICS.md §4.4): their landings are no longer asserted.
+        Assert.Null(property.AttributeChain);
+        Assert.Null(property.NameKoto.AttributeChain);
+        Assert.Null(property.TypeKoto!.AttributeChain);
+        Assert.Null(Assert.IsType<NumberLiteralKoto>(property.InitializerKoto).AttributeChain);
         var next = Assert.IsType<PropertyKoto>(structure.Members.Last());
         Assert.Equal("next", next.NameKoto.IdentifierName);
         Assert.Null(next.AttributeChain);
         Assert.Null(next.NameKoto.AttributeChain);
-
-        static string? AttributeName(Koto node)
-            => node.AttributeChain is { } attribute
-                ? Assert.IsType<IdentifierNameKoto>(attribute.Operand).IdentifierName
-                : null;
     }
 
     [Fact]
     public void RecognizesAccessorWordsAsContextualKeywords()
     {
-        AssertContextualKeyword(TokenKind.Get, Constants.GetKeyword);
-        AssertContextualKeyword(TokenKind.Set, Constants.SetKeyword);
-        AssertContextualKeyword(TokenKind.Has, Constants.HasKeyword);
-        AssertContextualKeyword(TokenKind.Computed, Constants.ComputedKeyword);
-        AssertContextualKeyword(TokenKind.Property, Constants.PropertyKeyword);
+        AssertContextualKeyword(TokenKind.Get, "get");
+        AssertContextualKeyword(TokenKind.Set, "set");
+        AssertContextualKeyword(TokenKind.Has, "has");
+        AssertContextualKeyword(TokenKind.Computed, "computed");
+        AssertContextualKeyword(TokenKind.Property, "property");
 
         static void AssertContextualKeyword(TokenKind kind, string text)
         {

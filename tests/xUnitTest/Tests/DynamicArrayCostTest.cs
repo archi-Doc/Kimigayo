@@ -148,7 +148,8 @@ public class DynamicArrayCostTest
     {
         var source = "var values: Array<isize> = []\nvalues@uniq.reserve(8)\nvalues@uniq.append(20)\nvalues@uniq.append(22)\nlet previous = values.capacity\nvalues@uniq.shrinkToFit()\nrequire values.length == 2 and values[0] == 20 and values[1] == 22 else => $abort(\"values\")\nrequire values.capacity >= 2 and values.capacity <= previous else => $abort(\"capacity\")\n" +
             (fail ? "require values.capacity == previous else => $abort(\"failed shrink changed capacity\")\n" : string.Empty);
-        // A failed shrink keeps, and releases only, the first storage.
+        // A failed shrink keeps, and releases only, the first storage; a successful one transfers its two elements through the byte copy
+        // the audit counts (R8-A1c: the legacy routine's copy stood outside its anchors).
         NativeAllocationAudit.WriteFixture(
             "DynamicArrayCost" + (fail ? "ShrinkFailure" : "ShrinkSuccess"),
             source,
@@ -156,7 +157,7 @@ public class DynamicArrayCostTest
             fail ? 1 : 2,
             NativeAllocationAudit.Bound.Any,
             failAllocation: fail ? 2 : 0,
-            transferred: 0);
+            transferred: fail ? 0 : 16);
     }
 
     // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without
@@ -222,13 +223,15 @@ public class DynamicArrayCostTest
         }));
     }
 
+    // A reloaded program's checked set holds only what the current program uses: the Dictionary program's destruction body
+    // (destroyDictionary, DECISIONS R8-K1c) is gone after the Array program replaces it.
     [Fact]
-    public void ReloadEmitsOnlyTheCurrentlyUsedCachedHelpers()
+    public void ReloadCollectsOnlyTheCurrentProgramsInstances()
     {
-        var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)");
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, string> = [1: \"before\"]\nConsole.writeLine(entries[1])");
         using var initial = new StringWriter();
         Assert.True(c.Generate(initial), MinimalEmissionTest.Describe(c));
-        Assert.Contains("@__kimi_array_remove_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
+        Assert.Contains(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "destroyDictionary");
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -241,8 +244,7 @@ public class DynamicArrayCostTest
         using var output = new StringWriter();
         Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var ir = output.ToString();
-        Assert.DoesNotContain("@__kimi_array_remove_", ir);
-
+        Assert.DoesNotContain(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "destroyDictionary");
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 

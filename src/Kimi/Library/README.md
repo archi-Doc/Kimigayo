@@ -11,8 +11,10 @@ embedded and implemented.
   files to `KimiLibrarySources.Sources.All`; the project embeds `Library/*.kimi`.
   Root-level functions follow ordinary startup parsing, so library helper
   functions belong inside declaration containers such as groups or structs.
-- `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage,
-  metadata and built-in operations are supplied by the compiler and they may only add functions.
+- `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage and
+  metadata are supplied by the compiler. Array's operations move to Kimigayo bodies over
+  `Storage.ArrayRepr<T>` family by family (`ArrayOperations.kimi`, DECISIONS R8-M2, R8-M3, R8-M5); the rest are
+  supplied by the compiler until their R8 unit.
   The internal group `Kimi.Storage.FixedArray` in `Storage.kimi` holds the fixed-array receiver
   functions. The `length` and `indices` of a fixed array stay compiler sequence metadata, shared
   with Array and Slice: a group declares functions, not Properties, and the fixed length folds to `N`.
@@ -84,13 +86,14 @@ ID is reserved.
 [DictionaryStorage.kimi](DictionaryStorage.kimi) is compiled through ordinary
 Binding, ownership analysis and generation. It implements initialization, ordered
 search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
-and shrink-to-fit, reserve, checked capacity growth and append decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
+and shrink-to-fit, reserve, checked capacity growth and append decisions. Its private `Handle` and `Links` records use explicit
 C layout to agree with the backend; they do not define a public collection ABI.
 Key search (`findEntry`, through `Storage.findDictionaryLink`) calls `stored.equals(search)` under `K`'s Equatable
 conformance, and `Storage.destroyDictionaryEntries` destroys entries in reverse insertion order, each value before its key;
-both are ordinary generic source. The only callback is `requireAbsent`'s duplicate-key callback, an ordinary Function Type
-value with a stack environment and no heap allocation, which keeps the later key's location; the MIR generator fails at
-that key directly.
+both are ordinary generic source. A Dictionary's drop glue calls `Storage.destroyDictionary`, which destroys the entries
+through `destroyDictionaryEntries` and then releases the slot storage, or `Storage.releaseDictionary` when neither `K` nor
+`V` needs a drop; the owning remainder's drop calls `destroyDictionary` too. The library has no callback: the MIR generator
+fails at a literal's duplicate key directly.
 
 `Dictionary.tryGet` in [Dictionary.kimi](Dictionary.kimi) searches through the standard shared storage remainder and
 constructs its optional reference through ordinary generic source. `remove` shares that typed key search, unlinks one entry
@@ -104,8 +107,8 @@ The same catalog metadata and private ABI carry the caller context through Posit
 iteration entries and their `starting` helpers, and Array `truncate`. Their Kimigayo bodies choose the failure;
 `Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
-`Storage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
-for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `Storage.valueAt` and
+`DictionaryStorage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
+for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `DictionaryStorage.valueAt` and
 initializes the vacated value Place with the replacement (`Raw.initialize`), so replacement secures the old value before
 placing the new one. `insertOrReplace` destroys the unused input key through ordinary cleanup.
 `reserve` and `shrinkToFit` call `DictionaryStorage.reserveEntries`/`shrinkEntries`, caller-location source bodies like

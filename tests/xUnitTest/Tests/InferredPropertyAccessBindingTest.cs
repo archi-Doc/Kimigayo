@@ -8,6 +8,77 @@ namespace XunitTest;
 
 public class InferredPropertyAccessBindingTest
 {
+    private const string EarlyUnknown = """
+        public contract C
+            func m(self: ref/Self) -> i32
+        public struct S
+            public init() => ()
+        public struct Box<T>
+            T is C
+            public init() => ()
+        public group Api
+            public func make() -> Box<S>
+                return Box<S>.init()
+            public let a = make()
+            public func other() -> i32
+                let b = make()
+                return 1
+        """;
+
+    private const string EarlyInline = """
+        public struct S
+            public var next: S
+        public group Api
+            public func mk(x: i32) -> S => $abort("no")
+            public let a = mk(1)
+            public func other() -> i32
+                let b = mk(2)
+                let c: string = b
+                return 1
+        """;
+
+    private const string NoEarlyInline = """
+        public struct S
+            public var next: S
+        public group Api
+            public func mk(x: i32) -> S => $abort("no")
+            public func other() -> i32
+                let b = mk(2)
+                let c: string = b
+                return 1
+        """;
+
+    private const string EarlyReference = """
+        public struct S
+            public var next: S
+        public group Api
+            public func mk(x: i32) -> S => $abort("no")
+            public let a = mk(1)
+            public func other() -> i32
+                let g: (i32) -> S = mk
+                return 1
+        """;
+
+    private const string NoEarlyReference = """
+        public struct S
+            public var next: S
+        public group Api
+            public func mk(x: i32) -> S => $abort("no")
+            public func other() -> i32
+                let g: (i32) -> S = mk
+                return 1
+        """;
+
+    // PLAN G375: an inferred Property's initializer demands a signature in the header loop. An Unknown there is not kept, and no Proven is kept before
+    // the first ValidateConformances: a failure before the bodies (S's inline layout) turns it, so a body's read computes.
+    [Theory]
+    [InlineData(EarlyUnknown, "1*DeclarationOrderWarning_Kd 2*NoApplicableOverload_Kd 7*UnsatisfiedConstraint_Kd")] // DECISIONS: G572 U2a (Q13): Refuted at Final
+    [InlineData(EarlyInline, "1*DeclarationOrderWarning_Kd 2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd 1*PrerequisiteUnavailable_Kd")]
+    [InlineData(NoEarlyInline, "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(EarlyReference, "1*DeclarationOrderWarning_Kd 2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd 1*PrerequisiteUnavailable_Kd")]
+    [InlineData(NoEarlyReference, "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    public void NoSignatureAnswerIsKeptBeforeTheFirstConformanceValidation(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("1@Source.C.Element")]
     [InlineData("(1, 1@Source.C.Element)")]

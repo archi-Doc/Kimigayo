@@ -14,9 +14,9 @@ public static partial class Parser
 {
     private static bool IsParenthesizedTypeRequirement(ref TokenReader reader)
     {
-        // A comma at this level identifies a Tuple; an arrow after the closing parenthesis identifies a Function Parameter List,
-        // and a dot after a BoundContainerQualifier its PathSuffix, as in (S{k}).Item (SPEC F). Nested Types own their commas.
-        if (reader.PeekKind() == TokenKind.CloseParenthesis)
+        // A Unit Type and a BoundContainerQualifier, as in (S{k}).Item or (S during y).Item (SPEC F.5), are Types; a comma at this level
+        // identifies a Tuple, and an arrow after the closing parenthesis a Function Parameter List. Nested Types own their commas.
+        if (reader.PeekKind() == TokenKind.CloseParenthesis || IsBoundContainerQualifier(ref reader, out _))
         {
             return true;
         }
@@ -38,8 +38,7 @@ public static partial class Parser
             }
             else if (kind == TokenKind.CloseParenthesis && --parentheses == 0)
             {
-                return reader.PeekKind(offset + 1) == TokenKind.MinusGreaterThan ||
-                    (reader.PeekKind(offset + 1) == TokenKind.Dot && IsBoundContainerQualifier(ref reader));
+                return reader.PeekKind(offset + 1) == TokenKind.MinusGreaterThan;
             }
             else if (kind == TokenKind.OpenBracket)
             {
@@ -90,7 +89,7 @@ public static partial class Parser
         }
         else
         {
-            subject = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader, false) : ParseName(ref reader);
+            subject = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
         }
 
         while (reader.TryConsume(TokenKind.Dot))
@@ -206,14 +205,14 @@ public static partial class Parser
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
         function.IsRequirement = true;
-        if ((function.Modifier.Judged() & ~(ModifierKind.Virtual | ModifierKind.Override)) is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
+        if ((function.Modifier.Judged() & ~(ModifierKind.Virtual | ModifierKind.Override)) is not (ModifierKind.NoModifier or ModifierKind.Unsafe))
         {
             function.Unexpected(SyntaxForm.Decoration);
         }
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.DefaultValue is not null || HasWrittenAttribute(parameter.AttributeChain))
+            if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
             {
                 parameter.Type.Unexpected(SyntaxForm.RequirementParameterDefault);
             }
@@ -293,11 +292,11 @@ public static partial class Parser
         return new ErrorKoto(ref reader, missing) { Cause = cause };
     }
 
-    private static Koto ParseRootName(ref TokenReader reader, bool type, bool disambiguateGenerics = false)
+    private static Koto ParseRootName(ref TokenReader reader)
     {
-        // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
+        // A root-qualified Name; ParseType reads a root-qualified Type in its RootPath context.
         var start = reader.Read().Span.Start;
-        var name = type ? ParseType(ref reader, parseOrigin: false, disambiguateGenerics, optionalSuffix: false) : ParseName(ref reader);
+        var name = ParseName(ref reader);
         return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), KotoKind.RootName, "::", [name]);
     }
 
@@ -348,7 +347,7 @@ public static partial class Parser
             // The placeholder is forbidden in generic arguments and other compound element Types (SPEC 4.3).
             var allowInference = reader.AllowArrayElementInference;
             reader.AllowArrayElementInference = allowInference && reader.CurrentTokenKind == TokenKind.OpenBracket;
-            element = ParseDelimitedType(ref reader);
+            element = ParseType(ref reader, TypeContext.Element);
             reader.AllowArrayElementInference = allowInference;
         }
 
@@ -398,7 +397,7 @@ public static partial class Parser
         }
         else if ((token.Kind.IsIdentifierOrContextualKeyword() && !reader.IsCurrentIdentifier("of")) || token.Kind == TokenKind.ColonColon)
         {
-            left = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader, false) : ParseName(ref reader);
+            left = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
             while (reader.TryConsume(TokenKind.Dot))
             {
                 var right = ParseName(ref reader);
@@ -429,25 +428,6 @@ public static partial class Parser
         }
 
         return left;
-    }
-
-    private static Koto ParseTypeArgument(ref TokenReader reader)
-    {
-        if (reader.CurrentTokenKind == TokenKind.NumericLiteral || IsLengthExpression(ref reader))
-        {
-            return ParseArrayLength(ref reader);
-        }
-
-        return ParseDelimitedType(ref reader);
-    }
-
-    private static Koto ParseDelimitedType(ref TokenReader reader)
-    {
-        var requirement = reader.ConstraintRequirement;
-        reader.ConstraintRequirement = false;
-        var type = ParseDeclarationType(ref reader);
-        reader.ConstraintRequirement = requirement;
-        return type;
     }
 
     private static bool IsLengthExpression(ref TokenReader reader)
@@ -505,7 +485,7 @@ public static partial class Parser
                 return name;
             }
 
-            return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind == TokenKind.Let ? "let " : "var ", [name]);
+            return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind.ToText(), [name]);
         }
 
         if (reader.TryConsume(TokenKind.OpenParenthesis))
@@ -562,7 +542,7 @@ public static partial class Parser
         }
         else
         {
-            reference = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader, false) : ParseName(ref reader);
+            reference = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
             var qualified = false;
             while (true)
             {
@@ -629,7 +609,7 @@ public static partial class Parser
         {
             do
             {
-                fields.Add(ParseDeclarationType(ref reader));
+                fields.Add(ParseType(ref reader, TypeContext.Type));
             }
             while (reader.TryConsume(TokenKind.Comma) && reader.CurrentTokenKind != TokenKind.CloseParenthesis);
             reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
@@ -671,7 +651,7 @@ public static partial class Parser
                 return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.OpenParenthesis) };
             }
 
-            return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, "init", []);
+            return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, TokenKind.Init.ToText(), []);
         }
 
         return ParseName(ref reader);

@@ -64,7 +64,7 @@ public class AbiTest
     public void AbiHasNoGate()
     {
         // IMPL 21.1.3: Never is zero-sized, so a Never parameter has no slot, and a Never result returns void and does not return.
-        var layout = new Layout();
+        var layout = CompilationTestHelper.BindSuccess("()").Layout;
         var i32 = BoundType.Primitives["i32"];
         var abi = Abi.Of(layout, Abi.Convention.Internal, Abi.Flags.None, BoundType.Never, [BoundType.Never, i32]);
         Assert.Equal("void (i32 a1 Value 1) noreturn", Describe(abi));
@@ -93,7 +93,7 @@ public class AbiTest
     [Fact]
     public void TheCConventionRefusesFlagsAndOmissions()
     {
-        var layout = new Layout();
+        var layout = CompilationTestHelper.BindSuccess("()").Layout;
         var i32 = BoundType.Primitives["i32"];
         Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.CallerLocation, i32, [i32]));
         Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [BoundType.Unit, i32]));

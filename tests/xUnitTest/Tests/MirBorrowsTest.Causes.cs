@@ -15,6 +15,11 @@ namespace XunitTest;
 /// Cause facts. Nothing is dropped and no verdict changes.</summary>
 public sealed partial class MirBorrowsTest
 {
+    // SPEC 15.6.5's call clause (DECISIONS R4-M104): a Field of one Origin and two producers, one retaining an Option argument (an
+    // aggregate holding the borrow, not a Copy), one retaining the borrow itself.
+    private const string Optional = "struct H2 {a}\n    public let r: Option<ref/i32 during a>\n    public init(o: Option<ref/i32 during a>) => self.r = o@move\n" +
+        "func mk(o: Option<ref/i32 during s>) -> H2 during s => H2.init(o@move)\nfunc mkr(r: ref/i32 during s) -> H2 during s => H2.init(.Some(r))\n";
+
     // A result with an unstated raw Field and Fixed Origins (MirOrigins.Fixed reads no Field), so mkE's rule-A rows are Value and Chain
     // (SPEC 15.6.4; DECISIONS BU-40), whose arrival in _0 rule W keeps as it is; only its innermost layer's Origin is the result's.
     private const string ChainHolder = "struct Holder {a}\n    public var p: raw/u8\n    public var r: ref/i32 during a\n" +
@@ -155,6 +160,8 @@ public sealed partial class MirBorrowsTest
             "    slot@follow = h\n    return firstE(slot@follow@ref)\n",
         ["m-store-v.r1"] = "func inspect<T>(value: ref/T) => ()\nfunc leakL(target: uniq/(ref/i32 during a))\n    let local = 1\n" +
             "    var r = local@ref\n    inspect(r)\n",
+        ["g526-agg-arg"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = mk(.Some(v@ref))\n    return h@move\n",
+        ["g526-borrow-arg-v"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h: H2 during q = mkr(v@ref)\n    return h@move\n",
     };
 
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
@@ -197,17 +204,18 @@ public sealed partial class MirBorrowsTest
     [InlineData("noncfl-candidate-v", "h: s.1 = 5 <- r")]
     [InlineData("store-every-origin", "se: var r = local@ref <- r@ref")]
     [InlineData("merge-two-paths-v", "f: let local = 1 <- q; r")]
+    [InlineData("g526-borrow-arg-v", "g: let v: i32 = 1 <- let h: H2 during q = mkr(v@ref)")]
     [InlineData("two-views", "pp: let local = 1 <- r")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
     // SPEC 15.6.5, 23.1.2 (DECISIONS R4-M132): a conflict some carrier keeps otherwise stays independent: a local live past the write (SPEC's
     // `keep`), a part read (m-twice, a Field's Loan, a pair), an aggregate stored, a write through a part, a guard's candidate stored where
-    // its Origin is not Fixed, a local a call writes that is read later, a call result read by part, a conflict with no Refuted relation, a
-    // report of one key both derived and direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the
-    // storage the body does not own (B's read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails
-    // chain-through-e); the twins' literal forms report the relation only (H11, R4-M122) and a repair loses the conflict. Pins: each passes
-    // before.
+    // its Origin is not Fixed, a local a call writes that is read later, an aggregate argument a call retains (fK and g526-agg-arg's
+    // `.Some(v@ref)`, R4-M104), a call result read by part, a conflict with no Refuted relation, a report of one key both derived and
+    // direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the storage the body does not own (B's
+    // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e); the twins' literal forms
+    // report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -219,6 +227,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("same-root-v", "sr: var x = F.init()")]
     [InlineData("m-pair-v", "pr: var y = 2 | pr: var x = 1")]
     [InlineData("fK", "fK: var x = 1")]
+    [InlineData("g526-agg-arg", "g: let v: i32 = 1")]
     [InlineData("r3-b1c", "fC: var x = 1")]
     [InlineData("r3-b1d-v", "fB: var x = 1")]
     [InlineData("rc-fT-v", "fT: var x = 1")]
@@ -257,12 +266,12 @@ public sealed partial class MirBorrowsTest
             for (var i = 0; i < all.Length; i++)
             {
                 var facts = program.Problems.Facts(i).ToArray();
-                foreach (var cause in facts.Where(static x => x.Kind == MirFactKind.Cause))
+                foreach (var cause in facts.Where(static x => x.Kind == ProblemFactKind.Cause))
                 {
                     var named = all[cause.Value];
                     Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, all[i].Body, cause.Site), (named.Code, named.Body, named.Subject));
-                    var anchor = program.Problems.Facts((int)cause.Value).ToArray().Single(static x => x.Kind == MirFactKind.Anchor);
-                    if (anchor != facts.Single(static x => x.Kind == MirFactKind.Anchor))
+                    var anchor = program.Problems.Facts((int)cause.Value).ToArray().Single(static x => x.Kind == ProblemFactKind.Anchor);
+                    if (anchor != facts.Single(static x => x.Kind == ProblemFactKind.Anchor))
                     {
                         shared.Add(name);
                     }
@@ -273,7 +282,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(34, causes);
+        Assert.Equal(35, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
@@ -411,12 +420,12 @@ public sealed partial class MirBorrowsTest
 
     // The problems rule W derived, with Cause facts (their tail).
     private static int[] DerivedProblems(MirProgram program)
-        => [.. Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.Facts(x) is [.., { Kind: MirFactKind.Cause }])];
+        => [.. Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.Facts(x) is [.., { Kind: ProblemFactKind.Cause }])];
 
     // A problem's causes' subjects, after " <- ", none for a direct problem.
     private static string Causes(Compilation c, MirProgram program, int problem)
     {
-        var causes = program.Problems.Facts(problem).ToArray().Where(static x => x.Kind == MirFactKind.Cause).Select(x => Line(c, x.Site)).ToArray();
+        var causes = program.Problems.Facts(problem).ToArray().Where(static x => x.Kind == ProblemFactKind.Cause).Select(x => Line(c, x.Site)).ToArray();
         return causes.Length == 0 ? string.Empty : " <- " + string.Join("; ", causes);
     }
 }

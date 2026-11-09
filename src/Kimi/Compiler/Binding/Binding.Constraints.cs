@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new();
+
+    private readonly Dictionary<IsKoto, bool> deferredConstraints = new(ReferenceEqualityComparer.Instance);
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     /// <summary>Queries a bound proposition using the lexical input constraints at a syntax node.</summary>
@@ -71,15 +73,7 @@ public sealed partial class Binding
     }
 
     private static bool IsSelfConstraint(IsKoto clause)
-    {
-        var subject = clause.Left;
-        while (subject is ParenthesizedTypeKoto parentheses)
-        {
-            subject = parentheses.Type;
-        }
-
-        return subject is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
-    }
+        => clause.Left is IdentifierNameKoto { IdentifierName: "Self" };
 
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
@@ -256,6 +250,7 @@ public sealed partial class Binding
     private void BindConstraints()
     {
         this.ResetSourceStates();
+        this.deferredConstraints.Clear();
         this.bindingConstraintTypes = true;
         // Collect ordinary facts, then complete outer Type/Contract constraints, then P.
         // Dependent function constraints may use P only through their declaration scope.
@@ -325,11 +320,50 @@ public sealed partial class Binding
         this.ValidateConstraintProjectionAccess();
     }
 
+    // A clause waits for the conformances when it names an associated projection (SPEC 8.5, 15.3.1), except a conformance declaration
+    // (DeclaresConformance): RegisterConformances registers it after pass 0, so it binds in pass 0 (conformancesRegistered). Each clause is
+    // decided once per Bind run, before any Constraint binds: the query's TypeName lookups publish import and qualifier facts as every
+    // lookup does, and a lookup through a base clause not ready yet is an early read (TypeName's note) that VerifyEarlyReads evaluates
+    // again, running the declarations once more on a different answer, so the decision cannot disagree with the final names
+    // (Binding.BaseLayers).
     private bool DeferredConstraint(IsKoto clause, BindingScope scope)
-        => clause.IsAssociatedConstraint || clause.Left is MemberAccessKoto || this.ContainsProjection(clause.Right, scope);
+    {
+        if (!this.deferredConstraints.TryGetValue(clause, out var deferred))
+        {
+            deferred = !DeclaresConformance(clause) && (clause.IsAssociatedConstraint || this.ContainsProjection(clause.Left, scope) || this.ContainsProjection(clause.Right, scope));
+            this.deferredConstraints.Add(clause, deferred);
+        }
 
+        return deferred;
+    }
+
+    // SPEC 8.5, 15.3.1: whether a requirement names an associated projection anywhere: a PathSuffix that names no declared Type, under
+    // the requirement's operators (a group, not, and, or: BindRequirement's) or in any Type component a Type node publishes. It decides by
+    // name lookup over the written Type's components, never by the top node's shape.
     private bool ContainsProjection(Koto node, BindingScope scope)
-        => node is MemberAccessKoto ? this.TypeName(node, scope, false) is null : (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
+    {
+        switch (node)
+        {
+            case MemberAccessKoto when this.TypeName(node, scope, LookupRole.Any) is null:
+                return true;
+            case ParenthesizedKoto group:
+                return this.ContainsProjection(group.Operand, scope);
+            case UnaryKoto { Akind: KotoKind.Not } not:
+                return this.ContainsProjection(not.Operand, scope);
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } binary:
+                return this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope);
+        }
+
+        for (var i = 0; i < node.TypeComponentCount; i++)
+        {
+            if (this.ContainsProjection(node.TypeComponent(i), scope))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
@@ -376,6 +410,12 @@ public sealed partial class Binding
             // Every entry path, including conditional premises, depends on the clause's complete syntax.
             clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
             this.Fail(clause, BindingFailure.InvalidConstraint);
+            if (IsRecovery(clause.Left, out _))
+            {
+                // A rejected subject (SPEC F.6) supplies none, and the requirement's own records stay (SPEC 23.1.2), as a failed selector's below.
+                this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
+            }
+
             return;
         }
 
@@ -386,9 +426,9 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
-        var symbol = this.TypeName(clause.Left, bindingScope, false);
+        var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.Any);
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapAssociatedHead(application.Type) is MemberAccessKoto associatedMember
+        var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapTransparentType(application.Type) is MemberAccessKoto associatedMember
             ? this.BindAssociatedRefinement(clause, application, associatedMember, scope)
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
@@ -432,7 +472,10 @@ public sealed partial class Binding
         input |= contractSelfClause;
         var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null &&
             !this.DependentType(subject, unresolvedProjection: false);
-        var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ReferenceEquals((root?.Symbol ?? symbol)?.Scope.Owner, member.Parent)) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+
+        // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
+        // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
+        var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
@@ -478,13 +521,13 @@ public sealed partial class Binding
                 else if (semantics)
                 {
                     var name = node is IdentifierNameKoto identifier ? identifier.IdentifierName : node is TypeSemanticsKoto { Type: null } typeName ? typeName.Identifier : string.Empty;
-                    result = SemanticsMaskHelper.TryParse(name, out var mask)
+                    result = SemanticsMaskHelper.TryParse(name, out SemanticsMask mask)
                         ? this.InternConstraint(new(ConstraintKind.Semantics, subject, mask: mask))
                         : this.InternConstraint(new(ConstraintKind.Error));
                 }
                 else
                 {
-                    var target = this.TypeName(node, scope, false);
+                    var target = this.TypeName(node, scope, LookupRole.Any);
                     if (target?.Declaration is ContractKoto)
                     {
                         if (target.Intrinsic == IntrinsicKind.Callable)
@@ -520,7 +563,9 @@ public sealed partial class Binding
 
         if (result.Kind == ConstraintKind.Error)
         {
-            this.Fail(node, BindingFailure.InvalidConstraint);
+            // SPEC 23.1.2: a transparent wrapper is the requirement it wraps, so the failure rests on that node; one that failed already
+            // keeps its own record, whatever wraps it.
+            this.Fail(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint);
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)
         {
@@ -704,7 +749,7 @@ public sealed partial class Binding
             this.Missing |= missing;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.TypeName(node, this.Scope, false)?.Kind == BindingSymbolKind.Container;
+            this.Invalid |= missing && binding.TypeName(node, this.Scope, LookupRole.Any)?.Kind == BindingSymbolKind.Container;
             node.VisitChildren(this);
         }
     }

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -10,6 +11,17 @@ public class ConstructorTypeInferenceTest
 {
     private const string Box = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
     private const string UnknownPremise = "struct Box<T>\n    public var tag: i32 = 0\n    public init(value: T) => self.tag = 1\n    public init(value: T, extra: i32 = 0)\n        T is Equatable\n        self.tag = 2\nfunc make<U>(value: U) -> i32\n    let box = ";
+
+    // Own Origin slots: one a borrowed input names, one an optional input names (with a method), one no storage uses, one invariant.
+    private const string Held = "struct H {a}\n    public let r: ref/i32 during a\n    public init(x: ref/i32 during a) => self.r = x\n";
+    private const string Optional = "struct H2 {a}\n    public let r: Option<ref/i32 during a>\n    public init(o: Option<ref/i32 during a>) => self.r = o@move\n    public func has(self: ref/Self) -> bool\n        return match self.r\n            .Some(_) => true\n            .None => false\n";
+    private const string Phantom = "struct P {a}\n    public let n: i32\n    public init() => self.n = 1\n    public func get(self: ref/Self) -> i32 => self.n\n";
+    private const string Invariant = "struct U {a}\n    public let r: Option<uniq/(ref/i32 during a) during a>\n    public init(o: Option<uniq/(ref/i32 during a) during a>) => self.r = o@move\n";
+    private const string Main = "public func main() => ()\n";
+
+    // An inferred T beside a contextual Case at Option<T>, and its form with two own Origin slots (PLAN G463's G2).
+    private const string Paired = "struct Gc<T>\n    public let t: T\n    public let o: Option<T>\n    public init(x: T, o: Option<T>)\n        self.t = x@move\n        self.o = o@move\n";
+    private const string TwoSlots = "struct G2<T> {a, b}\n    public let r: ref/T during a\n    public let s: Option<ref/i32 during b>\n    public init(x: ref/T during a, y: Option<ref/i32 during b>)\n        self.r = x\n        self.s = y@move\n";
 
     [Theory]
     [InlineData("let n: i32 = 42\nlet box = Box.init(n)", "i32")]
@@ -147,6 +159,93 @@ public class ConstructorTypeInferenceTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ConstructorStoredLoan" + explicitType, source, string.Empty);
     }
+
+    // SPEC 10.8, 10.8.1, 15.3.6 (PLAN G463): an own Origin slot that no argument fixes is no mismatch: the expected result fills it by
+    // direct match, and otherwise (a Never or waiting argument, or none) it is a region of the call, which its uses bound
+    // (NoApplicableOverload_Kd before). Rows: Never, `do => return`, `.None` with a method, `.Some(v@ref)`, a Phantom Origin with a method,
+    // two slots, a generic structure with explicit and inferred T, and the expected-only slot at a `let`, at results and at an invariant slot.
+    // The last row's candidate with the unfixed slot now applies and wins by fewer defaults (10.4 step 4), so `v` is not held by `h`
+    // (ComparisonLoanConflict_Kd before, from the storing candidate).
+    [Theory]
+    [InlineData(Held + "func f() -> i32\n    let h = H.init($abort(\"x\"))\n    return 0\n")]
+    [InlineData(Held + "func f() -> i32\n    let h = H.init(do => return 7)\n    return 0\n")]
+    [InlineData(Optional + "func f() -> bool\n    let h = H2.init(.None)\n    return h.has()\n")]
+    [InlineData(Optional + "func f() -> i32\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return 0\n")]
+    [InlineData(Phantom + "func f() -> i32\n    let p = P.init()\n    return p.get()\n")]
+    [InlineData("struct T2 {a, b}\n    public let r: ref/i32 during a\n    public let s: ref/i32 during b\n    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.r = x\n        self.s = y\nfunc f() -> i32\n    let v: i32 = 1\n    let t = T2.init(v, $abort(\"x\"))\n    return 0\n")]
+    [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G<i32>.init($abort(\"x\"))\n    return 0\n")]
+    [InlineData("struct G<T> {a}\n    public let r: ref/i32 during a\n    public let t: T\n    public init(x: ref/i32 during a, y: T)\n        self.r = x\n        self.t = y@move\nfunc f() -> i32\n    let n: i64 = 2\n    let g = G.init($abort(\"x\"), n)\n    return 0\n")]
+    [InlineData(Held + "func f(p: ref/i32) -> i32\n    let h: H during p = H.init($abort(\"x\"))\n    return 0\n")]
+    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q => H2.init(.Some(q))\n")]
+    [InlineData(Phantom + "func g(q: ref/i32) -> P during q => P.init()\n")]
+    [InlineData(Invariant + "func g(p: ref/i32) -> U during p => U.init(.None)\n")]
+    [InlineData("struct HS {a}\n    public let r: Option<ref/i32 during a>\n    public init(x: ref/i32 during a, y: i32 = 0) => self.r = .Some(x)\n    public func has(self: ref/Self) -> bool\n        return match self.r\n            .Some(_) => true\n            .None => false\n    public init(x: ref/i32) => self.r = .None\nfunc f() -> bool\n    var v: i32 = 1\n    let h = HS.init(v@ref)\n    v = 2\n    return h.has()\n")]
+    public void AnOwnOriginSlotNoArgumentFixesKeepsTheCandidateApplicable(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 10.4, 10.8, 10.8.1, 15.6, 6.5.2 (PLAN G463): the invalid twins keep their own records (each NoApplicableOverload_Kd before): two
+    // such candidates are ambiguous (10.4 step 2), an unbound T is the inference boundary, a Loan the region holds conflicts with a write
+    // or with the local's end where the region outlives the result, and a local's borrow at a slot the expected result fills fails that
+    // relation, as at a slot an argument fixes (also through an invariant slot). Unchanged: a mismatched other argument, and a Case
+    // construction, whose Origins the expected Type and payloads must determine (6.5.2).
+    [Theory]
+    [InlineData("struct H {a}\n    public let n: i32\n    public init(x: ref/i32 during a) => self.n = 1\n    public init(x: ref/i64 during a) => self.n = 2\nfunc f() -> i32\n    let h = H.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
+    [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
+    [InlineData(Optional + "func f() -> bool\n    var v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    v = 2\n    return h.has()\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
+    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    // SPEC 15.6.5's call clause (DECISIONS R4-M104): the retained argument `.Some(v@ref)` is an aggregate holding the borrow, not a Copy,
+    // so the conflict at `let v` is independent (MirBorrowsTest's g526-agg-arg). The qualified `Option.Some` twin's return is rejected by
+    // Binding and lowered Opaque, so it reports the relation only (until R7, R4-M122).
+    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Invariant + "func g(p: ref/i32) -> U during p\n    let v: i32 = 1\n    var w = v@ref\n    return U.init(.Some(w@uniq))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData("struct H {a}\n    public let r: ref/i32 during a\n    public init(x: ref/i32 during a, y: i32) => self.r = x\nfunc f() -> i32\n    let h = H.init($abort(\"x\"), true)\n    return 0\n", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
+    [InlineData("enum E {a}\n    A(ref/i32 during a)\n    B\nfunc f() -> i32\n    let e = E.A($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.MissingOriginBinding_Kd) })]
+    public void TheTwinsOfAnUnfixedOwnOriginSlotKeepTheirRecords(string body, string[] codes)
+        => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
+
+    // SPEC 10.5.1, 10.8, 10.8.1 (PLAN G527): the fixed-binding check gives a completed waiting argument the context its completion used:
+    // a waiting callable the fixed expected call signature S, every other part (a contextual Case) its instantiated parameter Type, so
+    // waiting alone never rejects the single constructor (ConstructorSelectionChanged_Kd before, the first ten rows, the ninth at a
+    // literal's default, the tenth a write to a borrowed payload's local after which the construction is not used: SPEC 15.6, its Loan is
+    // not live). Guards: a Closure at a common Function Type and at a Callable slot F, which keep S, and the explicit construction.
+    [Theory]
+    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .None)\n    return 0\n")]
+    [InlineData(Paired + "func g(q: ref/i32) -> i32\n    let x = Gc.init(q, .Some(q))\n    return 0\n")]
+    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .Some(n))\n    return 0\n")]
+    [InlineData(Paired + "func g(n: i32) -> Gc<i32>\n    return Gc.init(n, .None)\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> G2<i32>{t}\n    origin t.a == q\n    origin t.b == q\n    return G2.init(q, .Some(q))\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    let x = G2.init(q, .Some(q))\n    return 0\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> G2<i32>{t}\n    origin t.a == q\n    origin t.b == q\n    return G2.init(q, .None)\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    let x: G2<i32>{t} = G2.init(q, .Some(q))\n    return 0\n")]
+    [InlineData(Paired + "func g() -> i32\n    let x = Gc.init(1, .None)\n    return 0\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var v: i32 = 1\n    let x = G2.init(q, .Some(v@ref))\n    v = 2\n    return 0\n")]
+    [InlineData("struct Gf<T>\n    public let t: T\n    public let k: i32\n    public init(x: T, f: () -> i32)\n        self.t = x@move\n        self.k = f()\nfunc g() -> i32\n    let n: i32 = 1\n    let x = Gf.init(n, func () -> i32 => 2)\n    return 0\n")]
+    [InlineData("struct B<F>\n    F is Callable<() -> i32>\n    public let f: F\n    public init(f: F)\n        self.f = f@move\nfunc g() -> i32\n    let b = B.init(func () => 1)\n    return 0\n")]
+    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc<i32>.init(n, .None)\n    return 0\n")]
+    public void AWaitingArgumentKeepsItsContextAtTheFixedConstruction(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 10.4, 10.8, 10.8.1 (PLAN G527): the invalid twins keep their records: a slot only a waiting Case could fix is the inference
+    // boundary, two constructors that a waiting Case cannot tell apart are ambiguous, SPEC 10.8.1's changed selection stays one beside a
+    // waiting `.None`, and a payload that does not fit the instantiated parameter Type is its own mismatch. SPEC 15.6, 15.6.2: a write to a
+    // local whose Loan the constructed local holds through a payload, borrowed (`v@ref`) or adapted (`n` at `ref/`), conflicts when the
+    // construction is read later (accepted with no record before, as the explicit `G2<i32>.init` gives).
+    [Theory]
+    [InlineData("struct Gu<T, U>\n    public let t: T\n    public let o: Option<U>\n    public init(x: T, o: Option<U>)\n        self.t = x@move\n        self.o = o@move\nfunc g() -> i32\n    let n: i32 = 1\n    let x = Gu.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
+    [InlineData("struct W<T>\n    public let t: T\n    public init(x: T, o: Option<T>)\n        self.t = x@move\n    public init(x: T, o: Option<i64>)\n        self.t = x@move\nfunc g() -> i32\n    let n: i32 = 1\n    let w = W.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
+    [InlineData("struct V<T>\n    public let k: i32\n    public init(x: ref/i32, y: ref/T, o: Option<T>)\n        self.k = 0\n    public init(x: ref/T, y: ref/T, o: Option<T>)\n        self.k = 1\nfunc g(x: ref/(ref/i32 during w), y: ref/i32) -> i32\n    let c = V.init(x, y, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.ConstructorSelectionChanged_Kd) })]
+    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .Some(true))\n    return 0\n", new[] { nameof(DiagnosticCode.TypeMismatch_Kd) })]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var v: i32 = 1\n    let x = G2.init(q, .Some(v@ref))\n    v = 2\n    let k = x.r\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var n: i32 = 1\n    let x = G2.init(q, .Some(n))\n    n = 2\n    let k = x.s\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
+    public void TheTwinsOfAWaitingArgumentAtTheFixedConstructionKeepTheirRecords(string body, string[] codes)
+        => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
 
     [Theory]
     [InlineData("struct Box<T>\n    public init(value: T) => ()\nlet n: i32 = 42\nlet box = Box.init(n)")]

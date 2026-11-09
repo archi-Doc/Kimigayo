@@ -12,8 +12,9 @@ namespace Kimi.Compiler;
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs), and one whose typed parts have no common Type (ConflictWaits, U1.6g). Function: an anonymous
-//   function. Reference: a function reference that needs S, at a call argument (P1) or at a result of the probe's control flow (P2);
+//   (Binding.ArgumentKinds.Positions.cs), one whose typed parts have no common Type (ConflictWaits, U1.6g), and a typed one that holds
+//   a failed source (ClassifiedByCall, G368 (1)). Function: an anonymous function. Reference: a function reference that needs S, at a
+//   call argument (P1) or at a result of the probe's control flow (P2);
 //   a name there that needs none is bound as its Function Item, a typed part (SPEC 10.5.3, 14.9.2 step 2; the owner's reading).
 //   Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe
 //   deferred.
@@ -38,9 +39,9 @@ namespace Kimi.Compiler;
 //   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults
 //   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over it
 //   (Prove); F1 (DECISIONS R4-M164), what each argument's position contributes to its selected call, one closed Contribution
-//   (Evidence, Signature, Result): PartContribution by the part's recorded kind, and SlotSolution.Contribute, which writes each
-//   candidate's root rows (SlotSolution.Rows, PositionRow; Binding.ArgumentKinds.Rows.cs, with the child rows of its selected call's
-//   judgment) once its expected result has solved its slots, read by SolveLate and JudgeSelectedCall.
+//   (Evidence, Signature): PartContribution by the part's recorded kind, and SlotSolution.Contribute, which writes each candidate's
+//   root rows (SlotSolution.Rows, PositionRow; Binding.ArgumentKinds.Rows.cs, with their child rows) after its late evidence pass, read
+//   by SolveLate and JudgeSelectedCall.
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
 //   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
@@ -50,7 +51,8 @@ namespace Kimi.Compiler;
 //   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
-//   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
+//   completion, so its Type is never evidence for an outer slot, and so does a callable one (WasWaitingCallable), whose completion
+//   context the fixed-binding check derives again; a Literal is evidence only through the default recorded for the
 //   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 //   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
 //   verdict over a failed child is suppressed (a join's DecideRest, its position and kind, CompleteJoinResults), and every other
@@ -175,6 +177,10 @@ public sealed partial class Binding
     // SPEC 10.5: whether the part is a waiting callable, a Function or Reference that awaits its call.
     private bool IsWaitingCallable(Koto part) => this.AwaitedKind(part) is PartKind.Function or PartKind.Reference;
 
+    // SPEC 10.5: whether its producer recorded the part as a callable, the kinds of IsWaitingCallable: it stays so after its completion,
+    // which gave it the fixed expected call signature S as its context, as WasDeferred does for a Call.
+    private bool WasWaitingCallable(Koto node) => this.RecordedPart(node).Kind is PartKind.Function or PartKind.Reference;
+
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
         => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
@@ -206,8 +212,7 @@ public sealed partial class Binding
         => ref CollectionsMarshal.GetValueRefOrAddDefault(this.argumentParts, SourceRef.Of(PartCore(part)), out _);
 
     private ArgumentPart RecordedPart(Koto node)
-        => PartCore(node) is { SyntaxOwner: { } owner } core && this.argumentParts.TryGetValue(new(owner.Module, core.SyntaxId), out var part)
-            ? part : default;
+        => this.argumentParts.TryGetValue(SourceRef.Written(PartCore(node)), out var part) ? part : default;
 
     // Whether the part still waits for its call as a deferred Call: not yet completed and with no failure of its own (KindOf).
     private bool IsWaitingPart(Koto node) => this.KindOf(node) == PartKind.Call;
@@ -233,11 +238,12 @@ public sealed partial class Binding
         => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call or PartKind.Join &&
             this.UnderArgumentProbe(target);
 
-    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
-    // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
-    // (`shape`, its first aggregate part), one whose results hold a part awaiting its call (AwaitsCall), or one its survey left
-    // unclassified (no Literal record: a failed or unknown source beside its literals; U1.6h site 4) is Join: its results are
-    // classified position by position (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
+    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate, or a typed
+    // one that holds a failed source (G368 (1)), is the argument probe's control flow, which its call classifies and completes at the
+    // selected candidate's Type. One of Tuple or array results (`shape`, its first aggregate part), one whose results hold a part
+    // awaiting its call (AwaitsCall), or one its survey left unclassified (no Literal record: a failed or unknown source beside its
+    // literals; U1.6h site 4; a typed one) is Join: its results are classified position by position
+    // (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
     private bool ClassifiedByCall(Koto join, Koto? shape)
     {
         if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))
@@ -307,7 +313,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // Independent argument evidence is prepared once for named and constraint-based calls.
+    // Independent argument evidence is prepared once for named and constraint-based calls. False when a part failed: the call then reports
+    // only the checks SPEC 10.1 makes before inference, which read no argument's Type (AnyArgumentsMatch; DECISIONS BU-79's G455
+    // amendment).
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
     {
         var valid = true;

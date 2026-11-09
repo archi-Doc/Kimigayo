@@ -7,9 +7,12 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly HashSet<BindingSymbol> memberLookupVisiting = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
+    private int memberWalks;
+
+    /// <summary>Gets the layers LookupTypeMember searched in the latest pass, read by the scaling tests.</summary>
+    internal int MemberWalkWork => this.memberWalks;
 
     // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
     private static bool IsGenericParameter(BindingSymbol symbol)
@@ -22,17 +25,13 @@ public sealed partial class Binding
         // invalid bases through the ordinary inheritance walk.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is StructKoto structure)
+            if (this.nodes[i] is StructKoto { BaseClause: { } syntax } structure)
             {
-                for (var b = 0; b < structure.Bases.Count; b++)
+                var scope = this.scopes[structure];
+                var type = this.BindType(syntax, scope);
+                if (mode is { } bindingMode && type is not null)
                 {
-                    var syntax = structure.Bases[b];
-                    var scope = this.scopes[structure];
-                    var type = this.BindType(syntax, scope);
-                    if (mode is { } bindingMode && type is not null)
-                    {
-                        this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
-                    }
+                    this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
                 }
             }
         }
@@ -57,11 +56,10 @@ public sealed partial class Binding
         }
 
         this.inheritanceStates.Add(symbol, 1);
-        var valid = structure.Bases.Count <= 1;
+        var valid = true;
         var scope = this.scopes[structure];
-        for (var i = 0; i < structure.Bases.Count; i++)
+        if (structure.BaseClause is { } syntax)
         {
-            var syntax = structure.Bases[i];
             var type = this.BindType(syntax, scope);
             if (syntax.BindingState == BindingState.Invalid ||
                 type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } ||
@@ -71,7 +69,7 @@ public sealed partial class Binding
                 this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;
             }
-            else if (valid && structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
+            else if (structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
             {
                 valid = false;
             }
@@ -146,7 +144,8 @@ public sealed partial class Binding
         BindingSymbol? valueMember = null;
         MemberSelection typeSelection = default;
         MemberSelection valueSelection = default;
-        var qualifier = this.TypeName(member.Left, scope, false);
+        BoundType? qualified = null; // The Type path's binding of the qualifier.
+        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
         if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
         {
             typeMember = this.RequirementMember(member, scope, type, true);
@@ -164,6 +163,7 @@ public sealed partial class Binding
                     return null;
                 }
 
+                qualified = qualifiedType;
                 typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
                 if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null))
@@ -171,15 +171,20 @@ public sealed partial class Binding
                     return null;
                 }
             }
-            else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)
+            else if (qualifier.Declaration is GroupKoto { IsRoot: false })
             {
+                if (this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is not { } groupType)
+                {
+                    return null;
+                }
+
                 if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
                 {
                     this.Fail(member.Left, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
+                qualified = groupType;
                 typeSelection = this.LookupTypeMember(groupType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member;
             }
@@ -222,6 +227,17 @@ public sealed partial class Binding
             }
         }
 
+        if (valuePossible && qualified is not null && (typeMember is null) == (valueMember is null))
+        {
+            // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
+            // read the Type path's binding of the shared node, so neither finding no member nor both paths finding it decides the form.
+            // Until both paths are evaluated before either publishes (PLAN G488, R7 N1), it is outside the implemented subset, at the
+            // qualifier; the member consulted it, so its own Unsupported, and the Type path's access or missing name, rest on it.
+            this.Fail(member.Left, BindingFailure.Unsupported);
+            this.Fail(member, BindingFailure.Unsupported);
+            return null;
+        }
+
         if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
@@ -260,8 +276,7 @@ public sealed partial class Binding
             this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
             if (typeMember is not null)
             {
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier!);
             }
 
             member.BoundSymbol = selected;
@@ -281,7 +296,7 @@ public sealed partial class Binding
 
         if (node is IdentifierNameKoto name)
         {
-            return this.Lookup(name.IdentifierName, scope, node, false) is not null;
+            return this.Lookup(name.IdentifierName, scope, node) is not null;
         }
 
         if (node is SyntaxFormKoto { Akind: KotoKind.RootName })
@@ -297,7 +312,8 @@ public sealed partial class Binding
         if (node is MemberAccessKoto member)
         {
             return this.MayBeValueQualifier(member.Left, scope) ||
-                (this.TypeName(member.Left, scope, false) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) && member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
+                (this.TypeName(member.Left, scope, LookupRole.Any) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) &&
+                member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
         }
 
         return true;
@@ -314,15 +330,22 @@ public sealed partial class Binding
                 ? new(fixedMember, null, path) : new(null, type, path); // Group functions substitute no declaring Type.
         }
 
-        if (type.Symbol is not { } symbol || !this.scopes.TryGetValue(symbol.Declaration, out var scope))
+        if (type.Symbol is not { } start || !this.scopes.ContainsKey(start.Declaration))
         {
             return default;
         }
 
+        // SPEC 6.2.2: one clause per struct, so the layers are a chain of declarations (Binding.BaseLayers); the Type of each is its
+        // clause's, substituted. A layer that names no struct ends the walk: a clause SPEC 6.2.2 rejects has no layers above it.
         BindingSymbol? hidden = null;
-        if ((typeRole ? scope.Types : scope.Values).TryGetValue(name, out var member))
+        var walk = new BaseWalk(start);
+        var layer = type;
+        while (true)
         {
-            for (var candidate = member; candidate is not null; candidate = candidate.Next)
+            this.memberWalks++;
+            var symbol = layer.Symbol!;
+            var scope = this.scopes[symbol.Declaration];
+            for (var candidate = (typeRole ? scope.Types : scope.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
                 if (IsGenericParameter(candidate))
                 {
@@ -331,62 +354,48 @@ public sealed partial class Binding
 
                 if (this.Accessible(candidate, use, receiverType: receiver))
                 {
-                    return new(candidate, type, path);
+                    return new(candidate, layer, path);
                 }
 
                 // Inaccessible declarations are diagnostic evidence, never a layer that stops lookup (SPEC 9.4).
                 hidden ??= candidate;
             }
-        }
 
-        if (symbol.Declaration is not StructKoto structure)
-        {
-            return new(null, type, path, Hidden: hidden);
-        }
-
-        if (!this.memberLookupVisiting.Add(symbol))
-        {
-            return new(null, type, path, true);
-        }
-
-        try
-        {
-            MemberSelection result = default;
-            for (var i = 0; i < structure.Bases.Count; i++)
+            if (symbol.Declaration is not StructKoto structure)
             {
-                var syntax = structure.Bases[i];
-                var baseType = syntax.BoundType ?? this.BindType(syntax, scope);
-                if (baseType is null || this.PartType(baseType, type) is not { } substituted)
-                {
-                    return new(null, type, path, Pending: true);
-                }
-
-                var next = this.MemberPath(path, syntax, substituted);
-                var candidate = this.LookupTypeMember(substituted, name, use, receiver, next, typeRole);
-                if (candidate.Ambiguous || candidate.Pending)
-                {
-                    return candidate;
-                }
-
-                if (candidate.Member is null)
-                {
-                    hidden ??= candidate.Hidden;
-                    continue;
-                }
-
-                if (result.Member is not null)
-                {
-                    return new(null, type, path, true);
-                }
-
-                result = candidate;
+                return ReferenceEquals(layer, type) ? new(null, type, path, Hidden: hidden) : new(null, null, null, Hidden: hidden);
             }
 
-            return result.Member is null ? result with { Hidden = result.Hidden ?? hidden } : result;
-        }
-        finally
-        {
-            this.memberLookupVisiting.Remove(symbol);
+            if (structure.BaseClause is not { } syntax)
+            {
+                return new(null, null, null, Hidden: hidden);
+            }
+
+            // A clause not ready is not bound here; the walk reaching a clause under binding is the cycle BindType reports (SPEC 9.5).
+            var next = this.DirectBase(structure);
+            var baseType = syntax.BoundType ?? (next is not null ? this.knownBases?.GetValueOrDefault(structure) ?? this.BindType(syntax, scope) : this.resolvingTypes.Contains(syntax) ? this.BindType(syntax, scope) : null);
+            if (baseType is null || this.PartType(baseType, layer) is not { } substituted)
+            {
+                if (syntax.BindingState != BindingState.Unvisited)
+                {
+                    this.Consulted(syntax); // A clause not read yet has no failure to rest on.
+                }
+
+                return new(null, layer, path, Pending: true);
+            }
+
+            if (next?.Declaration is not StructKoto)
+            {
+                return new(null, null, null, Hidden: hidden);
+            }
+
+            if (walk.Repeats(next!))
+            {
+                return new(null, layer, path, true);
+            }
+
+            path = this.MemberPath(path, syntax, substituted);
+            layer = substituted;
         }
     }
 

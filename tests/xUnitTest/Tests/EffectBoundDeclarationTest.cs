@@ -28,6 +28,10 @@ public class EffectBoundDeclarationTest
     private const string Conditional = "contract Same\n    func same(self: ref/Self) -> bool\n" +
         "struct Box<T>\n    public var item: T\n    Self is Same when T is Copy\n        public func same(self: ref/Self) -> bool => true\n        effect confined\n";
 
+    // SPEC F.6: a conformance condition takes no effect list, so an item that starts the block is the block's, even under a Callable premise.
+    private const string ConditionalFirst = "contract Same\n    func same(self: ref/Self) -> bool\n" +
+        "struct Box<F>\n    public var item: F\n    Self is Same when F is Callable<() -> i32>\n        effect confined\n        public func same(self: ref/Self) -> bool => true\n";
+
     private const string Slot = "open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n";
 
     private const string Override = "open struct Base\n    public virtual func score(self: objref/Self) -> i32 => 1\n" +
@@ -65,6 +69,7 @@ public class EffectBoundDeclarationTest
     [InlineData(Override + "effect Source.take confined\n        return 2\n", "effect Source.take confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "the function score declares no bound")]
     [InlineData(Literal, "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "a function literal declares no bound of its own")]
     [InlineData(Conditional, "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "a conditional conformance declares no bound of its own")]
+    [InlineData(ConditionalFirst, "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "a conditional conformance declares no bound of its own")]
     [InlineData("enum E\n    A\n    effect confined\n    B\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "E declares no bound of its own")]
     [InlineData(Slot + "        effect confined\n        return 1\n", "effect confined", "score already has confined", "An original virtual function declares confined for its slot at most once")]
     public void RejectsInvalidEffectItems(string declarations, string text, string cause, string? note)

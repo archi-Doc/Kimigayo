@@ -2,10 +2,10 @@
 
 // Owns the record of a problem a MIR analysis finds (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71), of a construction or collection
 // record (R6-check H3-1), and its Reason, the relation an Origin problem names (2a0-D D18, DECISIONS R4-M113); its related sites are
-// MirFact values (MirFact.cs).
+// ProblemFact values (Core/ProblemFact.cs).
 // Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in, the Semantics case
-// views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key) and
-// the difference ledger reads.
+// views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key), Core's
+// publisher (`Compilation.Publication`) publishes and the test MIR side (`MirTargetSide.MirSide`) reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
 // rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows, and
 // the C1-F4 view's broken contracts, DECISIONS R4-M118) has NoBody, whose views name no body's cases (A4's codes take no case fact); a
@@ -29,7 +29,8 @@ namespace Kimi.Compiler.Mir;
 /// <param name="Subject">The syntax the problem is about.</param>
 /// <param name="Body">The ordinal of the body whose views <paramref name="Views"/> numbers, <see cref="NoBody"/>, or a record's
 /// <see cref="MirRecordClass"/>.</param>
-/// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
+/// <param name="Views">The views that have the problem, bit i for view i (a problem no view decides: every view's bit,
+/// <see cref="MirCases.Every"/>); NoBody's and a record's views name no body's cases.</param>
 /// <param name="Reason">The relation an Origin problem names (D18); the default for any other problem.</param>
 internal readonly record struct MirProblem(
     DiagnosticCode Code,

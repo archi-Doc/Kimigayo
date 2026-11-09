@@ -6,7 +6,8 @@
 // definition (null: top-level statements).
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
 // by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
-// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit.
+// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
+// region is one form in signature and environment, and reaches the meet of its sources (Binding.AddRegionMeet; DECISIONS: G570).
 // A destruction retains as a call of each `drop` it runs (SPEC 15.6.4, 16.3.1; DECISIONS BU-47): a `drop`'s contract has its destruction
 // receiver at input 0, though it declares no parameter (Signature numbers none), `uniq/Self` over the layer the Subst's declaring Type
 // names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the
@@ -69,6 +70,7 @@
 // Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
 // borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
+// Keeps: whether the result or a storage the call may write may hold an input (MirValidator.ConstantRecords).
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,
 // .Storage.cs, .Sources.cs, .Rows.cs and .Transfers.cs (the computation).
@@ -120,6 +122,27 @@ internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundO
     internal ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> Pairs => this.pairs;
 
     internal bool Untied => this.untied;
+
+    /// <summary>Whether this storage may hold an input, by any kind or under a condition.</summary>
+    /// <param name="input">The input slot.</param>
+    /// <returns>Whether a row names it.</returns>
+    internal bool Holds(int input)
+    {
+        if ((uint)input < (uint)this.kinds.Length && this.kinds[input] != RetentionKind.None)
+        {
+            return true;
+        }
+
+        foreach (var pair in this.pairs)
+        {
+            if (pair.Input == input)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 /// <summary>What a call may retain in the storage it may write through one input (<see cref="Output"/>; DECISIONS R4-M154): its root
@@ -159,6 +182,28 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
+    /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>
+    /// <param name="input">The input slot.</param>
+    /// <returns>Whether the input may outlive the call in any output.</returns>
+    internal bool Keeps(int input)
+    {
+        if (this.result is null || this.result.Holds(input))
+        {
+            return true;
+        }
+
+        foreach (var written in this.writes)
+        {
+            if (written.Own.Holds(input) || written.All.Holds(input))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     internal StorageRetention Result => this.result ?? throw new InvalidOperationException("The Limit retention has no result.");
 

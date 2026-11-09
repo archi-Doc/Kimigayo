@@ -45,6 +45,58 @@ public sealed partial class MirBorrowsTest
 
         """;
 
+    // SPEC 8.15.3, IMPL 21.3.2 (R8-A1d): owning iteration's storage-height bound, one operation per program: the last accepted depth of an Array's
+    // and a fixed array's nest, and one deeper the located resource records. An exceeded limit is no invalid program; the bound is where the
+    // compiler-supplied boundary held it.
+    [Theory]
+    [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n", false, 61, 3)]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", false, 61, 4)]
+    [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", false, 62, 3)]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", true, 60, 4)]
+    [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", true, 61, 3)]
+    public void OwningIterationsBoundIsLocated(string operation, bool inline, int last, int line)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
+        var source = Program(last + 1);
+        var rejected = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Contains(rejected, static x => x.Code == DepthLimit);
+        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.All(rejected, x => Assert.Equal(line, source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1));
+
+        string Program(int depth)
+        {
+            var (type, value) = ("i32", "1");
+            for (var i = 0; i < depth; i++)
+            {
+                (type, value) = inline ? ($"[1 of {type}]", $"[{value}]") : ($"Array<{type}>", "[]");
+            }
+
+            return $"public func main()\n    var a: {type} = {value}\n{operation}";
+        }
+    }
+
+    // SPEC 8.15.3, IMPL 21.3.2 (R8-K1a): a Dictionary nest's owning iteration keeps dev's storage-height bound though the owned remainder
+    // now holds the consumed Dictionary's Handle whole: 62 levels accepted, one deeper the resource records.
+    [Fact]
+    public void ADictionaryOwningIterationsBoundIsDevs()
+    {
+        Assert.Empty(DiagnosticCorpus.Check(Program(62)).Diagnostics);
+        var rejected = DiagnosticCorpus.Check(Program(63)).Diagnostics;
+        Assert.Contains(rejected, static x => x.Code == DepthLimit);
+        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+
+        static string Program(int depth)
+        {
+            var type = "i32";
+            for (var i = 0; i < depth; i++)
+            {
+                type = $"Dictionary<i32, {type}>";
+            }
+
+            return $"public func main()\n    var d: {type} = [:]\n    for (k, v) in d@move\n        Console.writeLine(\"x\")\n";
+        }
+    }
+
     // The program of AnUnclassifiedDestructionOrCallIsUnsupported.
     private const string UnclassifiedPin = "func deep(n: Nest<ref/i32 during a>)\n    let r = n@ref\nfunc unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\n" +
         "func made()\n    var y = 1\n    let n = Nest<ref/i32>.init(value: y@ref)\nfunc unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n";
@@ -138,23 +190,31 @@ public sealed partial class MirBorrowsTest
 
     // IMPL 21.3.2, SPEC 23.1.1 (R4-M153's rule W read through R4-M154's ways, `MirBorrows.Changes`): W leaves out the step past a holder
     // whose guard is Deep, and the call records the depth limit exactly where that step would change what W writes. It would where it
-    // reaches a holder W reaches only at its first step (first: the argument names g and the deep h, and h holds g.1@ref), one W reaches
-    // past a holder by another Place's Type (otherPlace: t holds r.0@uniq and the deep d, and d holds r.1@ref, of Type i32), or E where W
+    // reaches a holder W reaches only at its first step (first: the argument names g and the deep h, and h holds g.1@uniq), one W reaches
+    // past a holder by another Place's Type (otherPlace: t holds r.0@uniq and the deep d, and d holds r.1@uniq, of Type i32), or E where W
     // does not reach it (escaped: d holds a parameter). A step that changes nothing decides nothing: each holder it reaches is reached past
     // at the same Place Type (samePlace: r.1 of Type ref/i32 as r.0), or E is reached by either way, past t (escapedReached: t holds a
-    // parameter too) or at the first step (escapedFirst: the argument holds it). The write after the call conflicts where a holder the
-    // store reached is read after it (Bad), with the record beside it; at depth 10 no guard is Deep. The rows read the call's and the
-    // write's records (the holders' own drop-tier and borrow records are other rules').
+    // parameter too) or at the first step (escapedFirst: the argument holds it). otherPlace's and samePlace's d holds r.1's Loan innermost,
+    // past the bound at 40, so d's guard is Deep for both Types (an exclusive reference to ref/i32 beside the nested part would give the
+    // write fact) and the two differ only in the Place Type. A shared Loan names no holder the step writes (SPEC 15.6.4 item 1, DECISIONS
+    // R4-M177): first, otherPlace and samePlace holding g.1@ref and r.1@ref (Ref) record no limit. The write after the call conflicts
+    // where a holder the store reached is read after it (Bad), with the record beside it; at depth 10 no guard is Deep. The rows read the
+    // call's and the write's records (the holders' own drop-tier and borrow records are other rules').
     [Theory]
     [InlineData("first", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("firstBad", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("first", 10, "")]
+    [InlineData("firstRef", 40, "")]
+    [InlineData("firstRefBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("otherPlace", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("otherPlaceBad", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("otherPlace", 10, "")]
+    [InlineData("otherPlaceRef", 40, "")]
+    [InlineData("otherPlaceRefBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 40, "")]
     [InlineData("samePlaceBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 10, "")]
+    [InlineData("samePlaceRef", 40, "")]
     [InlineData("escaped", 40, "st(t@uniq) OwnershipDepthLimit_Kd")]
     [InlineData("escaped", 10, "")]
     [InlineData("escapedReached", 40, "")]
@@ -162,13 +222,15 @@ public sealed partial class MirBorrowsTest
     public void ADeepHoldersStepRecordsTheLimitWhereItWouldChangeWhatWWrites(string form, int depth, string expected)
     {
         var bad = form.EndsWith("Bad", StringComparison.Ordinal);
-        var source = (bad ? form[..^3] : form) switch
+        var name = bad ? form[..^3] : form;
+        var loan = name.EndsWith("Ref", StringComparison.Ordinal) ? "ref" : "uniq"; // The deep holder's Loan in first and the Placed forms.
+        var source = (loan == "ref" ? name[..^3] : name) switch
         {
             "first" => "func st(t: (uniq/(ref/i32 during a) during b, uniq/(ref/i32 during a) during e), v: ref/i32 during a) => ()\n" +
                 $"func f() -> ()\n    var value = 42\n    var x = 1\n    let rx = x@ref\n    var g = (rx, 5)\n" +
-                $"    var h = (rx, g.1@ref, {Nested("0", depth)})\n    st((g.0@uniq, h.0@uniq), value@ref)\n" + Tail("g"),
-            "otherPlace" => Placed("i32", "5"),
-            "samePlace" => Placed("ref/i32 during a", "y@ref"),
+                $"    var h = (rx, g.1@{loan}, {Nested("0", depth)})\n    st((g.0@uniq, h.0@uniq), value@ref)\n" + Tail("g"),
+            "otherPlace" => Placed("i32", "5", loan),
+            "samePlace" => Placed("ref/i32 during a", "y@ref", loan),
             "escaped" => Escaped(borrowed: true, "    var x = 1\n    var r = (x@ref, 5)\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq)\n"),
             "escapedReached" => Escaped(borrowed: true, "    var t = (q, d@uniq)\n    st(t@uniq)\n"),
             "escapedFirst" => Escaped(borrowed: false, "    st((q, d@uniq))\n"),
@@ -182,15 +244,15 @@ public sealed partial class MirBorrowsTest
 
         string Tail(string read) => bad ? $"    value = 99\n    inspect({read}@ref)\n" : $"    inspect({read}@ref)\n    value = 99\n";
 
-        string Placed(string slot, string held)
-            => $"func st(t: uniq/((uniq/(ref/i32 during a) during b, uniq/((ref/({slot}) during g, {NestedType(depth)})) during c)) during e, " +
+        string Placed(string slot, string held, string mode)
+            => $"func st(t: uniq/((uniq/(ref/i32 during a) during b, uniq/({NestedType($"{mode}/({slot}) during g", depth)}) during c)) during e, " +
                 $"v: ref/i32 during a) => ()\nfunc f() -> ()\n    var value = 42\n    var x = 1\n    var y = 2\n    var r = (x@ref, {held})\n" +
-                $"    var d = (r.1@ref, {Nested("0", depth)})\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq, value@ref)\n" + Tail("r");
+                $"    var d = {Nested($"r.1@{mode}", depth)}\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq, value@ref)\n" + Tail("r");
 
         // A store through t (borrowed: an exclusive reference to the Tuple, else the Tuple of exclusive references itself).
         string Escaped(bool borrowed, string body)
         {
-            var tuple = $"(uniq/(ref/i32 during a) during b, uniq/((ref/i32 during g, {NestedType(depth)})) during c)";
+            var tuple = $"(uniq/(ref/i32 during a) during b, uniq/((ref/i32 during g, {NestedType("i32", depth)})) during c)";
             return $"func st(t: {(borrowed ? $"uniq/({tuple}) during e" : tuple)}) => ()\n" +
                 $"func f(p: ref/i32 during a, q: uniq/(ref/i32 during a) during b) -> ()\n    var d = (p, {Nested("0", depth)})\n" + body;
         }
@@ -261,7 +323,7 @@ public sealed partial class MirBorrowsTest
     // the holders the guard reaches, and r is read after the write.
     private static string GuardForm(int depth)
     {
-        var deep = NestedType(depth);
+        var deep = NestedType("i32", depth);
         return "func inspect<T>(value: ref/T) => ()\n" +
             $"func store(t: uniq/((ref/i32 during a, ref/(ref/i32 during b) during c, uniq/{deep} during e)), v: ref/i32 during a) => ()\n" +
             $"func f(z: uniq/{deep}) -> ()\n    var value = 42\n    var x = 1\n    var r = x@ref\n    var d = (x@ref, r@ref, z)\n" +
@@ -270,11 +332,11 @@ public sealed partial class MirBorrowsTest
 
     // p4 and p5: d, a 40-deep Tuple a call makes from a borrow it does not keep, then a write of the borrowed local.
     private static string MadeForm(string borrow)
-        => $"func mk(r: ref/i32) -> {NestedType(40)} => {Nested("0", 40)}\nfunc f() -> ()\n    var value = 42\n    let d = mk(value@ref)\n" +
+        => $"func mk(r: ref/i32) -> {NestedType("i32", 40)} => {Nested("0", 40)}\nfunc f() -> ()\n    var value = 42\n    let d = mk(value@ref)\n" +
             borrow + "    value = 99\n    return\n";
 
-    // A value nested in Tuples to a depth, paired with the levels' indices, and its Type, paired with i32.
+    // A value nested in Tuples to a depth, paired with the levels' indices, and its Type (the innermost one's given), paired with i32.
     private static string Nested(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
 
-    private static string NestedType(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
+    private static string NestedType(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Repeat(", i32)", levels));
 }

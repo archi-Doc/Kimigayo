@@ -34,14 +34,13 @@ public sealed partial class Binding
 
             this.inheritedConformanceStates[type] = 1;
 
-            if (type.Declaration is not StructKoto { Bases.Count: 1 } declaration)
+            if (type.Declaration is not StructKoto { BaseClause: { } syntax } declaration)
             {
                 this.inheritedConformanceStates[type] = 2;
                 return;
             }
 
-            var syntax = declaration.Bases[0];
-            if (!complete && this.TypeName(syntax, this.scopes[declaration], false)?.Declaration is not StructKoto)
+            if (!complete && (this.knownBases?.ContainsKey(declaration) == true || this.DirectBase(declaration)?.Declaration is not StructKoto))
             {
                 this.inheritedConformanceStates[type] = 0;
                 return;
@@ -60,7 +59,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (!this.conformancesByType.TryGetValue(parent, out var identities))
+            if (this.impls.OfType(parent) is not { } identities)
             {
                 this.inheritedConformanceStates[type] = 2;
                 return;
@@ -78,7 +77,7 @@ public sealed partial class Binding
                 for (var j = 0; j < identity.Paths.Count; j++)
                 {
                     var source = identity.Paths[j];
-                    var path = this.RegisterConformance(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
+                    var path = this.impls.Register(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
                     path.Use = syntax;
                     if (path.InheritedFrom is null)
                     {
@@ -143,15 +142,13 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(path.Type);
-            var scope = path.Scope;
-            scope.Reset();
-            this.AddInheritedPremises(path, self, scope);
+            var scope = path.Scope; // D and the source's P, built once per pass (PrepareInheritedScopes).
             var shape = path.Contract.Contract!;
             foreach (var ancestor in shape.AncestorStorage)
             {
                 var inheritedProof = ancestor.Intrinsic != IntrinsicKind.None
                     ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
-                    : this.VerifyConformance(this.conformancePaths[(path.Type, ancestor, path.Declaration, path.RootContract)]);
+                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
                 proof = CombineProof(proof, inheritedProof, true);
             }
 
@@ -198,7 +195,7 @@ public sealed partial class Binding
 
                     if (!ReferenceEquals(identity.Contract, path.Contract))
                     {
-                        var ancestor = this.conformancePaths[(path.Type, identity.Contract, path.Declaration, path.RootContract)];
+                        var ancestor = this.impls.Path(path.Type, identity.Contract, path.Declaration, path.RootContract);
                         if (!CopyRequirementWitness(ancestor, path, identity))
                         {
                             proof = CombineProof(proof, ConstraintProof.Unknown, true);
@@ -266,6 +263,20 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its source's premises P, built once per pass
+    // after the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
+    // VerifyInheritedConformance, which read it and never build it.
+    private void PrepareInheritedScopes()
+    {
+        foreach (var path in this.impls.Paths)
+        {
+            if (path.InheritedFrom is not null)
+            {
+                this.AddInheritedPremises(path, this.SelfType(path.Type), path.Scope);
+            }
+        }
+    }
+
     private void AddInheritedPremises(BoundConformancePath path, BoundType self, BindingScope scope)
     {
         if (path.InheritedFrom is { } source)
@@ -282,7 +293,7 @@ public sealed partial class Binding
             {
                 if (((IsKoto)clause).BoundConstraint is { } constraint)
                 {
-                    this.AddConstraintFact(environment, this.SubstituteConstraint(constraint, path.Type.Declaration, (BoundType[])self.Components));
+                    this.AddConstraintFact(environment, this.StoredConstraint(constraint, self));
                 }
             }
 
@@ -300,12 +311,12 @@ public sealed partial class Binding
                 return new(implementation, type, path);
             }
 
-            if (symbol.Declaration is not StructKoto { Bases.Count: 1 } declaration || AdtDef.Base(type) is not { } parent)
+            if (symbol.Declaration is not StructKoto { BaseClause: { } clause } || AdtDef.Base(type) is not { } parent)
             {
                 break;
             }
 
-            path = this.MemberPath(path, declaration.Bases[0], parent);
+            path = this.MemberPath(path, clause, parent);
             type = parent;
         }
 
@@ -320,7 +331,7 @@ public sealed partial class Binding
             return this.InheritedSelfMismatchNote(constraint.Left!) ?? this.InheritedSelfMismatchNote(constraint.Right!);
         }
 
-        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }

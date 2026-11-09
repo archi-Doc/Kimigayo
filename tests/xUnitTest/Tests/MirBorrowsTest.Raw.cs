@@ -275,6 +275,193 @@ public sealed partial class MirBorrowsTest
                     inspect(w)
                 """));
 
+    // SPEC 5.2.1 condition 3, 5.7 Authority, Calls (DECISIONS BU-108): a callee's contract judges a layer a Type argument supplies by its
+    // own inputs, so where only a shared input borrow states its Origin the call stores nothing past it: refVia and rawVia are valid
+    // (fail-before: a false conflict at `y = 3`). Where a `uniq` input states it too (uniqVia), or a holder keeps the slot it binds by an
+    // exclusive Loan Field (slotAlias, its layer declared; slotBoxAlias, in its Field's Type argument), the call may store past it and
+    // `y = 3` / `z = 5` err, as before (the review's r04, r27n, r29). bothVia (r05), whose callee states the Origin by `ref` and `uniq`,
+    // is valid: h's pointer was taken through `let s = t@ref`, so it has no write authority (SPEC 5.2.1 condition 3, its r@follow@raw
+    // example) and rule W writes no holder that only a shared Loan names (SPEC 15.6.4 item 1, DECISIONS R4-M177); its twins err: the
+    // callee may store v into t2 through u (bothT2), and a pointer taken through `t@uniq` names t by an exclusive Loan (bothUniq). The
+    // cap judges a layer by its route (the owner's O-23, 「aでお願いいたす」): a layer in a Closure's environment steps by its kind, so a
+    // captured layer stating an Origin the enclosing signature also states by `uniq` lets the call store w's address into u's referent
+    // and `z = 5` errs (capturedBox, a supplied one, accepted on feaff9158; capturedRaw, capturedNested and nestedReceives, whose captured
+    // `p` the outer Closure writes, accepted on dev); a layer written in a Closure's or nested function's own signature keeps the cap
+    // whatever binds its Origin, so closureParam, nestedParam and paramOnly (a supplied one) are valid (they err on 22d1216a0, paramOnly
+    // also on dev).
+    [Fact]
+    public void ACallStoresPastASuppliedLayerByItsContractsInputs()
+        => Assert.Equal(
+            [
+                "uniqVia: y = 3", "uniqVia: inspect(t)", "bothT2: y = 3", "bothUniq: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5",
+                "capturedBox: z = 5", "capturedRaw: z = 5", "capturedNested: z = 5", "nestedReceives: z = 5",
+            ],
+            Problems("""
+                struct Wrap<E>
+                    var value: E
+                    public init(value: E) => self.value = value@move
+                struct Box2<E>
+                    public var value: E
+                    public init(value: E) => self.value = value@move
+                struct HS {s}
+                    let loan: Loan<uniq/(raw/u8) during s>
+                    let b: raw/(raw/u8) during s
+                    public init(t: uniq/(raw/u8) during s)
+                        self.b = t@follow@raw
+                        self.loan = Loan.init(t)
+                    public func store(self: uniq/Self, v: raw/u8)
+                        unsafe => *self.b = v
+                struct HB {s}
+                    let loan: Loan<uniq/(raw/u8) during s>
+                    var b: Box2<raw/(raw/u8) during s>
+                    public init(t: uniq/(raw/u8) during s)
+                        self.b = Box2.init(t@follow@raw)
+                        self.loan = Loan.init(t)
+                    public func store(self: uniq/Self, v: raw/u8)
+                        unsafe => *self.b.value = v
+                func storeVia(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: ref/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeViaU(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: uniq/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeViaB(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: ref/(ref/i32 during c) during a, u: uniq/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeRawVia(w: uniq/Wrap<raw/(raw/u8) during a>, r: ref/(raw/u8) during a, v: raw/u8) => ()
+                func refVia()
+                    var x = 1
+                    var y = 2
+                    var t: ref/i32 = x@ref
+                    let s = t@ref
+                    var h = Wrap.init(s@follow@raw)
+                    storeVia(h@uniq, s, y@ref)
+                    y = 3
+                    inspect(t)
+                func uniqVia()
+                    var x = 1
+                    var y = 2
+                    var t: ref/i32 = x@ref
+                    var s = t@uniq
+                    var h = Wrap.init(s@follow@raw)
+                    storeViaU(h@uniq, s, y@ref)
+                    y = 3
+                    inspect(t)
+                func bothVia()
+                    var x = 1
+                    var y = 2
+                    var x2 = 4
+                    var t: ref/i32 = x@ref
+                    var t2: ref/i32 = x2@ref
+                    let s = t@ref
+                    var h = Wrap.init(s@follow@raw)
+                    storeViaB(h@uniq, s, t2@uniq, y@ref)
+                    y = 3
+                    inspect(t)
+                func bothT2()
+                    var x = 1
+                    var y = 2
+                    var x2 = 4
+                    var t: ref/i32 = x@ref
+                    var t2: ref/i32 = x2@ref
+                    let s = t@ref
+                    var h = Wrap.init(s@follow@raw)
+                    storeViaB(h@uniq, s, t2@uniq, y@ref)
+                    y = 3
+                    inspect(t2)
+                func bothUniq()
+                    var x = 1
+                    var y = 2
+                    var x2 = 4
+                    var x3 = 5
+                    var t: ref/i32 = x@ref
+                    var t2: ref/i32 = x2@ref
+                    var t3: ref/i32 = x3@ref
+                    var s = t@uniq
+                    var h = Wrap.init(s@follow@raw)
+                    let r3 = t3@ref
+                    storeViaB(h@uniq, r3, t2@uniq, y@ref)
+                    y = 3
+                    inspect(s)
+                func rawVia()
+                    var y = 2
+                    var slot: raw/u8 = null
+                    let s = slot@ref
+                    var h = Wrap.init(s@follow@raw)
+                    let k = y@ref
+                    storeRawVia(h@uniq, s, k@raw@raw/u8)
+                    y = 3
+                    inspect(slot@ref)
+                func slotAlias(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during c)
+                    origin c outlives a
+                    var z = 3
+                    let w = z@ref
+                    let u2: uniq/(raw/u8) during a = u
+                    var hs: HS during a = HS.init(u2)
+                    hs.store(w@raw@raw/u8)
+                    z = 5
+                func slotBoxAlias(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during c)
+                    origin c outlives a
+                    var z = 3
+                    let w = z@ref
+                    let u2: uniq/(raw/u8) during a = u
+                    var hb: HB during a = HB.init(u2)
+                    hb.store(w@raw@raw/u8)
+                    z = 5
+                func capturedBox(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let bx = Box2.init(u@follow@raw)
+                    var k = func [bx@move] (q: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *bx.value = v
+                    k(r, w@raw@raw/u8)
+                    z = 5
+                func capturedRaw(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var k = func [p] (q: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = v
+                    k(r, w@raw@raw/u8)
+                    z = 5
+                func capturedNested(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var outer = func [p] (r2: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = null
+                        var inner = func [p] (q: ref/(raw/u8) during a, v2: raw/u8)
+                            unsafe => *p = v2
+                        inner(r2, v)
+                    outer(r, w@raw@raw/u8)
+                    z = 5
+                func closureParam(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var k = func (q: ref/(raw/u8) during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8) => ()
+                    var x = u@follow@raw
+                    k(r, x@uniq, w@raw@raw/u8)
+                    z = 5
+                func nestedParam(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    func passOn(q: ref/(raw/u8) during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8) => ()
+                    var x = u@follow@raw
+                    passOn(r, x@uniq, w@raw@raw/u8)
+                    z = 5
+                func nestedReceives(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var outer = func [p] (r2: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = null
+                        var inner = func (q: ref/(raw/u8) during a, pp: raw/(raw/u8) during a, v2: raw/u8) => ()
+                        inner(r2, p, v)
+                    outer(r, w@raw@raw/u8)
+                    z = 5
+                func paramOnly(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var other = Box2.init(u@follow@raw)
+                    var k = func (q: ref/(raw/u8) during a, h: uniq/Box2<raw/(raw/u8) during a>, v: raw/u8) => ()
+                    k(r, other@uniq, w@raw@raw/u8)
+                    z = 5
+                """));
+
     // SPEC 15.6.4 (PLAN G266; DECISIONS BU-52): a call writes through the raw layers without an Origin a by-value argument holds, in a
     // struct's Field (viaBad, via2Bad), an enum's payload (optBad), a Type argument's Field (boxPlainBad), an Array's element
     // (arrPlainBad) or behind a `uniq` Field (uBad), and a consuming callee's cleanup does through its drop (consumeWBad, consumeDrop2Bad,
@@ -550,7 +737,7 @@ public sealed partial class MirBorrowsTest
     // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
-    // (R6-check H5, DECISIONS R5-M185) the default pipeline rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
+    // (R6-check H5, DECISIONS R5-M185) check rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -1015,8 +1202,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Plain = "func shape()\n    var x = 0\n«N:    x = {0}\n»";
         const string Addressed = "func shape()\n    var x = 0\n    let p = x@raw\n«N:    x = {0}\n»    _ = p == null\n";
-        long[] plain = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Plain, n, 0)).Work)];
-        long[] addressed = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Addressed, n, 0)).Work)];
+        long[] plain = [.. new[] { 32, 64 }.Select(n => Measured(Prelude + Expand(Plain, n, 0)).Work)];
+        long[] addressed = [.. new[] { 32, 64 }.Select(n => Measured(Prelude + Expand(Addressed, n, 0)).Work)];
         output.WriteLine($"N 32, 64: plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
         Assert.True(addressed[1] - addressed[0] - (plain[1] - plain[0]) >= 32, $"plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
     }
@@ -1030,7 +1217,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("raw/i32 during static")]
     public void TheAddressWalksVisitATypeDagOncePerWalk(string leaf)
     {
-        long[] work = [.. new[] { 8, 12, 16 }.Select(n => this.Measured(Prelude + TypeDag(leaf, n)).Work)];
+        long[] work = [.. new[] { 8, 12, 16 }.Select(n => Measured(Prelude + TypeDag(leaf, n)).Work)];
         output.WriteLine($"N 8, 12, 16: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
@@ -1055,7 +1242,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(["getRRRRepl: y = 5"], RejectedProblems(RawShapes + ChainShapes + ChainRepl + "    let unrelated: bool = 3\n"));
 
     // PLAN G255 (C3; DECISIONS R4-M143): popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer used before
-    // `y = 5`), as the default pipeline accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
+    // `y = 5`), as check accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
     // no Φ_E in its elements, so pop's Chain row reads no E; built by appends, each receiver store, a referent store, reaches refs(S) only.
     [Fact]
     public void APopOverElementsAnUntiedStoreReachedIsValid()
@@ -1270,7 +1457,7 @@ public sealed partial class MirBorrowsTest
 
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
     private long Added(string shape, string twin)
-        => this.Measured(Prelude + RawShapes + ChainShapes + shape).Work - this.Measured(Prelude + RawShapes + ChainShapes + twin).Work;
+        => Measured(Prelude + RawShapes + ChainShapes + shape).Work - Measured(Prelude + RawShapes + ChainShapes + twin).Work;
 
     // The chain forms' bodies (sources in the R4 notes' N2 review), each Bad form's valid twin beside it.
     private const string ChainForms = ChainRepl + """

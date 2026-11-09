@@ -6,8 +6,8 @@ namespace Kimi.Compiler;
 
 // Value fits (SPEC 3.8, 10.2, 15.6.1; DECISIONS BU-4): whether a value of Type `actual` fits a position of Type `expected`.
 // - Responsibility: the entries a value position calls: FitsType and FitsTypeAt (a value at an expected Type, at a use whose premises and
-//   Origins the fit reads), FitsStructurally(At) (the structural part of a fit, SPEC 15.6.1), FitsVerifiedTypeAt (lowering's recheck of
-//   a verified contract) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, become
+//   Origins the fit reads), FitsValueAt (a value at a position that a local region may reach), FitsStructurallyAt (the structural part
+//   of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, become
 //   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
@@ -34,11 +34,6 @@ public sealed partial class Binding
         return fits;
     }
 
-    // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
-    // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
-    internal static bool FitsStructurally(BoundType actual, BoundType expected)
-        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
-
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
@@ -48,12 +43,8 @@ public sealed partial class Binding
         return fits;
     }
 
-    // Lowering rechecks the already verified contract without adding constraints or reopening inference.
-    internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
-        => this.FitsTypeAt(actual, expected, use, out _) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
-            this.FitsStructurallyAt(actual, expected, use) &&
-            new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
-
+    // SPEC 15.6.1: the structural part of a fit at the use, with all Origin bindings treated as equal; only its failure is a Type
+    // mismatch. The Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
 
@@ -66,6 +57,12 @@ public sealed partial class Binding
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
+
+    // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or, where a local region of a body takes part, the
+    // use-site fit at `value`, whose Origin positions ownership judges. `failure` is the fit's, which a caller that records it passes on.
+    private bool FitsValueAt(BoundType actual, BoundType expected, Koto use, Koto value, out ComparisonFailure failure)
+        => this.FitsTypeAt(actual, expected, use, out failure) ||
+            ((this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, value, out _));
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is

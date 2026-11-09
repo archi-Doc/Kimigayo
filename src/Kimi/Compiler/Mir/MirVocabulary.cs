@@ -35,6 +35,7 @@ internal enum MirRvalueKind : byte
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
     Adapt, // A case adaptation (SPEC 8.14), whose operation each Semantics case selects: MirCases.Adapt resolves it per view.
+    Storage, // The address of a sequence Place's first element (SPEC 4.8.1), a raw pointer; it projects no element (SPEC 8.15.3).
 }
 
 /// <summary>A MIR terminator (plan 5.4); there is no unwinding. <c>CheckTarget</c> is an attribute of Goto, a Call without a target
@@ -152,7 +153,10 @@ internal enum MirAggregateKind : byte
 
 internal enum MirConstKind : byte
 {
-    Integer, // Bits: the value.
+    // Type: one of MirTypes.HoldsIntegerConstant's family. Bits: an integer Type's value as its N-bit payload, sign-extended
+    // (ScalarTypes.Normalize), the one encoding of each value (G620); else a char's Unicode scalar value, a raw pointer's null (0) or
+    // a generic literal, 0 through 127, of a Type whose instance decides it (MirValidator.Holds).
+    Integer,
     Float, // Bits: the IEEE bits.
     Bool,
     Unit,
@@ -181,7 +185,7 @@ internal enum MirLocalRole : byte
     GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
     Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
-    Receiver, // A constructor's _0, its construction receiver self (SPEC 6.3.3-6.3.4): storage its caller's construction expression made.
+    Receiver, // A constructor's _0 or a destructor's _1: its construction or destruction receiver (SPEC 6.3.4, 16.3.1), storage made elsewhere.
 }
 
 internal enum MirScopeKind : byte

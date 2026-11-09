@@ -22,14 +22,11 @@
 #   ./scripts/verify.ps1 -Mode Session -Configuration Debug
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
-# -Pipeline mir (R3-R6) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy. Since G2 it publishes what the
-# default does (DECISIONS R5-M156), so its run is the difference ledger's (KIMI_MIR_DIFF).
-#   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
-#
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test collections. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
 # Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
+# -NativeReuse <base>/native-results.json reuses that base's passed fixtures whose inputs did not change (verified within 24 h).
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
 #
@@ -38,7 +35,6 @@
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
-    [ValidateSet('legacy', 'mir')] [string] $Pipeline = 'legacy',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
@@ -53,6 +49,7 @@ param(
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
+    [string] $NativeReuse = '',
     [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(8, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
@@ -66,9 +63,6 @@ $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Me
 $Class = @(Join-KimiCommonTestSelections $requestedClass)
 $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
 $Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # summary.json records the canonical spelling.
-$Pipeline = $Pipeline.ToLowerInvariant()
-$previousPipeline = $env:KIMI_PIPELINE
-$env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -284,12 +278,13 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
     # Fixtures come from the tests run above; run them only when those tests passed.
     $fixtureDirectory = Join-Path $evidence "fixtures-$native"
     $hashes = [System.Collections.Generic.List[string]]::new()
+    $reuse = if ($NativeReuse) { @{ ReuseResults = $NativeReuse } } else { @{} }
     for ($i = 0; $i -lt $Fixtures.Count; $i++) {
         $pattern = $Fixtures[$i]
         $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
-        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel } $log
+        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel @reuse } $log
         $result = Get-KimiNativeLogResult $log
         $ok = $ok -and $result.hasSuccessLine
         $detail = $result.detail
@@ -325,8 +320,7 @@ if ($null -ne $beforeInputs) {
         Add-Step 'input stability' $false $_.Exception.Message $timer.Elapsed.TotalSeconds
     }
 }
-$env:KIMI_PIPELINE = $previousPipeline
-$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
+$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
 $summary | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

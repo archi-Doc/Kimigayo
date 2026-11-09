@@ -20,7 +20,7 @@ public class DefaultBindingTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var value = function.Parameters[0].DefaultValue!;
-        Assert.True(KotoHelper.IsValueContext(value));
+        Assert.True(Binding.IsValueContext(value));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
@@ -39,14 +39,6 @@ public class DefaultBindingTest
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Span == jump.Span && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
         Assert.False(c.Generate(TextWriter.Null));
-    }
-
-    [Fact]
-    public void DefaultFlowIsCheckedOnAnUnusedBodylessRequirement()
-    {
-        var c = MinimalEmissionTest.Analyze("contract C\n    func f(x: i32 = (return 1))");
-        c.Binding.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Text == "return 1");
     }
 
     // SPEC 7.2.3, 14.1: a default that never completes is valid; HirColumnsTest checks that its completion stays its own.

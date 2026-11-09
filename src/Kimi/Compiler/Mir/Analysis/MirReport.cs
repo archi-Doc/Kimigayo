@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the problems the MIR analyses find in one program version and its construction and collection records (A6; DECISIONS R4-M3a, R5-M23,
-// R4-M71; R6-check H3-1); their records are MirProblem and MirFact (MirProblem.cs, MirFact.cs).
+// R4-M71; R6-check H3-1); their records are MirProblem and ProblemFact (MirProblem.cs, Core/ProblemFact.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's MirRecordClass,
 // through MirProgram.Report) and its facts (related sites, added by their first producer).
 // Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
@@ -9,9 +9,9 @@
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
 // facts included, and ORs the views; merged problems name one requirement, and a disagreement is a recording rule's defect, reported as
 // one InternalInvariant_Kd problem at the subject, as is a Cause fact whose Value is neither -1 nor an index in All (H3-2 N2), which no
-// producer writes (rule W's causes are indices Add returned). Every analysis InternalInvariant_Kd names Ownership.Internal (these defects,
-// A5's broken contracts, the C1-F4 view's findings). Add is the one home of the derived-problem rules: a problem with an Inlined fact, a
-// Language problem found inside an inline default copy, is its template's check and dropped (R4-M10, SPEC 7.2.3, R4-M69); a problem with
+// producer writes (rule W's causes are indices Add returned). Every analysis InternalInvariant_Kd names Ownership.Internal (these defects
+// and A5's broken contracts). Add is the one home of the derived-problem rules: a problem with an Inlined fact, a Language problem found
+// inside an inline default copy, is its template's check and dropped (R4-M10, SPEC 7.2.3, R4-M69); a problem with
 // Cause facts (its tail) is derived (rule W, SPEC 15.6.5, R4-M132), and a merged problem is derived exactly when every report it groups
 // is, its causes their union (a direct report drops the first's Cause tail; a derived one adds its new causes). Merged, the view
 // publication reads (MirReport.Merged.cs; R4-M11, R6-check H3-2), has one merged problem per code, subject, Reason and class, in the order
@@ -38,7 +38,7 @@ internal sealed partial class MirReport
 {
     private readonly Dictionary<(DiagnosticCode Code, SourceRef Subject, int Body, MirReason Reason), int> index = new(); // The problem of each key.
     private readonly List<MirProblem> problems = [];
-    private readonly List<MirFact> facts = [];
+    private readonly List<ProblemFact> facts = [];
     private readonly List<(int Start, int Count)> spans = []; // Each problem's facts.
 
     /// <summary>Gets the problems in the order they were first added.</summary>
@@ -47,7 +47,7 @@ internal sealed partial class MirReport
     /// <summary>Gets the facts of a problem.</summary>
     /// <param name="problem">The problem's index in <see cref="All"/>.</param>
     /// <returns>Its facts.</returns>
-    internal ReadOnlySpan<MirFact> Facts(int problem) => CollectionsMarshal.AsSpan(this.facts).Slice(this.spans[problem].Start, this.spans[problem].Count);
+    internal ReadOnlySpan<ProblemFact> Facts(int problem) => CollectionsMarshal.AsSpan(this.facts).Slice(this.spans[problem].Start, this.spans[problem].Count);
 
     /// <summary>Adds a problem with its facts, or merges its views into the first problem of the same code, subject, body and Reason, which must
     /// name the same requirement: a merge that names another is the recording rules' defect, an InternalInvariant_Kd problem at the
@@ -57,17 +57,17 @@ internal sealed partial class MirReport
     /// <param name="problem">The problem.</param>
     /// <param name="facts">Its facts, kept for a new problem, of which only the Cause facts merge.</param>
     /// <returns>The problem's index in <see cref="All"/>, the first problem's on a merge; -1 for a dropped problem and for a defect.</returns>
-    internal int Add(in MirProblem problem, ReadOnlySpan<MirFact> facts = default)
+    internal int Add(in MirProblem problem, ReadOnlySpan<ProblemFact> facts = default)
     {
         var namesNoProblem = false;
         foreach (var fact in facts)
         {
-            if (fact.Kind == MirFactKind.Inlined)
+            if (fact.Kind == ProblemFactKind.Inlined)
             {
                 return -1;
             }
 
-            namesNoProblem |= fact.Kind == MirFactKind.Cause && fact.Value != -1 && (ulong)fact.Value >= (ulong)this.problems.Count;
+            namesNoProblem |= fact.Kind == ProblemFactKind.Cause && fact.Value != -1 && (ulong)fact.Value >= (ulong)this.problems.Count;
         }
 
         if (namesNoProblem)
@@ -113,10 +113,10 @@ internal sealed partial class MirReport
     }
 
     // The number of a fact span's trailing Cause facts.
-    private static int Causes(ReadOnlySpan<MirFact> facts)
+    private static int Causes(ReadOnlySpan<ProblemFact> facts)
     {
         var count = 0;
-        while (count < facts.Length && facts[facts.Length - 1 - count].Kind == MirFactKind.Cause)
+        while (count < facts.Length && facts[facts.Length - 1 - count].Kind == ProblemFactKind.Cause)
         {
             count++;
         }
@@ -135,7 +135,7 @@ internal sealed partial class MirReport
 
     // Merges a report's derivedness into a problem (R4-M132, R4-M96's rule per report): a direct problem stays direct; a derived one meeting
     // a direct report drops its Cause tail; meeting a derived report it adds the causes it lacks, moving its span to the end first.
-    private void Merge(int problem, ReadOnlySpan<MirFact> facts)
+    private void Merge(int problem, ReadOnlySpan<ProblemFact> facts)
     {
         var (start, count) = this.spans[problem];
         var held = Causes(this.Facts(problem));

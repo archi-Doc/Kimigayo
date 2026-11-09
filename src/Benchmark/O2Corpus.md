@@ -15,6 +15,9 @@ invertible, so a wrong value in any round changes the line. Each runs a few tent
 | --- | --- |
 | `Array` | `Array<T>` of a two-Field struct grown from empty by 1,024 appends, shared iteration, strided indexing, `swap`, `pop` and `clear`, 131,072 rounds |
 | `ArrayLiteral` | Array literals of 1, 8 and 32 `i64` elements and of 4 two-Field structs, each built (one allocation), indexed and destroyed, 2,097,152 rounds; its checksum is compared in place and printed as a fixed line (DECISIONS R5-M129) |
+| `ArrayMoves` | `insert` and `remove` pairs at positions among the first eight and among eight in the middle, each part a function of its own: Arrays of 1,024 `i32` (16 pairs, 32,768 rounds per part) and of 1,024 32-byte structs (4 pairs, 16,384 rounds per part), the same bytes moved in each; the long tails that R8-A1b's element loops move |
+| `ArrayViews` | An exclusive `for`, `sliceUniq` and `tryGetPairUniq` over 1,024 `i32`, and a fixed array's exclusive `for`, shared `for` and `sliceUniq` over 256, each part a function of its own: 131,072 to 524,288 rounds per part |
+| `Buffers` | The byte buffers' operations, each part a function of its own: validation, `text()` over a 65,532-byte HeapBuffer of mixed ASCII and two-, three- and four-byte sequences, which validates it every time (2,048 rounds); growth, HeapBuffers from capacity 0 to 4,096 bytes one byte at a time through `reserve`, `push` and `commit` (2,048 rounds) |
 | `Dictionary` | `Dictionary<i64, i64>` of 64 entries (insertion, lookup, removal, shared iteration) and one of 32 entries keyed by a user `Equatable` struct, 16,384 rounds; lookup is a linear search |
 | `Interpolation` | An interpolated owning string with a user `Utf8Format` value, and `$tryWrite` into a cleared fixed buffer, 1,048,576 times |
 | `Iterators` | A user Iterator through a generic consumer, Slice iteration and `Iteration.owning`, 8,388,608 rounds |
@@ -22,6 +25,7 @@ invertible, so a wrong value in any round changes the line. Each runs a few tent
 | `VirtualDispatch` | `virtual`/`override` calls through `objref` base views of four Dynamic Types, with direct base calls, 2^26 calls |
 | `SharedHandles` | rc creation, clone into an Array, owning iteration and release, and arc clone and release, 1,048,576 rounds |
 | `Tuples` | Tuple operators: an insertion sort of 512 `(i32, f64, string)` by `<` (later leaves decide ties), `==` over all pairs of 128 `(i64, i64)` and `((i32, i32), (i32, i32))`, and `<=`/`>` over all pairs of 32 `(f64, f64)` with a NaN and ±0, 512 rounds |
+| `Strings` | Three parts. Comparison, 4,096 rounds: `==`/`!=` over all pairs of 64 strings of 0 to 40 bytes (60 heap strings and 4 Static empties; 44 carry the whole 12-byte common prefix), `<`/`>=` over all pairs of 32, an insertion sort by `<` through an index Array, a block against 8 Static strings held in an Array and one against direct literals of 5 and 13 bytes, whose `==` is no `memcmp` call at O2. Destruction, 8,192 rounds: 256 owned strings and 64 Static ones through `Array.clear`, a scope exit and `pop`. Integer formatting, 65,536 rounds: 65 `i8`, `i16`, `i32`, `i64` and `u64` values from 0 to the extremes by `$tryWrite` into a cleared fixed buffer (WriterWrite's Builtin item: `__kimi_writer_write_builtin`, `__kimi_format_builtin`), and one `Text.toString`. Each part is its own function, and `main` calls it from two sites so that `opt -O2` keeps it apart |
 
 The erased and virtual calls stay indirect calls in the optimized IR, so the kernels time dispatch rather than inlined code.
 
@@ -32,8 +36,7 @@ takes two checkouts with Release builds of Kimi and Benchmark (`dotnet build Kim
 script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's compiler.
 
 `-CandidateEnvironment` sets its variables only for B's kernel builds and B's `--compiler-pipeline` runs, for example
-`KIMI_PIPELINE=mir`; both variants' executables run in the script's environment. A runs the default pipeline (MIR code generation
-is the one code generator from R6-gen's G4): the script fails before any work if it would inherit `KIMI_PIPELINE`.
+`DOTNET_TieredPGO=0`; both variants' executables run in the script's environment.
 Pass the list with `pwsh -Command` or as separate array elements: `pwsh -File` binds `A=x,B=y` as one string, which the
 script rejects.
 
@@ -48,9 +51,9 @@ script rejects.
   coefficient of variation; per B run, its ratio to the mean of the A runs before and after it, summarized the same way.
 - `Benchmark --compiler-pipeline` ([CompilerPipeline.md](CompilerPipeline.md)) of A and B then alternates A, B, ..., A for
   `PipelineRuns` + 1 runs of A. Every report must have the first one's schema, stage names and input hashes. Its generic shape
-  at 32, 64 and 128 item Types is the generic-heavy input at 1×, 2× and 4×. Collection is timed in stage 3 (`BuildMir`), so
-  emission lowering plus IR writing is code generation alone; CompilerPipeline.md gives the comparison that adds stage 3's
-  collection share. Per
+  at 32, 64 and 128 item Types is the generic-heavy input at 1×, 2× and 4×. Collection is timed in stage 4 (`Analyze`; stage 3
+  until R6-check H9), so emission lowering plus IR writing is code generation alone; CompilerPipeline.md gives the comparison
+  that adds the collection share. Per
   input, each run gives the median of its samples for that stage and for the whole compilation; their spread across runs and
   the B/A ratios over them are the matched-run variation. Allocated bytes are each run's mean.
 

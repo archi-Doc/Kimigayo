@@ -9,9 +9,11 @@ namespace Kimi.Compiler;
 //   SignatureOwner, PerCallSignature, InputDependentBinder, PerCallInputs, InputOrigins); the erasure of a Closure or Function Item to
 //   a common Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
 //   comparison of a named function's contract with a required signature (ContractFits).
-// - Inputs: the Types compared, the use whose premises the comparison reads, and the Type relation (Binding.TypeRelations).
+// - Inputs: the Types compared, the use whose premises the comparison reads, the Type relation (Binding.TypeRelations) and, for a
+//   Closure's erasure, its call's retention (TyCtxt.Retains).
 // - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
-// - Invariants: an erasure's Shared receiver and Owned environment are judged after selection, never during applicability.
+// - Invariants: an erasure's Shared receiver, Owned environment and receiver-free result are judged after selection, never during
+//   applicability.
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
@@ -279,46 +281,85 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
-    // its signature fits under its conditions (CallableSignatureFits) and its complete environment is Owned. Initializations, returns and
-    // call arguments share this judgment. A failure publishes its first failed part for its record and Note (erasureOutcomes): the
-    // receiver, the signature's structure, Owned (an environment that is not Owned is the record first, its Error's cause held, its member named), then a
-    // condition, the conversion's one record at `node`, made here from the judgment's failure (RecordCondition).
+    // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
+    // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure
+    // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
+    // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
+    // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
+    // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
         var failure = default(ComparisonFailure);
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
-        var fits = actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && receiver == SemanticsKind.Ref && signature is not null &&
-                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
-            : this.ErasureSignatureFits(actual, expected, node, out failure);
+        var fits = this.ErasureFits(actual, expected, node, out failure);
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
-            : this.ProveErasedOwned(actual, node, out owned) == ConstraintProof.Proven ? ErasurePart.Condition
-            : shape ? ErasurePart.Shape : ErasurePart.Owned;
+            : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
+            : fits && this.ResultDependsOnReceiver(node, actual) ? ErasurePart.Dependence
+            : ErasurePart.Condition;
         if (part == ErasurePart.Condition && fits)
         {
             return true;
         }
 
-        (this.erasureOutcomes ??= new(ErasureKey.Instance))[(actual, expected)] = new(part, fits, receiver, owned);
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(part, fits, receiver, owned);
         if (part == ErasurePart.Condition)
         {
             this.RecordCondition(node, failure, signature!, expected);
+        }
+        else if (part == ErasurePart.Owned)
+        {
+            this.FailOwnedConversion(actual, expected, node, node);
         }
 
         return false;
     }
 
+    // SPEC 7.7.4, 15.6.4 (the owner's O-28 (a), DECISIONS BU-116): whether a concrete Closure's result contract depends on its call
+    // receiver: its call's retention (TyCtxt.Retains, the one source, whose rule A keeps every input at a raw layer without an Origin that
+    // the call writes in its result) has the result retain the receiver, input 0, by its own value. A Function Item has no receiver
+    // input (TyCtxt.HasReceiverInput). A retention past its limits decides nothing: the erasure is the located Unsupported_Kd at `node`.
+    private bool ResultDependsOnReceiver(Koto node, BoundType actual)
+    {
+        if (!this.types.HasReceiverInput(actual))
+        {
+            return false;
+        }
+
+        var retention = this.types.Retains(actual, this.ClosureDefinitionSignature(actual)!, null);
+        if (retention.IsLimit)
+        {
+            this.Fail(node, BindingFailure.Unsupported);
+            return true;
+        }
+
+        return (retention.Result.Kinds[0] & RetentionKind.Value) != 0;
+    }
+
+    // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
+    // of `use`: a Closure's Shared receiver and its signature (CallableSignatureFits), a Function Item's contract (ErasureSignatureFits).
+    // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it.
+    private bool ErasureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        failure = default;
+        return actual.Kind == BoundTypeKind.Closure
+            ? expected.Kind == BoundTypeKind.Function && (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref &&
+                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, out failure)
+            : this.ErasureSignatureFits(actual, expected, use, out failure);
+    }
+
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
-    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition (ErasesToFunction) is the value's failure.
+    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part (ErasesToFunction) is the
+    // value's failure.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
-        if (node.BindingFailure == BindingFailure.OriginContract)
+        if (node.BindingFailure == BindingFailure.OriginContract ||
+            (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
             return true;
         }
@@ -403,13 +444,12 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            var walk = new RelationWalk(this, use, OriginPart.Contract);
-            if (this.HasUnsubstitutedOrigin(parameter, function))
+            if (Substitute(Bound(function.Parameters[i].Type.BoundType!)!) is not { } parameter)
             {
                 return false;
             }
 
+            var walk = new RelationWalk(this, use, OriginPart.Contract);
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
@@ -441,7 +481,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || this.HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
+        if (symbol.Type is not { } output || Bound(output) is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
         }
@@ -469,8 +509,10 @@ public sealed partial class Binding
             return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
         }
 
-        BoundType Substitute(BoundType type)
-            => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
+        // The solution's images; null where an atom of the function has none (LacksImage).
+        BoundType? Substitute(BoundType type)
+            => this.LacksImage(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount))
+                ? null : this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
     }
 
     private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope)

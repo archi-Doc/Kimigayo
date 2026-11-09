@@ -87,8 +87,8 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.5: a meet outlives an Origin when each of its operands does, each the end of its own chain (as OriginOutlives
-        // and VerifiedRegionOutlives read it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged
-        // through its sources; the worst operand decides.
+        // reads it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged through its sources; the
+        // worst operand decides.
         var worst = OriginJudgment.Proven;
         for (var i = 0; i < longer.Operands.Count; i++)
         {
@@ -143,6 +143,8 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.6.1: the judge reads premises alone, so a relation between two fixed Origins it does not prove is Unknown, a region at a fixed
+    // end included, whose value is no premise: no reader takes it as holding. A caller that leaves a row asks BodyChain first.
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         if (UnstatedRelation(longer, shorter) is { } holds)
@@ -358,7 +360,7 @@ public sealed partial class Binding
         var longer = this.OriginAtUse(obligation.Longer!, use);
         var shorter = this.OriginAtUse(obligation.Shorter!, use);
         var refuted = RefutesOriginRelation(longer, shorter, body) || (obligation.Equality && RefutesOriginRelation(shorter, longer, body));
-        if ((BodyChain(longer, shorter, body) && !refuted) || use.BindingFailure != BindingFailure.None)
+        if ((BodyChain(longer, shorter, obligation.Equality, body) && !refuted) || use.BindingFailure != BindingFailure.None)
         {
             return;
         }

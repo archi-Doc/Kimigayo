@@ -108,6 +108,16 @@ public sealed class CodeContext
     /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument, string? producingModId = null, int additionOrder = 0)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run((this, parentKoto, sourceDocument, producingModId, additionOrder), static s =>
+            {
+                s.Item1.Parse(s.parentKoto, s.sourceDocument, s.producingModId, s.additionOrder);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         ArgumentNullException.ThrowIfNull(parentKoto);
         ArgumentNullException.ThrowIfNull(sourceDocument);
         ArgumentOutOfRangeException.ThrowIfNegative(additionOrder);
@@ -144,6 +154,7 @@ public sealed class CodeContext
             var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
+            SyntaxNesting.Bound(sourceContext);
             sourceContext.Documentation?.SetLocation(this.Kotonoha.LogicalName(sourceDocument), producingModId, additionOrder);
             sourceContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.Kotonoha.RecordDocumentation(sourceContext.Documentation);

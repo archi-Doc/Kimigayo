@@ -39,7 +39,8 @@ internal static class RuntimeAbi
 
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
-    // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3).
+    // { data, length, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3). A lasting pair with the
+    // library's Storage.StringRepr, since hand-written runtime IR needs these words; LayoutTest and KimiLibraryShapeTest pin the two.
     internal static readonly ValueLowering String = new(new("%kimi.string", 24, 8, 24, new[] { 0, 8, 16 }), "%kimi.string", "ptr");
 
     internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");
@@ -77,11 +78,6 @@ internal static class RuntimeAbi
 
     internal static readonly FunctionAbi CloneArc = new("__kimi_clone_arc", "void", CloneRc.Parameters) { ResultSlot = true };
 
-    // SPEC 4.9.5: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
-    internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), Location, LocationLength];
-    internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
-
     // IMPL 21.4.3: a heap block of a byte size, 16-aligned; an allocation failure Aborts at the location (an erased environment, SPEC 7.7.4).
     internal static readonly FunctionAbi Allocate =
         new("__kimi_alloc", "ptr", [new("i64", "size", AbiParameterKind.Value, 0), Location, LocationLength]);
@@ -91,21 +87,6 @@ internal static class RuntimeAbi
 
     internal static readonly FunctionAbi StorageRelease =
         new("__kimi_free", Unit.ComputationType, [new("ptr", "storage", AbiParameterKind.Value, 0), Location, LocationLength]);
-
-    // SPEC 4.9.5, 4.9.8: capacity routines move element bytes by stride and run no user code; the writer emits them only for
-    // modules that use Arrays. A call's handle and count are at their slots, its stride given (R5 plan C8d).
-    internal static readonly FunctionAbi ArrayGrow =
-        new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), Location, LocationLength]);
-
-    internal static readonly FunctionAbi ArrayReserve = new(
-        "__kimi_array_reserve",
-        Unit.ComputationType,
-        [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), new("i64", "additional", AbiParameterKind.Value, 1), Location, LocationLength]);
-
-    internal static readonly FunctionAbi ArrayShrink = new(
-        "__kimi_array_shrink",
-        Unit.ComputationType,
-        [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
 
     // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them
     // (LlvmModuleText.TryAllocate and LlvmModuleText.TransferBytes, written as a pair; DECISIONS R5-M92, R5-M145).
@@ -141,7 +122,7 @@ internal static class RuntimeAbi
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand).
     private static readonly (string Name, long Value)[] Constants =

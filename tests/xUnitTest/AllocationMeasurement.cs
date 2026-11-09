@@ -5,6 +5,8 @@ using System.Diagnostics.Tracing;
 using System.Globalization;
 using System.Reflection.Emit;
 using System.Runtime;
+using Kimi.Compiler;
+using Xunit;
 
 namespace XunitTest;
 
@@ -40,15 +42,15 @@ internal static class AllocationMeasurement
 
     private static readonly CompileEvents Compiles = new();
 
-    // Keep test-runner execution context and thread setup outside the measured interval. The result is the largest
-    // allocation of MeasuredOperations consecutive operations of the valid window, the whole standard window.
-    // Zero remains a strict assertion at every call site.
+    // Keep test-runner execution context and thread setup outside the measured interval: the operation runs on a compiler thread
+    // of its own (CompilerThread.Create), where every site runs inline. The result is the largest allocation of MeasuredOperations
+    // consecutive operations of the valid window, the whole standard window. Zero remains a strict assertion at every call site.
     internal static long Measure(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
         long allocated = 0;
         Exception? failure = null;
-        var thread = new Thread(() =>
+        ThreadStart measure = () =>
         {
             try
             {
@@ -98,11 +100,8 @@ internal static class AllocationMeasurement
             {
                 failure = exception;
             }
-        }) { IsBackground = true };
-        using (ExecutionContext.SuppressFlow())
-        {
-            thread.Start();
-        }
+        };
+        var thread = CompilerThread.Create(measure);
 
         // The bound only stops a hung measurement. A parallel Debug run can take several times longer than an isolated one, so
         // it is generous, for each window; the zero-byte assertions at the call sites are unchanged.
@@ -120,11 +119,16 @@ internal static class AllocationMeasurement
     }
 
     // The allocation of one run of an operation that cannot repeat on its state: a cold first build or analysis, or a designed
-    // second pass. Measure is the rule otherwise. It runs on the calling thread, after the step that retires the thread's
-    // allocation context; no warm-up, no repeated or retried window and no excused cause.
+    // second pass. Measure is the rule otherwise. It runs on a compiler thread, the calling thread when it is one, after the step
+    // that retires the thread's allocation context; no warm-up, no repeated or retried window and no excused cause.
     internal static long MeasureOnce(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run(operation, static operation => MeasureOnce(operation));
+        }
+
         RetireAllocationContext();
         var before = GC.GetAllocatedBytesForCurrentThread();
         operation();
@@ -137,10 +141,22 @@ internal static class AllocationMeasurement
     // fresh copy of the smallest size (fresh(0)), so that the process's one-time initialization of the operation (class constructors,
     // the runtime's first instantiations) falls in no measured run and every size is measured in the same process state, alone or after
     // other tests (R5-M172). That one-time cost stays measured and bounded on the check path by its owner,
-    // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own.
+    // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own. Its runs compare only in one
+    // process state (G650): the test process runs without tiered compilation (xUnitTest.csproj), and the series runs in
+    // AllocationIsolationCollection, where no other collection runs beside it, or it refuses before it makes any state.
     internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
     {
         ArgumentNullException.ThrowIfNull(fresh);
+        if (TestContext.Current.TestCollection?.TestCollectionClassName != typeof(AllocationIsolationCollection).FullName)
+        {
+            throw new InvalidOperationException("A cold series runs in AllocationIsolationCollection: put its test in a nested AllocationTests class.");
+        }
+
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
+        }
+
         fresh(0)();
         var allocated = new long[count];
         for (var i = 0; i < count; i++)
@@ -149,6 +165,76 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // The allocation of a warm hop (CompilerThread.Run), on its caller and on its worker, which no window on a compiler thread takes:
+    // Run refuses such a caller. From a plain thread of its own, started under the calling thread's context, so that the warm-up
+    // creates the thread's cached jobs whatever the calling thread ran before: the standard warm-up of hops, the step that retires
+    // the allocation contexts, then MeasuredOperations hops on one worker, each reading that worker's counter. Every other measured
+    // hop pauses its caller before it and its work before the reading, 1 ms, past both waits' spin, so that the caller's and the
+    // worker's waits really block in the window, as well as end in the spin (G580). The result is the caller's allocation over the
+    // hops and the worker's between its first and last reading; no repeated or retried window. It needs an isolated collection
+    // (AllocationIsolationCollection): another test's hop could take the worker between two hops, and the measurement then fails
+    // ("two workers").
+    internal static (long Caller, long Worker) MeasureHops()
+    {
+        (long Caller, long Worker) allocated = default;
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                allocated = Hops();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.Start();
+        thread.Join();
+        if (failure is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
+        return allocated;
+    }
+
+    private static (long Caller, long Worker) Hops()
+    {
+        for (var i = 0; i < WarmupOperations; i++)
+        {
+            CompilerThread.Run(0, Reading);
+        }
+
+        RetireAllocationContext();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var first = CompilerThread.Run(0, Reading);
+        var last = first;
+        for (var i = 1; i < MeasuredOperations; i++)
+        {
+            var pause = i % 2;
+            Pause(pause);
+            last = CompilerThread.Run(pause, Reading);
+        }
+
+        var caller = GC.GetAllocatedBytesForCurrentThread() - before;
+        return first.Worker == last.Worker ? (caller, last.Allocated - first.Allocated) : throw new InvalidOperationException("The hops ran on two workers.");
+
+        static (int Worker, long Allocated) Reading(int pause)
+        {
+            Pause(pause);
+            return (Environment.CurrentManagedThreadId, GC.GetAllocatedBytesForCurrentThread());
+        }
+
+        static void Pause(int milliseconds)
+        {
+            if (milliseconds > 0)
+            {
+                Thread.Sleep(milliseconds);
+            }
+        }
     }
 
     // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)

@@ -19,14 +19,14 @@ public sealed partial class Binding
     /// <param name="contract">The required Contract identity.</param>
     /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.conformances.TryGetValue((symbol, contract), out var result) && result.UnconditionalPath is not null ? result : null;
+        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
 
     /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
     /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.conformances.TryGetValue((symbol, contract), out var result) && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -103,7 +103,7 @@ public sealed partial class Binding
         }
 
         return (constraint.Contract is null ||
-            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+            (this.AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
              (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
             (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
@@ -116,12 +116,12 @@ public sealed partial class Binding
     private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
     {
         ambiguous = false;
-        if (this.conformances.TryGetValue((type, contract), out var direct))
+        if (this.impls.Find(type, contract) is { } direct)
         {
             return direct;
         }
 
-        if (IsBoundContractReference(contract) || !this.conformancesByType.TryGetValue(type, out var identities))
+        if (IsBoundContractReference(contract) || this.impls.OfType(type) is not { } identities)
         {
             return null;
         }
@@ -158,11 +158,8 @@ public sealed partial class Binding
         this.failedCause = null;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.activeConformancePaths.Clear();
-        foreach (var list in this.conformancesByType.Values)
-        {
-            list.Clear();
-        }
+        this.impls.Reset();
+        this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
         this.projectionForms.Clear();
@@ -190,32 +187,6 @@ public sealed partial class Binding
             binding.EvidenceSources.Clear();
             binding.State = 0;
             binding.FormationScope?.Reset();
-        }
-
-        foreach (var conformance in this.conformances.Values)
-        {
-            conformance.IsVerified = false;
-            conformance.Invalid = false;
-            conformance.DirectClause = null;
-            conformance.PathStorage.Clear();
-        }
-
-        foreach (var conformance in this.conformancePaths.Values)
-        {
-            conformance.Active = false;
-            conformance.IsVerified = false;
-            conformance.Checking = false;
-            conformance.RejectedSelfSignature = null;
-            conformance.Invalid = false;
-            conformance.WitnessStorage.Clear();
-            conformance.WitnessMap.Clear();
-            conformance.PropertyWitnessStorage.Clear();
-            conformance.PropertyWitnessMap.Clear();
-            conformance.Unsupported = false;
-            conformance.Needed = false;
-            conformance.AssociatedStorage.Clear();
-            conformance.InferenceStorage.Clear();
-            conformance.Scope.Reset();
         }
     }
 
@@ -280,7 +251,7 @@ public sealed partial class Binding
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
         var head = AssociatedHead(declaration);
-        var name = head is OriginApplicationKoto application ? UnwrapAssociatedHead(application.Type) : head;
+        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head;
         if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
         {
             return; // A qualified specification refines an existing requirement.
@@ -332,7 +303,7 @@ public sealed partial class Binding
             // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
             // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
             var generic = GenericParentApplication(name);
-            var parent = this.TypeName(name, this.scopes[contract], false);
+            var parent = this.TypeName(name, this.scopes[contract], LookupRole.Any);
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
@@ -550,7 +521,7 @@ public sealed partial class Binding
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
             // bodies stays proven, and only an unproven one is judged again.
-            foreach (var identity in this.conformances.Values)
+            foreach (var identity in this.impls.Identities)
             {
                 if (!this.IsLibraryDeclaration(identity.Type.Declaration))
                 {
@@ -558,37 +529,39 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; i < this.activeConformancePaths.Count; i++)
+            for (var i = 0; i < this.impls.Paths.Count; i++)
             {
-                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Type.Declaration))
+                if (!this.IsLibraryDeclaration(this.impls.Paths[i].Type.Declaration))
                 {
-                    this.activeConformancePaths[i].IsVerified = false;
+                    this.impls.Paths[i].IsVerified = false;
                 }
             }
         }
 
         this.PublishSourceStates();
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            var conformance = this.activeConformancePaths[i];
+            var conformance = this.impls.Paths[i];
             this.failedCause = null;
+            var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.VerifyConformance(conformance);
+            if (final && conformance.InheritedFrom is null && !(conformance.Unsupported && mode == BindingMode.Final))
+            {
+                this.RequireConstraintInFrame(conformance.Use, proof, mode, frame);
+                continue;
+            }
+
+            this.DropConsultation(frame);
             if (final && conformance.InheritedFrom is null)
             {
-                if (conformance.Unsupported && mode == BindingMode.Final)
-                {
-                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.7, 23.1.1: the limit's one location
-                    continue;
-                }
-
-                this.RequireConstraint(conformance.Use, proof, mode);
+                this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.7, 23.1.1: the limit's one location
             }
         }
 
         if (final)
         {
             this.InvalidateAssociatedEvidence();
-            foreach (var identity in this.conformances.Values)
+            foreach (var identity in this.impls.Identities)
             {
                 if (identity.PathStorage.Count != 0)
                 {
@@ -614,7 +587,8 @@ public sealed partial class Binding
             {
                 var use = this.projectionUses[i];
                 this.failedCause = null;
-                this.RequireConstraint(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
+                var frame = this.BeginConsultation(use.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
+                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
             }
         }
     }
@@ -658,7 +632,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.Ancestors.Count; i++)
             {
-                if (!AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
+                if (!this.AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
                 {
                     this.Fail(contract, BindingFailure.Access);
                 }

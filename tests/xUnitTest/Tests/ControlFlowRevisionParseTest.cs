@@ -61,7 +61,7 @@ public class ControlFlowRevisionParseTest
 
             var result = Assert.IsType<LabeledKoto>(Assert.IsType<ParenthesizedKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression).Operand);
             var loop = Assert.IsType<LoopKoto>(result.Target);
-            Assert.True(KotoHelper.IsValueContext(loop));
+            Assert.True(Binding.IsValueContext(loop));
             var block = Assert.IsType<DoKoto>(Assert.IsType<LabeledKoto>(Assert.Single(loop.Body.Items)).Target).Body;
             var plainExit = Assert.IsType<ExitKoto>(block.Items[0]);
             Assert.Null(plainExit.Label);
@@ -92,7 +92,7 @@ public class ControlFlowRevisionParseTest
             var add = Assert.IsType<FunctionKoto>(body.Items[0]);
             Assert.Null(add.Body);
             ParseTestHelper.Binary(KotoKind.Plus, add.ExpressionBody);
-            Assert.True(KotoHelper.IsValueContext(add.ExpressionBody!));
+            Assert.True(Binding.IsValueContext(add.ExpressionBody!));
             Assert.Same(add, add.ExpressionBody!.Parent);
             var increment = Assert.IsType<FunctionKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
             Assert.Equal(string.Empty, increment.Name);
@@ -119,11 +119,11 @@ public class ControlFlowRevisionParseTest
             var outer = Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(Assert.Single(Function(tree).Body!.Items)).InitializerKoto);
             var branch = outer.Branches[0].Body;
             var inner = Assert.IsType<IfKoto>(branch.Items[0]);
-            Assert.True(KotoHelper.IsValueContext(outer));
-            Assert.False(KotoHelper.IsValueContext(inner));
+            Assert.True(Binding.IsValueContext(outer));
+            Assert.False(Binding.IsValueContext(inner));
             Assert.False(branch.HasTrailingExpression);
             Assert.False(inner.Branches[0].Body.HasTrailingExpression);
-            Assert.False(KotoHelper.IsResultRequiringSelection(inner));
+            Assert.False(Binding.IsResultRequiringSelection(inner));
         }
     }
 
@@ -155,7 +155,7 @@ public class ControlFlowRevisionParseTest
             Assert.False(nested.ElseBody!.HasTrailingExpression);
             var second = Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
             Assert.IsType<IfKoto>(second.Arms[0].Body is ParenthesizedKoto grouped ? grouped.Operand : second.Arms[0].Body);
-            Assert.True(KotoHelper.IsValueContext(second.Arms[0].Body));
+            Assert.True(Binding.IsValueContext(second.Arms[0].Body));
             var blockArm = Assert.IsType<CodeBlockKoto>(second.Arms[1].Body);
             Assert.False(blockArm.HasTrailingExpression);
             Assert.IsType<UnitLiteralKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression);
@@ -169,7 +169,7 @@ public class ControlFlowRevisionParseTest
         {
             var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
             var inner = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(match.Arms[0].Body).Operand);
-            Assert.True(KotoHelper.IsValueContext(inner));
+            Assert.True(Binding.IsValueContext(inner));
             Assert.True(inner.Branches[0].Body.HasTrailingExpression);
         }
     }
@@ -229,7 +229,7 @@ public class ControlFlowRevisionParseTest
             var exit = Assert.IsType<ExitKoto>(Assert.Single(loop.Body.Items));
             Assert.Equal("outer", exit.Label);
             var conditional = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(exit.Expression).Operand);
-            Assert.True(KotoHelper.IsValueContext(conditional));
+            Assert.True(Binding.IsValueContext(conditional));
         }
     }
 
@@ -242,7 +242,7 @@ public class ControlFlowRevisionParseTest
             var branch = outer.Branches[0].Body;
             Assert.False(branch.HasTrailingExpression);
             var inner = branch.Items[0] is ParenthesizedKoto parentheses ? parentheses.Operand : branch.Items[0];
-            Assert.False(KotoHelper.IsValueContext(Assert.IsType<IfKoto>(inner)));
+            Assert.False(Binding.IsValueContext(Assert.IsType<IfKoto>(inner)));
         }
     }
 
@@ -252,12 +252,12 @@ public class ControlFlowRevisionParseTest
         var tree = Parse("func run()\n    loop\n        if flag => 1 else => 2\n    let result = loop\n        exit 1");
         var body = Function(tree).Body!;
         var loop = Assert.IsType<LoopKoto>(body.Items[0]);
-        Assert.False(KotoHelper.IsValueContext(loop));
+        Assert.False(Binding.IsValueContext(loop));
         var conditional = Assert.IsType<IfKoto>(Assert.Single(loop.Body.Items));
-        Assert.False(KotoHelper.IsValueContext(conditional));
+        Assert.False(Binding.IsValueContext(conditional));
         Assert.True(conditional.Branches[0].Body.HasTrailingExpression);
         var valueLoop = Assert.IsType<LoopKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
-        Assert.True(KotoHelper.IsValueContext(valueLoop));
+        Assert.True(Binding.IsValueContext(valueLoop));
         Assert.False(valueLoop.Body.HasTrailingExpression);
     }
 

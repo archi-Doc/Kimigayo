@@ -40,8 +40,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         public readonly bool AcceptsTypeConstraints = acceptsTypeConstraints;
 
         public DeclarationOrder DeclarationOrder;
-
-        public DeclarationContainerKoto? Detached;
     }
 
     /// <inheritdoc/>
@@ -354,7 +352,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(Constants.RootgroupKeyword);
+        builder.Append(TokenKind.RootGroup.ToText());
         builder.Append(' ');
         Parser.WriteQualifiedNameTo(this, ref builder);
     }
@@ -515,18 +513,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     public abstract void Parse(ref TokenReader reader);
 
-    internal static DeclarationContainerKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    /// <summary>Creates a container of this kind outside the tree that parses members for this container and registers nothing in it.</summary>
+    /// <param name="codeContext">The code context.</param>
+    /// <param name="range">The container's source span.</param>
+    /// <returns>The detached container.</returns>
+    /// <remarks>It shares this container's generic parameters, so its members are parsed under this header, such as a member's
+    /// Constraint on the declaring Type's parameters (SPEC 7.5): excluded members (SPEC 19.4) and a conditional conformance's block (SPEC 8.8.1).</remarks>
+    internal DeclarationContainerKoto CreateDetached(CodeContext codeContext, SourceSpan range)
     {
-        DeclarationContainerKoto container = kind switch
-        {
-            TokenKind.Struct => new StructKoto(codeContext, state, range),
-            TokenKind.Enum => new EnumKoto(codeContext, state, range),
-            TokenKind.Contract => new ContractKoto(codeContext, state, range),
-            _ => new GroupKoto(codeContext, state, range),
-        };
-
-        container.Name = name;
-        return container;
+        var detached = CreateStandalone(codeContext, this.TokenKind, default, range, string.Empty);
+        detached.genericArguments = this.genericArguments;
+        return detached;
     }
 
     internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
@@ -590,7 +587,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (member is CodeBlockKoto block)
         {
-            builder.Append("#if true");
+            builder.Append(Parser.IfTrueDirectiveText);
             block.WriteIndentedTo(ref builder);
         }
         else
@@ -606,11 +603,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected void ParseMembers(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
     {
         ConsumeBlockStart(ref reader);
-        var state = new MemberParseState(
-            parseTypeConstraints,
-            parseDeclarationContainers,
-            parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0);
-        this.ParseMemberItems(ref reader, ref state);
+        var list = new MemberItems(
+            this,
+            new MemberParseState(
+                parseTypeConstraints,
+                parseDeclarationContainers,
+                parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0));
+        Parser.ParseItems(ref reader, ref list);
     }
 
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
@@ -618,27 +617,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static void ConsumeBlockStart(ref TokenReader reader)
         => reader.TryConsume(TokenKind.StartBlock);
-
-    /// <summary>Consumes declaration trivia and detects the end of the current Declaration Container body.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
-    /// <returns><see langword="true"/> when another declaration is available.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static bool TryBeginDeclaration(ref TokenReader reader, bool stopAtCaseGroupBoundary = false)
-    {
-        bool isEnd;
-        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true, stopAtCaseGroupBoundary))
-        {
-            Parser.SkipUnavailableDeclaration(ref reader);
-        }
-
-        if (isEnd)
-        {
-            return false;
-        }
-
-        return !reader.TryConsume(TokenKind.EndBlock);
-    }
 
     /// <summary>Attempts to parse a nested Declaration Container declaration.</summary>
     /// <param name="reader">The token reader.</param>
@@ -722,69 +700,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (token.Kind == TokenKind.Associate)
         {
-            // An associate declaration takes no attributes (SPEC 6.7).
-            Parser.ReportPendingAttributes(ref reader);
-            reader.Advance();
-            if (Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
-            {
-                var associated = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-                if (associated is not null)
-                {
-                    associated.IsAssociatedConstraint = true;
-                    Parser.ValidateAssociatedParameters(ref reader, associated.Left);
-                    if (reader.TryConsume(TokenKind.For))
-                    {
-                        associated.FormationType = Parser.ParseType(ref reader);
-                        associated.FormationType.Parent = associated;
-                        associated.Span = SourceSpan.FromBounds(associated.Span.Start, associated.FormationType.Span.End);
-                    }
-
-                    Parser.ParseAttachedOriginBlock(ref reader, associated);
-                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
-                    if (this is ContractKoto)
-                    {
-                        this.AddTypeConstraint(associated);
-                    }
-                    else
-                    {
-                        this.AddLast(associated);
-                    }
-                }
-            }
-            else
-            {
-                if (this is not ContractKoto)
-                {
-                    // Only a Contract declares an associated Type requirement; the declaration is skipped with its line.
-                    reader.Unexpected(SyntaxForm.AssociatedTypeDeclaration, token.Span);
-                    Parser.SkipDeclarationLine(ref reader);
-                    return true;
-                }
-
-                var name = reader.CurrentToken;
-                if (!name.Kind.IsIdentifierOrContextualKeyword())
-                {
-                    Parser.OmitDeclaration(ref reader, reader.Expect(SyntaxForm.Name));
-                    return true;
-                }
-
-                reader.Advance();
-                if (!IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
-                {
-                    Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError); // The invalid identifier is reported once.
-                }
-                else
-                {
-                    Koto head = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? Parser.ParseOriginApplication(ref reader, identifier) : identifier;
-                    Parser.ValidateAssociatedParameters(ref reader, head);
-                    var formation = reader.TryConsume(TokenKind.For) ? Parser.ParseType(ref reader) : null;
-                    var associated = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, (formation ?? head).Span.End), KotoKind.AssociatedType, "associate ", formation is null ? [head] : [head, formation], separator: " for ");
-                    Parser.ParseAttachedOriginBlock(ref reader, associated);
-                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
-                    this.AddLast(associated);
-                }
-            }
-
+            Parser.ParseAssociatedTypeItem(ref reader, this, token);
             return true;
         }
 
@@ -813,8 +729,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     return true;
                 }
 
-                if (propertyKoto.IsContractRequirement &&
-                    (propertyKoto.Modifier.Judged() != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
+                if (propertyKoto.IsContractRequirement && propertyKoto.Modifier.Judged() != ModifierKind.NoModifier)
                 {
                     propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
@@ -835,17 +750,18 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (this is StructKoto && token.Kind == TokenKind.Drop)
         {
+            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3): the prefix's attributes are reported and attach
+            // to nothing.
+            Parser.ReportPendingAttributes(ref reader);
             var context = reader.TakeContext();
             reader.Advance();
             var destructor = new FunctionKoto(ref reader, context, token.Span, "drop", null, null, new TupleTypeKoto(ref reader, token.Span, []))
             {
                 IsDestructor = true,
             };
-            reader.Document(destructor, token.Span, context.AttributeKoto);
+            reader.Document(destructor, token.Span);
             reader.Hover(destructor, token.Span);
-
-            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
-            if (context.ModifierKind.Judged() != ModifierKind.NoModifier || context.AttributeKoto is not null)
+            if (context.ModifierKind.Judged() != ModifierKind.NoModifier)
             {
                 destructor.Unexpected(SyntaxForm.Decoration);
             }
@@ -947,6 +863,20 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         current = next;
     }
 
+    private static DeclarationContainerKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    {
+        DeclarationContainerKoto container = kind switch
+        {
+            TokenKind.Struct => new StructKoto(codeContext, state, range),
+            TokenKind.Enum => new EnumKoto(codeContext, state, range),
+            TokenKind.Contract => new ContractKoto(codeContext, state, range),
+            _ => new GroupKoto(codeContext, state, range),
+        };
+
+        container.Name = name;
+        return container;
+    }
+
     // Whether a nested container other than the replaced one declares the replacement's name with another kind or the same arity.
     private bool DeclaresAgain(DeclarationContainerKoto replacement, Koto? original)
     {
@@ -997,87 +927,15 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         return container;
     }
 
-    /// <summary>Parses member declarations through the end of the current block.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="state">The member state of the enclosing body, shared by its directive targets and arms.</param>
-    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
-    /// <remarks>
-    /// Directive targets and arms are parsed by this same loop (SPEC 19.4): selected syntax goes into this container, and
-    /// excluded syntax into a detached container of the same kind, so it registers nothing here but keeps source order.
-    /// </remarks>
-    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state, bool stopAtCaseGroupBoundary = false)
-    {
-        while (TryBeginDeclaration(ref reader, stopAtCaseGroupBoundary))
-        {
-            if (reader.IsExcluded)
-            {
-                var owner = this.ExcludedOwner(ref reader, ref state);
-                var region = Parser.BeginExcludedRegion(ref reader);
-                owner.ParseMemberDirectiveOrItem(ref reader, ref state);
-                Parser.EndExcludedRegion(ref reader, region);
-            }
-            else if (reader.HasCompileTimeIfPrefix || Parser.IsCompileTimeSwitchStart(ref reader))
-            {
-                this.ParseMemberDirectiveOrItem(ref reader, ref state);
-            }
-            else
-            {
-                this.ParseMemberItem(ref reader, ref state);
-            }
-        }
-    }
-
-    private void ParseMemberDirectiveOrItem(ref TokenReader reader, ref MemberParseState state)
-    {
-        if (Parser.IsCompileTimeSwitchStart(ref reader))
-        {
-            var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
-            {
-                if (invalidItems)
-                {
-                    var owner = this.ExcludedOwner(ref reader, ref state);
-                    var start = Parser.BeginInvalidSwitchItems(ref reader);
-                    owner.ParseMemberItems(ref reader, ref state, stopAtCaseGroupBoundary: true);
-                    Parser.EndInvalidSwitchItems(ref reader, start);
-                }
-                else if (selected)
-                {
-                    reader.Advance();
-                    this.ParseMemberItems(ref reader, ref state);
-                }
-                else
-                {
-                    var owner = this.ExcludedOwner(ref reader, ref state);
-                    var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
-                    reader.Advance();
-                    owner.ParseMemberItems(ref reader, ref state);
-                    Parser.EndExcludedRegion(ref reader, region);
-                }
-            }
-
-            if (arms.Unselected(ref reader) is { } unselected)
-            {
-                this.AddLast(unselected);
-            }
-
-            return;
-        }
-
-        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            Parser.RejectDirectiveBlockAttributes(ref reader);
-            reader.Advance();
-            this.ParseMemberItems(ref reader, ref state);
-            return;
-        }
-
-        this.ParseMemberItem(ref reader, ref state);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
     {
+        // A Contract item takes no attributes (SPEC 6.7, F.6.2 ContractItem): the prefix's are reported and attach to nothing.
+        if (this is ContractKoto)
+        {
+            Parser.ReportPendingAttributes(ref reader);
+        }
+
         // SPEC 8.11.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
         // Constraints and relations below, it takes no attributes (SPEC 6.7).
         if (Parser.IsEffectStart(ref reader, specification: true))
@@ -1110,7 +968,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             // The checks of the Constraint item are located at its subject, read before the Constraint is parsed.
             var subject = reader.CurrentTokenRange;
-            if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
+            if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self)
             {
                 reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
@@ -1131,18 +989,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    // Retain a forbidden effect list on its conditional premise so Binding can locate and explain it.
-                    var lookahead = reader;
-                    lookahead.Advance();
-                    lookahead.SkipSeparators();
-                    if (conditions.Count > 0 && conditions[^1] is IsKoto last && Parser.IsEffectStart(ref lookahead, specification: true))
-                    {
-                        Parser.ParseCallableEffects(ref reader, last);
-                        this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, last.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
-                        return;
-                    }
-
-                    var block = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                    // A condition takes no effect list (SPEC F.6): the block is the conformance's, whatever item starts it.
+                    var block = this.ParseConditionalImplementationBlock(ref reader);
                     this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, block.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises, block], separator: " when "));
                     return;
                 }
@@ -1197,26 +1045,75 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
     }
 
-    /// <summary>Gets the owner of excluded member syntax: this container inside excluded syntax, otherwise a detached container of the same kind.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="state">The member state that keeps the detached container.</param>
-    /// <returns>The container that receives the excluded declarations.</returns>
-    /// <remarks>The detached container shares this container's generic parameters, so excluded members are parsed under the same
-    /// header as selected ones, such as a member's Constraint on the declaring Type's parameters (SPEC 7.5, 19.4).</remarks>
-    private DeclarationContainerKoto ExcludedOwner(ref TokenReader reader, ref MemberParseState state)
+    /// <summary>Parses the indented list of a conditional conformance (SPEC F.6.2) as the members of a detached container of this kind.</summary>
+    /// <param name="reader">The token reader at the list's StartBlock.</param>
+    /// <returns>The block of the list's items.</returns>
+    private CodeBlockKoto ParseConditionalImplementationBlock(ref TokenReader reader)
     {
-        if (reader.InExcludedSyntax)
+        var start = reader.CurrentTokenRange.Start;
+        var temporary = this.CreateDetached(reader.CodeContext, reader.CurrentTokenRange);
+        temporary.Parse(ref reader);
+        var items = new List<Koto>();
+        items.AddRange(temporary.TypeConstraints);
+        items.AddRange(temporary.Members);
+        items.AddRange(temporary.NestedDeclarationContainers);
+        return new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)), items)
         {
-            return this;
+            DeclarationContext = this.TokenKind,
+        };
+    }
+
+    /// <summary>The owner of a member or root list's excluded syntax (SPEC 19.4): one detached container of the list container's kind, which
+    /// shares its generic parameters (<see cref="CreateDetached"/>), so excluded syntax registers nothing in the container but keeps source
+    /// order. It is created at the first exclusion the list enters outside excluded syntax and used while inside it; a list that starts inside
+    /// excluded syntax keeps its container, which is already the excluded syntax's own.</summary>
+    /// <typeparam name="TContainer">The container's type.</typeparam>
+    /// <param name="container">The list's container.</param>
+    private protected struct ExcludedOwner<TContainer>(TContainer container)
+        where TContainer : DeclarationContainerKoto
+    {
+        private TContainer? detached;
+
+        /// <summary>Gets the list's container, which receives its selected syntax.</summary>
+        public readonly TContainer Container => container;
+
+        /// <summary>Prepares the owner before the list enters excluded syntax.</summary>
+        /// <param name="reader">The token reader, before the excluded syntax.</param>
+        public void Enter(ref TokenReader reader)
+        {
+            if (!reader.InExcludedSyntax)
+            {
+                this.detached ??= (TContainer)container.CreateDetached(reader.CodeContext, container.Span);
+            }
         }
 
-        if (state.Detached is null)
-        {
-            var detached = CreateStandalone(reader.CodeContext, this.TokenKind, default, this.Span, string.Empty);
-            detached.genericArguments = this.genericArguments;
-            state.Detached = detached;
-        }
+        /// <summary>Gets the container that receives the item at the reader.</summary>
+        /// <param name="reader">The token reader at the item.</param>
+        /// <returns>The detached container inside excluded syntax the list entered, otherwise the list's container.</returns>
+        public readonly TContainer Of(ref TokenReader reader)
+            => reader.InExcludedSyntax && this.detached is { } detached ? detached : container;
+    }
 
-        return state.Detached;
+    /// <summary>The members of one Declaration Container body (SPEC F.6.1, F.6.2); excluded syntax goes to its
+    /// <see cref="ExcludedOwner{TContainer}"/>.</summary>
+    /// <param name="container">The container.</param>
+    /// <param name="state">The member state of the body.</param>
+    private struct MemberItems(DeclarationContainerKoto container, MemberParseState state) : Parser.IItemList
+    {
+        private ExcludedOwner<DeclarationContainerKoto> owner = new(container);
+
+        private MemberParseState state = state;
+
+        public readonly bool RequiresItem => false;
+
+        public void EnterExcluded(ref TokenReader reader)
+            => this.owner.Enter(ref reader);
+
+        public void ParseItem(ref TokenReader reader)
+            => this.owner.Of(ref reader).ParseMemberItem(ref reader, ref this.state);
+
+        // A #switch keeps its marker only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the container.
+        public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
+            => this.owner.Container.AddLast(unselected);
     }
 }

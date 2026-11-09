@@ -111,7 +111,7 @@ public sealed partial class Binding
 
     private void PrepareAssociatedInference()
     {
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -128,7 +128,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             if (this.associatedInference.TryGetValue(path.Type, out var batch) && batch.Active)
             {
@@ -160,7 +160,7 @@ public sealed partial class Binding
             binding.State = 0;
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -179,7 +179,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             this.PublishInheritedInference(path);
         }
@@ -356,8 +356,9 @@ public sealed partial class Binding
         this.SpecificationPart(path, identity) is null;
 
     // SPEC 15.3.3, 15.4.4, 23.1.2: the explicit specification of an associated identity in the conformance's declaration or its
-    // conditional block that fixes its Type, or that did not bind. An identity so specified is never an inference hole, and a missing
-    // binding rests on the clause, or on its specified Type when that fails instead (SettleSpecificationLinks).
+    // conditional block that fixes its Type, or that did not bind. An identity so specified is never an inference hole, a missing
+    // binding rests on the clause, or on its specified Type when that fails instead (SettleSpecificationLinks), and a binding on an
+    // inline cycle is reported there (SPEC 6.2, DECISIONS BU-128).
     private IsKoto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
     {
         var root = path.RootPath;
@@ -383,12 +384,15 @@ public sealed partial class Binding
 
         return null;
 
-        // A clause that fixes the Type, or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`)
-        // fixes nothing and leaves the identity to inference.
+        // A clause that fixes the Type (SPEC 8.5.1: conjunction elimination yields its identity atom, AssociatedIdentityType; `is i32 and
+        // Copy` specifies i32), or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`) fixes nothing
+        // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
             => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
                 ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
-                (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved || clause.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not or ConstraintKind.Semantics or ConstraintKind.Callable })
+                (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
+                    clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||
+                    AssociatedIdentityType(clause.BoundConstraint) is not null)
                 ? clause : null;
     }
 
@@ -686,6 +690,11 @@ public sealed partial class Binding
 
             this.BindHeader(candidate);
             var match = this.MatchesRequirement(requirement, implementation, self, path.Scope, selection);
+            if (match is null && IncompleteSignature(implementation) is { } incomplete)
+            {
+                this.Consulted(incomplete); // SPEC 23.1.2: a pending match read the implementation's incomplete signature (IsDerived).
+            }
+
             pending |= match is null;
             if (match == true)
             {

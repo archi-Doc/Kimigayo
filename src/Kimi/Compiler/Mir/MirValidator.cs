@@ -32,12 +32,13 @@ internal enum MirViolation : byte
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
-    Const, // A constant id out of range.
+    Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no
     // FormatBuffer's buffer, or whose estimate is not that FormatBuffer's (DECISIONS R5-M131).
-    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic.
+    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic;
+    // over the program, a default template's call or a created Closure without its body (G191).
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
@@ -46,11 +47,14 @@ internal enum MirViolation : byte
     // Types a Tuple's token, its text a string).
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
-    // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), or
-    // a Copy, other than a case site's operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
+    // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), a
+    // constant record other than an input of a Fn call that keeps nothing of it (ConstantRecords), or a Copy, other than a case site's
+    // operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88); a Places attribute other than on a Fn
+    // Call each of whose operands is a Move of a whole Temp (PLAN G442).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
-    Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names (G191).
+    Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names, or, where a
+    // runtime edge reaches the access, that a staticEnsure does not precede on every runtime path from the entry (G191 rule (3)).
     Lent, // A Temp a Call takes as an input that reserves (MirCases.Reserves), written by a Ref or an Adapt and by another write (G136).
     SharedPath, // A projected Place written, destroyed in place or acquired exclusively (a Ref Uniq or TwoPhaseUniq, a PairAcquire in its
     // binder's exclusive case, an Adapt's exclusive borrow under a view) past a shared layer (MirTypes.IsSharedLayer) after its last raw
@@ -65,11 +69,12 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands
 /// (a Copy's Type Copy by Binding's proof, but a case site's, DECISIONS BU-88), rvalues and arities, the Types values flow between
-/// (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
-/// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
-/// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90), the statics its Places access (G191) and the
-/// shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each staticEnsure names
-/// (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every Semantics case view (<see cref="MirCases"/>), the blocks that
+/// read a Temp only diverging Calls write (G131), a Call's input temps (G136), where each region, the body or a default's copy, is
+/// entered (DECISIONS R5-M90), the statics its Places access, each ensured before it on every runtime path (G191), and the shared layers
+/// a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each
+/// staticEnsure names and the body each default template's call and each created Closure names (G191), before any analysis reads it.
+/// It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
 /// a FormatFinish's estimate its FormatBuffer's (DECISIONS R5-M131), a Value callee's against its Type's signature where
@@ -105,7 +110,8 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.caseSites.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.caseSites, this.writes, this.parts, types);
+        this.accesses.Clear();
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.accesses, this.caseSites, this.writes, this.parts, types);
         if (!checker.Tables())
         {
             body.HasFinding = findings.Count > count;
@@ -130,6 +136,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Diverged(body, findings);
             this.Reach(body, findings);
+            this.Unensured(body, findings);
             this.Finishes(body, findings);
         }
 
@@ -148,6 +155,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
+        List<(int Block, int Slot, SourceInfo Source)> accesses,
         List<(MirRvalue Site, SourceInfo Source)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
@@ -155,10 +163,11 @@ internal sealed partial class MirValidator(TyCtxt types)
     {
         private readonly TyCtxt.CopyFacts copies = types.Copies(body.Key.Decl); // The body definition's, resolved once per body (BU-88).
         private SourceInfo at;
+        private int atBlock; // The block of the location walked, which a static access records (MirValidator.Statics).
         private int opaqueValues;
-        private int named; // The roots of the Opaque site being walked that are still to come (MirValidator.Statics).
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
+        private bool calling; // Whether they are a Call's, whose constant records it checks itself (ConstantRecords).
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
         private bool byCase; // Whether they are a case site's, which its views acquire (Views), the Copy rule's one exemption (BU-88).
 

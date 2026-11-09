@@ -212,8 +212,8 @@ public class PairAnnotationBindingTest
 
     // DECISIONS BU-44 (SPEC 15.3.5, 15.2.3, 6.1.3): a slot's binders are pair-slot ordinals with no width limit, so a binder keeps its
     // cases at any ordinal, as in the narrow Holder above: after 64 Type parameters (`types`, which take none) and after 64 pair slots
-    // (`pairs`, each `is owner`), `static` binds its owner case and not its uniq one, a raw Field states a slot Phantom in its owner case and the
-    // default pipeline keeps no Loan of it; so through a nested declaration's inherited 65th binder, a nested instance's mapping of a
+    // (`pairs`, each `is owner`), `static` binds its owner case and not its uniq one, a raw Field states a slot Phantom in its owner case and
+    // check keeps no Loan of it; so through a nested declaration's inherited 65th binder, a nested instance's mapping of a
     // 65th binder to a narrow one, and an outer 65th binder that a narrow nested slot maps to.
     [Theory]
     [InlineData(WideHolder + "func g() -> Holder<{A}i32> during static => $abort(\"u\")", "types", "")]

@@ -6,36 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
-
-    // Complete stored Origin identity, including declared slots and intersections: the old analysis's walk (its three calls); Binding reads
-    // MentionsOrigin, a test of the Type's Origin summary (DECISIONS BU-63).
-    [Transitional("R6-check", Reason = "The old analysis's copy of MentionsOrigin goes with the old analysis (DECISIONS BU-63, PLAN G309).")]
-    internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (type.Origin is { } own && ContainsOrigin(own, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (ContainsOrigin(type.OriginArguments[i], origin))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (ContainsOrigin(type.Components[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
@@ -215,7 +187,7 @@ public sealed partial class Binding
             // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
             if (written)
             {
-                if (this.WrittenRawOrigin(annotation!, use, scope, context.Position) is not { } raw)
+                if (this.WrittenRawOrigin(annotation!, use, scope) is not { } raw)
                 {
                     return null;
                 }
@@ -473,6 +445,13 @@ public sealed partial class Binding
             if (node is TypeSemanticsKoto { BoundType.RawOrigin: { } raw } written)
             {
                 this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
+            }
+
+            // SPEC 15.3.2 (DECISIONS BU-100): storage holds only public Origins; a written Origin there that is a Constraint set's
+            // unrelated slot is a hidden Origin, judged once every declaration completed.
+            if (node is TypeSemanticsKoto { OriginExpression: { } expression, BoundType.Origin.Kind: OriginKind.ConstraintSet } && StorageType(node) is not null)
+            {
+                this.Fail(expression, BindingFailure.InvalidOrigin);
             }
 
             var invalid = false;
