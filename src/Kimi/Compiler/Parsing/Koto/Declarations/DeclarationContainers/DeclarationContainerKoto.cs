@@ -729,8 +729,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     return true;
                 }
 
-                if (propertyKoto.IsContractRequirement &&
-                    (propertyKoto.Modifier.Judged() != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
+                if (propertyKoto.IsContractRequirement && propertyKoto.Modifier.Judged() != ModifierKind.NoModifier)
                 {
                     propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
@@ -751,17 +750,18 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (this is StructKoto && token.Kind == TokenKind.Drop)
         {
+            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3): the prefix's attributes are reported and attach
+            // to nothing.
+            Parser.ReportPendingAttributes(ref reader);
             var context = reader.TakeContext();
             reader.Advance();
             var destructor = new FunctionKoto(ref reader, context, token.Span, "drop", null, null, new TupleTypeKoto(ref reader, token.Span, []))
             {
                 IsDestructor = true,
             };
-            reader.Document(destructor, token.Span, context.AttributeKoto);
+            reader.Document(destructor, token.Span);
             reader.Hover(destructor, token.Span);
-
-            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
-            if (context.ModifierKind.Judged() != ModifierKind.NoModifier || context.AttributeKoto is not null)
+            if (context.ModifierKind.Judged() != ModifierKind.NoModifier)
             {
                 destructor.Unexpected(SyntaxForm.Decoration);
             }
@@ -930,6 +930,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
     {
+        // A Contract item takes no attributes (SPEC 6.7, F.6.2 ContractItem): the prefix's are reported and attach to nothing.
+        if (this is ContractKoto)
+        {
+            Parser.ReportPendingAttributes(ref reader);
+        }
+
         // SPEC 8.11.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
         // Constraints and relations below, it takes no attributes (SPEC 6.7).
         if (Parser.IsEffectStart(ref reader, specification: true))
