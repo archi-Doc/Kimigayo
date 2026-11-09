@@ -22,10 +22,10 @@ public abstract class JumpKoto : ExpressionKoto
     /// <summary>Gets the source keyword for this expression.</summary>
     public string Keyword => this.Akind switch
     {
-        KotoKind.Return => Constants.ReturnKeyword,
-        KotoKind.Exit => Constants.ExitKeyword,
-        KotoKind.Continue => Constants.ContinueKeyword,
-        _ => Constants.YieldKeyword,
+        KotoKind.Return => TokenKind.Return.ToText(),
+        KotoKind.Exit => TokenKind.Exit.ToText(),
+        KotoKind.Continue => TokenKind.Continue.ToText(),
+        _ => TokenKind.Yield.ToText(),
     };
 
     /// <summary>Initializes a new instance of the <see cref="JumpKoto"/> class.</summary>

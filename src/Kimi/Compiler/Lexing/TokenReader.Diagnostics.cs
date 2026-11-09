@@ -145,7 +145,8 @@ public ref partial struct TokenReader
             // Recognized but no operator anywhere (SPEC 2.4, 13.8): the token, not the form expected at it, is the problem, and the
             // repair candidate replaces it with the operator Kimigayo defines (SPEC 23.1.3).
             var conjunction = found.Kind == TokenKind.AmpersandAmpersand;
-            return this.Unexpected(conjunction ? SyntaxForm.AmpersandAmpersand : SyntaxForm.BarBar, found.Span, this.ReplaceToken(found.Span, conjunction ? "and" : "or"));
+            var repair = this.ReplaceToken(found.Span, (conjunction ? TokenKind.And : TokenKind.Or).ToText());
+            return this.Unexpected(conjunction ? SyntaxForm.AmpersandAmpersand : SyntaxForm.BarBar, found.Span, repair);
         }
 
         if (IsCloser(form))

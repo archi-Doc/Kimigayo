@@ -74,7 +74,13 @@ public static partial class Parser
                 Koto head = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? ParseOriginApplication(ref reader, identifier) : identifier;
                 ValidateAssociatedParameters(ref reader, head);
                 var formation = reader.TryConsume(TokenKind.For) ? ParseType(ref reader, TypeContext.Type) : null;
-                var associated = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, (formation ?? head).Span.End), KotoKind.AssociatedType, "associate ", formation is null ? [head] : [head, formation], separator: " for ");
+                var associated = new SyntaxFormKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(name.Span.Start, (formation ?? head).Span.End),
+                    KotoKind.AssociatedType,
+                    TokenKind.Associate.ToText(),
+                    formation is null ? [head] : [head, formation],
+                    separator: TokenKind.For.ToText());
                 ParseAttachedOriginBlock(ref reader, associated);
                 reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
                 container.AddLast(associated);

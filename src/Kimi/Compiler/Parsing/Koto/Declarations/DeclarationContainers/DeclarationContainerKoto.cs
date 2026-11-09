@@ -352,7 +352,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(Constants.RootgroupKeyword);
+        builder.Append(TokenKind.RootGroup.ToText());
         builder.Append(' ');
         Parser.WriteQualifiedNameTo(this, ref builder);
     }
@@ -587,7 +587,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (member is CodeBlockKoto block)
         {
-            builder.Append("#if true");
+            builder.Append(Parser.IfTrueDirectiveText);
             block.WriteIndentedTo(ref builder);
         }
         else
@@ -968,7 +968,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             // The checks of the Constraint item are located at its subject, read before the Constraint is parsed.
             var subject = reader.CurrentTokenRange;
-            if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
+            if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self)
             {
                 reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);

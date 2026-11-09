@@ -265,7 +265,7 @@ public class KotoHierarchyTest
     {
         Assert.False(TokenKind.Associate.IsKeyword());
         Assert.True(TokenKind.Associate.IsIdentifierOrContextualKeyword());
-        Assert.Equal(Constants.AssociateKeyword, TokenKind.Associate.ToText());
+        Assert.Equal("associate", TokenKind.Associate.ToText());
     }
 
     private static DeclarationContainerKoto GetDeclarationContainer(DeclarationContainerKoto parent, string name)

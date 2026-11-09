@@ -25,9 +25,9 @@ $roots = [ordered]@{
     B = $(if ($Candidate) { [IO.Path]::GetFullPath($Candidate) } else { $repo })
 }
 $expected = [ordered]@{
-    Array = 'checksum 1917245123'; ArrayLiteral = 'checksum 996929325'; Dictionary = 'checksum 906592013'; ErasedCalls = 'checksum 1506170851'
+    Array = 'checksum 1917245123'; ArrayLiteral = 'checksum 996929325'; Buffers = 'checksum 4145164471'; Dictionary = 'checksum 906592013'; ErasedCalls = 'checksum 1506170851'
     ArrayMoves = 'checksum 2366022699'; ArrayViews = 'checksum 1365791996'
-    Interpolation = 'checksum 1676251827'; Iterators = 'checksum 2503774365'; SharedHandles = 'checksum 3194390882'
+    Interpolation = 'checksum 1676251827'; Iterators = 'checksum 2086978537'; SharedHandles = 'checksum 3194390882'
     Strings = 'checksum 3243016412'; Tuples = 'checksum 3620601396'; VirtualDispatch = 'checksum 3854058029'
 }
 $kernels = Get-ChildItem -LiteralPath (Join-Path $repo 'src/Benchmark/Kimi/Corpus') -Filter '*.kimi' -File | Sort-Object Name

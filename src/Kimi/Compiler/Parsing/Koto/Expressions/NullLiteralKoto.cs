@@ -23,6 +23,6 @@ public sealed class NullLiteralKoto : ExpressionKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append("null");
+        builder.Append(TokenKind.Null.ToText());
     }
 }
