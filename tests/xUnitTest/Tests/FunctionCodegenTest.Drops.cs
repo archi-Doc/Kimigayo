@@ -338,12 +338,12 @@ public sealed partial class FunctionCodegenTest
 
     // Package C 3.2 I8 (PLAN G157 (17), (44)): the collector targets a destroyed value's glue exactly when its instance Type may need a drop
     // (MirTypes.MayNeedDrop), so a destruction without that target is a broken contract, InternalInvariant_Kd at its site: a Keep Drop of a
-    // string temporary, an in-place destruction through a raw Place (`_ = (*p)@move`, SPEC 5.2.3) and a property
-    // witness's Set of a Resource Field. The subject item (named by its definition
+    // string temporary, an in-place destruction through a raw Place (`_ = (*p)@move`, SPEC 5.2.3, whose Drop is of the Place `(*p)`
+    // itself, G670) and a property witness's Set of a Resource Field. The subject item (named by its definition
     // or Field) loses its DropGlue targets in the checked set to make it so.
     [Theory]
     [InlineData("Console.writeLine(\"a\")\n", OutputKind.Application, null, "\"a\"")]
-    [InlineData(RawDestruction, OutputKind.Library, "discard", "(*p)@move")]
+    [InlineData(RawDestruction, OutputKind.Library, "discard", "(*p)")]
     [InlineData(Witnesses, OutputKind.Library, "item", "x.item = value@move")]
     public void ADestructionWithoutItsGlueTargetIsABrokenContract(string source, OutputKind output, string? subject, string site)
     {

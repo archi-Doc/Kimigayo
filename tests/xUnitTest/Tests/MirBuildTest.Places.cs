@@ -88,6 +88,34 @@ public sealed partial class MirBuildTest
         bool Indexes(MirPlace place) => place.Root == values && body.Projections[place.Projection].Kind == MirProjectionKind.Index;
     }
 
+    // SPEC 14.2.4, 5.2.3, 5.2, 4.7.4 (PLAN G670): a discarded Take of a raw Place, or of a Field or element of one, transfers nothing: the
+    // Place's raw address-of designates it (an element's position checked where it is formed) and its Drop, built where its Type may need
+    // drop, destroys the value in that Place (fail-before: a Move into a temp and the temp's Drop, so `drop`'s self was the temp). A
+    // local's Take still moves into a temp. A default's copy keeps the designation where it removes the Drop of a Type without drop, here
+    // in the instance T = i32 (the review's X16: its bounds check). Each row: the body's Drop Places | its raw address-of Places.
+    [Fact]
+    public void ADiscardedRawTakeDestroysThePlaceItself()
+    {
+        const string Source = "struct Res\n    drop => ()\nfunc whole(p: raw/Res)\n    unsafe => _ = (*p)@move\n" +
+            "func part(p: raw/(i64, Res))\n    unsafe => _ = ((*p).1)@move\nfunc element(p: raw/[2 of i32], i: isize)\n    unsafe => _ = (*p)[i]@move\n" +
+            "func local(r: Res)\n    _ = r@move\nfunc touch<T>(p: raw/[2 of T], i: isize, u: () = do => unsafe => _ = (*p)[i]@move) => ()\n" +
+            "func call(p: raw/[2 of i32]) => touch(p, 5)\n";
+        Assert.Equal("_1* | _1*", Rows(Body(Source, "whole")));
+        Assert.Equal("_1*.1 | _1*.1", Rows(Body(Source, "part")));
+        Assert.Matches(@"^ \| _1\*\?Index\d+$", Rows(Body(Source, "element")));
+        Assert.Matches(@"^_\d+(, _\d+)* \| $", Rows(Body(Source, "local")));
+        Assert.Matches(@"^ \| _\d+\*\*\?Index\d+$", Rows(Body(Source, "call"))); // p through its prepared slot (plan 5.6.2).
+
+        static string Rows(MirBody body)
+        {
+            var drops = body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Drop).Select(x => Steps(body, x.Terminator.Place));
+            var addresses = body.Statements.ToArray()
+                .Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Rvalue.Op == (byte)MirRefKind.Raw)
+                .Select(x => Steps(body, x.Rvalue.Place));
+            return $"{string.Join(", ", drops)} | {string.Join(", ", addresses)}";
+        }
+    }
+
     // SPEC 15.1.3: a fixed-array element at a literal position is projected at the position its index keeps on its own plan row, so the
     // literal's own row, here an Error, is never read.
     [Fact]

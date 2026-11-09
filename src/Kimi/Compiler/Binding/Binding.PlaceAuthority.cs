@@ -14,7 +14,9 @@ namespace Kimi.Compiler;
 //   whether a Place offers Write (Writable); whether a receiver can be exclusively acquired for indexUniq or an exclusive view
 //   (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
-//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow).
+//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow);
+//   whether an explicit discard's allowed Take of a raw Place destroys it in place (DestroysInPlace, SPEC 14.2.4; the HIR publisher
+//   writes it).
 //   The in-place reads it decides the paths of are Binding.InPlaceReads'.
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
@@ -456,6 +458,14 @@ public sealed partial class Binding
 
         return !IsBarePlace(place) || (PathAuthority(place, [], out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
     }
+
+    // SPEC 14.2.4, 5.2.3: whether an explicit discard destroys its operand's Place in place: an operand `P@move`, parenthesized or not,
+    // a Transfer (its plan row's conversion, which CompleteTransfer sets only after OffersTake allowed the Take) through OffersTake's raw
+    // branch (ElementAccess.IsRawPlace), which transfers nothing. The HIR publisher writes it as the discard's plan row Flag
+    // (HirTables.DestroysInPlace).
+    private static bool DestroysInPlace(DiscardKoto discard)
+        => KotoHelper.UnwrapParentheses(discard.Operand) is ConversionKoto transfer &&
+            HirTables.PlanOf(transfer).Conversion == ConversionBinding.Transfer && ElementAccess.IsRawPlace(transfer.Left);
 
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
     // acquisition is restricted by the lending rule; a temporary transfers its ownership freely.
