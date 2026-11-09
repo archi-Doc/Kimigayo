@@ -10531,6 +10531,21 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-139 A fixed array's projection in a declaration position: the formation maps through a declared subject only, and the
+  witness's Signature is demanded (PLAN G578)** (2026-11-09; G578-1; Major; design review 1 ACCEPT, implementation review ACCEPT; the
+  Front's ruling 1) SPEC 8.5.2, 8.5.4, 22.1.
+  - Rule A: `ValidateAssociatedApplications` maps an applied projection's formation Type through the subject declaration's slots
+    (`StoredType(formation, subject)`) only when the subject has a declaration. A subject without one (a fixed array, Tuple, primitive
+    or Callable Core) has no slots, so the step is the identity there, and `ContractType` still substitutes `Self`. On dev the step
+    dereferenced a null declaration (CheckFaulted_Kd).
+  - Rule B: `FixedArrayIteratorType` reads the entry witness's result Type through the Signature query (`BindHeader`, the kind's one
+    entry; BU-105), not as a published field: source headers precede the library's in the header loop, so on dev a source header's
+    fixed-array projection named no Type (a false TypeMismatch_Kd at a `return`, InternalInvariant_Kd at a parameter). The witness
+    headers name no fixed-array projection, so the demand never meets a Running or abandoned header.
+  - Rejected: `StoredType` answering null for an owner without a declaration (a silent null for every other caller's broken
+    precondition); the projection's declaring reference interned in the use's terms (the projection identity is G170's and G302's);
+    library headers bound first (an order dependence R7-D2 g deletes); a pending outcome that abandons the source header. The Contract
+    base form (`w1`) stays PLAN G578, for R7-D2 d's Contract-shape kind.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
