@@ -93,6 +93,24 @@ public sealed partial class MirBorrowsTest
         ["aggregatePart"] = "func st(p: (uniq/((raw/u8, i32)) during a, (raw/u8, i32)))\n    p.0@follow = p.1",
         ["dropReceiver"] = "struct DR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
             "    drop\n        self.r@follow = self@raw@raw/u8",
+
+        // The rule at a call (PLAN G581-2): what the callee's contract lets it store through a one-layer argument landing in t's region;
+        // valid: another input's referent, a transfer's self-link, a redirect before the call, joined layers; named silences: the
+        // argument's own borrow before the call (its Reached part), a branch arm (M is empty at a chain head).
+        ["callPast"] = "func fillS(slot: raw/(raw/u8), v: raw/u8)\n    unsafe => *slot = v\nfunc st(t: uniq/(raw/(raw/u8)))\n    fillS(t@follow, t@follow@raw@raw/u8)",
+        ["callPastRecord"] = "func fillS(slot: raw/(raw/u8), v: raw/u8)\n    unsafe => *slot = v\nfunc st(t: uniq/(raw/u8))\n    fillS(t@follow@raw, t@follow@raw@raw/u8)",
+        ["callOwnStep"] = "struct PC\n    public var p: raw/u8\n    public init() => self.p = null\nfunc fillS(slot: raw/(raw/u8), v: raw/u8)\n    unsafe => *slot = v\nfunc st(t: uniq/(obj/PC))\n" +
+            "    fillS(t@follow.p@raw, t@follow@raw@raw/u8)",
+        ["callOtherInput"] = "func fillS(slot: raw/(raw/u8), v: raw/u8)\n    unsafe => *slot = v\nfunc st(t: uniq/(raw/u8), u: uniq/(raw/u8))\n    fillS(u@follow@raw, t@follow@raw@raw/u8)",
+        ["callExchangeSelf"] = "func st(t: uniq/(raw/u8))\n    let old = Kimi.Intrinsics.exchange(t@follow@uniq, with: t@follow@raw@raw/u8)",
+        ["callDeepRedirect"] = "func fill3(slot: raw/(uniq/(uniq/(raw/u8) during b) during b), v: raw/u8)\n    unsafe => (*slot)@follow@follow = v\n" +
+            "func st(t: uniq/(uniq/(uniq/(raw/u8) during a) during a), u: uniq/(raw/u8) during a)\n    t@follow@follow = u@follow@uniq\n" +
+            "    fill3(t@follow@raw, t@follow@raw@raw/u8)",
+        ["callJoinedLayers"] = "func g(p: (raw/(raw/u8), uniq/i32 during a), v: raw/u8)\n    unsafe => *p.0 = v\n" +
+            "func st(t: (uniq/(raw/u8) during a, uniq/i32 during a), u: uniq/(raw/u8))\n    g((u@follow@raw, t.1@follow@uniq), t.0@follow@raw@raw/u8)",
+        ["callArgumentBorrow"] = "func setPast(cell: uniq/(raw/(raw/u8)), v: raw/u8)\n    unsafe => *cell@follow = v\n" +
+            "func st(t: uniq/(raw/(raw/u8)))\n    setPast(t@follow@uniq, t@follow@raw@raw/u8)",
+        ["branchArm"] = "func st(t: uniq/(uniq/(raw/u8) during a), c: bool)\n    let v = t@follow@raw@raw/u8\n    if c\n        t@follow@follow = v",
     };
 
     [Theory]
@@ -112,6 +130,17 @@ public sealed partial class MirBorrowsTest
     [InlineData("scalarCall", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("twoLayers", "st: p.0@follow = p.1@follow@raw@raw/u8")]
     [InlineData("rawPart", "st: p.0@follow = p.1")]
+    [InlineData("redirectAfter", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("objPayload", "st: t@follow.p = t@follow@raw@raw/u8")]
+    [InlineData("callPast", "st: fillS(t@follow, t@follow@raw@raw/u8)")]
+    [InlineData("callPastRecord", "st: fillS(t@follow@raw, t@follow@raw@raw/u8)")]
+    [InlineData("callOwnStep", "st: fillS(t@follow.p@raw, t@follow@raw@raw/u8)")]
+    [InlineData("callOtherInput", "")]
+    [InlineData("callExchangeSelf", "")]
+    [InlineData("callDeepRedirect", "")]
+    [InlineData("callJoinedLayers", "")]
+    [InlineData("callArgumentBorrow", "")]
+    [InlineData("branchArm", "")]
     [InlineData("other", "")]
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
@@ -128,10 +157,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("loopCarried", "")]
     [InlineData("exposedOwn", "")]
     [InlineData("callResult", "")]
-    [InlineData("redirectAfter", "")]
     [InlineData("readBack", "")]
     [InlineData("joinedRecord", "")]
-    [InlineData("objPayload", "")]
     [InlineData("unsafeScope", "")]
     [InlineData("unsafeFn", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("statedPast", "")]
