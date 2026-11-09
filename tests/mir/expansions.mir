@@ -325,6 +325,7 @@ fn middle @108
   _8: isize temp @118
   _9: Never temp @118
   _10: raw/i32 temp @118
+  _11: raw/i32 temp @118
   bb0:
       StorageLive(_2) @118
     * _2 = &(*_1): ref/[5 of i32] @118
@@ -351,9 +352,11 @@ fn middle @108
   bb4:
       _8 = Sub(copy _6, copy _4) proven @118
       StorageLive(_10) @118
+      StorageLive(_11) @118
       switch copy _8 [0: bb6, otherwise: bb5] @118
   bb5:
-      _10 = &raw (*_1)[_4]: raw/i32 @118
+      _11 = storage((*_1)) @118
+      _10 = Add(copy _11, copy _4) proven @118
       goto bb7 @118
   bb6:
       _10 = const 0_raw/i32 @118
@@ -361,6 +364,7 @@ fn middle @108
   bb7:
       _0 = intrinsic RawSlice<i32>(move _10, copy _8, move _2) -> bb8 @118
   bb8:
+      StorageDead(_11) @118
       StorageDead(_10) @118
       StorageDead(_8) @118
       StorageDead(_7) @118
@@ -408,7 +412,7 @@ fn head @124
       StorageLive(_9) @134
       switch copy _7 [0: bb6, otherwise: bb5] @134
   bb5:
-      _9 = &raw (*_1)[_4]: raw/i32 @134
+      _9 = storage((*_1)) @134
       goto bb7 @134
   bb6:
       _9 = const 0_raw/i32 @134
@@ -433,6 +437,7 @@ fn reslice @138
   _5: isize temp @150
   _6: Never temp @150
   _7: raw/i32 temp @150
+  _8: raw/i32 temp @150
   bb0:
       StorageLive(_2) @150
     * _2 = len(_1) @150
@@ -453,9 +458,11 @@ fn reslice @138
   bb4:
       _5 = Sub(copy _2, copy _3) proven @150
       StorageLive(_7) @150
+      StorageLive(_8) @150
       switch copy _5 [0: bb6, otherwise: bb5] @150
   bb5:
-      _7 = &raw _1[_3]: raw/i32 @150
+      _8 = storage(_1) @150
+      _7 = Add(copy _8, copy _3) proven @150
       goto bb7 @150
   bb6:
       _7 = const 0_raw/i32 @150
@@ -463,6 +470,7 @@ fn reslice @138
   bb7:
       _0 = intrinsic RawSlice<i32>(move _7, copy _5, copy _1) -> bb8 @150
   bb8:
+      StorageDead(_8) @150
       StorageDead(_7) @150
       StorageDead(_5) @150
       StorageDead(_4) @150

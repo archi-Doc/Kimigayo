@@ -46,8 +46,9 @@ internal static partial class MirDump
                 text.Append((MirAggregateKind)rvalue.Op).Append(rvalue.Type is { } adt && AdtDef.IsEnum(adt) ? $" case {rvalue.Arg}" : string.Empty);
                 Operands(text, body, rvalue.Start, rvalue.Count).Append(": ").Append(Type(rvalue.Type));
                 break;
-            case MirRvalueKind.Discriminant or MirRvalueKind.Len:
-                Place(text.Append(rvalue.Kind == MirRvalueKind.Len ? "len(" : "discriminant("), body, rvalue.Place).Append(')');
+            case MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
+                var name = rvalue.Kind switch { MirRvalueKind.Len => "len(", MirRvalueKind.Storage => "storage(", _ => "discriminant(" };
+                Place(text.Append(name), body, rvalue.Place).Append(')');
                 break;
             case MirRvalueKind.Adapt:
                 Operands(text.Append("adapt"), body, rvalue.Start, rvalue.Count);

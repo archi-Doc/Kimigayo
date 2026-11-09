@@ -63,7 +63,7 @@ internal sealed partial class MirBorrows
             }
 
             this.Moves(rvalue.Start, rvalue.Count);
-            var issue = rvalue.Kind == MirRvalueKind.Ref || this.Reborrowing(statement) != MirRefKind.Raw;
+            var issue = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage || this.Reborrowing(statement) != MirRefKind.Raw;
             this.Store(state, statement.Place, value, own, issue);
         }
     }
