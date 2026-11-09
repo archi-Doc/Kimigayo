@@ -195,7 +195,7 @@ public static partial class Parser
             var semantics = reader.GetSpan(token);
             string? semanticsParameter = default;
             DiagnosticKey? cause = null;
-            if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
+            if (!SemanticsMaskHelper.TryParse(semantics, out SemanticsKind semanticsKind))
             {
                 if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                 {

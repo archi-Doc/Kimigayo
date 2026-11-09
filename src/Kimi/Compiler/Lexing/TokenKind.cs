@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Lexing;
 /// The ranges follow the keyword classes of SPEC F.3: every kind below <see cref="Alias"/> is a reserved word, which is never a
 /// Name; the kinds from <see cref="Alias"/> through <see cref="Identifier"/> can be Names (<see cref="TokenHelper.IsIdentifierOrContextualKeyword"/>).<br/>
 /// When adding a new TokenKind, remember to do the following:<br/>
-/// Add the spelling to TokenHelper (the text table and, for keywords, GetKeywordOrIdentifierKind).<br/>
+/// Add the spelling to TokenHelper's text table; GetKeywordOrIdentifierKind classifies a keyword by it.<br/>
 /// Add the necessary handling to Tokenizer.<br/>
 /// Add it to TokenHelper.Separators if necessary.
 /// </summary>

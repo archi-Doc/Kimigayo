@@ -41,11 +41,11 @@ public class PropertyParseTest
     [Fact]
     public void RecognizesAccessorWordsAsContextualKeywords()
     {
-        AssertContextualKeyword(TokenKind.Get, Constants.GetKeyword);
-        AssertContextualKeyword(TokenKind.Set, Constants.SetKeyword);
-        AssertContextualKeyword(TokenKind.Has, Constants.HasKeyword);
-        AssertContextualKeyword(TokenKind.Computed, Constants.ComputedKeyword);
-        AssertContextualKeyword(TokenKind.Property, Constants.PropertyKeyword);
+        AssertContextualKeyword(TokenKind.Get, "get");
+        AssertContextualKeyword(TokenKind.Set, "set");
+        AssertContextualKeyword(TokenKind.Has, "has");
+        AssertContextualKeyword(TokenKind.Computed, "computed");
+        AssertContextualKeyword(TokenKind.Property, "property");
 
         static void AssertContextualKeyword(TokenKind kind, string text)
         {
