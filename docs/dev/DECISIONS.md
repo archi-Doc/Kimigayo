@@ -837,7 +837,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (SPEC 14.10.3 ¶4); gen/kill block summaries reused across views (a second arena; reverse postorder converges acyclic code in
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
-- **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69) Move paths and
+- **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
+  compiler temporary is never a Place of the program" by R4-M188) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
@@ -5632,7 +5633,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       the examples). Not caught, a pre-existing acceptance in unreachable code only, as on dev: a temp consumed without an Assign,
       such as a call argument (`g(if c => (a, (return 1)) else => (a, a))` after `return`), a returned value or a comparison operand,
       keeps its uninitialized part on the temp or the return place, which A1 does not report (STATUS). Removal, R4's next step: A1
-      reports a temp's or the return place's uninitialized part where it is consumed.
+      reports a temp's or the return place's uninitialized part where it is consumed. Amended by R4-M188 (G442 U2): A1 reports it
+      where a call, a comparison or a read of the part consumes it; the whole returned value stays accepted.
   - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
@@ -5846,6 +5848,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
     storage levels deep is accepted where the first lookup's instance hit the storage-nesting bound (`Unsupported_Kd`, an
     implementation limit, IMPL 21.3.2), and a two-entry literal keeps the second key's record. No Language record moves.
   - Rejected: keeping the first lookup and exempting its borrow in A1 (a consumer deciding by syntax what the builder should not emit).
+- **R4-M188 A1 reports a temp's unplaced part where it is consumed; a Dictionary literal's insertion is a `Places` Call (PLAN G442 U2)**
+  (2026-11-09; Major, an acceptance mover; design review 2 and implementation review ACCEPT, the Middle's reviewer; supersedes R4-M21's
+  clause "a compiler temporary is never a Place of the program"; amends R4-M175's "Not caught" sentence) SPEC 14.10.3, 15.1.2, 15.1.3,
+  3.4, 3.5.3, 3.8, 12.4.3, 16.2.1 (the inserted entries as an interrupted construction's components).
+  - Owner approval: of the vocabulary, O-97 (a), verbatim 「(a) Places を承認」 (K's relay) and 「(a) 承認」 (the Middle's dialog); of the three
+    newly invalid tests, O-99 (a), verbatim 「どちらも (a)」.
+  - Rule (A1, `MirInit`): a use of a temp is checked as a program Place's, the temp's own bit excluded: a temp that holds nothing holds
+    the Never value, which a consumption takes as it is (R5-M159's diverging keys and default slots); what a construction left unplaced
+    lies below it (R4-M175's Never parts and carries), and a part of a temp is a Place in its Temporary Place (SPEC 3.4), always checked.
+    A whole temp that a placing location's operand moves is a transfer, not a use: an Assign's Use or aggregate (its carries give the
+    state to the component, checked where that is used) and a `Places` Call.
+  - Vocabulary (`MirTerminator.Places`, beside `CheckTarget`): the Call is a construction's insertion, not a call of the program; each
+    operand is a Move of a whole Temp the call transfers into the construction. Set only by the MIR builder on a Dictionary literal
+    entry's `DictionaryStorage.placeEntry` Call (R8-M11); program calls (`tryInsert`, `insertOrReplace`) never carry it. Validator
+    (`MirValidator.Calls` `Placed`, `.Blocks`): a Fn callee and whole-Temp Moves, and no `Places` on another terminator (Operation).
+    Readers: A1 and MirDump; A2, A5, the instance collector and code generation do not read it.
+  - Moves (Q13): invalid programs newly rejected where the incomplete temp is consumed (G442's positions 1-3, program insertions, a later
+    literal key, a read of the part); also a part read of a temp absent on one assumed path (`h((if c => (a, a) else => fail()).0)` after
+    a return), rejected as its Var twin is (SPEC 14.10.3's `let y: i32 = fail()`); a whole consumption stays accepted. Programs rejected
+    on both sides gain a record where the part is read or bound before the later use's: `let t = X.1; return t` and `match X: (_, let y)
+    => h(y)`, each +1 UninitializedPlace_Kd.
+  - Tests moved by O-99 (a): `AggregateDefaultTest` 'Abandoned' became a SPEC-valid exit `(if flag() => exit to done else => "second")`;
+    `ApplicabilityChainRegressionTest` n18 and n23 expect the new record; `AControlFlowArgumentRanksAsItsKindBesideItsUnplacedPart` keeps
+    the independent record (Q13).
+  - Why R4-M21's reason no longer holds: its false problems in check-only code are the absent case only (the Never value), which the
+    own-bit exclusion keeps accepted; the incomplete case is an error by 15.1.2-15.1.3, which the skip hid (G442's positions 1-3).
+  - Kept: the whole returned value after a return stays accepted (14.10.3, 16.2.2 and 3.5's table use nothing on the assumed path: no
+    delivery, and securing a bare temporary transfers it with no extra Copy or Move); a returned part is reported. A Dictionary literal's
+    storage has no component path, so a Dictionary received whole while an entry is incomplete is accepted, as for the Array literal
+    (STATUS's Unreachable code row).
+  - Rejected: an allowlist of callees in A1; an Assign through placeEntry's raw slot (A5 moves; `proto/m-g442a`@97ae29924); a
+    `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
+    `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
+    not).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

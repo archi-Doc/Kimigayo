@@ -509,7 +509,7 @@ fn table @163
       StorageLive(_4) @170
       _4 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @170
       StorageLive(_5) @170
-      _5 = placeEntry<i32, bool>(move _4, move _2, move _3) -> bb1 @170
+      _5 = placeEntry<i32, bool>(move _4, move _2, move _3) -> bb1 places @170
   bb1:
       StorageLive(_6) @172
       StorageLive(_7) @173
@@ -531,7 +531,7 @@ fn table @163
       StorageLive(_13) @172
       _13 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @172
       StorageLive(_14) @172
-      _14 = placeEntry<i32, bool>(move _13, move _6, move _7) -> bb5 @172
+      _14 = placeEntry<i32, bool>(move _13, move _6, move _7) -> bb5 places @172
   bb5:
       _0 = move _1 @169
       StorageDead(_14) @172
