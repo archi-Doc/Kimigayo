@@ -78,13 +78,13 @@ public sealed partial class Binding
         switch (step)
         {
             case PathStep.Follow when next.BoundType is { Kind: BoundTypeKind.Semantics } followed && IsBorrow(followed.Semantics):
-                return this.Reached(followed);
+                return this.Dereferenced(followed);
             case PathStep.PairFollow or PathStep.RawFollow when next.BoundType is { } layer:
                 return this.Reached(layer);
             case PathStep.UserIndex when ElementAccess.IndexerCall(source, exclusive: false)?.BoundType is { } element:
                 return this.Reached(element);
-            case PathStep.SliceElement:
-                return new(true, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
+            case PathStep.SliceElement when (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0]) is { } slice:
+                return this.Dereferenced(slice);
             case PathStep.Receiver when source.BoundSymbol is { } receiver:
                 return new(false, this.ReceiverOrigin(receiver));
             case PathStep.Member or PathStep.BorrowedElement or PathStep.InlinePart when this.InnermostLayer(next.BoundType) is { } layer:
@@ -108,6 +108,15 @@ public sealed partial class Binding
 
         return innermost;
     }
+
+    // SPEC 5.7 Reading a Field, Typed paths (C-189): the dereference a step past a value of `prefix` makes, the one rule PathOrigin's steps
+    // and the Place keys' walk (Binding.Select, PastThrough) read: a raw, borrow or pair layer's (Reached), a Slice's or UniqSlice's (its
+    // Origin); null where the path goes on past the value (an owning handle's payload, a collection's element).
+    private RawPath? Dereferenced(BoundType prefix)
+        => prefix.Kind == BoundTypeKind.Slice ? new(true, prefix.Origin)
+            : prefix is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, OriginArguments: [var slice] } ? new(true, slice)
+            : TryPairLayer(prefix, out _, out _) ||
+                (prefix.Kind == BoundTypeKind.Semantics && (prefix.Semantics == SemanticsKind.Raw || IsBorrow(prefix.Semantics))) ? this.Reached(prefix) : null;
 
     // The layer a path dereferences: a raw pointer's Origin, a borrow's outer Origin, or a pair layer's slot; Dereferences is null for a
     // pair layer admitting a non-borrow case or a layer that is no borrow (U2).

@@ -18,6 +18,9 @@ internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 // than its receiver that its element storage retains at a raw layer without an Origin (the transfer rule, Binding.Retention.Transfers.cs).
 internal readonly record struct AddedRow(KimiDeclarationId Id, byte Mask);
 
+// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i).
+internal readonly record struct NoStoreRow(KimiDeclarationId Id, byte Mask);
+
 // The rows a library operation publishes beyond its signature, by its catalog ID (the recognition entries,
 // KimiLibraryCatalog.Definitions.cs, name the operations and carry their PublishedRow).
 internal static partial class KimiLibraryCatalog
@@ -32,6 +35,15 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayAppend, 0b10), new(KimiDeclarationId.ArrayInsert, 0b100), new(KimiDeclarationId.ArrayInsertPosition, 0b100),
         new(KimiDeclarationId.ArrayAppendAll, 0b10), new(KimiDeclarationId.ArrayAppendCopies, 0b10), new(KimiDeclarationId.DictionaryTryInsert, 0b110),
         new(KimiDeclarationId.DictionaryInsertOrReplace, 0b110),
+    ];
+
+    // The operation contracts' inputs they store no value through (NoStoreRow): `slice` its storage, `initialize` its value, `release` its
+    // storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated); KimiLibraryShapeTest pins
+    // each row to a bodiless contract's named parameters.
+    private static readonly NoStoreRow[] NoStoreRows =
+    [
+        new(KimiDeclarationId.RawSlice, 0b1), new(KimiDeclarationId.RawInitialize, 0b10), new(KimiDeclarationId.RawRelease, 0b1),
+        new(KimiDeclarationId.StorageTransferBytes, 0b10),
     ];
 
     // SPEC 4.9.6, 12.4.3: the user-code effects an operation publishes, a bodiless constructor its linked implementation's; null for none.
@@ -59,6 +71,20 @@ internal static partial class KimiLibraryCatalog
     internal static bool Added(BindingSymbol? symbol, int input)
     {
         foreach (var row in AddedRows)
+        {
+            if (symbol?.LibraryDeclaration == row.Id)
+            {
+                return (row.Mask & (1 << input)) != 0;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 5.2 Placement, 5.6: whether an operation contract stores no value through parameter slot `input` (NoStoreRows); false otherwise.
+    internal static bool NoStore(BindingSymbol? symbol, int input)
+    {
+        foreach (var row in NoStoreRows)
         {
             if (symbol?.LibraryDeclaration == row.Id)
             {
