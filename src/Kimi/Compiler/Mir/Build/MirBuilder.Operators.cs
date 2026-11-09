@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -249,32 +248,14 @@ internal sealed partial class MirBuilder
             MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
-            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < this.Width(type, out _),
+            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < ScalarTypes.Width(type),
             _ => true,
         };
     }
 
     // IMPL 21.3.3: whether an integer Type's range lies within another's (T and Wrapping<T>, u8 in u32, i8 in i64), so converting between
     // them checks nothing; false where an instance decides a width.
-    private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
-        this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
-
-    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the profile's width (SPEC 22); 0 for
-    // another Type, such as a Type parameter, whose instance decides it.
-    private int Width(BoundType type, out bool signed)
-    {
-        var integer = type.Underlying;
-        signed = !integer.IsUnsignedInteger;
-        if (integer is not { IsInteger: true, Kind: BoundTypeKind.Primitive })
-        {
-            return 0;
-        }
-
-        if (integer.Name is "isize" or "usize")
-        {
-            return ScalarTypes.SizeWidth;
-        }
-
-        return int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;
-    }
+    private bool Within(BoundType source, BoundType target) => ScalarTypes.Width(source) is var from and > 0 &&
+        ScalarTypes.Width(target) is var to and > 0 && ScalarTypes.Signed(source) is var signed && ScalarTypes.Signed(target) is var wide &&
+        (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
 }
