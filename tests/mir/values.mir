@@ -334,7 +334,7 @@ fn unfinished @199
       StorageLive(_6) @210 s1
       _6 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @210 s1
       StorageLive(_7) @210 s1
-      _7 = placeEntry<i32, bool>(move _6, move _4, move _5) -> bb1 @210 s1
+      _7 = placeEntry<i32, bool>(move _6, move _4, move _5) -> bb1 places @210 s1
   bb1:
       StorageLive(_8) @212 s1
       StorageLive(_9) @213 s1
@@ -385,7 +385,7 @@ fn unfinished @199
       StorageLive(_16) @212 s1
       _16 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @212 s1
       StorageLive(_17) @212 s1
-      _17 = placeEntry<i32, bool>(move _16, move _8, move _9) -> bb13 @212 s1
+      _17 = placeEntry<i32, bool>(move _16, move _8, move _9) -> bb13 places @212 s1
   bb13:
       _2 = move _3 @209 s1
       StorageDead(_17) @212 s1

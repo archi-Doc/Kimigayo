@@ -140,12 +140,14 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "n15", Sources + SourcesBody + "    let t = identity(if c => [2 of (u@ref, (return 1))] else => [2 of (y, 2)])\n    return r\n", "")]
     [InlineData("guard", "n16", Sources + SourcesBody + "    let j = if c => [2 of (u@ref, (return 1))] else => [2 of (y, 2)]\n    return r\n", "")]
     [InlineData("guard", "n17", Sources + SourcesBody + "    let j = if c => [2 of (y, (return 3))] else => [3 of ((return 4), y)]\n    return r\n", "*: let j = if c => [2 of (y, (return 3))] else => [3 of ((return 4), y)] | ...")]
-    [InlineData("guard", "n18", FlowSources + "    first(if c => (x, stop()) else => stop())\n    return 0\n", "")]
+    // n18, n23: the formation's verdict is acceptance; A1 reports the call's receipt of a value whose Never part no path placed (PLAN
+    // G442, SPEC 14.10.3, 15.1.3; the owner's O-99 (a)).
+    [InlineData("guard", "n18", FlowSources + "    first(if c => (x, stop()) else => stop())\n    return 0\n", "UninitializedPlace_Kd: first(if c => (x, stop()) else => stop())")]
     [InlineData("guard", "n19", FlowSources + "    let j = if c => (if d => (x, (return 1)) else => (return 2)) else => (x, 2)\n    return 0\n", "")]
     [InlineData("guard", "n20", FlowSources + "    let j = if c => [\"k\": (x, (return 1))] else => [\"k\": ((return 2), x)]\n    return 0\n", "")]
     [InlineData("guard", "n21", FlowSources + "    keep((x, stop()))\n    return 0\n", "UnboundTypeArgument_Kd: keep((x, stop()))")]
     [InlineData("guard", "n22", FlowSources + "    keep([x, stop()])\n    return 0\n", "UnboundTypeArgument_Kd: keep([x, stop()])")]
-    [InlineData("guard", "n23", FlowSources + "    takeT((x, stop()))\n    return 0\n", "")]
+    [InlineData("guard", "n23", FlowSources + "    takeT((x, stop()))\n    return 0\n", "UninitializedPlace_Kd: takeT((x, stop()))")]
 
     // SPEC 4.4.1, 10.5.1, 10.8: lengths at fixed-array parameters. Revision B's text is not on dev: rows here are the forms both texts judge alike.
     [InlineData("guard", "u1c", LengthSources + "    return takeN(if c => [1, 2] else => [1, 2, 3])\n", "*: return takeN(if c => [1, 2] else => [1, 2, 3]) | ...")]
