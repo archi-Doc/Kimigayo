@@ -2,9 +2,14 @@
 
 namespace Kimi.Compiler;
 
-// The standard declaration identities, independent of a bound Contract's own Symbol and of user spelling.
+// The root statement of the arithmetic Contracts (SPEC 13.3.3): their standard declaration identities, independent of a bound Contract's own
+// Symbol and of user spelling, and which Types conform to each by a built-in witness (Supports).
+// Input: a Type, a declaration identity. Output: the facts; Binding reads every one, MIR and the Backend Supports alone (MirTypes.Operates).
+// Must not: prove a generic Type's conformance (Binding's), or map MIR's operators (MirTypes' pairing).
 internal static class ArithmeticContracts
 {
+    // SPEC 13.3.3: the built-in conformances, whose witnesses behave as SPEC 13.3.1's operators: the operator table's domain of + - * / % and
+    // unary - (MirTypes.Operates) and Binding's conformance.
     internal static bool Supports(BoundType type, KimiDeclarationId id)
         => type.IsNumeric && (id == KimiDeclarationId.Negatable ? !type.IsUnsignedInteger
             : id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.RemainderProvider && (id != KimiDeclarationId.RemainderProvider || !type.IsFloatingPoint));
