@@ -17,12 +17,29 @@ public class Utf8TryWriteTest
     [InlineData("Empty", "\"\"", "\n")]
     [InlineData("Raw", "\"\"\"\\(42)\"\"\"", "\\(42)\n")]
     [InlineData("Embedded", "\"君=\\(42)!\\(true)\"", "君=42!true\n")]
+    [InlineData("Unbounded", "\"\\(\"君\")=\\(Text.utf8(\"ab\"))\"", "君=ab\n")]
     public void RootWritesIntoExistingStorageWithoutAllocation(string name, string literal, string expected)
     {
         var source = Setup + "_ = $tryWrite(writer@uniq, " + literal + ")\n" + Print;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems));
         NativeAllocationAudit.WriteFixture("Utf8TryWrite" + name, source, 0, 0, 0, expected);
+    }
+
+    // SPEC 22.10.1, 22.9.3, 22.10.5: after its first $tryWrite (failed on the fixed buffer, filling the heap buffer exactly), the adapter's
+    // uses end, `clear` keeps the capacity and a new adapter writes from the start; neither buffer allocates for formatting (the Heap row
+    // counts only Text.heap's own allocation).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Fixed", "var bytes = [4 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "ab\\(123)", false, 0, 0)]
+    [InlineData("Heap", "var buffer = Text.heap(4)", "ab\\(12)", true, 1, 4)]
+    public void AClearedBufferTakesANewAdapterWithoutAllocating(string name, string setup, string first, bool fits, int allocations, int bytes)
+    {
+        var source = setup + "\nvar writer = Text.writer(buffer@uniq)\nmatch $tryWrite(writer@uniq, \"" + first + "\")\n    .Ok(_) => " +
+            (fits ? "()\n    .Err(_) => $abort(\"first\")" : "$abort(\"first\")\n    .Err(_) => ()") +
+            "\nlet capacity = buffer.capacity\nbuffer.clear()\nrequire buffer.length == 0 and buffer.capacity == capacity else => $abort(\"clear\")\n" +
+            "var next = Text.writer(buffer@uniq)\nmatch $tryWrite(next@uniq, \"\\(7)xyz\")\n    .Ok(_) => ()\n    .Err(_) => $abort(\"second\")\n" + Print;
+        NativeAllocationAudit.WriteFixture("Utf8TryWriteCleared" + name, source, allocations, allocations, bytes, "7xyz\n");
     }
 
     [Theory]

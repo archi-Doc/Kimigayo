@@ -124,6 +124,15 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleGeneric", Source, 1, 1, 9, "value=42\nvalue=abc\n");
     }
 
+    // SPEC 22.10.5: a direct interpolation whose only unbounded value is one Utf8Slice preceded only by literal text allocates at most once;
+    // a nested one allocates at most once for each interpolation (the inner, bounded, is the outer's embedded expression).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("View", "let t = \"君\"\nlet s = Text.utf8(t)\nConsole.writeLine(\"v=\\(s)\\(7)\")", "v=君7", 1, 16)]
+    [InlineData("Nested", "Console.writeLine(\"<\\(\"[\\(7)]\")>\")", "<[7]>", 2, 18)]
+    public void DirectUnboundedFormsAllocateOncePerInterpolation(string name, string source, string expected, int allocations, int bytes)
+        => NativeAllocationAudit.WriteFixture("Utf8ConsoleUnbounded" + name, source, allocations, allocations, bytes, expected + "\n");
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedAndConditionalStackFormattingDoesNotAllocate()
