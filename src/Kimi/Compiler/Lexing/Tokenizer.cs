@@ -916,7 +916,7 @@ LineContent:
 
             var closedDelimiter = false;
             var indentationMismatch = false;
-            var branchJoin = this.span.StartsWith("else") && (this.span.Length == 4 || TokenHelper.IsSeparator(this.span[4]));
+            var branchJoin = TokenHelper.GetKeywordOrIdentifierKind(this.span[..TokenHelper.WordLength(this.span)]) == TokenKind.Else;
 
             // A header delimiter shares the body's baseline, but remains an explicit delimiter. After the body
             // closes, discharge it too unless an aligned branch joins the construct inside it.
@@ -1299,7 +1299,8 @@ EndOfFile:
                 }
 
                 if (kind is TokenKind.If or TokenKind.Else or TokenKind.Match or TokenKind.Switch or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func or TokenKind.Defer ||
-                    (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe")))
+                    (kind == TokenKind.Identifier &&
+                    this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual(Constants.UnsafeKeyword)))
                 {
                     body = true;
                     break;
@@ -1401,7 +1402,8 @@ EndOfFile:
                 return false;
             }
 
-            if (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe"))
+            if (kind == TokenKind.Identifier &&
+                this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual(Constants.UnsafeKeyword))
             {
                 return true;
             }
@@ -1469,12 +1471,7 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ReadNonAsciiIdentifier(ReadOnlySpan<char> span)
     {
-        var length = TokenHelper.IndexOfSeparator(span);
-        if (length < 0)
-        {
-            length = span.Length;
-        }
-
+        var length = TokenHelper.WordLength(span);
         var spelling = span[..length];
         var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
         if (!IdentifierHelper.IsValidIdentifier(spelling, out var invalidStartLength))

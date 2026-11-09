@@ -206,7 +206,8 @@ public static partial class Parser
         }
 
         var text = reader.GetSpan(token);
-        if (!text.SequenceEqual(Constants.MoveOperation) && !text.SequenceEqual(Constants.CopyOperation) && !CompilerHelper.TryParse(text, out _))
+        if (!text.SequenceEqual(Constants.MoveOperation) && !text.SequenceEqual(Constants.CopyOperation) &&
+            !SemanticsMaskHelper.TryParse(text, out SemanticsKind _))
         {
             return false; // follow is consumed as a postfix operation before this point (SPEC 13.1).
         }

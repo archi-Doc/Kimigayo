@@ -34,7 +34,7 @@ public sealed class WhileKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(Constants.WhileKeyword);
+        builder.Append(TokenKind.While.ToText());
         builder.AppendSpace();
         this.Condition.WriteTo(ref builder);
         this.Body.WriteBranchTo(ref builder);

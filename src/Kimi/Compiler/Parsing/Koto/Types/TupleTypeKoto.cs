@@ -13,6 +13,12 @@ public sealed class TupleTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TupleType;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => this.ElementNodes.Count;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.ElementNodes[index];
+
     /// <summary>Gets the tuple element types.</summary>
     public List<Koto> Elements => this.elements is List<Koto> list ? list : (List<Koto>)(this.elements = new List<Koto>(this.elements));
 

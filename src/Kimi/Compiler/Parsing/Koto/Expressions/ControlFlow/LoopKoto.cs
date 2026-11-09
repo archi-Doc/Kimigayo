@@ -28,7 +28,7 @@ public sealed class LoopKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(Constants.LoopKeyword);
+        builder.Append(TokenKind.Loop.ToText());
         this.Body.WriteBranchTo(ref builder);
     }
 

@@ -412,6 +412,17 @@ public abstract partial class Koto
     /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
     public virtual bool IsToplevel => false;
 
+    /// <summary>Gets the number of Type positions this node holds, as searched before binding (SPEC F.5): the Type kinds and a
+    /// PathSuffix's qualifier publish them once. It over-approximates what BindTypeStructure binds as Types: a GenericsKoto publishes
+    /// its head and its length arguments too (a GenericArgument's kind is the slot's), a RootName its path and a PathSuffix its
+    /// qualifier; no Origin argument is one.</summary>
+    internal virtual int TypeComponentCount => 0;
+
+    /// <summary>Gets one of the Type components (<see cref="TypeComponentCount"/>).</summary>
+    /// <param name="index">The component's index.</param>
+    /// <returns>The component.</returns>
+    internal virtual Koto TypeComponent(int index) => throw new ArgumentOutOfRangeException(nameof(index));
+
     #endregion
 
     /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>

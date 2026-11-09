@@ -47,7 +47,7 @@ public sealed class AliasKoto : DeclarationKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
-        builder.Append(Constants.AliasKeyword);
+        builder.Append(TokenKind.Alias.ToText());
         builder.AppendSpace();
         if (this.Name is { } name)
         {

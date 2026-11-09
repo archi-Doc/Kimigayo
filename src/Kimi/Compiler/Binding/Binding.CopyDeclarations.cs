@@ -29,7 +29,7 @@ public sealed partial class Binding
 
         for (var n = 0; n < this.nodes.Count; n++)
         {
-            if (this.nodes[n] is not DeclarationContainerKoto container || container is not (StructKoto or EnumKoto))
+            if (this.nodes[n] is not DeclarationContainerKoto container)
             {
                 continue;
             }
@@ -37,7 +37,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
+                if (DeclaresConformance(clause) && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
                 {
                     this.RegisterCopy(clause, container, this.scopes[container], null);
                 }
