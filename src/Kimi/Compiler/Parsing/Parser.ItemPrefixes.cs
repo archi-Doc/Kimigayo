@@ -48,8 +48,9 @@ public static partial class Parser
         Reported,
     }
 
-    /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.7), such as a Constraint, an Origin relation
-    /// or an enum Case; each attaches to nothing, as a misplaced attribute does.</summary>
+    /// <summary>Reports the pending attributes before an item whose production takes none (SPEC 6.7, Appendix F), such as a Contract
+    /// item, a <c>drop</c>, an override or a Constraint; each attaches to nothing, as a misplaced attribute does, so no node holds an
+    /// attribute its production does not take.</summary>
     /// <param name="reader">The token reader.</param>
     internal static void ReportPendingAttributes(ref TokenReader reader)
     {
