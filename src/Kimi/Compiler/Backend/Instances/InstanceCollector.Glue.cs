@@ -6,7 +6,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Backend;
 
 // Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116,
-// R8-M5), the glue of what a call destroys in place and a DropGlue item's targets.
+// R8-M5), the glue of what a call destroys in place, of what a Drop's group destroys and a DropGlue item's targets.
 internal sealed partial class InstanceCollector
 {
     // SPEC 8.15.3, 14.10.3, 16.2.1 (DECISIONS R4-M6a): whether a Drop of a body destroys nothing in a view: A2 judged its group Elide (on
@@ -15,6 +15,26 @@ internal sealed partial class InstanceCollector
     // of a body whose verdicts are inexact (MirDropTable.Incomplete).
     private static bool Elided(MirProgram program, MirBody body, int block, byte view)
         => program.Drops.Incomplete(body.Ordinal) is null && program.Drops.Elides(body.Ordinal, block, view);
+
+    // SPEC 16.3.2, 8.15.3 (PLAN G641): a Drop's targets at its site, with the site's runtime bit: the target of each part its group's first
+    // row destroys (PartTarget), in DropGlue.Destroyed's order, the walk code generation writes the Drop by (FunctionCodegen.Drops); a Drop
+    // without a group (one only the checks reach, or of a body whose verdicts are inexact) destroys its Type whole.
+    private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in MirLocation at, bool runtime, BoundType closed)
+    {
+        var drops = program.Drops;
+        var group = drops.Incomplete(body.Ordinal) is null ? drops.Group(body.Ordinal, at.Block, this.Set.Items[item].View) : -1;
+        var (parts, start) = (this.parts, this.parts.Count);
+        DropGlue.Destroyed(this.types, group < 0 ? default : drops.RowsOf(body.Ordinal), group, closed, parts);
+        for (var i = start; i < parts.Count; i++)
+        {
+            if (this.PartTarget(program, item, subject, parts[i]) is >= 0 and var target)
+            {
+                this.Set.Target(item, new(target, at, runtime));
+            }
+        }
+
+        parts.RemoveRange(start, parts.Count - start);
+    }
 
     // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
@@ -87,12 +107,15 @@ internal sealed partial class InstanceCollector
         DropGlue.Parts(this.types, type, parts);
         for (var i = start; i < parts.Count; i++)
         {
-            var part = parts[i];
-            this.Target(item, part.Kind == DropPartKind.Destructor ? this.Destructor(program, item, site, part.Type) : this.Glue(item, site, part.Type));
+            this.Target(item, this.PartTarget(program, item, site, parts[i]));
         }
 
         parts.RemoveRange(start, parts.Count - start);
     }
+
+    // The target of a part a destruction destroys: a destructor's Body (Destructor), else the part's glue (Glue); -1 for none.
+    private int PartTarget(MirProgram program, int item, SourceRef site, in DropPart part)
+        => part.Kind == DropPartKind.Destructor ? this.Destructor(program, item, site, part.Type) : this.Glue(item, site, part.Type);
 
     // K 4.8, X34: whether a DropGlue's collection element Types are laid out: a collection's own layout is its handle words, and its glue
     // lays out its elements even when they need no drop (as the old CollectionDrop does), so their verdicts join the glue item's, reported

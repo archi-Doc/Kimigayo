@@ -10,10 +10,13 @@
 // Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
-// without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
-// site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
-// Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault;
+// without one or a refused edge), a Drop's glue of each part its group destroys (DropTargets) and an owner Value call's second target
+// (Rest); a type-driven item's at the default site; on the way the site's by-value uses take their layout verdict (K 4.8) and an operation
+// whose Types depend on slots its capability check (K 4.7).
+// Invariants: one target per site, except a Drop's, one per part its group destroys in DropGlue.Destroyed's order, the order code
+// generation writes them in (PLAN G641), and the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS
+// R5-M102: a departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row
+// is a fault;
 // a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
 // G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
@@ -56,7 +59,7 @@ internal sealed partial class InstanceCollector
             var (at, runtime) = this.sites[i];
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, at.Block, block.Terminator)
+                ? this.Edge(program, item, body, at, runtime, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -114,17 +117,23 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
     // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
-    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
-    // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
-    // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
-    private int Edge(MirProgram program, int item, MirBody body, int block, in MirTerminator call)
+    // creation's payload descriptor, a DestroyValues' glue) and a Drop's targets, the glue of what its group destroys (DropTargets), none
+    // for a part in a receiver's own storage (never past a Deref) without a layout (Received: no use; its body is checked only); an
+    // intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without
+    // a body or row or a refused edge, and for a Drop, whose targets are added at its site with its runtime bit.
+    private int Edge(MirProgram program, int item, MirBody body, in MirLocation at, bool runtime, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed || Elided(program, body, block, this.Set.Items[item].View) ||
-                (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
+            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed && !Elided(program, body, at.Block, this.Set.Items[item].View) &&
+                !(Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok))
+            {
+                this.DropTargets(program, item, subject, body, at, runtime, closed);
+            }
+
+            return -1;
         }
 
         if (callee.Kind == MirCalleeKind.Value)

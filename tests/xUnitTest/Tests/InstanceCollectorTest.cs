@@ -1710,6 +1710,24 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
     }
 
+    // PLAN G641 kind 4 (R3-U2a), SPEC 16.3.2: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's order, the order
+    // code generation writes it in, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an Open Field by its
+    // own rows (a Tuple's elements from the last, an Elide one whole until R3-U2b), a Flag Field whole; a fixed array's element glue once,
+    // then each Open element's rows. Neither whole glue is requested.
+    [Fact]
+    public void AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder()
+    {
+        var (program, set) = Collect("struct Pair\n    public var a: string\n    public var b: (string, Array<i32>)\n    public var n: i32\n" +
+            "    public init(a: string, b: (string, Array<i32>), n: i32)\n        self.a = a@move\n        self.b = b@move\n        self.n = n\n" +
+            "func take(s: string) => ()\nfunc partly(c: bool, p: Pair)\n    if c => take(p.a@move)\n    take(p.b.0@move)\n" +
+            "func elements(a: [3 of (string, string)])\n    take(a[1].0@move)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var (partly, elements) = (Targets(program, set, "Fn partly"), Targets(program, set, "Fn elements"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], partly.Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal)));
+        Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue string"], elements.Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal)));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue Pair" or "DropGlue [3 of (string, string)]");
+    }
+
     // K 4.5 "DropGlue", R4-M6b, SPEC 16.3.2: a struct that declares a drop is destroyed by its destructor alone, the Body of the struct's
     // instance (TyCtxt.Synthesized), which drops the struct's own Fields: one destructor item per instance of a generic struct, the root
     // for a closed one.
