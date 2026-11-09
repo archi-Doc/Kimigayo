@@ -848,33 +848,6 @@ public sealed class MirAnalysisTest
         Assert.Equal(8, report.All.Length);
     }
 
-    // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view (1: its body's one,
-    // MirCases.Every), and the MIR and the cold build's allocation, A3's included, grow linearly with N.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void RequireEndsScaleLinearly()
-    {
-        var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            return () => programs[i] = c.BuildMir();
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (c, program) = (compilations[i], programs[i]);
-            work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
-            var problems = program.Problems.All.ToArray();
-            Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, 1UL), (x.Code, x.Views)));
-            Assert.Equal([sizes[i], sizes[i]], new[] { "sequence", "nest" }.Select(name => problems.Count(x => Function(c.SyntaxOf(x.Subject)) == name)));
-        }
-
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
-
-        static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
-    }
-
     // The arena workload (A5ChecksTheViewsA1Completed, OwnershipStorageLimitTest.TheMirsArenaLimitPublishesBesideIndependentErrors):
     // `f`, with each '|'-separated part of `line` repeated `size` times with its index, then a Loan conflict at `x = 2`.
     internal static string ArenaWorkload(int size, string line)
@@ -912,4 +885,35 @@ public sealed class MirAnalysisTest
 
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view (1: its body's one,
+        // MirCases.Every), and the MIR and the cold build's allocation, A3's included, grow linearly with N.
+        [Fact]
+        public void RequireEndsScaleLinearly()
+        {
+            var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
+                return () => programs[i] = c.BuildMir();
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (c, program) = (compilations[i], programs[i]);
+                work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
+                var problems = program.Problems.All.ToArray();
+                Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, 1UL), (x.Code, x.Views)));
+                Assert.Equal([sizes[i], sizes[i]], new[] { "sequence", "nest" }.Select(name => problems.Count(x => Function(c.SyntaxOf(x.Subject)) == name)));
+            }
+
+            Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+
+            static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
+        }
+    }
 }
