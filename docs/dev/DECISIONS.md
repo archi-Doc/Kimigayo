@@ -385,6 +385,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     it opens.
   - Rejected: recording without a closing lane (the growth above); a cap that drops findings (a pre-existing defect dropped from PLAN is
     lost); one cleanup stage at R7's exit (the rows outgrow PLAN's limit first).
+- **Q18 R7's work is spread over the three sessions** (2026-11-09, owner; [WORKFLOW](WORKFLOW.md) "Windows"; plan revision 50; the
+  Coordinator's proposal).
+  - The owner (verbatim): 「Adopt all three」, to the Coordinator's three measures.
+  - Reason: R7's remaining rows (phases C and D) sit on the Front's Binding files, so the Front's two implementer seats and its one
+    acceptance mover per window serialized R7 while R8 and R9 were nearly done (W-120 to W-123 each landed one Front unit).
+  - Rule 1 (lending): an R7 unit the Front designed and design-reviewed may be implemented by a Middle or Back implementer in Binding's
+    files; the Front keeps the files, reviews the implementation and gives its consent on a C row.
+  - Rule 2 (windows): a window may take two acceptance movers of one area when they share no file and each names its expected moves.
+  - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
+  - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
+    and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
 
 ## Code rules (2026-10-12)
 
@@ -10554,6 +10565,14 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
     have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
   - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
+  - G658: a Type without a width is, for this encoding, an integer or wrapping integer Type whose instance decides it (a
+    proven-`PrimitiveInteger` parameter or projection, `Wrapping<T>` over one; SPEC 8.7.4): it keeps the 128-bit payload, the widest
+    instance's, and each instance's payload is its low N bits (`ScalarTypes.Normalize`'s width-0 row). A generic literal (0 through 127)
+    is the case whose payload is its value at every width. A direct integer literal wrapped to such a Type (SPEC 13.5.4, `value@wrap<U>`)
+    is folded to its exact value modulo 2^128, which the MIR builder states as a Proven Wrap Cast of that i128 constant (the Middle's
+    choice, C-177), so no widthless constant leaves 0..127. `Binding.Hir.Payload`, a second copy of the row, is deleted. The target of
+    `@wrap<U>` and `@bits<U>` substitutes the identity premises like `@Type`'s (BU-72's per-site substitution, PLAN G542's position), so
+    the fold's width is the published Type's.
 - **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
   (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
   owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
@@ -16373,8 +16392,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     - an allowlist of the validator's own, which would be a second rule;
     - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
     - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
-  - **Open limits** (N5, N6/F4 and the family's second copy closed by G643-G645):
-    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
+  - G658 kept the row: a folded wrap to a Type whose instance decides its width is a Wrap Cast of its i128 payload (`MirBuilder.Convert`),
+    so the generic row stays 0..127. No open limit remains (N5, N6/F4 and the family's second copy closed by G643-G645; the generic row's
+    question by G658).
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
@@ -16756,3 +16776,30 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Kept.** An attribute before a declaration whose kind rejects it stays its own: Binding still judges it, e.g. `InvalidLibraryImport_Kd` on a requirement.
   - **Rejected:** D2, keeping a misplaced attribute on the construct its reporting site parses next (C-146 reviews 1-2: an open family of sites deciding a landing, per-kind chain printing with `AttributeKoto.AttributeChain` meaning both 'attributes on this node' and 'the previous attribute', an independent record lost); (b), recovered spans outside the nodes; (c), holding the unit.
   - **Cost.** Erroneous attribute text no longer round-trips through the tree; its Error's span still locates it (DIAGNOSTICS §4.4).
+  - Superseded in part by R9-M4 (G557, 2026-11-09): the "Kept" bullet, and the Rule's clause that a constructor-header attribute
+    is reported "its record unchanged".
+- **R9-M4 An attribute before a declaration that takes none is the parser's alone** (2026-11-09; G557; Major; the owner's O-93 (a),
+  verbatim 「(a) 設計し直す」; the Front's design review 3 ACCEPT and implementation review ACCEPT; the Middle's C-167 ACCEPT on the parser
+  hunks) SPEC 6.7, 6.4.1, 8.13.2, 11.9, 16.3, 19.4, F.6.1, F.6.2.
+  - **Rule.** A declaration production that takes no `AttributePrefix` reports the pending attributes before it takes its context
+    (`Parser.ReportPendingAttributes`): each once, at its own span, as misplaced, also in excluded syntax (19.4), and none reaches a node.
+    Besides R9-M3's `associate`, effect, Origin relation, Constraint and enum Case, these are every Contract item (function and Property
+    requirements), `init`, a specialization, an override, `drop` and an alias, each where the parser recognizes it. A node of such a
+    declaration never holds an attribute, and Binding's readers trust that. Parameters are not yet covered: a requirement's,
+    specialization's or override's parameter still keeps its attributes (PLAN G557's parameter part).
+  - **Supersedes R9-M3's "Kept" bullet:** Binding's readers read the kept attribute as attached, so `#Test` before a requirement or an
+    override crashed Binding and other attributes gave duplicate or dependent records; listing the non-taking kinds for those readers
+    by hand (G557's revisions 0 and 1) missed kinds twice. **And R9-M3's Rule clause** "a constructor-header attribute is reported, its
+    record unchanged": an `init`'s attribute now has the same record as every other non-taking production's, `Attribute` at the
+    attribute instead of `ConstructorHeader` at `init` (one record form; the syntax corpus row `attribute-on-constructor` moved).
+  - **Removes.** The attribute operand of the requirement, Property requirement, `drop`, alias, `init` and specialization header
+    checks and `init`'s attribute-dropping context copy; Binding's override and specialization attribute tests, its enum Case attribute
+    check (`Binding.Storage`), and the four non-taker kind tests of the `#LibraryImport` shape and of the Test definition syntax.
+  - **Rejected:** a kind predicate read by the parser and Binding (a hand list beside the grammar); a production table read by the
+    prefix reader (a second classification of the next item); each header record kept with the attributes dropped (the override has
+    none, so two record forms would remain).
+  - **Cost.** Erroneous attribute text before such a declaration no longer round-trips through the tree; its record locates it
+    (DIAGNOSTICS §4.4). Records move only on invalid programs; five invalid programs dev accepted are rejected (an override's attribute
+    in excluded syntax, or before an override at the root or in a group).
+  - **A SPEC gap, reported (no SPEC change):** F.6.1's `Declaration := AttributePrefix? UnattributedDeclaration` admits a prefix where
+    6.7, 6.4.1 and 16.3 reject one; the implementation follows the body rules.

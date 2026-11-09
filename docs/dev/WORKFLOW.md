@@ -207,7 +207,7 @@ A window merges queued units onto dev, verifies them once and lands them togethe
 - **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
   the records of programs that stay rejected change.
 - **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
-  Back). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
+  Back), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
 - **Files.** Units of one window share no file except PLAN's table end and separate DECISIONS entries. An overlap waits for the
   next window, in order of readiness.
 - **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
