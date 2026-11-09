@@ -17,10 +17,13 @@ public class InlineLayoutTest
     private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
     private const string M2Records = "InvalidTypeFormation_Kd struct | UnsatisfiedConstraint_Kd B<Box<D>> | InvalidConstraint_Kd B<Box<D>> | " +
         "InvalidConstraint_Kd Box<D> | InvalidConstraint_Kd Box<D>";
+
     private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D> | " +
         "InvalidConstraint_Kd Box<D>";
+
     private const string Heir = "contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\n" +
         "struct Box<T>\n    T is C\n    public var next: T.(C).Item\n";
+
     private const string TwoReferences = "contract C<U>\n    associate Item\nstruct Box<T>\n    T is C<i32>\n    public var next: Option<T.(C<i32>).Item>\nstruct S\n    Self is C<i32>\n    Self is C<i64>\n";
 
     [Theory]

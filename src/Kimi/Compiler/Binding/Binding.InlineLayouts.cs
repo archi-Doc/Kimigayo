@@ -97,9 +97,8 @@ public sealed partial class Binding
     // SPEC 6.2, 8.6.2 (PLAN G631): an inherited binding on an inline cycle is invalid at its conformance, whose site is the heir's base
     // clause (Use), written after that clause's own checks (ValidateBaseDeclarations), so their independent records keep its one slot
     // (DIAGNOSTICS rule 4); a clause that failed by itself keeps it, the heir's binding being read from that clause's instance (rule W).
-    // The judge decided the node (Cyclic); only the write waits.
-    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262); the judge writes " +
-        "inherited paths' records with the declared ones once Fail's silent drop goes (R7-E5).")]
+    // The judge decided the node (Cyclic); only the write waits, until the judge writes inherited paths' records with the declared ones.
+    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262), until Fail's drop goes (R7-E5).")]
     private void ReportInheritedInlineCycles()
     {
         for (var i = 0; i < this.inlineSummaries.Count; i++)
