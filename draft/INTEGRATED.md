@@ -1336,6 +1336,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   states `replace`, `exchange` and `swap` as safe functions with bodies whose unsafe obligations the section's rules meet, and
   a call is checked against those rules, never a body. §15.7.1 is unchanged (the reviewer chose the draft's second option). No
   rule changes; SPECJ follows (RQ10). Nothing frozen.
+- Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
