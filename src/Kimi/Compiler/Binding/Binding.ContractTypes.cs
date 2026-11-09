@@ -174,6 +174,7 @@ public sealed partial class Binding
                 result = ReferenceEquals(image, held) ? result : this.WithContext(result, this.types.HeldContext(type.Symbol!, image));
             }
 
+            result = this.ContractLength(result, scope, self, normalize);
             if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
             {
                 return (result, null);
@@ -225,6 +226,21 @@ public sealed partial class Binding
                 this.typeScratch.Return(components, clearArray: true);
             }
         }
+    }
+
+    // R8-W2: a fixed array whose length is an interpolation-bound term over abstract value Types, with the term's value Types normalized as
+    // this rewrite normalizes the Type, a Contract's Self and a completed projection included, which a substitution leaves
+    // (Binding.SubstituteLength), and the term folded again (TyCtxt.InterpolationBound); any other Type itself. A term is only a fixed
+    // array's length or a substitution's length entry (Binding.InstanceLength), never an operand or an Item's length argument (R8-W2 a2).
+    private BoundType ContractLength(BoundType type, BindingScope scope, BoundType? self, bool normalize)
+    {
+        if (type is not { Kind: BoundTypeKind.FixedArray, LengthExpression: { Values: { HasAbstractPart: true } values } term })
+        {
+            return type;
+        }
+
+        var length = this.types.InterpolationBound(this.ContractType(values, scope, self, normalize), term.Value);
+        return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [type.Components[0]], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
     }
 
     // The interned chain of a hop resolving step through path before inner.

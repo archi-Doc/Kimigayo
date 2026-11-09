@@ -229,7 +229,8 @@ public sealed partial class Binding
         => (origins.IsEmpty && images.IsEmpty ? null : this.SlotImage(origin, originBinder, origins, images, default)) ?? this.PairOuterImage(origin, binder, arguments);
 
     // A part of a substitution query. Without length arguments a part with neither an abstract part nor an Origin is its own image: every
-    // arm that changes a part substitutes a slot of an abstract kind, a length or an Origin.
+    // arm that changes a part substitutes a slot of an abstract kind, a length, an Origin or an interpolation-bound term's value Types (an
+    // abstract part, BoundLength.HasAbstractPart).
     private BoundType? SubstitutePart(
         BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, uint query)
     {
@@ -319,9 +320,9 @@ public sealed partial class Binding
         {
             var length = type.Length;
             var expression = type.LengthExpression;
-            if (!lengths.IsEmpty && expression is not null)
+            if (expression is not null && (!lengths.IsEmpty || expression.HasAbstractPart))
             {
-                expression = this.SubstituteLength(expression, binder, lengths);
+                expression = this.SubstituteLength(expression, binder, arguments, lengths);
                 if (expression is null || (expression.IsConstant && !ValidLength(expression.Value)))
                 {
                     return null;
@@ -338,7 +339,7 @@ public sealed partial class Binding
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
-                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, lengths);
+                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, arguments, lengths);
                 if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !ValidLength(itemLengths[i]!.Value))))
                 {
                     return null;
