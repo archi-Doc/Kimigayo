@@ -63,6 +63,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
+    // A Storage (SPEC 4.8.1; IMPL 21.1.3; O-92 (a)): a sequence Place's first element's address, which reads no layout of the element: a
+    // fixed array's own address, an Array's or Slice's buffer word (Buffer, which an Index's element address starts from too).
+    private void Storage(in MirStatement statement)
+    {
+        var place = statement.Rvalue.Place;
+        if (this.Address(place, out var address))
+        {
+            this.Store(statement, this.Buffer(this.InstanceType(place)!, address));
+        }
+    }
+
     // An Adapt (SPEC 8.14, 13.5.3): the ordinary rvalue of the operation the item's view selects (MirCases.Adapt), written by that rvalue's
     // row: an Identity its operand, a pointer conversion or a non-exclusive upcast a Proven Cast, a borrow or an address a Ref, an object
     // creation its payload's factory (Creation); a view that selects none is a broken contract (Binding admitted each case).

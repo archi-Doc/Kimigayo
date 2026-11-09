@@ -67,7 +67,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     }
 
     // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
-    // Binding compares Types there.
+    // Binding compares Types there: the one premising (Binding.CallableContractType), which Binding.OperandTerminal applies too.
     internal static BoundType Premised(BindingSymbol definition, BoundType type)
     {
         var binding = definition.Declaration.CodeContext.Compilation.Binding;

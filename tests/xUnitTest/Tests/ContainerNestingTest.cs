@@ -92,7 +92,15 @@ public class ContainerNestingTest
     [Theory]
     [InlineData("struct Box<T>\n    public var a: i32 = 0\nlet v: Box<i32>.T = 1", "Box<i32>.T")]
     [InlineData("struct Box<T>\n    public var a: i32 = 0\nfunc f(x: Box<i32>.T) => ()", "Box<i32>.T")]
-    public void AQualifiedNameNeverSelectsAGenericParameter(string source, string name)
+    [InlineData("struct Box<T>\n    public var a: i32 = 0\nfunc f(x: ::Box<i32>.T) => ()", "::Box<i32>.T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f(x: Box<T>) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var a: i32 = 0\nfunc f() -> i32\n    let x: Option<T> = .None\n    return 1", "T")]
+    [InlineData("alias Box<i32>\nalias Pair<i64>\nstruct Box<T>\n    public var a: i32 = 0\nstruct Pair<T>\n    public var b: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Box<i32>\nstruct Box<S/T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "T")]
+    [InlineData("alias Outer<i32>.Inner<i64>\nstruct Outer<T>\n    public struct Inner<U>\n        public var a: i32 = 0\nfunc f(x: U) => ()", "U")]
+    [InlineData("alias Kimi.Option<i32>\nfunc f(x: T) => ()", "T")]
+    public void AFormalParameterIsNoMemberOfItsContainer(string source, string name)
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
