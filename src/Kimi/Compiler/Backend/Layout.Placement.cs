@@ -34,7 +34,10 @@ internal sealed partial class Layout
 
     private readonly Scratch scratch = new();
 
-    internal Layout() => this.recordsByKey = this.records.GetAlternateLookup<ReadOnlySpan<char>>();
+    // The program's Type context: the representation structs' own Types (Component).
+    private readonly TyCtxt types;
+
+    internal Layout(TyCtxt types) => (this.types, this.recordsByKey) = (types, this.records.GetAlternateLookup<ReadOnlySpan<char>>());
 
     /// <summary>Forgets the entries and records of the previous program version (Compilation.InvalidateSourceAnalysis); a pass
     /// without an edit keeps every Type's stored Types, IsCLayout, CLayoutUnavailable and InlineCycle (R4-M51's premise), so warm
@@ -56,9 +59,25 @@ internal sealed partial class Layout
     // CLayout at once, a leaf one level high naming itself, of no known size: no part is placed.
     private static Entry Unavailable(BoundType type) => Entry.Of(Outcome.CLayout, null, type, 1, 0, 0);
 
+    // A sequence handle: a row, 0 high, whose record is its component's placement, memoized per handle Type. The component's Fields are
+    // rows, so its placement is Ok in any window; any other outcome is a broken library (Layout.cs' Inputs).
+    private Entry Handle(BoundType type, KimiDeclarationId component)
+    {
+        if (this.memo.TryGetValue(type, out var entry))
+        {
+            return entry;
+        }
+
+        var record = this.Of(this.types.SelfType(component)).Value ??
+            throw new InvalidOperationException("The component of " + type.Name + " has no layout.");
+        entry = Entry.Of(Outcome.Ok, record, null, 0, (ulong)record.Layout.Size, record.Layout.Alignment);
+        this.memo.Add(type, entry);
+        return entry;
+    }
+
     // A Type placed with `budget` levels left. A row is 0 high, and so is an abstract Type, Rejected naming itself, of no known size
-    // (Layout.cs' Inputs; DECISIONS R5-M155); a complete entry serves every budget not below its height; at budget 0 a placed Type lies
-    // outside the window; an exhausted entry is `budget` + 1 high.
+    // (Layout.cs' Inputs; DECISIONS R5-M155), and a sequence handle (Handle); a complete entry serves every budget not below its height; at
+    // budget 0 a placed Type lies outside the window; an exhausted entry is `budget` + 1 high.
     private Entry Walk(BoundType type, int budget)
     {
         if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.FixedArray) &&
@@ -67,6 +86,11 @@ internal sealed partial class Layout
             if (type.IsAbstract)
             {
                 return Entry.Of(Outcome.Rejected, null, type, 0, 0, 0);
+            }
+
+            if (Representation(type.Kind) is { } component)
+            {
+                return this.Handle(type, component);
             }
 
             var row = Row(type);

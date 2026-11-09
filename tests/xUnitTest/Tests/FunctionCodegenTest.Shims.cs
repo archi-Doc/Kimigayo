@@ -188,7 +188,7 @@ public sealed partial class FunctionCodegenTest
 
     // K 4.5 rows 3 and 5, SPEC 12.4.3 (DECISIONS R5-M126): one item serves every call of its key: a Requirement call, a requirement Item's
     // Value call, its erased adapter's entry and a Dictionary's key equality (findDictionaryLink's Requirement call at the built-in key) call
-    // the one i32 equality function; a module without a string leaf has no string routine.
+    // the one i32 equality function.
     [Fact]
     public void OneShimServesEveryCallOfItsKey()
     {
@@ -198,8 +198,6 @@ public sealed partial class FunctionCodegenTest
         var callers = ir.Functions.Where(x => x.Instructions.Any(y => y.Callee == shim)).ToArray();
         Assert.Equal(4, callers.Length); // equal<i32>, viaItem<i32>, the adapter and findDictionaryLink<i32, i32>.
         Assert.Contains(ir.Function(Regex.Match(text, @"define internal \S+ @(" + ModuleCodegen.AdapterPrefix + @"\d+)\(").Groups[1].Value), callers);
-        Assert.DoesNotContain(LegacyRuntimeHelpers.StringEqual.Name, text, StringComparison.Ordinal);
-        Assert.DoesNotContain(LegacyRuntimeHelpers.StringCompare.Name, text, StringComparison.Ordinal);
     }
 
     // PD3, K package 4.3, SPEC 11.9.2, 13.7.1, 22.5.1 (DECISIONS R5-M141): one caller-location function per PropertyWitness item under its

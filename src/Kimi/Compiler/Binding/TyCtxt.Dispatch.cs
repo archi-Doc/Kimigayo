@@ -85,6 +85,9 @@ internal sealed partial class TyCtxt
     // The library declaration a compiler component reaches by its catalog identity (InstanceCollector: the destroyArray instance).
     internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
 
+    // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
+    internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
+
     // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
     // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.
     internal Subst? LibraryInstance(in Binding.RequirementWitness witness, BoundType self, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)

@@ -131,7 +131,7 @@ internal static class CollectionCostMeasurements
         var c = Checked(source);
         var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(), c.SourceModules.Length);
         Require(!program.Records(MirRecordClass.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
-        Layout[] layouts = [c.Layout, new Layout(), c.Layout];
+        Layout[] layouts = [c.Layout, new Layout(c.Types), c.Layout];
         var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);
         CheckedSet? cold = null;
         Problem[] records = [];

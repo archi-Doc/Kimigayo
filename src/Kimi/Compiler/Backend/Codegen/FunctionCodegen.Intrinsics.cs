@@ -215,26 +215,22 @@ internal sealed partial class FunctionCodegen
         this.Finish(call, null);
     }
 
-    // SPEC 5.6: Raw.slice(storage, length) forms the Slice record {buffer, length} in the destination, at its Fields 0 and 1 (Layout's
-    // offsets, as Length reads Field 1), reading nothing; the backing, Unit, has no value (DECISIONS R4-M40).
+    // SPEC 5.6: Raw.slice(storage, length) forms the Slice record in the destination, its words `data` and `length` (StoreWord), reading
+    // nothing; the backing, Unit, has no value (DECISIONS R4-M40).
     private void Slice(in MirTerminator call)
     {
         var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
         var storage = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
         var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count))
+        if (!this.Address(call.Place, out var record) || !this.Operand(storage, out var buffer) || !this.Operand(length, out var count) ||
+            this.LoweringOf(call.Place) is not { } slice)
         {
             return; // A broken contract, recorded.
         }
 
-        if (this.LoweringOf(call.Place) is not { } slice || this.LoweringOf(storage) is not { } pointer || this.LoweringOf(length) is not { } index)
-        {
-            return; // A broken contract, recorded.
-        }
-
-        var offsets = slice.Layout.FieldOffsets.Span;
-        this.StoreAt(this.Offset(record, offsets[0]), pointer.Layout, buffer);
-        this.StoreAt(this.Offset(record, offsets[1]), index.Layout, count);
+        var type = this.InstanceType(call.Place)!;
+        this.StoreWord(type, slice, record, "data", buffer);
+        this.StoreWord(type, slice, record, "length", count);
         this.Finish(call, null);
     }
 }
