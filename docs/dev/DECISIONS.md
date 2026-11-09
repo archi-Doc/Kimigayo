@@ -16215,21 +16215,21 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open:**
     - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
     - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
-- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149).
-  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149; amended 2026-11-09 by G643-G644, PLAN G643-G645: design review and implementation review 1 ACCEPT, the Middle's reviewer).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand, by MIR's published family `MirTypes.HoldsIntegerConstant`.
   - **The rule.** It accepts an Integer `MirConst` only in these cases:
     1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
-    2. A widthless Type that code generation also lowers (`FunctionCodegen.Values`): `char`; a raw pointer (null); or a Type whose instance decides it. That last test is the validator's own `Integral` (`HasIntegerArithmetic || HasAbstractPart`), owned by `MirValidator.Types` and also read by the Cast rows. It covers a Type parameter's generic literal.
+    2. A widthless Type of the family `MirTypes.HoldsIntegerConstant`: a Type with the integer operators, concrete or generic (`MirTypes.IsArithmeticInteger`, SPEC 13.3.1's set and Binding's name for it: integer arithmetic, an abstract Type, or `Wrapping` over one, which stays constructed until substitution, SPEC 3.1.1, 8.7.4), `char`, or a raw pointer. Its value is ranged: `char` a Unicode scalar value (SPEC 3.1), a raw pointer only null, 0 (SPEC 5.1), and a Type whose instance decides it a generic literal, 0 through 127, a value of every instance (SPEC 8.7.4, BU-133). A literal Binding fits through an identity premise (`T is i32`: 200) has the complete Type, while MIR keeps the premised parameter (BU-72), so it holds by its width under case 1. The integer Cast rows (Integer, Wrap, Numeric, Bits, IntToPointer) read the same `MirTypes.IsArithmeticInteger`.
     3. Any other Type: `MirViolation.Const` (`InternalInvariant_Kd`).
   - **Reason.** Before this entry, no rule held: C-142 N3's 2^127 validated in i32 and in u8. A widthless constant was accepted whatever its Type, a silent default over an open family. The Backend already rejects every other instance Type, so validated MIR now states the same family before code generation does.
   - **Rejected:**
     - accepting every widthless Type;
     - an allowlist of the validator's own, which would be a second rule;
-    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule.
-  - **Open limits:**
-    - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
-    - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
-    - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
+    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
+    - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
+  - **Open limits** (N5 and N6/F4 closed by G643-G644):
+    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
+    - **The family's second copy** in `FunctionCodegen.Values` (the instance check) reads `MirTypes.HoldsIntegerConstant` once the Back reviews and consents (C-171); PLAN G645.
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
