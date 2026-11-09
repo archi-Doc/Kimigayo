@@ -16816,6 +16816,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     premises" (`HasParameterIdentity`, `HasAssociatedProjection` are published, but neither states what `ContractType` reads: it
     normalizes completed associated identities through the conformance tables too, so the guard would restate the rule's reach).
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+  - Amended (PLAN G593, 2026-11-10; Minor; `claude/m-g593` 7686346fb, 5c9023510): the builder's Reborrow contract
+    (`MirBuilder.Reborrowed`) and its Place walks (`Follow`'s stop, `Lent`'s base walk) read `MirTypes.Agrees` too, so a Place whose
+    own Type agrees with Binding's Type only under the premises (`uniq/One<T>` against `uniq/One<uniq/Meter during a>`) is
+    Reborrowed and borrowed as it is, and a base's method borrows the base subobject that agrees (`HBase<T>` against `HBase<i32>`);
+    the builder and the validator judge a Place's Type by one agreement. `Viewed` keeps the structural `Agree` (it tests whether the
+    premises change a Type); `Identical` (BU-72's exact test of the published receiver Type against the premise's) and `Dispatched`
+    (an Upcast of one Type under a premise, equivalent IR; a Y5 candidate) keep it too.
 - **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
   2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
   - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
