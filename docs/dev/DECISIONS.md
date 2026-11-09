@@ -9812,6 +9812,14 @@ resumed by R4-M86 (2026-10-20).
   - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
   - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
   - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
+  - Amended by R7-N1e1 (2026-11-09; Major; the Front's ruling 1, no design review: option A of the N1e design): a Container's Type
+    members are read by name through `MemberTypes(container, name)` (SPEC 9.6, 18.2.1: formal parameters, Origins and `Self` are not
+    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check, `ProjectionQualifier`
+    and the unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default
+    alias's segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto
+    the path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
+    filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
