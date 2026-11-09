@@ -837,7 +837,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (SPEC 14.10.3 ¶4); gen/kill block summaries reused across views (a second arena; reverse postorder converges acyclic code in
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
-- **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69) Move paths and
+- **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
+  compiler temporary is never a Place of the program" by R4-M188) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
@@ -5632,7 +5633,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       the examples). Not caught, a pre-existing acceptance in unreachable code only, as on dev: a temp consumed without an Assign,
       such as a call argument (`g(if c => (a, (return 1)) else => (a, a))` after `return`), a returned value or a comparison operand,
       keeps its uninitialized part on the temp or the return place, which A1 does not report (STATUS). Removal, R4's next step: A1
-      reports a temp's or the return place's uninitialized part where it is consumed.
+      reports a temp's or the return place's uninitialized part where it is consumed. Amended by R4-M188 (G442 U2): A1 reports it
+      where a call, a comparison or a read of the part consumes it; the whole returned value stays accepted.
   - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
@@ -5832,6 +5834,54 @@ and migration obligations remain in force; no numeric cap changes are authorized
     with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
     needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
     a later measurement asks for it.
+- **R4-M187 A Dictionary literal's first entry has no lookup (PLAN G442 U1)** (2026-11-09; Major; design review 2 and implementation
+  review ACCEPT, the Middle's reviewer) SPEC 12.4.3, 22.5.1; IMPL 21.3.2.
+  - Rule (`MirBuilder.Expansions`, `Dictionary`): an entry's key is looked up among the entries already inserted (its plan's
+    `findEntry` call, the duplicate test and the KIMI_E_DUPLICATE_KEY fail block, located at the key) from the second entry on. The
+    first entry has none: no key is inserted before it, and 12.4.3 calls key equality only against an inserted key.
+  - Why: the first lookup was lowered code with no SPEC operation behind it. It borrowed the first key, which G442's A1 rule (U2)
+    would check as a read, and it made a one-entry literal instantiate `findEntry`, `findDictionaryLink`, `splitFirst` and the key's
+    `equals`. Run time is identical: `findDictionaryLink` returns 0 on the empty Dictionary without `equals`, and 12.4.3 leaves the
+    number of equality calls unspecified.
+  - Moves: the MIR goldens lose the first entry's lookup locals and fail block, and the later entries' `link`/`test` StorageLive
+    moves after the key's evaluation; a one-entry literal instantiates no `findEntry`; a one-entry literal whose value is 60-62
+    storage levels deep is accepted where the first lookup's instance hit the storage-nesting bound (`Unsupported_Kd`, an
+    implementation limit, IMPL 21.3.2), and a two-entry literal keeps the second key's record. No Language record moves.
+  - Rejected: keeping the first lookup and exempting its borrow in A1 (a consumer deciding by syntax what the builder should not emit).
+- **R4-M188 A1 reports a temp's unplaced part where it is consumed; a Dictionary literal's insertion is a `Places` Call (PLAN G442 U2)**
+  (2026-11-09; Major, an acceptance mover; design review 2 and implementation review ACCEPT, the Middle's reviewer; supersedes R4-M21's
+  clause "a compiler temporary is never a Place of the program"; amends R4-M175's "Not caught" sentence) SPEC 14.10.3, 15.1.2, 15.1.3,
+  3.4, 3.5.3, 3.8, 12.4.3, 16.2.1 (the inserted entries as an interrupted construction's components).
+  - Owner approval: of the vocabulary, O-97 (a), verbatim 「(a) Places を承認」 (K's relay) and 「(a) 承認」 (the Middle's dialog); of the three
+    newly invalid tests, O-99 (a), verbatim 「どちらも (a)」.
+  - Rule (A1, `MirInit`): a use of a temp is checked as a program Place's, the temp's own bit excluded: a temp that holds nothing holds
+    the Never value, which a consumption takes as it is (R5-M159's diverging keys and default slots); what a construction left unplaced
+    lies below it (R4-M175's Never parts and carries), and a part of a temp is a Place in its Temporary Place (SPEC 3.4), always checked.
+    A whole temp that a placing location's operand moves is a transfer, not a use: an Assign's Use or aggregate (its carries give the
+    state to the component, checked where that is used) and a `Places` Call.
+  - Vocabulary (`MirTerminator.Places`, beside `CheckTarget`): the Call is a construction's insertion, not a call of the program; each
+    operand is a Move of a whole Temp the call transfers into the construction. Set only by the MIR builder on a Dictionary literal
+    entry's `DictionaryStorage.placeEntry` Call (R8-M11); program calls (`tryInsert`, `insertOrReplace`) never carry it. Validator
+    (`MirValidator.Calls` `Placed`, `.Blocks`): a Fn callee and whole-Temp Moves, and no `Places` on another terminator (Operation).
+    Readers: A1 and MirDump; A2, A5, the instance collector and code generation do not read it.
+  - Moves (Q13): invalid programs newly rejected where the incomplete temp is consumed (G442's positions 1-3, program insertions, a later
+    literal key, a read of the part); also a part read of a temp absent on one assumed path (`h((if c => (a, a) else => fail()).0)` after
+    a return), rejected as its Var twin is (SPEC 14.10.3's `let y: i32 = fail()`); a whole consumption stays accepted. Programs rejected
+    on both sides gain a record where the part is read or bound before the later use's: `let t = X.1; return t` and `match X: (_, let y)
+    => h(y)`, each +1 UninitializedPlace_Kd.
+  - Tests moved by O-99 (a): `AggregateDefaultTest` 'Abandoned' became a SPEC-valid exit `(if flag() => exit to done else => "second")`;
+    `ApplicabilityChainRegressionTest` n18 and n23 expect the new record; `AControlFlowArgumentRanksAsItsKindBesideItsUnplacedPart` keeps
+    the independent record (Q13).
+  - Why R4-M21's reason no longer holds: its false problems in check-only code are the absent case only (the Never value), which the
+    own-bit exclusion keeps accepted; the incomplete case is an error by 15.1.2-15.1.3, which the skip hid (G442's positions 1-3).
+  - Kept: the whole returned value after a return stays accepted (14.10.3, 16.2.2 and 3.5's table use nothing on the assumed path: no
+    delivery, and securing a bare temporary transfers it with no extra Copy or Move); a returned part is reported. A Dictionary literal's
+    storage has no component path, so a Dictionary received whole while an entry is incomplete is accepted, as for the Array literal
+    (STATUS's Unreachable code row).
+  - Rejected: an allowlist of callees in A1; an Assign through placeEntry's raw slot (A5 moves; `proto/m-g442a`@97ae29924); a
+    `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
+    `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
+    not).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -8768,6 +8818,8 @@ resumed by R4-M86 (2026-10-20).
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
   - Superseded in part by BU-128 (R7-V5b-1, the owner's O-70 (a)): "a cycle of binding nodes alone is its conformance's error" no longer holds; a binding-only inline cycle is judged at the binding, and `Binding.InlineLayouts.cs`' "no record for a binding node" is withdrawn.
+  - Its inherited arm (the walk's re-resolution on the base clause's instance) is superseded by BU-141 (G631 part 1): an inherited path's
+    binding is the heir's node.
 
 - **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the owner's answer
   on G264 S1, verbatim 「(B)」; supersedes BU-52's interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does
@@ -9812,6 +9864,14 @@ resumed by R4-M86 (2026-10-20).
   - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
   - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
   - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
+  - Amended by R7-N1e1 (2026-11-09; Major; the Front's ruling 1, no design review: option A of the N1e design): a Container's Type
+    members are read by name through `MemberTypes(container, name)` (SPEC 9.6, 18.2.1: formal parameters, Origins and `Self` are not
+    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check, `ProjectionQualifier`
+    and the unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default
+    alias's segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto
+    the path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
+    filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -10357,6 +10417,8 @@ resumed by R4-M86 (2026-10-20).
     after the failed Binding, which Layout rejects without a record. No instance-level fact.
   - Rejected: reporting at the struct whose instance is infinite (valid for other arguments, x7); reporting only components without a
     declaration (a mode); keying by the binding's Type (r7 reports both bindings); a new instance-level fact for Layout.
+  - Its root rule ("every completed associated binding of a non-inherited conformance path is a root") is superseded in part by BU-141
+    (G631 part 1): every conformance path's binding is a node and a root.
 - **BU-129 R7-E1d A clause's resting failure yields to its owner's own** (2026-11-08; plan §5.1 E1, `ruling-r2.md` §3; D-2; SPEC 15.3.3,
   23.1.2; DIAGNOSTICS rule 4). `FailOriginClause` writes `InvalidOrigin` into the owner of a failed Origin clause with an edge to the
   clause, a value that rests on another node. `Fail` lets the owner's own later failure take that slot and removes the clause's edge, so the
@@ -10531,6 +10593,72 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-141 An inherited binding is the heir's node (PLAN G631 part 1)** (2026-11-09; Front, Binding; Major, an acceptance mover; design
+  reviews 1-3 and the owner's O-96 (a); implementation review ACCEPT after I1) SPEC 6.2 (with the owner's O-70 (a)), 8.6.2, 8.8.2.
+  Supersedes in part BU-128's "every completed associated binding of a non-inherited conformance path is a root" and BU-65's inherited arm
+  (the walk's re-resolution on the base clause's instance; PLAN G328's subject).
+  - Rule (SPEC 6.2, 8.6.2, 8.8.2): every conformance path's binding is a node and a root; an inherited path's stores its source's binding
+    on the base clause's instance (`InlineBinding`).
+  - Site: a declared path's record is written by the judge at `SpecificationPart ?? its clause`; an inherited path's at its conformance's
+    site, the heir's base clause (`Use`), after that clause's own checks (`ReportInheritedInlineCycles` after `ValidateBaseDeclarations`),
+    dependent when the clause failed by itself.
+  - Scope: the heir's conformance scope (D and the source's P) is built once per pass by `Binding.InheritedConformances`
+    (`PrepareInheritedScopes`, called by the pass driver before the judge) and read by the judge and `VerifyInheritedConformance`.
+  - Temporary structure: `ReportInheritedInlineCycles`' deferred write, marked `[Transitional("R7", Reason = "... (R7-E5).")]`, is a
+    write-order workaround for `Fail`'s silent drop of a later failure (PLAN G262: one node holds one failure). It goes at R7-E5 (a), the
+    stage COMPILER_ARCHITECTURE already gives that cause, once E2-E4 have migrated the `Fail` writers and a node keeps a later failure as
+    a fact; the judge then writes inherited paths' records with the declared ones. Until then these writers at an inherited path's `Use`
+    run after the write point, and the order decides which record that node keeps: `ValidateConformances`' agreement (an Error is
+    dependent; a Refuted or Unknown reaches only `PathStorage[0]`, an explicit path when one exists), `ValidateBoundConformanceAgreement`
+    (`a.Use`), and `PublishNeededLimits` (none computed on the 57 traced programs). The owner's O-96 (a) chose this order.
+  - Moves: i1, i1u, i5, i6 and i7, invalid by SPEC 6.2 under O-70 (a), are rejected; i1x and x3v keep their `GenerationResourceLimit_Kd`
+    beside the Language record (PLAN G631's remaining part).
+  - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
+    on P6); the record at `path.Use` before the base clause's checks (P5: independent records lost, design review 1's B1).
+- **BU-139 A fixed array's projection in a declaration position: the formation maps through a declared subject only, and the
+  witness's Signature is demanded (PLAN G578)** (2026-11-09; G578-1; Major; design review 1 ACCEPT, implementation review ACCEPT; the
+  Front's ruling 1) SPEC 8.5.2, 8.5.4, 22.1.
+  - Rule A: `ValidateAssociatedApplications` maps an applied projection's formation Type through the subject declaration's slots
+    (`StoredType(formation, subject)`) only when the subject has a declaration. A subject without one (a fixed array, Tuple, primitive
+    or Callable Core) has no slots, so the step is the identity there, and `ContractType` still substitutes `Self`. On dev the step
+    dereferenced a null declaration (CheckFaulted_Kd).
+  - Rule B: `FixedArrayIteratorType` reads the entry witness's result Type through the Signature query (`BindHeader`, the kind's one
+    entry; BU-105), not as a published field: source headers precede the library's in the header loop, so on dev a source header's
+    fixed-array projection named no Type (a false TypeMismatch_Kd at a `return`, InternalInvariant_Kd at a parameter). The witness
+    headers name no fixed-array projection, so the demand never meets a Running or abandoned header.
+  - Rejected: `StoredType` answering null for an owner without a declaration (a silent null for every other caller's broken
+    precondition); the projection's declaring reference interned in the use's terms (the projection identity is G170's and G302's);
+    library headers bound first (an order dependence R7-D2 g deletes); a pending outcome that abandons the source header. The Contract
+    base form (`w1`) stays PLAN G578, for R7-D2 d's Contract-shape kind.
+
+- **BU-142 `Witnesses` answers each target at its instance; A4 enters what that instance selects; `EffectsLimit` goes (PLAN G589)**
+  (Front, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT at revision 1, implementation review
+  ACCEPT; the Middle's consent C-172; supersedes R8-M4's `EffectsLimit` bullet; amends R5-M68, R5-M22) SPEC 7.2.3, 8.11.2, 8.11.3,
+  8.13.3, 15.6.4, 22.1; IMPL 21.3.1.
+  - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
+    compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
+    `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
+    instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
+    `Subst` answers the original, and the consumer that enters or generates it selects once. That selection is A4's per-key rule
+    (R4-M22) carried into `Require`; under the owner's O-109 (a) (SPEC 15.6.4: a callable's summary covers its whole closed
+    explicit-specialization set) PLAN G663, the Middle's A4 unit, supersedes it at every A4 entry, `Require`'s loop among them.
+  - **Moves.** A default's copy of a fixed array's enumeration (`iterate` on `[2 of i32]`, `[3 of i64]`, `[2 of Loud]`) or an integer's
+    position read (`tryResolve` on i32, u8, isize) under `confined` is accepted (was `Unsupported_Kd`). Records (Q13, on programs the base
+    rejects): `IncompatibleContractImplementation_Kd` added beside G664's `OwnershipDepthLimit_Kd` where a default's copy calls a
+    requirement whose witness has its own Type parameter and a specialization with an effect. Each such program is invalid by SPEC
+    15.6.4 (an implementation in the closed set has the effect), so the record is right whether or not the call's key selects that
+    specialization: at i32 (`f<i32>`, `MirEffectsTest.ADefaultsCopyEntersTheWitnessesSpecialization`) and at i64 (q1-default-i64) alike,
+    as for RV11, RV14, RV15, RV17 and SEL2 (the Middle's C-172 review, R1-F1; the owner's O-109 (a)).
+  - **The comparison view's Witness leaf** is the Body's instance without its Origins (R5-M68's `Synthesized(witness, declaring, [])`
+    dropped a library witness's Types); the same `Subst` for every current row.
+  - R5-M22's sentence as R8-M4 amended it, "Property, a library witness of a row with `EffectsLimit`, Refused and None give false", reads:
+    "Property, Refused and None give false".
+  - **Kept:** `Binding.LeafTarget` (the legacy composition's leaf) answers a library witness with no Types, right only for a row of no
+    parameter (String, the one Equatable or Comparable row): no comparison row with a parameter lands before A-12's read of the view, else
+    R7-P5, which removes it.
+  - **Rejected:** selecting inside `Witnesses` (the one producer answering a specialization; the agreement check would compare a selected
+    target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
+    Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -11937,6 +12065,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by BU-90 (2026-11-04, H5's B-del): `DictionaryComparison`, and `RequirementImplementation`'s CallPlan
     overload with `TryResolveFormattingCallback`, went at B-del instead of H11, since their readers went with the old walk.
     `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest`.
+  - Amended by BU-142 (G589): the comparison view's Witness leaf is the Body's instance without its Origins, not `Synthesized(witness,
+    declaring, [])`.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19; plan K6; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1;
   `MonoKind.Builtin`, `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11,
   `ExclusiveInheritedWitness` being KD10's and §4.7's OCC-X row; its Builtin key superseded by R5-M70) A Requirement call of an
@@ -12210,6 +12340,7 @@ structure is recorded here by the unit that first implements it.
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
     writing the wide declarations from `FunctionCodegen` (module-level text, duplicated per function); a raw-pointer column now
     (not verifiable before C1b, C2b or C8a produce a pointer value).
+  - Superseded in part by R8-M15 (R8-S1e-b, 2026-11-09): the operator table's string column is deleted.
 - **R5-M77 The Generated mark at emit** (2026-10-19; plan K11; under R5-M18, R5-M35, R5-M64 and R5-M65; DEC Q6 form 1; its Library
   roots amended by R5-M153) MIR code generation writes exactly the items of the checked set the output requires (IMPL 21.3.1), the
   closure of its output roots over runtime targets. The generation entry (`Compilation.Generation.cs`), after gate step 1 and
@@ -13293,6 +13424,8 @@ structure is recorded here by the unit that first implements it.
     text (PD2); the shim in C8c (its frame for one leaf Type); a located `Unsupported_Kd` for a pair-layer operand (the symptom
     G:closure's review flagged in `Closures.cs`' PairLayer arm).
   - Amended and superseded in part by R8-M7: its Form (a `BinaryOp`) goes, with a literal Pattern's test and a tuple's string leaf, except for a comparison whose left operand has a qualifying pair layer, which keeps it until R8-S1e; its String column and Routines at R8-S1e. Its statement that no valid program reaches a pair layer in an operand is false (a generic body's operand `value: s/string`, `s is ref or uniq`, reaches the column and prints the right values on dev): it reads "an operand of a qualifying pair layer reaches the column in a generic body, its instance's Type below the layer being string". Its rule that a string constant has no destruction obligation stands. Its sentence "A string constant has no Value" reads: "at the string Type a string constant has no Value; at `ref/string` it has its record's address". Its Rejected line "string comparisons as Calls of BuiltinEquals/Compare (R5-M75: a second form of one comparison)" no longer holds: the call is the only form from R8-S1e, and the callee is a library body.
+  - Superseded in part by R8-M15 (R8-S1e-b, 2026-11-09): the string column is deleted; a string constant put whole stands
+    (`FunctionCodegen.Aggregates.cs` and `.Intrinsics.cs` cite it).
 - **R5-M119 The owner confirms C8c's departures** (owner, 2026-10-25, after C8c's design and before its behavior commit; verbatim 「C8c の逸脱
   2 件（文字列の BuiltinEquals/Compare シムを C8f へ移すこと、Strings カーネルの O2 と前提 E7 を E7 と C9c の遅い方へ移し C8c は一時カーネルで参考測定すること）を承認します。」) The two
   departures R5-M118 records are confirmed: `BuiltinEquals` and `BuiltinCompare` on strings, a string Self's shim included, move from plan
@@ -16157,21 +16290,20 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open:**
     - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
     - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
-- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149).
-  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149; amended 2026-11-09 by G643-G644, PLAN G643-G645: design review and implementation review 1 ACCEPT, the Middle's reviewer, and G645 (the Back's review ACCEPT, C-171)).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand, by MIR's published family `MirTypes.HoldsIntegerConstant`, and code generation reads it in an instance (`FunctionCodegen.Constant`).
   - **The rule.** It accepts an Integer `MirConst` only in these cases:
     1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
-    2. A widthless Type that code generation also lowers (`FunctionCodegen.Values`): `char`; a raw pointer (null); or a Type whose instance decides it. That last test is the validator's own `Integral` (`HasIntegerArithmetic || HasAbstractPart`), owned by `MirValidator.Types` and also read by the Cast rows. It covers a Type parameter's generic literal.
+    2. A widthless Type of the family `MirTypes.HoldsIntegerConstant`: a Type with the integer operators, concrete or generic (`MirTypes.IsArithmeticInteger`, SPEC 13.3.1's set and Binding's name for it: integer arithmetic, an abstract Type, or `Wrapping` over one, which stays constructed until substitution, SPEC 3.1.1, 8.7.4), `char`, or a raw pointer. Its value is ranged: `char` a Unicode scalar value (SPEC 3.1), a raw pointer only null, 0 (SPEC 5.1), and a Type whose instance decides it a generic literal, 0 through 127, a value of every instance (SPEC 8.7.4, BU-133). A literal Binding fits through an identity premise (`T is i32`: 200) has the complete Type, while MIR keeps the premised parameter (BU-72), so it holds by its width under case 1. The integer Cast rows (Integer, Wrap, Numeric, Bits, IntToPointer) read the same `MirTypes.IsArithmeticInteger`.
     3. Any other Type: `MirViolation.Const` (`InternalInvariant_Kd`).
   - **Reason.** Before this entry, no rule held: C-142 N3's 2^127 validated in i32 and in u8. A widthless constant was accepted whatever its Type, a silent default over an open family. The Backend already rejects every other instance Type, so validated MIR now states the same family before code generation does.
   - **Rejected:**
     - accepting every widthless Type;
     - an allowlist of the validator's own, which would be a second rule;
-    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule.
-  - **Open limits:**
-    - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
-    - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
-    - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
+    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
+    - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
+  - **Open limits** (N5, N6/F4 and the family's second copy closed by G643-G645):
+    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
@@ -16270,6 +16402,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
+  - Its `EffectsLimit` bullet and its R5-M22 sentence are superseded by BU-142 (G589): `EffectsLimit` is gone, and R5-M22's sentence reads
+    "Property, Refused and None give false".
 - **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
   SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
   - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one
@@ -16317,7 +16451,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **The transfer counter.** `word` and `half` read through `transferBytes`, so a comparison's reads enter the native audit's transfer counter, which means storage copied. At O0 only; O2 folds them into loads. In this unit's corpus (6,124 `.ll` at b075b71d2): 637 audit fixtures, 44 with a stated bound, at most 311 reach `word` or `half`, 0 do both; every `*Audit.ll` passes unchanged. A string-keyed cost fixture written from now on counts those reads.
   - **`compare`'s value.** It answers -1, 0 or 1; the old routine answered `memcmp`'s value. SPEC 13.4.1 fixes only the sign. No fixture of `*Audit`, `String`, `Tuple`, `Match` or `Dictionary` depended on the value (all pass).
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
-  - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
+  - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` was admitted by the validator until R8-S1e-b, which removed the route (R8-M15).
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
   - Amended by R8-M9 (the owner's O-84 (a)): the staged removal moves to R8-S1e-b, after the Front's one-owner unit (C-151); R8-S1e-a closes the pair-layered left operand's route.
 - **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
@@ -16425,12 +16559,45 @@ R8-M* and R9-M* by the stage of the recording unit.
     (c) LayoutNeeds by value; (d) prefix-view bodies (two producers). `v[0..]` stays invalid: a written start is a position resolved
     at run time whatever its value, and only `Start` is the static zero (SPEC 4.6.1, 8.15.3; the Middle's report O-88 (ii); 8.15.3
     does not name range views, and no SPEC change is asked).
+- **R8-M14 A sequence handle's layout is its representation struct's placement; `Layout.Rows`' handle rows and `LengthWord` go**
+  (Back, 2026-11-09; R8-R1b; Major; design reviews 1 REVISE (B1), 2 ACCEPT; on R8-M1; supersedes in part R5-M19 and R5-M124) SPEC
+  4.7.3, 22.2; IMPL 21.1.1-21.1.3.
+  - **Owner.** `Layout.Component(type)` is IMPL 21.1.3's Handles table in the compiler (Array → `Storage.ArrayRepr`, Slice →
+    `Storage.SliceRepr`, Dictionary → `DictionaryStorage.Handle`, the catalog row `DictionaryStorageHandle`). A handle stays a row, 0
+    high (placement heights and depth limits unchanged), whose record is its component's placement. `Component(string)` is null: the
+    string keeps its static row, R8-M1's O-43 (A) lasting pair with `RuntimeAbi.String`, not a missing component.
+  - **The open-Type exception (stated once).** `Layout`'s input is a closed Type, with one exception: a handle's component is its
+    declaration's own Type (`TyCtxt.SelfType(KimiDeclarationId)`, a reader of `Binding.SelfType`), open in its parameter. It has two
+    readers, placement (`Layout.Handle`) and code generation's `FunctionCodegen.Word`, and both rely on one premise: every Field of the
+    component is a row (a raw pointer or `isize`), so no element Type is read (X34) and each handle kind has one record. A Field that
+    read its parameter fails loudly in both: placement throws ("The component of T has no layout."), and `Word`'s `Layout.Row` throws
+    for a Type without a row. Neither gives a silent layout.
+  - **Code generation's one form for a handle's words.** `FunctionCodegen.Word(handle, record, name)` returns the component Field's
+    offset in the handle's record and the Field's row, by `AdtDef.IndexOf`'s by-name contract. `LoadWord` and `StoreWord` are its only
+    readers, used by `Length` (Len, Index bounds), `Buffer` (Index, `Storage`), `ArrayBuffer` (the empty Array's `data`, `length` and
+    `capacity`, the length, the result's `data`) and `Raw.slice`. No handle word is addressed by position. Which word a Len reads is now
+    code generation's Len lowering (the component's `length`), no longer `Layout.LengthWord`.
+  - **Moves: IR type text only.** A handle's storage type becomes the component's C-mode Field text: `{ ptr, i64 }` (Slice), `{ ptr,
+    i64, i64 }` (Array), `{ ptr, i64 × 6 }` (Dictionary), for `{ [0 x i64], [n x i8] }`. It appears in allocas, whole-value loads and
+    stores, statics and a C-layout struct's part text. Sizes, alignments, strides and Field offsets are unchanged
+    (`LayoutTest.SequenceHandlesArePlacedAsTheirComponentsForEveryElement`). Acceptance, records and MIR are unchanged (snapshot 0).
+  - **Guard renamed.** `LayoutTest.StringReprIsPlacedAsTheStringRow` is the `StringRepr` guard R8-M1 calls "LayoutTest's
+    `StringRepr` row"; R8-M1's text is kept.
+  - **Discharged:** R8-M1's two "Temporary, each removed at R1b" items (`Layout.Handles` and the pin theory's handle rows).
+    **Supersedes:** R5-M19's Slice, Array and Dictionary rows ("2, 3 and 7 pointer-aligned words ... `[Transitional("R8")]`"), and
+    R5-M124's Len bullet ("Layout's sequence handle rows name their length word (`Layout.LengthWord` ...)"). The reason that no longer
+    holds: the library declares the handles' components (R8-M1), so their placement states the words once.
+  - **Counts:** `[Transitional("R8")]` 11 → 10; `KimiDeclarationId` 193 → 194, catalog 189 → 190.
+  - **Rejected:** placing `ArrayRepr<E>` per element (it reads `E`, so the storage is Rejected after a failed Binding); a closed
+    stand-in `ArrayRepr<u8>` (silent if a Field ever read `T`); static rows filled from the library (a static row cannot read a
+    compilation's library); Binding owning the handle → component table; Len as a MIR Field read (a MIR form change); `data` by
+    position beside `length` by name (design review 1, B1).
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
   - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the premises of that scope make it comes first (`CallableContractType`: `ContractType` normalizes its associated projections, then `SubstituteIdentityPremises` substitutes its identity premises; OT2, C-159 (1), C-162, C-163), guarded by `HasAbstractPart`, so the compared Type has one owner. It is the one premising: `TyCtxt.Premised` publishes the same function to `MirTypes.Premised`, so MIR reads no second premising. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
   - **Published.** `TyCtxt.OperandTerminal(Koto, BoundType)` publishes it for MIR; `MirBuilder.Witnessed` reads it for an operator's operand (the right one's after a Never left) and a Literal Pattern's position (an identity there).
   - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
-  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
+  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself went at R8-S1e-b (R8-M15).
   - **Moves (OT2).** Below, "the chain" is `T is H.Item`, `H.Item is X`, with `a, b: ref/T`.
     - Acceptance (valid, newly accepted): `b == "x"` and `b < 1` for `b: ref/T` with a pair target T under `T is string` / `T is i32`
       (G157 (29), t2, t3; were `UnprovenConstraint_Kd`); `a < b` under the chain with f64 (the Middle's nf1; was
@@ -16452,6 +16619,28 @@ R8-M* and R9-M* by the stage of the recording unit.
     premises" (`HasParameterIdentity`, `HasAssociatedProjection` are published, but neither states what `ContractType` reads: it
     normalizes completed associated identities through the conformance tables too, so the guard would restate the rule's reach).
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+- **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
+  2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
+  - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
+    `FunctionCodegen.Strings.cs`, `ModuleCodegen.Needs.Strings` and `LegacyRuntimeHelpers`' string routines with `declare i32 @memcmp`;
+    the Backend's `Terminal` follows ref and uniq layers only.
+  - **Rule.** `MirValidator`'s comparison arm computes one statement per operand, `PremisedTerminal` =
+    `Terminal(MirTypes.Premised(body, type))` (premising before the structural walk, so a layer a premise gives is walked), which both
+    the agreement and the string test read (`OperandsCompare`): a check over `Binding.OperandTerminal`, not a reader of it. The owner and
+    the validator premise by one function, `CallableContractType` (OT2), in one premise scope (SPEC 8.2.3).
+  - **Open family:** a comparison `BinaryOp` at a Type the operator table does not lower; string is its one row here. The closed form, a
+    whitelist over the operator table's domain read by the validator and the Backend from one statement, exceeds the unit because
+    `ComparisonTypes.OperatorTableRuns` (Unit admitted) and the Backend's `Column` (Unit not) disagree (PLAN G662).
+  - **Order:** on OT2, both commits in one window (without OT2 a Field of a projection Type, `p.v == q.v` under `H.Item is string`, is a
+    `BinaryOp` at `ref/H.Item`, which 1/2 leaves unlowered and 2/2 reports).
+  - **Moves:** valid newly accepted (from `InternalInvariant_Kd`): a comparison `BinaryOp` whose operand's layer an identity premise
+    gives, directly, through a chain or in a Closure, now agrees at the premised terminals (m1, m1r, m1l: `T is ref/i32 during o`
+    against `ref/i32` or a literal; the Middle's rC2, rK3; rR1: `T is ref/(raw/i32) during o` against `raw/i32`); a premise-given uniq
+    layer stays (G355). Checked up to emit only: every call to such a definition is rejected, so no native run lowers one.
+  - **Rejected:** premising after the walk (C-139 review 2's B2); a string test beside the old agreement, two orders in one arm (C-158
+    B1); the validator reading `TyCtxt.OperandTerminal` (a validator reading its producer checks nothing) or
+    `SubstituteIdentityPremises` (a second premising); two premising functions with an invariant between them (refuted, C-159); the
+    whitelist now (`OperatorTableRuns` and `Column` disagree on Unit).
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").

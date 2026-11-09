@@ -241,7 +241,6 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
     [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
     [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
-    [InlineData("takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "true")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("applyArg(if c => (func [] (v) => v, x) else => (func [] (w) => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
@@ -267,6 +266,19 @@ public partial class ApplicabilityChainRegressionTest
         var source = ControlFlowDeclarations + use + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // The same ranking for a closure position whose result mismatches (`true`), and, as an independent failure (SPEC 23.1.2; M's Q13
+    // call on PLAN G442), A1's record where takeFn receives the join's value: no path reaches the call, and the first arm leaves its
+    // Never part unplaced (SPEC 14.10.3, 15.1.3; the owner's O-99 (a)).
+    [Fact]
+    public void AControlFlowArgumentRanksAsItsKindBesideItsUnplacedPart()
+    {
+        const string use = "takeFn(if c => (func [x] () => true, stop()) else => (stop(), x))";
+        var source = ControlFlowDeclarations + use + "\n";
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UninitializedPlace_Kd), use), (nameof(DiagnosticCode.TypeMismatch_Kd), "true")],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the

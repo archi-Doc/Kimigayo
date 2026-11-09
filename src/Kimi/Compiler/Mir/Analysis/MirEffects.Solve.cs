@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
+    private readonly List<(BindingSymbol Target, Subst Instance)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
@@ -284,10 +284,11 @@ internal sealed partial class MirEffects
     // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
     // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
     // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
-    // target Binding resolves under that reference and those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's
-    // leaf witnesses, a witness body or an accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in
-    // target keeps its requirement's declaration), and none resolving (a composite with an abstract part, a standard Property witness) is a
-    // limit.
+    // target Binding resolves under that reference and those premises, at the instance Binding gives it (TyCtxt.Witnesses: a compiler
+    // function, a composite comparison's leaf witnesses, a witness body, a library witness at the Self's arguments among them, or an
+    // accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in target keeps its requirement's
+    // declaration), each implementation that instance selects entered as a call enters it (SPEC 8.13.3, TyCtxt.Implementation), and none
+    // resolving (a composite with an abstract part, a standard Property witness) is a limit.
     private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
     {
         if (type.IsAbstract)
@@ -304,14 +305,18 @@ internal sealed partial class MirEffects
         this.found |= types.Witnesses(requirement, type, contract, reference, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
-            var (target, declaring) = this.targets[i];
+            var (target, instance) = this.targets[i];
             if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
             {
                 this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
             }
             else
             {
-                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+                for (var j = 0; types.Implementation(target, instance, j) is { } implementation; j++)
+                {
+                    var own = ReferenceEquals(implementation, target); // SPEC 8.13.3: what the instance's key selects, as a call enters it.
+                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, implementation)), own ? instance : null, implementation);
+                }
             }
         }
 

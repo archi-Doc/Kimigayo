@@ -8,10 +8,9 @@ namespace Kimi.Compiler.Backend;
 
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
 // item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's. A
-// string constant at the string Type has no value: it is written whole where it is put (FunctionCodegen.Stores' Text) and its bytes are
-// read where it is compared (FunctionCodegen.Strings; DECISIONS R5-M118); at ref/string, a comparison's literal, it is its constant
-// record's address (MirConst.IsRecord). A TypeToken constant has no value either: its call's writer reads it (C6a's TypeTest, C9c's format
-// estimates).
+// string constant at the string Type has no value: it is written whole where it is put (FunctionCodegen.Stores' Text); at ref/string, a
+// comparison's literal, it is its constant record's address (MirConst.IsRecord), which the library witness reads (R8-S1d2, R8-S1e). A
+// TypeToken constant has no value either: its call's writer reads it (C6a's TypeTest, C9c's format estimates).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
@@ -36,13 +35,13 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit, a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a
-    // Location, a verification site's number in the test catalog (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery
-    // gives every verification of the accepted test build, so an unnumbered site is a broken contract; and a string constant at ref/string,
-    // its record's address (LlvmConstantPool.InternRecord). Any other constant read as a value, a String or TypeToken one (its writer reads
-    // it) or an Integer one of a Type without integer arithmetic, char or raw pointer (Binding fits literals), is a broken contract too,
-    // recorded at the body's subject; false after it (DECISIONS R5-M146).
+    // A constant of a covered kind: Bool (stored 0 or 1), Integer of a Type of MIR's family in the instance (MirTypes.HoldsIntegerConstant:
+    // an integer or char Type, or a raw pointer's null, SPEC 5.1), Float (its IEEE bits), Unit, a function item (zero-sized: a Function Item
+    // stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a Location, a verification site's number in the test catalog
+    // (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery gives every verification of the accepted test build, so an
+    // unnumbered site is a broken contract; and a string constant at ref/string, its record's address (LlvmConstantPool.InternRecord). Any
+    // other constant read as a value, a String or TypeToken one (its writer reads it) or an Integer one of a Type outside the family in the
+    // instance (Binding fits literals), is a broken contract too, recorded at the body's subject; false after it (DECISIONS R5-M146).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
@@ -89,7 +88,7 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
+        if (constant.Kind == MirConstKind.Integer && !MirTypes.HoldsIntegerConstant(type))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default);
             return false;

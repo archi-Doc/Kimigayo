@@ -291,7 +291,10 @@ public sealed partial class Binding
             {
                 formation = this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments);
                 formation = this.StoredType(formation, projection.Components[1]) ?? formation;
-                formation = this.StoredType(formation, projection.Components[0]) ?? formation;
+
+                // A reference taken from the subject declaration's conformance names that declaration's slots; a subject without a
+                // declaration (a fixed array, Tuple, primitive or Callable Core, SPEC 8.5.2) has no slots to map (PLAN G578).
+                formation = (projection.Components[0].Symbol is null ? null : this.StoredType(formation, projection.Components[0])) ?? formation;
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
 
