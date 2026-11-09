@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   after an abandoned demand sees it without the struct's inherited paths, which no final reading has given yet. Before, a read sees
 //   what pass 0's sweep registered. Whether a reading of the clause is final is BaseLayers' answer (its not-ready count), never here.
 // - Prohibitions: no record (ValidateBaseDeclaration and the verifications' callers own them); no read of a query state.
-// - Removal: the accessors' clausesBindable condition and the pass-0 sweep go at R7-D2 d3 with R7-M9's temporaries.
+// - Removal: the accessors' clausesBindable condition, the pass-0 sweep and the not-ready path's read of BaseLayers' notReadyReads
+//   go at R7-D2 d3 with R7-M9's temporaries.
 public sealed partial class Binding
 {
     private int inheritedSteps;
