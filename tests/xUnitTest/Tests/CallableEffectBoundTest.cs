@@ -231,6 +231,14 @@ public class CallableEffectBoundTest
     [InlineData(
         "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n            effect confined\n        return d.map(g)\n",
         "NoApplicableOverload_Kd@d.map(g)")]
+    // Two references in scope: `c.map(g)`'s effect site reads C's, so G's bound at `(i32) -> i32` decides; D's would read `(bool) -> i32` and
+    // swap the two verdicts.
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n            effect confined\n        G is Callable<(bool) -> i32>\n        return c.map(g)\n",
+        "clean")]
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n        G is Callable<(bool) -> i32>\n            effect confined\n        return c.map(g)\n",
+        "UnsatisfiedEffectBound_Kd@g")]
     public void ARequirementsCallableClauseReadsItsContractReference(string run, string records)
     {
         var source = "contract Mapper<T>\n    func map<F>(self: uniq/Self, transform: ref/F) -> i32\n        F is Callable<(T) -> i32>\n            effect confined\n" +

@@ -205,6 +205,7 @@ public class ConstraintBindingTest
     [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<i32>\n        c.put(w@move)\n", "clean")]
     [InlineData(Put, "<C, V>(c: uniq/C)\n        C is Put<V>\n        V is i32\n        c.put(5)\n", "clean")]
     [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        C is Put<bool>\n        let x: i32 = 5\n        c.put(x)\n", "clean")]
+    // P1i asserts dev's record kind, which is PLAN G680's open question, not a SPEC reading; it moves under DECISIONS Q13 when G680 lands.
     [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<bool>\n        c.put(5)\n", "NoApplicableOverload_Kd@c.put(5) [candidates=1]")]
     [InlineData(Put, "<C, V>(c: uniq/C, v: V)\n        C is Put<V>\n        c.put(5)\n", "UnprovenConstraint_Kd@c.put(5) [subject=i32; member=put; constraint=U is T]")]
     [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<bool>\n        c.put(w@move)\n", "UnprovenConstraint_Kd@c.put(w@move) [subject=W; member=put; constraint=U is Show<T>]")]
