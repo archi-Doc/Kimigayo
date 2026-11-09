@@ -242,20 +242,14 @@ public partial class LayoutAttributeBindingTest
     [InlineData("#Foo", "contract C\n    {A}\n    func g(self: ref/Self) -> i32\nstruct W\n    Self is C\n    public func g(self: ref/Self) -> i32 => 1")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")", "contract C\n    {A}\n    unsafe func required() -> i32")]
     [InlineData("#Layout(\"C\")", "contract C\n    {A}\n    func g(self: ref/Self) -> i32")]
-    [InlineData("#Test", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1\n" +
-        "func use<T>(t: ref/T) -> i32\n    T is Counted\n    return t.count")]
+    [InlineData("#Test", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1\nfunc use<T>(t: ref/T) -> i32\n    T is Counted\n    return t.count")]
     [InlineData("#Layout(\"C\")", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1")]
     [InlineData("#Test", "struct S\n    {A}\n    drop => ()")]
     [InlineData("#LibraryImport(\"codec\", \"d\")", "struct S\n    {A}\n    drop => ()")]
     [InlineData("#Test", "struct S\n    var v: i32\n    {A}\n    public init()\n        self.v = 1")]
-    [InlineData("#Test", "func classify<T>(value: T) -> i32 => 0\n{A}\nspecialize func classify<i32>(value: i32) -> i32 => 1\n" +
-        "func use() -> i32 => classify(5)")]
-    [InlineData("#Test", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n" +
-        "        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n" +
-        "        return base.score(bonus) + 10\nfunc use() -> i32\n    let d = Derived.init()@obj\n    return d.score()")]
-    [InlineData("#Layout(\"C\")", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n" +
-        "        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n" +
-        "        return base.score(bonus) + 10")]
+    [InlineData("#Test", "func classify<T>(value: T) -> i32 => 0\n{A}\nspecialize func classify<i32>(value: i32) -> i32 => 1\nfunc use() -> i32 => classify(5)")]
+    [InlineData("#Test", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10\nfunc use() -> i32\n    let d = Derived.init()@obj\n    return d.score()")]
+    [InlineData("#Layout(\"C\")", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10")]
     public void AnAttributeBeforeADeclarationThatTakesNoneIsInNoNode(string attribute, string source)
     {
         var c = MinimalEmissionTest.Analyze(source.Replace("{A}", attribute, StringComparison.Ordinal));
@@ -271,13 +265,9 @@ public partial class LayoutAttributeBindingTest
     // invalid programs, which dev accepted (x1, x23, x37: in `#if false`; x25, x32: an override outside a derived struct, read as a test
     // and never judged). The attribute's record rejects each; the misplaced override keeps its own, independent record.
     [Theory]
-    [InlineData("open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n" +
-        "        return bonus\nstruct Derived : Base\n    #if false\n        #Test\n        override func score(self: objref/Self, bonus: i32) -> i32\n" +
-        "            return base.score(bonus) + 10", false)]
-    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        return 1\nstruct Derived : Base\n    #Test\n" +
-        "    #if false\n    override func score(self: objref/Self) -> i32\n        return 2", false)]
-    [InlineData("group G\n    public open struct Base\n        public virtual func score(self: objref/Self) -> i32\n            return 1\n" +
-        "    #if false\n    struct Derived : Base\n        #Test\n        override func score(self: objref/Self) -> i32\n            return 2", false)]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    #if false\n        #Test\n        override func score(self: objref/Self, bonus: i32) -> i32\n            return base.score(bonus) + 10", false)]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        return 1\nstruct Derived : Base\n    #Test\n    #if false\n    override func score(self: objref/Self) -> i32\n        return 2", false)]
+    [InlineData("group G\n    public open struct Base\n        public virtual func score(self: objref/Self) -> i32\n            return 1\n    #if false\n    struct Derived : Base\n        #Test\n        override func score(self: objref/Self) -> i32\n            return 2", false)]
     [InlineData("#Test\noverride func f() => ()", true)]
     [InlineData("group G\n    #Test\n    override func t() => ()", true)]
     public void AnAttributeBeforeAnOverrideRejectsTheProgram(string source, bool misplacedOverride)
