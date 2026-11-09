@@ -56,10 +56,11 @@ internal sealed partial class InstanceCollector
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
         {
             this.Work++;
-            var (at, runtime) = this.sites[i];
+            var site = this.sites[i];
+            var (at, runtime) = site;
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, at, runtime, block.Terminator)
+                ? this.Edge(program, item, body, site, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -120,17 +121,17 @@ internal sealed partial class InstanceCollector
     // creation's payload descriptor, a DestroyValues' glue) and a Drop's targets, the glue of what its group destroys (DropTargets), none
     // for a part in a receiver's own storage (never past a Deref) without a layout (Received: no use; its body is checked only); an
     // intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without
-    // a body or row or a refused edge, and for a Drop, whose targets are added at its site with its runtime bit.
-    private int Edge(MirProgram program, int item, MirBody body, in MirLocation at, bool runtime, in MirTerminator call)
+    // a body or row or a refused edge, and for a Drop, whose targets are added at its site (the template's, its location and runtime bit).
+    private int Edge(MirProgram program, int item, MirBody body, in (MirLocation At, bool Runtime) site, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed && !Elided(program, body, at.Block, this.Set.Items[item].View) &&
+            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed && !Elided(program, body, site.At.Block, this.Set.Items[item].View) &&
                 !(Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok))
             {
-                this.DropTargets(program, item, subject, body, at, runtime, closed);
+                this.DropTargets(program, item, subject, body, site, closed);
             }
 
             return -1;
