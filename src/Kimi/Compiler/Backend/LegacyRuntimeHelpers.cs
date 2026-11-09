@@ -4,7 +4,7 @@
 // DECISIONS R5-M16): the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses
 // (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the helpers through this static component (promoted, never copied).
 // Input: the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
-// formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
+// formatting kind it gives (FormatKind), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable
@@ -14,8 +14,8 @@
 // it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
 // formatting witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
 // 4.9.6), which the collector reads there; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
-// and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is the runtime's bound at its kind (FormatBound),
-// which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormatStackLimit; R3-10).
+// and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is FormattingTypes.Bound's,
+// which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormattingTypes.StackLimit; R3-10).
 // The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
 // writer: writeLine's runtime routine and
@@ -24,7 +24,7 @@
 // runtime needs come from its row; warm writes allocate nothing; the expanded runtime texts (Texts) are built only when a code
 // generation writer first reads one, never on the check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
-// destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
+// destination for its kind (FormatKind, WriterKind), or use LINQ.
 
 #pragma warning disable SA1402 // The helper records are this component's request vocabulary.
 

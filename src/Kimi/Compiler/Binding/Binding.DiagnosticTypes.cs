@@ -349,18 +349,23 @@ public sealed partial class Binding
         {
             text.Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
+        else if (length.Values is { } values)
+        {
+            // An interpolation-bound term has no source form (R8-W2): the MIR dump writes its literal bytes and its value Types.
+            text.Append('(').Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(" + bound").Append(DiagnosticTypeName(values)).Append(')');
+        }
         else
         {
             text.Append('(');
-            if (length.Operation is KotoKind.PrefixMinus or KotoKind.PrefixPlus)
+            if (length.Operation == LengthOperation.Neg)
             {
-                text.Append(length.Operation == KotoKind.PrefixMinus ? '-' : '+');
+                text.Append('-');
                 AppendDiagnosticLength(text, length.Left!, budget);
             }
             else
             {
                 AppendDiagnosticLength(text, length.Left!, budget);
-                text.Append(length.Operation switch { KotoKind.Plus => " + ", KotoKind.Minus => " - ", KotoKind.Asterisk => " * ", KotoKind.Slash => " / ", _ => " % " });
+                text.Append(length.Operation switch { LengthOperation.Add => " + ", LengthOperation.Sub => " - ", LengthOperation.Mul => " * ", LengthOperation.Div => " / ", _ => " % " });
                 AppendDiagnosticLength(text, length.Right!, budget);
             }
 
