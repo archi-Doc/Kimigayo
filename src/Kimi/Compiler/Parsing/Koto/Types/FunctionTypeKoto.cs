@@ -13,6 +13,12 @@ public sealed class FunctionTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.FunctionType;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 2;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => index == 0 ? this.Parameters : this.ReturnType;
+
     /// <summary>Gets the parameter type expression.</summary>
     public Koto Parameters { get; private set; }
 

@@ -10570,6 +10570,44 @@ resumed by R4-M86 (2026-10-20).
     is read by demand (COMPILER_ARCHITECTURE's temporary structures).
   - Rejected: a check at conformance clauses alone (it misses function and struct Constraints); the opt-out as a declaration query
     now (it needs R7-D2 d3's demand binding of the opt-out clause).
+- **BU-140 A requirement waits for the conformances by what its Types contain (PLAN G621)** (2026-11-08/09; Front, Binding and
+  Parsing; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT, revision 4 after the implementation stop, design review 3
+  REVISE, revision 5 under the owner's O-91 (a), verbatim 「すべて推奨の内容でお願いします」, design review 4 ACCEPT; implementation
+  review ACCEPT) SPEC 8.5, 8.6.1, 15.3.1, F.5.
+  - **The fact.** `Binding.DeferredConstraint` defers a clause when its subject or requirement names an associated projection anywhere:
+    a PathSuffix that names no declared Type (`TypeName(Any)`), read under the requirement's operators (a group, `not`, `and`, `or`)
+    and through every Type position the written Type publishes, never from the top node's shape.
+  - **A conformance declaration binds in pass 0.** `DeclaresConformance(clause)` (`Binding.Contracts.Registration`: `Self is C` in a
+    struct or enum, SPEC 8.6.1) is the one fact `RegisterConformances` registers by, and the deferral exempts it; every other clause
+    waits by content, a premise's Contract argument included (`T is Sink<(Cursor during y).Item>`). `FindMissingConformanceName`, the
+    invalid-conformance rule and `BindCopyDeclarations` read the same fact in place of their copies.
+  - **The positions (option B).** `Koto.TypeComponentCount` and `TypeComponent(i)` are the Type positions searched before binding,
+    each Type kind publishing its own once; they over-approximate what `BindTypeStructure` binds as Types (a GenericsKoto its head and
+    length arguments, a RootName its path, a PathSuffix its qualifier; no Origin argument). The superset test
+    (`RequirementTypeParsingTest.TypeComponentsPublishEveryBoundTypePosition`) holds the bound positions as a table.
+  - **Decided once per Bind run,** before any Constraint binds, and kept for every pass (dev recomputed it each pass, so a clause whose
+    answer flipped could bind in no pass). A lookup through a base clause not yet ready is an early read that `VerifyEarlyReads`
+    evaluates again, until R7-D2 d3.
+  - **A requirement rests on its failed component:** `BindRequirement` records its failure on the node a transparent wrapper wraps
+    (`UnwrapTransparentType`, the one unwrap); a component that already failed keeps its own record.
+  - **The limit (temporary until R7-D2 d3).** An unqualified projection over a declared Type in a conformance declaration
+    (`Self is Sink<(Cursor during w).Item>`, `Self is Sink<Src.Item>`; valid: SPEC 8.6.1, 8.1.2, 8.5.2, F.5, 15.3.1) has no pass:
+    `FindAssociated` takes an unqualified name's candidates from the conformance table, which fills only at registration. A qualified
+    projection resolves in its Contract and is accepted. `conformancesRegistered` and `earlyProjections` note such a read before
+    registration; `VerifyEarlyProjections`, right after registration, repeats it, and one that now resolves gets a located
+    `Unsupported_Kd` (k9, u1). Nothing binds twice; it goes with R7-N2d's and G600's temporaries at R7-D2 d3.
+  - **Removes** R9-F2's TEMPORARY `bareGroup` (`Parser.Types.cs`; R9-M2's sentence).
+  - **Moves.** Newly accepted valid requirements: `T.(Source).Item is Zbox<(Cursor during y).Item>`; the group, tuple, array and
+    Optional forms; a Container Constraint and a `when` condition; Function Type parameters and results;
+    `ref/(Cursor during y).Item during y`; `Outer<(Cursor during y).Item>.Inner`; a premise's Contract argument under a function, a
+    Container or a projection subject, and under `or`, `and` and `not` (review 3's k1, k3, k5, p2, t1, t2, t3, t7). Adversarial twins
+    stay rejected with dev's records; `ref/(Cursor during y).Item` stays rejected with MissingOriginBinding_Kd (SPEC 15.3.7) for a
+    false UnresolvedBinding_Kd. Q13 rule W, all on programs both builds reject: doc-0371's dependent InvalidEffectBound_Kd; t4 and t5;
+    `F is Callable<((Cursor during y).Item) -> ()>` (invalid by SPEC 8.10).
+  - **Rejected:** a switch over the Type kinds in Binding (a second copy of `BindTypeStructure`'s case list); binding in pass 0 and
+    deferring on "not ready" (try-then-fallback); deferring every PathSuffix without the name lookup; exempting by the requirement
+    atom's kind (revision 4's `ClassifyRequirement`); binding a conformance declaration again after registration; failing the
+    projection `Unsupported` as soon as it finds nothing before registration.
 - **BU-138 An acquisition's Copy evidence is per Semantics case: `Binding.CopiesInEveryCase`** (2026-11-09; PLAN G642, C-154,
   D-137, the Middle's consent C-155 with L1-L3; design reviews 1 REVISE, 2 ACCEPT, implementation review ACCEPT; amends BU-88)
   - Rule (SPEC 8.14, 8.15.2, 3.5, 6.3.4, 7.7.3, 15.1.6): an acquisition that needs Copy evidence has it when the complete Type in
@@ -16678,7 +16716,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a phase-row table that `Check`, the subsets and the timed stages iterate (it would need a mode per consumer, and the
     product has one sequence); leaving the sequence in `Project` with tests calling `Project.Check(context)` (tests need projects and
     contexts, and the catalog generation reads would stay owned outside Core); a compiler-thread hop of `Check`'s own (above).
-- **R9-M2 One Type grammar entry** (2026-11-08; R9-F2; Major, behavior-preserving; plan §5.3 F2; the Front's review 2 ACCEPT, C-144) SPEC F.5, F.9.4. `Parser.ParseType(reader, TypeContext)` reads every Type; `TypeContext` is the closed list of SPEC F.5/F.9.4 positions (Type, Element, Argument, AnnotatedType, Qualifier, Target, SemanticsOperand, TargetOperand, RootPath, TargetRootPath) and alone decides what follows the head: a FunctionType only in Type, a GenericArgument's ArrayLength only in Argument, no PathSuffix in Qualifier, no Origin on a root path, no `?`/BorrowOrigin on an operand or root path, adjacency `<` and no OriginApplication/BorrowOrigin in the Target rows. A new Type position adds a row. Rejected: a [Flags] set of productions (bools under a name), a reader state for "inside a Target" (a side channel every delimiter would reset). ConstraintSubject and the requirement atom keep their Name-shaped readings (PLAN G489). Temporary: `bareGroup`, a complete Type's bare suffixed group, until PLAN G621 removes it (Binding reads whether a requirement's Type holds an associated projection anywhere). The failed-member-Name recovery's exception is preserved behavior, the Front's PLAN G626.
+- **R9-M2 One Type grammar entry** (2026-11-08; R9-F2; Major, behavior-preserving; plan §5.3 F2; the Front's review 2 ACCEPT, C-144) SPEC F.5, F.9.4. `Parser.ParseType(reader, TypeContext)` reads every Type; `TypeContext` is the closed list of SPEC F.5/F.9.4 positions (Type, Element, Argument, AnnotatedType, Qualifier, Target, SemanticsOperand, TargetOperand, RootPath, TargetRootPath) and alone decides what follows the head: a FunctionType only in Type, a GenericArgument's ArrayLength only in Argument, no PathSuffix in Qualifier, no Origin on a root path, no `?`/BorrowOrigin on an operand or root path, adjacency `<` and no OriginApplication/BorrowOrigin in the Target rows. A new Type position adds a row. Rejected: a [Flags] set of productions (bools under a name), a reader state for "inside a Target" (a side channel every delimiter would reset). ConstraintSubject and the requirement atom keep their Name-shaped readings (PLAN G489). Temporary: `bareGroup`, a complete Type's bare suffixed group, until PLAN G621 removes it (Binding reads whether a requirement's Type holds an associated projection anywhere); removed by BU-140 (G621). The failed-member-Name recovery's exception is preserved behavior, the Front's PLAN G626.
 - **R9-M3 An attribute attaches only to the declaration or parameter that takes it** (2026-11-08; R9-F3; Major; the owner's O-85 (a), verbatim 「(a) D1で進める」; design review 3 ACCEPT and the implementation review ACCEPT, F, C-146) SPEC 6.7, F.6.1.
   - **Rule.** An attribute attaches only to the declaration its item prefix precedes or the parameter it precedes. A misplaced, dangling, pending or constructor-header attribute is reported, its record unchanged, and kept in no node.
   - **Removes.** One reader slot had carried both an item prefix and misplaced recoveries, and every Koto built from the reader took what was pending; that slot's implicit hand-off, its shields, the attribute recoveries and Binding's misplaced branch are gone.

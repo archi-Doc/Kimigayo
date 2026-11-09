@@ -53,19 +53,6 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
-    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows within the axis's bound: linearly (3), fixed-roots since a
-    // shorter meet's operand edges form once per class (MirOrigins.Relate); 5 on fixed-joins, whose Loan stratum's Remove memo
-    // (MirLoanSets.removes) holds the Work's distinct Removes, A3 6.3's "(ended points) × holders" term, N²/2 entries.
-    [Theory]
-    [InlineData("results", 3)]
-    [InlineData("regions", 3)]
-    [InlineData("fixed-calls", 3)]
-    [InlineData("fixed-roots", 3)]
-    [InlineData("fixed-joins", 5)]
-    [Trait("Purpose", "Allocation")]
-    public void TheColdAnalysisScalesWithinItsBound(string axis, double factor)
-        => ColdAnalysisScales(output, Sizes(axis), factor);
-
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
@@ -94,4 +81,21 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     }
 
     private static string[] Sizes(string axis) => [.. new[] { 16, 32, 64 }.Select(n => VerificationWorkloads.CallableRegions(axis, n))];
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows within the axis's bound: linearly (3), fixed-roots since a
+        // shorter meet's operand edges form once per class (MirOrigins.Relate); 5 on fixed-joins, whose Loan stratum's Remove memo
+        // (MirLoanSets.removes) holds the Work's distinct Removes, A3 6.3's "(ended points) × holders" term, N²/2 entries.
+        [Theory]
+        [InlineData("results", 3)]
+        [InlineData("regions", 3)]
+        [InlineData("fixed-calls", 3)]
+        [InlineData("fixed-roots", 3)]
+        [InlineData("fixed-joins", 5)]
+        public void TheColdAnalysisScalesWithinItsBound(string axis, double factor)
+            => ColdAnalysisScales(output, Sizes(axis), factor);
+    }
 }
