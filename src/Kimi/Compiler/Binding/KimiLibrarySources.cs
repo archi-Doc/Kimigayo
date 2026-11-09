@@ -33,6 +33,7 @@ public sealed partial class KimiLibrary
             Read("DictionaryStorage.kimi"),
             Read("Storage.kimi"),
             Read("Raw.kimi"),
+            Read("Intrinsics.kimi"),
             Read("Formatting.kimi"),
             Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
             Read("FixedBuffer.kimi", KimiLibraryContainer.FixedBuffer, signatures: true),
@@ -42,7 +43,7 @@ public sealed partial class KimiLibrary
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
             Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
             Read("RawOperations.kimi", KimiLibraryContainer.Raw, signatures: true),
-            Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
+            Read("IntrinsicOperations.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
             Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
         ];
