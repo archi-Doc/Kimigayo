@@ -90,9 +90,10 @@ public class RawPlaceAccessTest
     };
 
     // SPEC 5.2, 4.7.1, 15.1.5, 6.4 (PLAN G672): the parts a raw Place's storage holds itself offer an untracked Take: fixed-array
-    // elements at a runtime, constant or from-end position, a raw pointer's own elements, Tuple elements, a fixed array in a Tuple
-    // element, own and base Fields, and a whole Array as a fixed-array element; an Array element of a raw Place is still written,
-    // borrowed (each borrow a fresh anchor, SPEC 5.2.2) and addressed, also through `p[n]`.
+    // elements at a runtime, constant or from-end position, also generic and nested, a raw pointer's own elements, Tuple elements, a
+    // fixed array in a Tuple element, own and base Fields, a whole Array as a fixed-array element or as a Field, the pointee of a raw
+    // pointer stored in a raw Place's Field, and a Take in a Closure; an Array element of a raw Place is still written, borrowed (each
+    // borrow a fresh anchor, SPEC 5.2.2) and addressed, also through `p[n]`.
     public static TheoryData<string> RawPartTakes => new()
     {
         "func at(q: raw/[2 of Res], i: isize)\n    unsafe\n        _ = (*q)[i]@move\n        _ = (*q)[0]@move\npublic func main()\n" +
@@ -124,6 +125,18 @@ public class RawPlaceAccessTest
             "        require look(p[0][0]@ref) == 7 else => $abort(\"look\")\n        let whole = p[0]@move\n        Raw.release(p)\n" +
             "    Console.writeLine(\"end\")\n",
         "func take(q: raw/[2 of Res])\n    unsafe => _ = (*q)[^1]@move\npublic func main() => ()\n",
+        "func take<T>(p: raw/[2 of T])\n    unsafe => _ = (*p)[1]@move\npublic func main()\n    let q = Raw.allocate<[2 of Res]>(1)\n" +
+            "    unsafe => Raw.initialize(q, [Res.init(), Res.init()])\n    take(q)\n    unsafe\n        _ = (*q)[0]@move\n" +
+            "        Raw.release(q)\n    Console.writeLine(\"end\")\n",
+        "struct Holder\n    public var a: Array<Res>\n    public init(a: Array<Res>) => self.a = a@move\npublic func main()\n" +
+            "    let p = Raw.allocate<[2 of [2 of Res]]>(1)\n    let h = Raw.allocate<Holder>(1)\n    let i: isize = 1\n    unsafe\n" +
+            "        Raw.initialize(p, [[Res.init(), Res.init()], [Res.init(), Res.init()]])\n        _ = (*p)[1][0]@move\n" +
+            "        _ = (*p)[i][i]@move\n        _ = p[0][0]@move\n        let last = (*p)[0][i]@move\n" +
+            "        Raw.initialize(h, Holder.init([Res.init()]))\n        let whole = h[0].a@move\n        Raw.release(p)\n" +
+            "        Raw.release(h)\n    Console.writeLine(\"end\")\n",
+        "struct Link\n    public var q: raw/[2 of Res]\nfunc take(p: raw/Link)\n    unsafe => _ = (*(*p).q)[1]@move\npublic func main() => ()\n",
+        "public func main()\n    let p = Raw.allocate<[1 of Res]>(1)\n    unsafe => Raw.initialize(p, [Res.init()])\n" +
+            "    var f = func [p] () => unsafe => _ = (*p)[0]@move\n    f()\n    unsafe => Raw.release(p)\n    Console.writeLine(\"end\")\n",
         "open struct Animal\n    public var r: Res\nstruct Dog : Animal\n    public var s: Res\nfunc take(p: raw/Dog)\n    unsafe\n" +
             "        _ = (*p).r@move\n        _ = (*p).s@move\npublic func main() => ()\n",
     };

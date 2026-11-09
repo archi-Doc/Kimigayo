@@ -166,11 +166,11 @@ public sealed class MirInitTest
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
     // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222), and so is a Take of a part its storage holds (TyCtxt.RawPart: a
-    // fixed array's element), while an Array's element below it has no Move Path (SPEC 4.7.1; PLAN G672). A Place a function publishes never offers Take, whatever root
-    // holds its reference: its bare Move is SPEC 3.5's error and its explicit one a shared path's (SPEC 15.1.5), both Binding's since
-    // R6-check H1 (DECISIONS BU-84; TransferJudgmentTest), so no MIR Move Path is asked. A referent through a reference Field offers no
-    // Take either, also inside a raw Place: its bare Move is Binding's TransferRequired_Kd since H1 (G222's MIR StaticMovePathRequired_Kd
-    // before).
+    // fixed array's element), while an Array's element below it has no Move Path (SPEC 4.7.1; PLAN G672). A Place a function publishes
+    // never offers Take, whatever root holds its reference: its bare Move is SPEC 3.5's error and its explicit one a shared path's
+    // (SPEC 15.1.5), both Binding's since R6-check H1 (DECISIONS BU-84; TransferJudgmentTest), so no MIR Move Path is asked. A referent
+    // through a reference Field offers no Take either, also inside a raw Place: its bare Move is Binding's TransferRequired_Kd since H1
+    // (G222's MIR StaticMovePathRequired_Kd before).
     [Fact]
     public void AMoveNeedsAMovePath()
     {
