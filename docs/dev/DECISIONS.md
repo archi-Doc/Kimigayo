@@ -5830,6 +5830,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
     needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
     a later measurement asks for it.
+- **R4-M187 A Dictionary literal's first entry has no lookup (PLAN G442 U1)** (2026-11-09; Major; design review 2 and implementation
+  review ACCEPT, the Middle's reviewer) SPEC 12.4.3, 22.5.1; IMPL 21.3.2.
+  - Rule (`MirBuilder.Expansions`, `Dictionary`): an entry's key is looked up among the entries already inserted (its plan's
+    `findEntry` call, the duplicate test and the KIMI_E_DUPLICATE_KEY fail block, located at the key) from the second entry on. The
+    first entry has none: no key is inserted before it, and 12.4.3 calls key equality only against an inserted key.
+  - Why: the first lookup was lowered code with no SPEC operation behind it. It borrowed the first key, which G442's A1 rule (U2)
+    would check as a read, and it made a one-entry literal instantiate `findEntry`, `findDictionaryLink`, `splitFirst` and the key's
+    `equals`. Run time is identical: `findDictionaryLink` returns 0 on the empty Dictionary without `equals`, and 12.4.3 leaves the
+    number of equality calls unspecified.
+  - Moves: the MIR goldens lose the first entry's lookup locals and fail block, and the later entries' `link`/`test` StorageLive
+    moves after the key's evaluation; a one-entry literal instantiates no `findEntry`; a one-entry literal whose value is 60-62
+    storage levels deep is accepted where the first lookup's instance hit the storage-nesting bound (`Unsupported_Kd`, an
+    implementation limit, IMPL 21.3.2), and a two-entry literal keeps the second key's record. No Language record moves.
+  - Rejected: keeping the first lookup and exempting its borrow in A1 (a consumer deciding by syntax what the builder should not emit).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
