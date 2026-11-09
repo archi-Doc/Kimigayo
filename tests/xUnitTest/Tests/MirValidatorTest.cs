@@ -1073,6 +1073,82 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // SPEC 13.4: a string comparison is its library witness's call, so a BinaryOp comparing strings, as they are, below their ref, uniq or
+    // pair layers (s/string) or as the right operand after a Never left, is a broken contract, and one comparing i32 is not, after a Never
+    // left either; nor is one comparing raw pointers to strings, directly or below a pair layer (SPEC 5.1: their addresses), since the walk
+    // stops at a raw layer (R8-S1e-b).
+    [Theory]
+    [InlineData("string", true)]
+    [InlineData("ref", true)]
+    [InlineData("uniq", true)]
+    [InlineData("pair", true)]
+    [InlineData("never ref", true)]
+    [InlineData("i32", false)]
+    [InlineData("never i32", false)]
+    [InlineData("raw", false)]
+    [InlineData("pair raw", false)]
+    public void AStringComparisonIsNoBinaryOp(string operand, bool reported)
+    {
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (c, types) = Fixture.Value;
+        _ = TyCtxt.Layer(types.Pair, out _, out var binder); // s of s/T.
+        var type = operand.Replace("never ", string.Empty, StringComparison.Ordinal) switch
+        {
+            "string" => BoundType.String,
+            "ref" => c.Types.Reference(SemanticsKind.Ref, BoundType.String),
+            "uniq" => c.Types.Reference(SemanticsKind.Uniq, BoundType.String),
+            "pair" => c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [BoundType.String]),
+            "raw" => c.Types.Pointer(BoundType.String),
+            "pair raw" => c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [c.Types.Pointer(BoundType.String)]),
+            _ => BoundType.I32,
+        };
+        var left = MirModelTest.Local(body, operand.StartsWith("never", StringComparison.Ordinal) ? BoundType.Never : type);
+        var (right, result, block) = (MirModelTest.Local(body, type), MirModelTest.Local(body, BoundType.Boolean), body.AddBlock());
+        var operands = AddOperands(body, [Read(left), Read(right)]);
+        body.Push(block, MirStatement.Assign(result, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), At));
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Equal(reported, Validate(body).Any(static x => x.Rule == MirViolation.Operation));
+
+        // A value of a Type that is not Copy (string, uniq/string, a pair layer) is moved, since its Copy is an Operation finding of its own.
+        MirOperand Read(MirPlace place) => operand is "string" or "uniq" or "pair" or "pair raw" ? MirOperand.Move(place) : MirOperand.Copy(place);
+    }
+
+    // SPEC 8.2.3, 13.4 (PLAN G646; C-158, C-159): the validator reads an operand at its premised terminal (MirTypes.Premised, the premising
+    // Binding.OperandTerminal applies, before the layer walk), so a BinaryOp at a Type a premise makes string, through a layer or two the
+    // premise gives (T is ref/string, uniq/string, ref/(ref/string)), an associated Type (H.Item is string) or a chain through one (T is
+    // H.Item), is reported; under T is i32, and under T is ref/i32 against a written ref/i32 (both compare i32), it stands. The body built
+    // for each definition holds a comparison BinaryOp only where the hand-made one stands, and validates. The hand-made body moves both
+    // operands, so a Copy of a Type that is not Copy (uniq/string) is no Operation finding of its own and the row reads the rule alone.
+    [Theory]
+    [InlineData("func same<T>(a: ref/T, b: ref/T) -> bool\n    T is string\n    return a == b\n", true)]
+    [InlineData("func same<T>(x: ref/string during o, a: T, b: T) -> bool\n    T is ref/string during o\n    return a == b\n", true)]
+    [InlineData("func same<T>(x: uniq/string during o, a: T, b: T) -> bool\n    T is uniq/string during o\n    return a == b\n", true)]
+    [InlineData("func same<T>(x: ref/string during o, a: T, b: T) -> bool\n    T is ref/(ref/string during o) during o\n    return a == b\n", true)]
+    [InlineData("contract Holder\n    associate Item\nfunc same<H>(a: ref/H.Item, b: ref/H.Item) -> bool\n    H is Holder\n    H.Item is string\n    return a == b\n", true)]
+    [InlineData("contract Holder\n    associate Item\nfunc same<H, T>(a: ref/T, b: ref/T) -> bool\n    H is Holder\n    H.Item is string\n    T is H.Item\n    return a == b\n", true)]
+    [InlineData("func same<T>(a: ref/T, b: ref/T) -> bool\n    T is i32\n    return a == b\n", false)]
+    [InlineData("func same<T>(x: ref/i32 during o, a: T, b: ref/i32) -> bool\n    T is ref/i32 during o\n    return a == b\n", false)]
+    public void APremisedStringComparisonIsNoBinaryOp(string source, bool reported)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var built = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "same" });
+        Assert.Equal(!reported, built.Statements.ToArray().Any(static x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Eq }));
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Boolean, MirLocalKind.Return, At));
+        var arguments = function.Parameters.Select(x => MirModelTest.Local(body, x.Type.TypeOf()!, MirLocalKind.Arg)).ToArray();
+        var block = body.AddBlock();
+        var operands = AddOperands(body, [MirOperand.Move(arguments[^2]), MirOperand.Move(arguments[^1])]);
+        body.Push(block, MirStatement.Assign(MirModelTest.Local(body, BoundType.Boolean), MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), At));
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Equal(reported, Validate(body, c.Types).Any(static x => x.Rule == MirViolation.Operation));
+    }
+
     // SPEC 8.2.3, 13.4 (C-159, the Front's refuting form; G157 (29)): a Field whose Type is a projection bound in its struct's scope compares
     // as the premises of the comparison's scope make it, string under H.Item is string, also as ref/string under a layer-adding premise and
     // inside a Closure: each comparison is the witness's call, so every body validates and holds no equality BinaryOp. Binding.OperandTerminal
