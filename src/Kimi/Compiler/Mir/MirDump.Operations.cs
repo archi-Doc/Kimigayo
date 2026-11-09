@@ -108,6 +108,7 @@ internal static partial class MirDump
                 }
 
                 Operands(text, body, terminator.Start, terminator.Count).Append(" -> ").Append(terminator.Target < 0 ? "!" : "bb" + terminator.Target);
+                text.Append(terminator.Places ? " places" : string.Empty);
                 break;
             case MirTerminatorKind.Drop:
                 Place(text.Append("drop "), body, terminator.Place).Append(" -> bb").Append(terminator.Target);
