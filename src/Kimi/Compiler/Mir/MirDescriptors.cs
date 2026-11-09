@@ -97,6 +97,7 @@ internal static class MirDescriptors
         MirRvalueKind.Cast => Row(MirAccess.None, MirEffect.Abort),
         MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
+        MirRvalueKind.Storage => Row(MirAccess.Borrows, effects: MirEffect.None), // A raw borrow; no bounds check, no abort.
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
         MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation),
         _ => default,
@@ -311,7 +312,7 @@ internal static class MirUses
         Operands(body, rvalue.Start, rvalue.Count, row.Access & MirAccess.CaseDependent, ref visitor);
         switch (rvalue.Kind)
         {
-            case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len:
+            case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
                 Place(body, rvalue.Place, row.Access, (MirRefKind)rvalue.Op, ref visitor);
                 break;
             case MirRvalueKind.Aggregate when rvalue.Count > 0: // `[]` allocates nothing (SPEC 4.9.5).

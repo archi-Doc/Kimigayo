@@ -42,7 +42,7 @@ GetChildNodes, ReplaceChildCore and ReplaceInList; the canonical walk remains Fo
 
 ## Closed vocabularies
 
-MIR has 5 statement, 10 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
+MIR has 5 statement, 11 rvalue (`Storage` beside `Len`, the owner's O-92 (a)), 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
 kinds and 6 aggregate kinds (DECISIONS R5-M129); the HIR vocabularies and `IntrinsicId` have fixed limits too (listed below). Enum
 aliases count separately; implicit fields do not. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
@@ -70,7 +70,7 @@ a SPEC basis and owner approval.
 | `ExpansionKind` | 7 |
 | `IntrinsicId` | 34 |
 | `MirStatementKind` | 5 |
-| `MirRvalueKind` | 10 |
+| `MirRvalueKind` | 11 |
 | `MirTerminatorKind` | 6 |
 | `MirProjectionKind` | 7 |
 | `MirOperandKind` | 4 |

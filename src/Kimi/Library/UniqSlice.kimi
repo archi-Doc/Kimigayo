@@ -12,8 +12,11 @@ public struct UniqSlice<T> {source}
     public computed indices: ResolvedRange
         get() -> ResolvedRange => (0..self.length).resolve(self.length)
 
+    /// Views the remainder's `count` elements from its `storage`, so no element's offset is read (SPEC 8.15.3). The
+    /// caller's obligation, which the signature cannot state: the remainder is at its first untaken element, as
+    /// `Storage.borrowStorageUniq` and `Storage.sliceUniq` give it (removed with `position` by PLAN G597's L2).
     internal init(state: Storage.UniqRemainder<T> during source)
-        unsafe => self.storage = state.storage + state.position
+        self.storage = state.storage
         self.length = state.count
         self.loan = state.loan@move
 
