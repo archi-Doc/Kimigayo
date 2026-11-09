@@ -16723,3 +16723,30 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Kept.** An attribute before a declaration whose kind rejects it stays its own: Binding still judges it, e.g. `InvalidLibraryImport_Kd` on a requirement.
   - **Rejected:** D2, keeping a misplaced attribute on the construct its reporting site parses next (C-146 reviews 1-2: an open family of sites deciding a landing, per-kind chain printing with `AttributeKoto.AttributeChain` meaning both 'attributes on this node' and 'the previous attribute', an independent record lost); (b), recovered spans outside the nodes; (c), holding the unit.
   - **Cost.** Erroneous attribute text no longer round-trips through the tree; its Error's span still locates it (DIAGNOSTICS §4.4).
+  - Superseded in part by R9-M4 (G557, 2026-11-09): the "Kept" bullet, and the Rule's clause that a constructor-header attribute
+    is reported "its record unchanged".
+- **R9-M4 An attribute before a declaration that takes none is the parser's alone** (2026-11-09; G557; Major; the owner's O-93 (a),
+  verbatim 「(a) 設計し直す」; the Front's design review 3 ACCEPT and implementation review ACCEPT; the Middle's C-167 ACCEPT on the parser
+  hunks) SPEC 6.7, 6.4.1, 8.13.2, 11.9, 16.3, 19.4, F.6.1, F.6.2.
+  - **Rule.** A declaration production that takes no `AttributePrefix` reports the pending attributes before it takes its context
+    (`Parser.ReportPendingAttributes`): each once, at its own span, as misplaced, also in excluded syntax (19.4), and none reaches a node.
+    Besides R9-M3's `associate`, effect, Origin relation, Constraint and enum Case, these are every Contract item (function and Property
+    requirements), `init`, a specialization, an override, `drop` and an alias, each where the parser recognizes it. A node of such a
+    declaration never holds an attribute, and Binding's readers trust that. Parameters are not yet covered: a requirement's,
+    specialization's or override's parameter still keeps its attributes (PLAN G557's parameter part).
+  - **Supersedes R9-M3's "Kept" bullet:** Binding's readers read the kept attribute as attached, so `#Test` before a requirement or an
+    override crashed Binding and other attributes gave duplicate or dependent records; listing the non-taking kinds for those readers
+    by hand (G557's revisions 0 and 1) missed kinds twice. **And R9-M3's Rule clause** "a constructor-header attribute is reported, its
+    record unchanged": an `init`'s attribute now has the same record as every other non-taking production's, `Attribute` at the
+    attribute instead of `ConstructorHeader` at `init` (one record form; the syntax corpus row `attribute-on-constructor` moved).
+  - **Removes.** The attribute operand of the requirement, Property requirement, `drop`, alias, `init` and specialization header
+    checks and `init`'s attribute-dropping context copy; Binding's override and specialization attribute tests, its enum Case attribute
+    check (`Binding.Storage`), and the four non-taker kind tests of the `#LibraryImport` shape and of the Test definition syntax.
+  - **Rejected:** a kind predicate read by the parser and Binding (a hand list beside the grammar); a production table read by the
+    prefix reader (a second classification of the next item); each header record kept with the attributes dropped (the override has
+    none, so two record forms would remain).
+  - **Cost.** Erroneous attribute text before such a declaration no longer round-trips through the tree; its record locates it
+    (DIAGNOSTICS §4.4). Records move only on invalid programs; five invalid programs dev accepted are rejected (an override's attribute
+    in excluded syntax, or before an override at the root or in a group).
+  - **A SPEC gap, reported (no SPEC change):** F.6.1's `Declaration := AttributePrefix? UnattributedDeclaration` admits a prefix where
+    6.7, 6.4.1 and 16.3 reject one; the implementation follows the body rules.
