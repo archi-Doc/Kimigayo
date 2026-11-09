@@ -19,7 +19,7 @@ namespace Kimi.Compiler.Mir;
 // Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
 // reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
 // MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
-// through the hold (R4-M116 PQ-8).
+// through the hold (R4-M116 PQ-8), with no Loan fact (G673).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -63,20 +63,20 @@ internal sealed partial class MirBorrows
         this.AddProblem(code, requirement, subject, facts);
     }
 
-    // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps): its subject and facts as MirBorrows.Witnesses builds
-    // them for the entry's first formation and the witness, under its own requirement, never through the hold (PQ-8).
-    private void Departure(int entry, int via, MirLocation at)
+    // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps), under its own requirement, never through the hold
+    // (PQ-8): its subject and, inside an inline default copy, the default's operation (MirBorrows.Witnesses' Evaluated); no Anchor or
+    // witness, which name a Loan, since a pointer formed through an own step creates none (SPEC 5.4; G673).
+    private void Departure(MirLocation at)
     {
-        var (subject, count) = this.Facts(this.Site(entry), via, at, -1, null);
+        var (subject, count) = this.Evaluated(at, 0);
         this.AddProblem(DiagnosticCode.OwnStepDeparture_Kd, OwnershipRequirement.OwnStepDeparture, subject, this.facts.AsSpan(0, count));
     }
 
-    // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning, its
-    // witness by the one rule (Facts: the holder's next use in the location's chain, here its drop slot's, MirBorrows.Liveness; the
-    // holder's declaration where that Drop lies past the chain), and the depth limit at the holder's declaration.
-    private void DroppedDeparture(int entry, int holder, MirLocation at)
+    // An own-step departure only the drop tier gives (R4-M153), which rests on a Drop past the destruction walk's bound: the Warning and the
+    // depth limit at the drop-live holder's declaration.
+    private void DroppedDeparture(int holder, MirLocation at)
     {
-        this.Departure(entry, this.dropSlots[this.HolderLocal(holder)], at);
+        this.Departure(at);
         this.Limit(this.Declaration(holder), MirOutcome.Deep);
     }
 

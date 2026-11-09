@@ -3081,8 +3081,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
 - **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (superseded in part by BU-66: a raw
   input's own value at an abstract part and at a stated raw layer; superseded in part by R4-M154 (WK): R-B4's own-value rule (a raw
-  input's own value only where a layer can hold it) is rule 2's, for every input and for the borrows formed through it; 4b landed as
-  R4-M120, 4c as R4-M124; owner, 2026-10-23, choices verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先
+  input's own value only where a layer can hold it) is rule 2's, for every input and for the borrows formed through it; superseded in part by R4-M193
+  (G673): OQ-2's facts Anchor and Use; 4b landed as R4-M120, 4c as R4-M124; owner, 2026-10-23, choices verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先
   (推奨)」, OQ-2 「(a) OwnStepDeparture_Kd (推奨)」; R4-M95, R4-M105, BU-24 and the owner's two caps stay)
   - SPEC 15.6.4 (OQ-3): a raw pointer argument is retained as a borrowed one, its pointee as the referent; its own value (its Loans and
     the holders it addresses) only by a result or storage that can hold a value of its Type or by a result the call forms within its
@@ -3415,7 +3415,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: p7-round's F1, F2 and G1–G13 stay with 2c-D; `15.8.2-closure-dependencies` now classes the same R1 record (b), as Binding's
     record both paths publish (its old-path-only Refuted code is named in the note).
 - **R4-M124 G160-4's 4c: the own-step Warning `OwnStepDeparture_Kd`** (2026-10-25; with the owner's OQ-1 (a) and OQ-2 (a); the new
-  code and requirement are the closed-vocabulary entries OQ-2 approved)
+  code and requirement are the closed-vocabulary entries OQ-2 approved; superseded in part by R4-M193 (G673): the Record's Anchor and
+  witness facts)
   - Rule (`MirBorrows.OwnSteps`, SPEC 5.2.1 condition 3): at each location of the checks replay, after its activations, an access with
     path S departs an own-step entry (R4-M120) with owning path O on its root when S prefixes O step by step (`Meets`) and it is a Move
     (a raw Take included), a write or a destruction of any class (StorageDead, every Drop) with no borrow or raw Deref of O past S, or an
@@ -5962,6 +5963,68 @@ and migration obligations remain in force; no numeric cap changes are authorized
     heads (no labelled program needs it; G581-3 if one does); the may-set rules of rounds 1-3 (false errors, a silent bound); a points-to
     fact per storage; reading "a raw layer without an Origin" from the Place's Type (Mir/ reads no raw Origin; the record's Untied is
     Binding's); computing a body's contract only where A5 runs (it would not touch a gated body).
+- **R4-M191 An address names its Place (PLAN G667a; O-105 (b))** (2026-11-09; Major; design review 1 (step 1 ACCEPT within REVISE)
+  and design review 2 ACCEPT (`middle\a5-place-review.md`); the owner's O-105 (b), verbatim 「O-105 は (b) で」) SPEC 5.2.1 condition 1,
+  15.6 Addresses, 15.6.5; R4-M154 Revision 8; R4-M116.
+  - A5's plain address entry is keyed by the Place `P` of `P@raw` (its root and interned projection, key `~projection`; a whole root
+    and a Drop receiver keep dev's key `~0`; a Storage of a fixed array keys by the array Place) and keeps P and its steps, as a
+    Loan does; it still names the holder at P's root (15.6 Addresses). So a call's write past a holder through an address takes the
+    Reached entry of P's Type (Revision 8's reading for addresses: "choose the record by the Type of the place the Loan names ... Do
+    not use the root local's Type"), and a part's address is no whole-value reference for rule W (`Reach.Whole`,
+    `Causes.WholeTarget`; 15.6.5's part read). Holder states stay one may-set (R4-M160) and exposure per root local (R4-M186). One
+    record sequence (`MirBorrows.Record`) serves Loans and address entries.
+  - Records: `OwnershipDepthLimit_Kd` at a call where W reaches a Deep holder through two part addresses of different Types
+    (`Changes`, R4-M153), on programs the base rejects (Q13, dependent; none in the diagnostic corpus: 0 snapshot differences).
+  - Cost: k part addresses of one root in one holder are k entries where dev had one: N such addresses read at N locations cost N²
+    against dev's N (`MirBorrowsTest.PartAddressesInOneHolderCostAsTheirEntries`: work factor 2.00 → 2.91, bytes flat → 3.88, within
+    the quadratic bound 5); none without a part address.
+  - Rejected: per-part holder states (SPEC 15.6 Holders: a value read from a part carries every Loan and address the holder carries;
+    and every transfer would read projections); keeping the root key (the address breaks Revision 8's rule that Loans follow).
+
+- **R4-M192 One owner of an integer Type's signedness** (2026-11-09; PLAN G669; under R5-M148 and BU-130; commit e4ac4573f) An
+  integer Type's signedness is its BoundType's numeric category, decided once at construction from the Core (`Categorize`; a
+  wrapping integer Type has its argument's, SPEC 3.1.1), and published as `BoundType.IsSigned`, false for every other Type. The
+  canonical reader moves from the root `ScalarTypes` to Binding's Type model: `ScalarTypes.Signed`, a second derivation of the same
+  fact from the name's first letter (G659, ARCH's MIR builder row), is deleted, and every reader in Binding, the MIR builder, the
+  Backend and Testing reads `IsSigned`. `IsUnsignedInteger` stays SPEC 13.3.1's unary-minus rule (false for every wrapping Type),
+  read by Binding only; the Backend's operator column and conversion class and the builder's Proven no longer read it for a
+  representation. `ScalarTypes` keeps SPEC 3.1's Scalar predicate, `Width` (the profile's `SizeWidth`, BU-130), `TryLiteral` and
+  `Normalize`. Behavior-preserving: both answers agreed on every Type that reached a reader (each is guarded to the 12 integer and
+  12 wrapping Types).
+  - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
+    second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
+    the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
+- **R4-M193 G673: the own-step Warning carries no Loan fact** (2026-11-09; Middle, record content under Q13; implementation review
+  ACCEPT, N3 and N4 applied; supersedes in part R4-M116 OQ-2's fact list and R4-M124's Record facts; the owner's OQ-2 (a), the code
+  and requirement, stands) SPEC 5.2.1 condition 3, 5.4, 5.7.
+  - `OwnStepDeparture_Kd` carries only `Evaluated` (inside an inline default copy, at the outermost omitting call), in every form (a
+    holder's next use, a store, a holder's declaration, a Return, the drop tier, an inline copy): `MirBorrows.Reports.Departure(at)`
+    records the subject through `MirBorrows.Witnesses.Evaluated(at, count)`, the subject rule `Facts` ends with.
+  - Reason that no longer holds: OQ-2 gave the Warning the Loan problems' Anchor (the pointer's formation) and witness, which the
+    publisher words as a Loan's ('borrow that created the loan', '... the conflicting loan', R6-check H3-2); a pointer formed
+    through an own step creates no Loan (SPEC 5.4, 5.7 for a `during self` layer, 5.2.1 condition 3), so those facts were false
+    evidence (AGENTS Diagnostics). Same rule as `UnretainedRawStore_Kd` (R4-M190).
+  - Cost: the formation and the later use are no longer related locations; both lie in the Warning's body.
+  - Rejected: rewording Anchor, Use and Store for both (weakens the five Loan codes, the default rows and the Origin records; one
+    kind with two meanings); wording by code (a switch arm for one form); fact kinds of their own (`Formed`, `Carrier`: vocabulary
+    entries needing the owner; one owner question for both codes if a later unit needs the formation).
+- **R4-M194 G670: an explicit discard of a raw Place destroys it in place** (2026-11-09; Middle; PLAN G670, Q17 class 1, wrong code;
+  design review 1 REJECT (F1, F2), revision 2 ACCEPT; the Back's C-181 and C-183, the Front's C-184 consent and ACCEPT on the
+  Binding hunks) SPEC 4.7.4, 5.2, 5.2.3, 5.4, 14.2.4.
+  - Binding publishes whether `_ = P@move` takes a raw Place: `Binding.DestroysInPlace` (beside `OffersTake`) holds when the
+    operand, unparenthesized, is a completed Transfer (`ConversionBinding.Transfer`, set only after `OffersTake` allowed the Take)
+    of a raw Place (`ElementAccess.IsRawPlace`, the predicate `OffersTake`'s raw branch uses); the HIR publisher writes it as each
+    `DiscardKoto`'s plan row Flag on every publish, read by `HirTables.DestroysInPlace`.
+  - The MIR builder lowers a marked discard to P's raw address-of into a temp, P's designation (its address, position checks
+    included), and, where P's Type may need drop, `Drop(P)` at the operand's end, the first cleanup of the statement's temporaries,
+    with no value temp. The Drop is built as every Drop (`MirTypes.MayNeedDrop`); Defaults.Copies, A2 and codegen keep removing or
+    eliding Drops by Type, and the designation never rides on one. The address temp is the designation's carrier only because MIR
+    has no statement that only evaluates a Place; it moves to one if the owner adds it.
+  - Reason: `drop` must act on that Place (C-181, D-197); a temp gave it another `self`.
+  - Rejected: the Drop as the only carrier (a consumer that removes a Drop by Type lost the bounds check: Elide, a refuted instance
+    Type, a default's copy; design review 1 F1); a FakeRead (generates nothing; shared with match guards); a MIR re-derivation of
+    the raw-Place rule (a further copy; Binding judges the Take; review 1 F2); a codegen rule forming an elided Drop's Place
+    (C-183's withdrawn hunk).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -13993,6 +14056,8 @@ structure is recorded here by the unit that first implements it.
     unbounded value counted 0 and making it Unbounded, a sum past MaxObjectSize discarded; Capacity, Hint, Stack) and `FormatStackLimit`,
     1,024 bytes, the windows-x64 rule (the plan row and STATUS:40; IMPL 21.4 no longer states it since S1015). No cache and no side table:
     a call's estimate is a loop over its token's Types.
+  - R8-W2 a1 (DECISIONS R8-M21): the bound is `FormattingTypes.Bound` and the limit `FormattingTypes.StackLimit` in the shared root;
+    `FormatBoundsAreTheRuntimesTable` ties the table to `__kimi_format_bounds` until W1c-2 deletes it.
   - Rows: one `IntrinsicWriter` entry per row, `Buffer`, `Hint` and `Finish` (internal writer-column entries, as `Writer`): their
     differences are each row's writing rule, not row data (the buffer's home, the hint word, the adapter's buffer), each a routine of the
     formatting runtime (P1d's text) through `WriteCall`: FormatBuffer `__kimi_text_heap` of the estimate's Capacity at the interpolation's
@@ -16773,6 +16838,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     B1); the validator reading `TyCtxt.OperandTerminal` (a validator reading its producer checks nothing) or
     `SubstituteIdentityPremises` (a second premising); two premising functions with an invariant between them (refuted, C-159); the
     whitelist now (`OperatorTableRuns` and `Column` disagree on Unit).
+  - Superseded in part by R8-M20 (G662): the open family is closed by `OperatorCompares`; the Unit disagreement is none (`Apply`'s zero-sized row).
 - **R8-M16 FixedBuffer's and HeapBuffer's operations are Kimigayo bodies; `BodylessWitness`'s buffer half ends** (Back, 2026-11-09;
   R8-W1a; plan RP20, RQ9; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation review ACCEPT; on R8-M1, R8-M2,
   R8-M4, R8-M6; supersedes R5-M146 in part) SPEC 5.7, 22.5.1, 22.9.1, 22.9.3, 22.9.4; IMPL 21.4.3.
@@ -16854,6 +16920,96 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **RP8** (T-84): every O2 kernel compiles to the same code, the `Iterators` kernel's new `exchange` row (`Slots<T>`, Milestone 29's
     shape) included; `replace` has equal O2 counts on every fixture, and O0 records a call per update and a copy slot for an in-memory
     by-value `T`. Measurements are in the commit.
+- **R8-M19 An import is a call target item (`MonoKind.Import`); `BodylessWitness` ends** (Back, 2026-11-09; R8-G2; plan §5.2 G2;
+  Major; design review ACCEPT; implementation review 1 REVISE (B1, B2), then ACCEPT; on R5-M146, R5-M150 and R8-M16) SPEC 22.6,
+  8.6.3-8.6.4, 7.7.4.
+  - Cause: a call's target is a checked-set item, and no item stood for an import, so code generation called an import only where a
+    call had no target, by the callee's own symbol. A requirement call's callee is the requirement, so the import its instance
+    selects was lost, and the collector refused the form (`BodylessWitness`, R5-M146).
+  - Adopted: the collector admits one `Import` item per called `#LibraryImport` function (`InstanceCollector.Imported`), keyed by
+    the function alone (an import is never generic), with no target and nothing generated. It is the target of every call that runs
+    the import: its direct call and its own Item's call and adapter (`Bodyless`), and a requirement call or requirement Item whose
+    witness it is (`Called`). Code generation's one rule of a target, `FunctionCodegen.Calls.Witness`, runs it by its C signature
+    (`ModuleCodegen.Import`, now with that one caller). `Imported`'s other cases: a function Binding rejected is a dependent without
+    a record; any other bodyless function, a compiler function taken as a witness included, is `InternalInvariant_Kd` (none exists
+    after R8-M16: no library compiler function is a requirement's witness, and SPEC 8.8.1 allows no external conformance).
+    `Imported` is the collector's third `Set.Add` beside `Admit` and `AdmitType`; it has no Type, body or X19 limit to check.
+  - Ended: `CapabilityGap.BodylessWitness` (its row, its `Code` arm, its `[Transitional("R8")]`), `Called`'s gap switch, and the
+    target-less import fallbacks of `FunctionCodegen.Calls.Function` and `FunctionCodegen.Closures.Runs`. R5-M146's import removal
+    condition ("when the collector publishes the import as the call's target") is met; with R8-M16 the row is gone.
+  - R5-M150 is superseded in part: its rejection of a collector **root** kind for imports stands (SPEC 8.15.3 checks every declared
+    import, called or not, which `LayOutImports` keeps doing without an item); its cost argument ("a vocabulary entry and an item
+    code generation skips, for no body and no target") is superseded, since the call-target item removes a capability row and two
+    fallbacks.
+  - Vocabulary and counts: `MonoKind` 8 → 9 (R8-M11 removed `LegacyRow`; R5's K package approved its members); `MonoKind` is not an
+    ARCH-closed vocabulary, so the entry is the planning session's decision (AGENTS "Record decisions"). `CapabilityGap` 7 → 6;
+    `[Transitional("R8")]` 10 → 9; `CompilerFunctionKind`, `IntrinsicId` and `KimiDeclarationId` unchanged.
+  - Moves: two valid forms that were `Unsupported_Kd` at check are accepted, a requirement call whose witness is an import and a
+    requirement Item with such a witness (formed and called); `ForeignImportWitness` runs both beside the import's direct call. G2
+    treats the requirement Item as valid under SPEC 8 and the owner's PD27 approval (R5-M146, R5-M148). No record move in the
+    snapshot. `.ll` against W1a's head: 6,103 identical, 38 renaming only (every one calls an import; the generated names
+    `__kimi_f<n>`, `__kimi_drop<n>` and `__kimi_builtin<n>` are item indices, and the Import item takes one), 1 new
+    (`ForeignImportWitness`), 0 other.
+  - Not changed, against SPEC 22.6: the import's own Item and its erasure to a common Function value stay accepted as on dev (PLAN
+    G677, an unsound acceptance, the Front's); no test pins the erasure.
+  - Order: G2 runs after W1a, its one semantic dependency, and before G1 (the Back's reorder; plan §5.2 puts G2 after G1,
+    prerequisite W1).
+  - Rejected: the item only for witnesses (two forms of one concept); code generation resolving the witness (a second copy of
+    witness resolution and `Compose`); the import as a Body item without a body (breaks the Body invariant `Replay` reads); deleting
+    `Called` (a compiler function taken as a witness would silently run its direct call's rows); naming generated functions by a
+    definition counter to avoid the renaming (a separate naming change; every fixture moves once).
+
+- **R8-M20 The operator table's comparison domain is one statement, `ComparisonTypes.OperatorCompares`** (Middle, 2026-11-09; PLAN
+  G662; Major; design reviews 1 REVISE (B1, B2), 2 ACCEPT; implementation review ACCEPT; the Back's C-187, the Front's C-190; on
+  R8-M4's `OperatorTableRuns`; supersedes R8-M15's "Open family" bullet) SPEC 3.1.3, 5.1, 13.4, 13.4.1.
+  - **Rule.** `OperatorCompares(type, contract)` (`==` and `!=` under Equatable, the ordering operators under Comparable) is
+    `OperatorTableRuns` (the built-in conformances), a floating-point Type's order, a raw pointer's equality and every comparison at
+    Never (no value; Binding admits each at a Never terminal). MirValidator's comparison BinaryOp stands only there at its premised
+    terminal, or at any abstract operand or Wrapping over one (`MirTypes.IsArithmeticInteger`: MIR reads the shape and trusts
+    Binding's proof of the instance); the Never value's unknown Type takes the other operand's; any other is an Operation finding
+    (`InternalInvariant_Kd`). The Backend's `Column` reads it under Equatable as the table's domain (every Type with a built-in
+    operator has equality) before numbering its columns.
+  - **Unit and Never** are in the domain. Neither has a column read: their one value or none needs no operation, and both are
+    zero-sized (Never's layout is Unit's), so `Apply`'s zero-sized branch (the row's Reflexive result) is their row.
+  - **Staged removal** (the Front's, PLAN G681): Binding's operator rules restate the statement: `ComparisonApplicability` (Never,
+    ordered, equality-only arms), `CompleteComparison` (the BinaryOp test), `ComparisonKindOf` and `ComparisonProof` (`operators &&
+    IsNumeric`). Removal condition: they read `OperatorCompares`, which also accepts a raw pointer element of a Tuple under `==` and
+    `!=` (SPEC 13.4; rejected on dev).
+  - **Rejected:** string, struct, enum and Tuple rows (an open family); a validator-local copy of Column's predicates, or of
+    Binding's Never row ("a Never terminal is unknown"); widening `OperatorTableRuns` (floats Comparable, pointers Equatable,
+    against SPEC 13.4.1); a root operand-class enum that Column maps to columns (moves the Backend's columns out of their owner; no
+    second reader yet); a Unit column (no operation).
+  - **Moves:** none (no accepted program forms a comparison BinaryOp outside the domain; probes, twins, snapshots).
+
+- **R8-M21 The interpolation-bound term: BoundLength's `Values` and Binding's `LengthOperation`** (2026-11-09; R8-W2 a1-0 and a1,
+  the Back's design §4a, its design review 3 ACCEPT, in the Front's files with the Front's consent, C-179; the Back's reviewer's
+  implementation review B1 fixed)
+  - `BoundLength`'s tag is Binding's closed `LengthOperation` (Constant, Parameter, Neg, Mul, Div, Rem, Add, Sub,
+    InterpolationBound), mapped once from the syntax where a length is bound; its order is `CompareLength`'s (KotoKind's relative
+    order of the same forms). No `KotoKind` is added or reused.
+  - The term: `LengthOperation.InterpolationBound`, `Value` the literal bytes, `Values` the erased Tuple of the value Types. Its one
+    producer is `TyCtxt.InterpolationBound(values, literal)` (R8-W2 a2's builder), folding through `FormattingTypes.StackBound`
+    (rule L, `StackLimit` 1,024): a constant when every value Type is closed; 0 when one is decidably unbounded (closed and
+    unbounded, or a construction other than `Wrapping`) or the closed values and literal already exceed the limit; else the term
+    (Type parameters, projections, Semantics terms, `Wrapping` over one).
+  - Instances: a term is only a fixed array's length or a substitution's length entry (never an operand or an Item's length
+    argument), and folds over its value Types' normalized instance on every path that instantiates one. A fixed array's term:
+    `Binding.SubstituteLength(expression, binder, types, lengths)` substitutes its `Values` as a Type and folds, reached by
+    `SubstituteTypeCore` also under a Type-only substitution (`BoundLength.HasAbstractPart` makes the array `HasAbstractPart` and
+    `ContainsParameter`), and `ContractType` (`ContractLength`) normalizes its `Values` (a Contract's Self, a completed projection)
+    and folds again, so `StorageInstance` (`TyCtxt.Apply`, the collector) gives the folded array. A substitution's length entry:
+    `TyCtxt.Compose` takes `Binding.InstanceLength`, the term over `StorageInstance` of its `Values` under the outer substitution
+    (declaring Type, slots, Self, normalization). An unfolded term meets the collector's open checks. Erase keeps a term, whose
+    `Values` are erased when it is interned.
+  - Relations: `InternLength`'s key, `SameLengthSignature` and `CorrespondingLength` carry `Values` by reference; `CompareLength`
+    orders two terms by a key that reads no reference (their value Types' count, then each one's kind and name; not total,
+    unreached).
+  - `FormattingTypes.Bound` replaces `LegacyRuntimeHelpers.FormatBound` and its `FormatKind`-keyed `FormatBounds`;
+    `FormattingTypes.StackLimit` replaces `LegacyRuntimeHelpers.FormatStackLimit` (its one reader, `FormatEstimate.Stack`, reads
+    it), so the design's temporary second statement of 1,024 (its §10's last row) is not needed.
+  - Moves: none (no producer forms a term until R8-W2 a2; T-86's RP8: no stop, warm 0 B).
+  - Rejected: a `KotoKind` row for the term; forming it in `BindInterpolation` (Binding does not know a line is direct); a reference
+    order in `CompareLength`; three term arms at the substitution sites instead of one in `SubstituteLength`.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

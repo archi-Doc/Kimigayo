@@ -199,7 +199,10 @@ public sealed partial class MirBorrowsTest
     // write fact) and the two differ only in the Place Type. A shared Loan names no holder the step writes (SPEC 15.6.4 item 1, DECISIONS
     // R4-M177): first, otherPlace and samePlace holding g.1@ref and r.1@ref (Ref) record no limit. The write after the call conflicts
     // where a holder the store reached is read after it (Bad), with the record beside it; at depth 10 no guard is Deep. The rows read the
-    // call's and the write's records (the holders' own drop-tier and borrow records are other rules').
+    // call's and the write's records (the holders' own drop-tier and borrow records are other rules'). An address names its Place as a
+    // Loan does (SPEC 5.2.1 condition 1, DECISIONS R4-M154 Revision 8; PLAN G667a): t holds r.0@raw and d holds r.1@raw (Raw), so
+    // otherPlaceRaw records the limit where samePlaceRaw, whose two Places share a Type, does not. Fails on dev by design: otherPlaceRaw
+    // at 40 gave no record at the call (both addresses named r).
     [Theory]
     [InlineData("first", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("firstBad", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
@@ -215,6 +218,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("samePlaceBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 10, "")]
     [InlineData("samePlaceRef", 40, "")]
+    [InlineData("otherPlaceRaw", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd")]
+    [InlineData("otherPlaceRaw", 10, "")]
+    [InlineData("samePlaceRaw", 40, "")]
     [InlineData("escaped", 40, "st(t@uniq) OwnershipDepthLimit_Kd")]
     [InlineData("escaped", 10, "")]
     [InlineData("escapedReached", 40, "")]
@@ -223,8 +229,8 @@ public sealed partial class MirBorrowsTest
     {
         var bad = form.EndsWith("Bad", StringComparison.Ordinal);
         var name = bad ? form[..^3] : form;
-        var loan = name.EndsWith("Ref", StringComparison.Ordinal) ? "ref" : "uniq"; // The deep holder's Loan in first and the Placed forms.
-        var source = (loan == "ref" ? name[..^3] : name) switch
+        var loan = name.EndsWith("Ref", StringComparison.Ordinal) ? "ref" : name.EndsWith("Raw", StringComparison.Ordinal) ? "raw" : "uniq"; // The deep holder's.
+        var source = (loan == "uniq" ? name : name[..^3]) switch
         {
             "first" => "func st(t: (uniq/(ref/i32 during a) during b, uniq/(ref/i32 during a) during e), v: ref/i32 during a) => ()\n" +
                 $"func f() -> ()\n    var value = 42\n    var x = 1\n    let rx = x@ref\n    var g = (rx, 5)\n" +
@@ -244,10 +250,15 @@ public sealed partial class MirBorrowsTest
 
         string Tail(string read) => bad ? $"    value = 99\n    inspect({read}@ref)\n" : $"    inspect({read}@ref)\n    value = 99\n";
 
+        // t holds r.0's Loan, or its address where d holds r.1's (a raw layer states no Origin).
         string Placed(string slot, string held, string mode)
-            => $"func st(t: uniq/((uniq/(ref/i32 during a) during b, uniq/({NestedType($"{mode}/({slot}) during g", depth)}) during c)) during e, " +
-                $"v: ref/i32 during a) => ()\nfunc f() -> ()\n    var value = 42\n    var x = 1\n    var y = 2\n    var r = (x@ref, {held})\n" +
-                $"    var d = {Nested($"r.1@{mode}", depth)}\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq, value@ref)\n" + Tail("r");
+        {
+            var (first, part) = mode == "raw" ? ("raw", $"raw/(ref/i32 during a), uniq/({NestedType($"raw/({slot})", depth)})") :
+                ("uniq", $"uniq/(ref/i32 during a) during b, uniq/({NestedType($"{mode}/({slot}) during g", depth)})");
+            return $"func st(t: uniq/(({part} during c)) during e, v: ref/i32 during a) => ()\nfunc f() -> ()\n    var value = 42\n    var x = 1\n" +
+                $"    var y = 2\n    var r = (x@ref, {held})\n    var d = {Nested($"r.1@{mode}", depth)}\n    var t = (r.0@{first}, d@uniq)\n" +
+                "    st(t@uniq, value@ref)\n" + Tail("r");
+        }
 
         // A store through t (borrowed: an exclusive reference to the Tuple, else the Tuple of exclusive references itself).
         string Escaped(bool borrowed, string body)
