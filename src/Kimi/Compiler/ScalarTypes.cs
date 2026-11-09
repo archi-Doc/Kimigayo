@@ -21,7 +21,7 @@ internal static class ScalarTypes
     /// <returns>Whether it is a Scalar.</returns>
     internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsFloatingPoint: true } || Width(type) != 0;
 
-    // A wrapping integer Type answers every width and signedness query by its integer argument (SPEC 3.1.1).
+    // A wrapping integer Type answers every width query by its integer argument (SPEC 3.1.1); its signedness is BoundType.IsSigned.
     internal static int Width(BoundType? type) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch
     {
         "i8" or "u8" => 8,
@@ -32,8 +32,6 @@ internal static class ScalarTypes
         "isize" or "usize" => SizeWidth,
         _ => 0,
     };
-
-    internal static bool Signed(BoundType type) => type.Underlying.Name[0] == 'i';
 
     // Canonical signed extension of the N-bit payload, also for unsigned language Types.
     internal static Int128 Normalize(Int128 bits, int width) => width <= 64
@@ -48,7 +46,7 @@ internal static class ScalarTypes
             return false;
         }
 
-        var signed = Signed(type!);
+        var signed = type!.IsSigned;
         var limit = signed ? ((UInt128)1 << (width - 1)) - (negative ? 0U : 1U) : width == 128 ? UInt128.MaxValue : ((UInt128)1 << width) - 1;
         if (magnitude > limit || (negative && !signed && magnitude != 0))
         {

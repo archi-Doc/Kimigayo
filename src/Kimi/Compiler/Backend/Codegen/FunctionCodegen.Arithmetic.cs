@@ -111,7 +111,7 @@ internal sealed partial class FunctionCodegen
 
         if (type.HasIntegerArithmetic)
         {
-            return (type.IsWrappingInteger ? 2 : 0) + (type.Underlying.IsUnsignedInteger ? 1 : 0);
+            return (type.IsWrappingInteger ? 2 : 0) + (type.IsSigned ? 0 : 1);
         }
 
         if (type.IsFloatingPoint)

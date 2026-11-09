@@ -247,7 +247,7 @@ internal sealed partial class MirBuilder
         {
             MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
-                op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
+                op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < ScalarTypes.Width(type),
             _ => true,
         };
@@ -263,7 +263,7 @@ internal sealed partial class MirBuilder
             return false;
         }
 
-        var (signed, wide) = (ScalarTypes.Signed(source), ScalarTypes.Signed(target));
+        var (signed, wide) = (source.IsSigned, target.IsSigned);
         return (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
     }
 }
