@@ -1398,7 +1398,7 @@ Array&lt;E>と固定長配列は次を提供する。
 ```kimi
 var values: Array<i32> = [1, 2, 3]
 match values.tryGetPairUniq(first: 0, second: ^1)
-    .Some(let pair) => exchange(pair.0, pair.1)
+    .Some(let pair) => Kimi.Intrinsics.swap(pair.0, pair.1)
     .None => ()
 let i: isize = 0
 let a = values[i]@uniq
