@@ -152,6 +152,9 @@ internal sealed partial class MirBuilder
             PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, literal.Bits),
             _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Bits),
         })));
+        // The position is both operands' node: the literal has none, and Binding's pattern layer selection already stood the Place at its
+        // terminal as far as its MIR Type shows (a layer an identity premise gives is walked by the query and Viewed), and a Place is never
+        // the Never value that would read the right one.
         if (this.Witnessed(MirBinaryOp.Eq, start, position.Source, position.Source) is { } comparison)
         {
             this.Compared(value, comparison, MirBinaryOp.Eq, start, position.Source);

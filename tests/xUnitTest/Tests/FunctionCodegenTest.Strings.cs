@@ -40,8 +40,8 @@ public sealed partial class FunctionCodegenTest
         "let h = generic(z@uniq, y@ref)\nConsole.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(f) \\(g) \\(h)\")\nConsole.writeLine(y)\n";
 
     // SPEC 8.2.3, 13.4, 14.8.1: operands of a Type identical to string under an identity premise, T is string or an associated Type's
-    // H.Item is string, as T, ref/T and ref/H.Item, by operators and a Literal Pattern on the same Subject: a guard of their values, whose
-    // operator comparisons stay on the string column until R8-S1e-b (the owner's O-84 (a)).
+    // H.Item is string, as T, ref/T and ref/H.Item, by operators and a Literal Pattern on the same Subject: a guard of their values, each
+    // comparison a witness's call (R8-OT), H.Item's through its Contract's requirement.
     private const string IdentityPremised =
         "func same<T>(a: ref/T, b: ref/T) -> bool\n    T is string\n    return a == b\n" +
         "func less<T>(a: T, b: T) -> bool\n    T is string\n    return a < b\n" +
@@ -101,7 +101,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 13.4, 13.4.1 (DECISIONS R5-M118): each operator calls its witness, equals for == and != and compare for the others, on its
     // operands' addresses, then negates the bool or compares the i32 with 0 by its predicate; the bool is stored widened. Each witness reads
-    // its records' Fields 0 and 1 through those addresses and calls its byte comparison on them, once; no routine reaches the module.
+    // its records' Fields 0 and 1 through those addresses and calls its byte comparison on them, once.
     [Fact]
     public void StringComparisonsCallTheirWitnessOnTheOperands()
     {
@@ -136,17 +136,22 @@ public sealed partial class FunctionCodegenTest
                 Assert.Same(data.Operands[0].Operands[0], length.Operands[0].Operands[0].Operands[0]);
             }
         }
-
-        Assert.DoesNotContain(LegacyRuntimeHelpers.StringComparisons, text, StringComparison.Ordinal);
     }
 
     // SPEC 13.4, 13.5.5: an operand of a qualifying pair layer, left or right, denotes its terminal Place, so its comparison is the witness's
-    // call too (TyCtxt.OperandTerminal, Binding's decision for the operand), and no routine reaches the module.
+    // call too (TyCtxt.OperandTerminal, Binding's decision for the operand): each instance of `same` calls equals once, of `less` compare.
     [Fact]
     public void APairLayeredOperandCallsTheWitness()
     {
         var c = Analyze(PairLayered);
-        Assert.DoesNotContain(LegacyRuntimeHelpers.StringComparisons, Generate(c), StringComparison.Ordinal);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var (equal, order) = StringWitnesses(ir, c);
+        foreach (var (name, witness, count) in new[] { ("same", equal, 2), ("less", order, 1) })
+        {
+            var instances = FunctionsOf(ir, c, name);
+            Assert.Equal(count, instances.Length);
+            Assert.All(instances, x => Assert.Same(witness, Assert.Single(StringCallsOf(ir, c, x)).Callee));
+        }
     }
 
     // SPEC 13.4, 3.1.2, IMPL 21.1.3: a comparison's literal passes its constant record's address, Static over its pooled bytes and their
@@ -256,11 +261,6 @@ public sealed partial class FunctionCodegenTest
             Assert.Equal(records, stores.Select(static x => x.Shape));
         }
     }
-
-    // DECISIONS R5-M118: the routines' text is the module's only where a comparison is written.
-    [Fact]
-    public void AModuleWithoutStringComparisonsHasNoRoutines()
-        => Assert.DoesNotContain(LegacyRuntimeHelpers.StringEqual.Name, Generate(Analyze(Strings, OutputKind.Library)), StringComparison.Ordinal);
 
     // The string witnesses of a module comparing strings: StringWitness' equals and compare, each one body.
     private static (IrFunction Equal, IrFunction Order) StringWitnesses(GeneratedIr ir, Compilation c)

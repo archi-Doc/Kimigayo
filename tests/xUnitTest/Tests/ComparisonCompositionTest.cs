@@ -594,19 +594,19 @@ public class ComparisonCompositionTest
         }
 
         // Witnesses resolves the comparison's own requirement on Self (DECISIONS R5-M68: Binding.Witnesses, TyCtxt.Effects, MirEffects),
-        // and its targets are the view's witness leaves, each under the same declaring instance, in walk order.
+        // and its targets are the view's witness leaves, each at the same instance, in walk order.
         static bool Same(Compilation c, CallPlan call, ComparisonNode node)
         {
             var contract = c.Library.GetSymbol(call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-            var expected = new List<(BindingSymbol Target, BoundType? Declaring)>();
-            var leaves = new List<(BindingSymbol Target, BoundType? Declaring)>();
+            var expected = new List<(BindingSymbol Target, Subst Instance)>();
+            var leaves = new List<(BindingSymbol Target, Subst Instance)>();
             return c.Types.Witnesses(contract.Contract!.OwnRequirement()!, call.ConformingType!, contract, null, null, expected) && Leaves(node, leaves) &&
                 expected.Count == leaves.Count && expected.Zip(leaves).All(static x => ReferenceEquals(x.First.Target, x.Second.Target) &&
-                    ReferenceEquals(x.First.Declaring, x.Second.Declaring));
+                    ReferenceEquals(x.First.Instance, x.Second.Instance));
         }
 
         // A closed view's witness leaves in walk order; false at a node a closed Self has not.
-        static bool Leaves(ComparisonNode node, List<(BindingSymbol Target, BoundType? Declaring)> into)
+        static bool Leaves(ComparisonNode node, List<(BindingSymbol Target, Subst Instance)> into)
         {
             switch (node.Kind)
             {
@@ -615,7 +615,7 @@ public class ComparisonCompositionTest
                 case ComparisonKind.Builtin:
                     return true;
                 case ComparisonKind.Witness:
-                    into.Add((node.Target!, node.Subst!.Declaring));
+                    into.Add((node.Target!, node.Subst!));
                     return true;
                 default:
                     return false;
