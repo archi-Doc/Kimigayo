@@ -329,10 +329,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public var b: Loud = Loud.init()\ncontract Make\n    func make(self: ref/Self) -> Loud\n        effect confined\nstruct M\n    Self is Make\n" +
                 "    public func make(self: ref/Self) -> Loud\n" + body));
 
-    // R4-M6a: a Drop only the checks reach runs no destructor (drop elaboration applies to runtime paths only, SPEC 14.10.3), while the
-    // check-only statements' own effects count.
+    // R4-M6a: a Drop only the checks reach runs no destructor (drop elaboration applies to runtime paths only, SPEC 14.10.3), whatever its
+    // group (a whole value's Keep, a partly moved one's Open: PLAN G641 kind 4), while the check-only statements' own effects count.
     [Theory]
     [InlineData("        let l = Loud.init()\n", "")]
+    [InlineData("        let p = (Loud.init(), Loud.init())\n        let a = p.0@move\n", "")]
     [InlineData("        Console.writeLine(\"x\")\n", Failed)]
     public void ACheckOnlyDropRunsNothing(string checkOnly, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + Witness + "        return .Ok(())\n" + checkOnly));

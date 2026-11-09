@@ -109,16 +109,16 @@ fn shared @15
       StorageDead(_11) @75 s1
       StorageDead(_10) @74 s1
       StorageDead(_9) @68 s1
-      drop _7 -> bb18 @55 s1
+      drop _7 -> bb18 [keep] @55 s1
   bb18:
       StorageDead(_7) @55 s1
-      drop _5 -> bb19 @42 s1
+      drop _5 -> bb19 [keep] @42 s1
   bb19:
       StorageDead(_5) @42 s1
-      drop _3 -> bb20 @31 s1
+      drop _3 -> bb20 [keep] @31 s1
   bb20:
       StorageDead(_3) @31 s1
-      drop _1 -> bb21 @18 s1
+      drop _1 -> bb21 [keep] @18 s1
   bb21:
       StorageDead(_1) @18 s1
       unreachable @17

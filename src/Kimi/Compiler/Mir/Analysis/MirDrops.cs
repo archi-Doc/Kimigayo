@@ -8,18 +8,19 @@
 // the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline
 // copy's included (its code, its subject in its location's scope and MirReport.Add's index, -1 for a copy's, which the report drops; both
 // set it after Add; the table is exact only without one, R4-M6a, R4-M102, R4-M132), and MovedPlace_Kd through MirReport where a layer
-// with its own drop may be incomplete at its Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
+// with its own drop may be incomplete at a runtime Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
 // Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is
-// initialized on any path; Keep where the whole is initialized on every path or the Place has no Move Path; Flag where it is complete or
-// wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing: the components without a child
-// path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per
-// view. Flags are numbered in path order per body, so a subtree's flags are one range.
+// initialized on any path; Keep where the whole is initialized on every path or the Place has no Move Path, and in a check-only group
+// also where Flag or an incomplete layer with its own drop would be; Flag where it is complete or wholly absent on every path, the flag
+// mirroring the path's own bit; Open where a part may be missing: the components without a child path follow the own bit, each child
+// path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path
+// order per body, so a subtree's flags are one range.
 // Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one its index names, of its code
 // at its subject, or for -1 its template's of that code and subject (an inline copy's, R4-M69) or MirReport's InternalInvariant_Kd (a merge
 // naming another requirement); generation's gate reads the mark.
-// A Drop only check edges reach (SPEC 14.10.3) is judged Elide where nothing of its Place is initialized on its assumed paths (it destroys
-// nothing; the instance collector reads it), else not at all.
-// Must not rewrite MIR, judge a check-only Drop otherwise, read syntax, or apply a derived-problem rule (MirReport's).
+// A Drop only check edges reach (SPEC 14.10.3) with a Move Path gets the group of what it would destroy from its assumed paths, by the
+// same rules but flagless (check-only code has no flags, R4-M6a), so the instance collector reads it; one without a Move Path has none.
+// Must not rewrite MIR, judge a check-only Drop (no problem, no mark), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
 
@@ -31,10 +32,10 @@ namespace Kimi.Compiler.Mir;
 /// <summary>What destroying a Drop's Place, or a part of it, runs under a view class (DECISIONS R4-M6).</summary>
 internal enum MirDropVerdict : byte
 {
-    Keep, // Its drop glue: it is initialized on every path, or it has no Move Path.
+    Keep, // Its drop glue: it is initialized on every path or has no Move Path; in a check-only group also Flag's state or an incomplete own-drop layer.
     Elide, // Nothing: its Type needs no drop in the view, or no path initializes it.
-    Flag, // Its drop glue where its flag is set: it is complete or wholly absent on every path.
-    Open, // No own drop: a part may be missing; the child rows follow, and a component without one is destroyed where the own bit is set.
+    Flag, // Its drop glue where its flag is set: it is complete or wholly absent on every path; runtime groups only.
+    Open, // No own drop (never a layer declaring one): a part may be missing; the child rows follow, a component without one destroyed where the own bit is set.
 }
 
 /// <summary>A row of a Drop's verdict group under a view class (DECISIONS R4-M6a): the group's first row is the dropped Place (Depth 0),
@@ -43,7 +44,7 @@ internal enum MirDropVerdict : byte
 /// <param name="Views">The views of the group, bit i for view i.</param>
 /// <param name="Verdict">The verdict.</param>
 /// <param name="Flag">The flag Flag tests, or under Open the own bit's flag; -1 for none (under Open, the own bit initialized on every
-/// path).</param>
+/// path, or a check-only group, which has no flags).</param>
 /// <param name="Depth">The depth below the dropped Place.</param>
 /// <param name="Step">The step from the parent row's Place: Field, Base (one depth), ConstIndex or Downcast; unused at depth 0.</param>
 /// <param name="Arg">The step's argument.</param>
@@ -61,9 +62,12 @@ internal readonly record struct MirFlagPoint(MirLocation At, int First, int Coun
 /// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (its index in
 /// <see cref="MirProgram.Bodies"/>): the body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
 /// points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
-/// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none, and a Drop
-/// only the checks reach has one Elide row where nothing of its Place is initialized on any assumed path, else none, never another verdict
-/// (A4 relies on it). R5 code generation, A4, A5, the instance collector and the dump read it.</summary>
+/// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none. A group
+/// says what its Drop destroys, the statement every walk of it cites: a Keep or Flag row its Type whole (its drop, then every part); an
+/// Open row its child rows, its parts without a row and a base without one, never a drop of its own; an Elide row nothing. A Drop only the
+/// checks reach has the group of what it would destroy (SPEC 14.10.3, 8.15.3), flagless, where a layer with its own drop that may be
+/// incomplete is a Keep row with no child rows; one without a Move Path has none; A4 runs no destructor for it (R4-M6a). R5 code
+/// generation, A4, A5, the instance collector and the dump read it.</summary>
 internal sealed class MirDropTable
 {
     private readonly List<End> ends = []; // Each closed body's ends, judged views and first problem.
@@ -111,7 +115,7 @@ internal sealed class MirDropTable
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="view">The view.</param>
     /// <returns>The index of the group's first row in <see cref="RowsOf"/>, or -1 when the Drop has no row: only the checks reach it and
-    /// may destroy something, or the body was not analyzed.</returns>
+    /// its Place has no Move Path, or the body was not analyzed.</returns>
     internal int Group(int body, int block, long view)
     {
         var rows = this.RowsOf(body);
@@ -165,7 +169,7 @@ internal sealed class MirDropTable
 }
 
 /// <summary>Drop elaboration (A2, SPEC 16.2, 16.3.2; DECISIONS R4-M6a): <see cref="Begin"/> starts a body, MirInit's checks replay records
-/// each runtime Drop's state tree and a check-only Drop's Elide node (<see cref="Record"/>) and each runtime state event
+/// each Drop's state tree, a check-only one's flagless (<see cref="Record"/>), and each runtime state event
 /// (<see cref="Event"/>), <see cref="Judge"/> applies a view's
 /// Types to the trees, and <see cref="End"/> numbers the flags and writes the points.</summary>
 /// <param name="moves">The move paths, built for the body.</param>
@@ -205,31 +209,22 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         Array.Clear(this.flagged, 0, moves.Paths.Length);
     }
 
-    /// <summary>Records the state tree of a Drop the runtime edges reach, from the state before it; of a Drop only the checks reach, one
-    /// Elide node where nothing of its Place is initialized on any assumed path (SPEC 14.10.3, 16.2.1: it destroys nothing), else none.</summary>
+    /// <summary>Records the state tree of a Drop from the state before it, on the assumed paths for a Drop only the checks reach (SPEC
+    /// 14.10.3), whose tree is flagless; a Drop without a Move Path has one Keep node where the runtime edges reach it, else none.</summary>
     /// <param name="state">The state.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="path">The dropped Place's path, or -1 when it has none: a static, or a Place through a reference or an index.</param>
     /// <param name="runtime">Whether the runtime edges reach the Drop.</param>
     internal void Record(ulong[] state, int block, int path, bool runtime)
     {
-        if (!runtime)
+        if (path >= 0)
         {
-            if (path >= 0 && Verdict(state, path, moves.Paths[path].End) == MirDropVerdict.Elide)
-            {
-                this.trees.Add(new(block, path, MirDropVerdict.Elide, -1, 0));
-            }
-
-            return;
+            this.Subtree(state, block, path, 0, runtime);
         }
-
-        if (path < 0)
+        else if (runtime)
         {
-            this.trees.Add(new(block, -1, MirDropVerdict.Keep, -1, 0));
-            return;
+            this.trees.Add(new(block, -1, MirDropVerdict.Keep, -1, 0, true));
         }
-
-        this.Subtree(state, block, path, 0);
     }
 
     /// <summary>Records a state event the runtime edges reach: a definition sets, a Move, a Drop, a StorageLive or a StorageDead clears;
@@ -323,34 +318,37 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
     }
 
     // A path's state verdict, and under Open each direct child's: Keep where the subtree is initialized on every path, Elide where nothing of
-    // it is on any path, Flag where no part was taken out of it, else Open, with the own bit's flag where that may be uninitialized.
-    private void Subtree(ulong[] state, int block, int path, int depth)
+    // it is on any path, Flag where no part was taken out of it, else Open, with the own bit's flag where that may be uninitialized. A
+    // check-only tree is flagless (R4-M6a): Flag's state reads as Keep, and no node has a flag.
+    private void Subtree(ulong[] state, int block, int path, int depth, bool runtime)
     {
         var end = moves.Paths[path].End;
         var verdict = Verdict(state, path, end);
-        var own = verdict == MirDropVerdict.Flag || (verdict == MirDropVerdict.Open && Any(state, MirInit.Uninit, path, path + 1));
-        this.trees.Add(new(block, path, verdict, own ? path : -1, depth));
+        var own = runtime && (verdict == MirDropVerdict.Flag || (verdict == MirDropVerdict.Open && Any(state, MirInit.Uninit, path, path + 1)));
+        verdict = verdict == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : verdict;
+        this.trees.Add(new(block, path, verdict, own ? path : -1, depth, runtime));
         for (var child = path + 1; verdict == MirDropVerdict.Open && child < end; child = moves.Paths[child].End)
         {
-            this.Subtree(state, block, child, depth + 1);
+            this.Subtree(state, block, child, depth + 1, runtime);
         }
     }
 
     // A Drop's tree under the view: the Types top-down from the Drop's case Type; a node whose Type needs no drop is Elide with its subtree,
-    // and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at the
-    // Drop. Returns the next tree.
+    // and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
+    // runtime Drop; a check-only Drop is not judged (R4-M6a), and destroys such a layer whole (Keep, its drop included). Only an Open row
+    // has child rows. Returns the next tree.
     private int Tree(int first, ulong views)
     {
         var trees = CollectionsMarshal.AsSpan(this.trees);
-        var block = trees[first].Block;
+        var (block, runtime) = (trees[first].Block, trees[first].Runtime);
         var start = this.table.Rows.Count;
-        var elided = int.MaxValue; // The depth of the node whose subtree is elided.
+        var skipped = int.MaxValue; // The depth of the node whose subtree has no rows.
         ref readonly var drop = ref this.body.Blocks[block];
         var next = first;
         for (; next < trees.Length && (next == first || trees[next].Depth > 0); next++)
         {
             var node = trees[next];
-            if (node.Depth > elided)
+            if (node.Depth > skipped)
             {
                 continue;
             }
@@ -360,18 +358,25 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             var type = this.types[node.Depth] = node.Depth == 0 ? cases.Type(this.body.TypeOf(drop.Terminator.Place)!)
                 : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
             var verdict = MirTypes.MayNeedDrop(type, this.walked) ? node.State : MirDropVerdict.Elide;
-            elided = verdict == MirDropVerdict.Elide ? node.Depth : int.MaxValue;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
-                var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
-                var subject = this.body.Subject(drop.Terminator.Source);
-                var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
-                var problem = this.report.Add(
-                    new(DiagnosticCode.MovedPlace_Kd, requirement, subject, this.body.Ordinal, views),
-                    inlined < 0 ? default : [new(ProblemFactKind.Inlined, this.body.Scopes[inlined].Source)]);
-                this.Incomplete(DiagnosticCode.MovedPlace_Kd, drop.Terminator.Source, problem);
+                if (runtime)
+                {
+                    var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
+                    var subject = this.body.Subject(drop.Terminator.Source);
+                    var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
+                    var problem = this.report.Add(
+                        new(DiagnosticCode.MovedPlace_Kd, requirement, subject, this.body.Ordinal, views),
+                        inlined < 0 ? default : [new(ProblemFactKind.Inlined, this.body.Scopes[inlined].Source)]);
+                    this.Incomplete(DiagnosticCode.MovedPlace_Kd, drop.Terminator.Source, problem);
+                }
+                else
+                {
+                    verdict = MirDropVerdict.Keep;
+                }
             }
 
+            skipped = verdict == MirDropVerdict.Open ? int.MaxValue : node.Depth;
             var flag = verdict == MirDropVerdict.Elide ? -1 : node.Flag;
             if (flag >= 0)
             {
@@ -441,8 +446,9 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         order.AsSpan(0, items.Length).CopyTo(items);
     }
 
-    // A node of a Drop's state tree: its path (-1: no Move Path), its state verdict, its flag's path and its depth.
-    private readonly record struct Node(int Block, int Path, MirDropVerdict State, int Flag, int Depth);
+    // A node of a Drop's state tree: its path (-1: no Move Path), its state verdict, its flag's path, its depth and whether the runtime
+    // edges reach the Drop.
+    private readonly record struct Node(int Block, int Path, MirDropVerdict State, int Flag, int Depth, bool Runtime);
 
     // A state event: the subtree of the path set or cleared at a location, in the views of the solve.
     private readonly record struct StateEvent(MirLocation At, int Path, bool Set, ulong Views);

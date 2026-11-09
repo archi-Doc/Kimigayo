@@ -475,7 +475,7 @@ fn cleanup @79
       _36 = const () @100 s11
       goto bb63 @100 s1
   bb68:
-      drop _4 -> bb70 @85 s1
+      drop _4 -> bb70 [keep] @85 s1
   bb69:
       StorageDead(_39) @91 s13
       _38 = const () @90 s13
@@ -483,7 +483,7 @@ fn cleanup @79
       goto bb68 @90 s1
   bb70:
       StorageDead(_4) @85 s1
-      drop _3 -> bb71 @82
+      drop _3 -> bb71 [keep] @82
   bb71:
       unreachable @84
 fn divergingDefer @148
@@ -611,7 +611,7 @@ fn conditionTemporaries @163
       _7 = const 2_i32 @175 s1
       goto bb9 @175 s1
   bb15:
-      drop _1 -> bb16 @164
+      drop _1 -> bb16 [keep] @164
   bb16:
       unreachable @166
 fn failure @177
@@ -713,7 +713,7 @@ fn divergentDeferHeld @204
       StorageLive(_3) @211 s2
     * goto bb2 @211 s2
   bb1:
-      drop _1 -> bb5 @206 s1
+      drop _1 -> bb5 [keep] @206 s1
   bb2:
       goto bb3 check bb4 @211 s2
   bb3:
@@ -833,7 +833,7 @@ fn returnInArgument @226
       _7 = const () @239 s2
       goto bb9 @239 s2
   bb12:
-      drop _6 -> bb13 @236 s2
+      drop _6 -> bb13 [keep] @236 s2
   bb13:
       StorageDead(_6) @236 s2
       unreachable @235 s1
@@ -950,15 +950,15 @@ fn exitOrder @263
       _8 = const () @280 s1
       goto bb9 @280 s1
   bb13:
-      drop _4 -> bb14 @270 s1
+      drop _4 -> bb14 [keep] @270 s1
   bb14:
       StorageDead(_4) @270 s1
       drop _3 -> bb15 [elide] @267 s1
   bb15:
       StorageDead(_3) @267 s1
-      drop _2 -> bb16 @265
+      drop _2 -> bb16 [keep] @265
   bb16:
-      drop _1 -> bb17 @264
+      drop _1 -> bb17 [keep] @264
   bb17:
       unreachable @266
 fn showText @281
