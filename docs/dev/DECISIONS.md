@@ -10782,6 +10782,23 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-143 A stated raw layer an input holds by value writes its Origin's members at any holder; Binding publishes the parts an input
+  holds at its own address (PLAN G583)** (2026-11-09; Front, Binding; Major, an acceptance mover, with the Middle's G598-2a in one window;
+  design review 2 ACCEPT after re-check; C-175; the owner's O-107 (a)) SPEC 15.6.4, 5.7 Calls, 5.2.1.
+  - Rule: `Binding.RawReach` walks Members at every raw layer stepping Exclusive, wherever the input holds it (an Option or enum payload,
+    a Field, a Type argument, a Tuple inside a holder): a layer's holding instance decides its step (DeclaredStep), never its members,
+    which `RawMembers` over the contract scope names (a holding instance's slot keepers included). WK's `at.Holder is null` gate
+    (0fd5e2f37, no recorded reason) is deleted.
+  - Reader: `TyCtxt.OwnLayers` (`Binding.OwnLayers`, `OwnLayer`) lists the parts a value holds at its own address by the storage walk's
+    by-value criterion (`ByValue`), each part as the contract's body sees it (a Closure part by its environment, R4-M148's one reading,
+    the storage walk's `BodySees`; false at the Limit), each raw layer with Holdings' step and every other part reaching storage, for A5's
+    Cover (G598-2a), which reads each layer's members by `LayerMembers`. Holdings' step needs no signature cap there: the cap is Shared
+    only where every statement of the Origin is shared, and then every member is shared, which a covering of exclusive members refuses.
+  - Moves (with G598-2a): invalid programs with a stated layer in a holder are rejected as the Tuple form is; a0w (valid, a
+    constructor-built null) is newly rejected and joins O-60's residue, the owner's O-107 (a), verbatim 「(a)」.
+  - Rejected: Cover's own Holdings walk with the `Holder`-null criterion (a second walk of one rule); `StoredMembers` at a holder
+    (incomplete for a Type argument's layer, misses the input whose outer Origin it is); a clause per wrapper; A5's own copy of 5.7;
+    publishing on the cached row (a later option if RP8 asks).
 - **BU-141 An inherited binding is the heir's node (PLAN G631 part 1)** (2026-11-09; Front, Binding; Major, an acceptance mover; design
   reviews 1-3 and the owner's O-96 (a); implementation review ACCEPT after I1) SPEC 6.2 (with the owner's O-70 (a)), 8.6.2, 8.8.2.
   Supersedes in part BU-128's "every completed associated binding of a non-inherited conformance path is a root" and BU-65's inherited arm
