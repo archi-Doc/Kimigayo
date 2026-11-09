@@ -291,7 +291,10 @@ internal static partial class LegacyRuntimeHelpers
     private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
-    private static partial class Texts
+    // Code generation's expanded runtime texts (G350): the CLR initializes this class when a writer (WriteFormattingRuntime) first reads
+    // one for a module, never on the check path, whose collector reads the rows and ABIs (Row, IntrinsicRows) but no text; no other
+    // member reads them.
+    private static class Texts
     {
         // The runtime templates with each row's routine definition spliced in once.
         internal static readonly string FormattingRuntime = ReadFormattingRuntime();

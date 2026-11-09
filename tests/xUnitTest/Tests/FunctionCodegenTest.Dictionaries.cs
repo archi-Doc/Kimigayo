@@ -157,7 +157,7 @@ public sealed partial class FunctionCodegenTest
         var none = Assert.Single(FunctionsOf(ir, c, "dcNone"));
         var init = Assert.Single(CallsOf(none), x => x.Callee == Assert.Single(FunctionsOf(ir, c, "initialize")));
         Assert.Equal("call void @(ptr %)", init.Shape);
-        Assert.Equal("alloca { [0 x i64], [56 x i8] }, align 8", Assert.Single(init.Operands).Shape);
+        Assert.Equal("alloca { ptr, i64, i64, i64, i64, i64, i64 }, align 8", Assert.Single(init.Operands).Shape);
         Assert.DoesNotContain("__kimi_dictionary_init", text, StringComparison.Ordinal);
 
         var destroy = FunctionsOf(ir, c, "destroyDictionary").ToArray();

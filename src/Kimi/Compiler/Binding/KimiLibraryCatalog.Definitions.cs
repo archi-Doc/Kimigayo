@@ -139,6 +139,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayRepr, "ArrayRepr", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.SliceRepr, "SliceRepr", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StringRepr, "StringRepr", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.DictionaryStorageHandle, "Handle", Owner: "DictionaryStorage"),
         // SPEC 22.2: the standard storage boundary; the exclusive borrow of each family is borrowStorageUniq (SPEC 7.4), and
         // the overload index counts the declarations of one Name in source order (Array, Dictionary, fixed array).
         new(KimiDeclarationId.RefRemainder, "RefRemainder", KimiLibraryContainer.Storage),
