@@ -185,7 +185,7 @@ fn elementComparison @87
       StorageDead(_4) @100 s1
       StorageDead(_3) @97 s1
       StorageDead(_2) @96 s1
-      drop _1 -> bb9 @90 s1
+      drop _1 -> bb9 [keep] @90 s1
   bb9:
       StorageDead(_1) @90 s1
       unreachable @89

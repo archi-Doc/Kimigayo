@@ -85,7 +85,8 @@ public sealed partial class MirDropTest
         },
 
         // SPEC 16.2.2: after a Partial Move the remaining parts are destroyed, each child path by its verdict and the other components by
-        // the own bit: through a Field, a constant index, a Case of a decomposed Subject, and in a pair-generic body's owner case.
+        // the own bit: through a Field, a constant index, a Case of a decomposed Subject, and in a pair-generic body's owner case (its
+        // return's Drop and the one after it, which only the checks reach, PLAN G641 kind 4).
         {
             "OpenField", "f", @"\[open \(\.0 flag f0\)\]", 1,
             "struct Pair\n    public var first: Counted\n    public var second: Counted\n    public init(first: Counted, second: Counted)\n" +
@@ -108,7 +109,7 @@ public sealed partial class MirDropTest
             "p0\narm\np1\nend\narm\nq0\nq1\nend\nend\n", 4
         },
         {
-            "OpenViews", "f", @"\[open \(\.0 elide\) in v0; elide in v1\]", 1,
+            "OpenViews", "f", @"\[open \(\.0 elide\) in v0; elide in v1\]", 2,
             "func f<s/T>(pair: (s/T, s/T)) -> s/T\n    s is owner or ref\n    return pair.0@move\nfunc run()\n    let kept = Counted.init(\"kept\")\n" +
             "    let one = f((Counted.init(\"first\"), Counted.init(\"second\")))\n    Console.writeLine(\"after\")\n    let two = f((kept@ref, kept@ref))\n" +
             "    Console.writeLine(\"end\")\nrun()\n",
