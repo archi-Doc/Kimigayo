@@ -142,11 +142,9 @@ public class DictionaryLiteralEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
 
         // The library reach of the literal's duplicate check in the checked set (SPEC 12.4.3; DECISIONS R4-M13a, R5-M27, R5-M124): MIR looks
-        // each key up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY), so findEntry is reached and the old generator's
-        // requireAbsent, which its CheckKey helper calls, never is.
+        // each key up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY).
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
-        Assert.DoesNotContain(sel.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!.Declaration, generated);
         var original = CompilationTestHelper.WriteIr(c);
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);

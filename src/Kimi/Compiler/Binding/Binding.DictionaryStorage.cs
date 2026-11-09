@@ -12,7 +12,7 @@ public sealed partial class Binding
     // equality witnesses as an ordinary library call over the literal's complete entry Types.
     internal CallPlan DictionaryStorageCall(BoundType key, BoundType value)
     {
-        var symbol = this.Library.DictionaryStorage(DictionaryCallee.FindEntry);
+        var symbol = this.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!;
         var parameters = ((FunctionKoto)symbol.Declaration).Parameters;
         if (!this.dictionaryStorageCalls.TryGetValue((key, value), out var call))
         {
