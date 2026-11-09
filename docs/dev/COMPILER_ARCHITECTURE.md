@@ -25,7 +25,7 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | --- | --- | --- |
 | Syntax | Source | Binding |
 | Binding | Syntax tree, its own tables | Mir, Backend |
-| MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar: the builder's verification and `MirValidator`'s TestRecordValue row; DECISIONS R5-M148; and the width of `isize`, `SizeWidth`, DECISIONS BU-130), syntax children, `SourceRef`, and three Binding views, `Binding.GuessedCompletionNodes` at a require's failure body that can complete (DECISIONS R5-M186), `Binding.WitnessGroup`, a comparison operand's library witness group (DECISIONS R8-M7), and `TyCtxt.OperandTerminal`, the Type a comparison operand compares (DECISIONS R8-M9) | Binding internals, semantic slots on Koto, parent-walking inference |
+| MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar: the builder's verification and `MirValidator`'s TestRecordValue row; DECISIONS R5-M148; the width of `isize`, `SizeWidth`, DECISIONS BU-130; and an integer Type's width and signedness, `Width` and `Signed`, for IMPL 21.3.3's proven checks and a selection's position, commit 3f7086e4a), syntax children, `SourceRef`, and three Binding views, `Binding.GuessedCompletionNodes` at a require's failure body that can complete (DECISIONS R5-M186), `Binding.WitnessGroup`, a comparison operand's library witness group (DECISIONS R8-M7), and `TyCtxt.OperandTerminal`, the Type a comparison operand compares (DECISIONS R8-M9) | Binding internals, semantic slots on Koto, parent-walking inference |
 | MIR analyses | MIR, declaration tables, pure `TyCtxt` functions | Syntax, HIR |
 | Backend | MIR, declaration tables, `TyCtxt`, the root Type predicates `SlotTypes` and `ReferenceTypes` (`Abi`'s parameter kinds; DECISIONS R5-M65) and `ScalarTypes` (the capability table's operation and static-storage rows and the formatting runtime's kind numbering, `LegacyRuntimeHelpers.FormatKind`, and the width of `isize`, `SizeWidth`; DECISIONS R5-M53, R5-M82, R5-M148, BU-130), Core's runtime-location text (`Compilation.Locations`), Core's target profile (`WindowsProfile`; DECISIONS R5-M174), the Testing catalog's symbol column (DECISIONS R5-M18), its site numbers and case and artifact identities, and the test runtime's text, entry writer, value kind and phase writer and numbering (`TestRuntime`; DECISIONS R5-M136, R5-M138, R5-M137, R5-M140) | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
@@ -264,8 +264,6 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     `PublishInheritedOptOuts`;
   - G600's, removed at R7-D2 d3 with R7-N2d's (DECISIONS BU-137): `earlyObjectForms` and `VerifyEarlyObjectForms`, object forms formed
     before the opt-outs are published, judged again after them;
-  - R8's: `Binding.LibraryWitnessGroup.EffectsLimit`, `Witnesses`' `false` for a generic group function, which A4 reads as its Limit, with `Binding.LeafTarget` its second reader until R7-P5 (R7-P5,
-    when `Witnesses` answers a witness's instance with its Types; DECISIONS R8-M4);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).
