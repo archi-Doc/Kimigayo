@@ -8818,6 +8818,8 @@ resumed by R4-M86 (2026-10-20).
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
   - Superseded in part by BU-128 (R7-V5b-1, the owner's O-70 (a)): "a cycle of binding nodes alone is its conformance's error" no longer holds; a binding-only inline cycle is judged at the binding, and `Binding.InlineLayouts.cs`' "no record for a binding node" is withdrawn.
+  - Its inherited arm (the walk's re-resolution on the base clause's instance) is superseded by BU-141 (G631 part 1): an inherited path's
+    binding is the heir's node.
 
 - **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the owner's answer
   on G264 S1, verbatim 「(B)」; supersedes BU-52's interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does
@@ -10415,6 +10417,8 @@ resumed by R4-M86 (2026-10-20).
     after the failed Binding, which Layout rejects without a record. No instance-level fact.
   - Rejected: reporting at the struct whose instance is infinite (valid for other arguments, x7); reporting only components without a
     declaration (a mode); keying by the binding's Type (r7 reports both bindings); a new instance-level fact for Layout.
+  - Its root rule ("every completed associated binding of a non-inherited conformance path is a root") is superseded in part by BU-141
+    (G631 part 1): every conformance path's binding is a node and a root.
 - **BU-129 R7-E1d A clause's resting failure yields to its owner's own** (2026-11-08; plan §5.1 E1, `ruling-r2.md` §3; D-2; SPEC 15.3.3,
   23.1.2; DIAGNOSTICS rule 4). `FailOriginClause` writes `InvalidOrigin` into the owner of a failed Origin clause with an edge to the
   clause, a value that rests on another node. `Fail` lets the owner's own later failure take that slot and removes the clause's edge, so the
@@ -10589,6 +10593,28 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-141 An inherited binding is the heir's node (PLAN G631 part 1)** (2026-11-09; Front, Binding; Major, an acceptance mover; design
+  reviews 1-3 and the owner's O-96 (a); implementation review ACCEPT after I1) SPEC 6.2 (with the owner's O-70 (a)), 8.6.2, 8.8.2.
+  Supersedes in part BU-128's "every completed associated binding of a non-inherited conformance path is a root" and BU-65's inherited arm
+  (the walk's re-resolution on the base clause's instance; PLAN G328's subject).
+  - Rule (SPEC 6.2, 8.6.2, 8.8.2): every conformance path's binding is a node and a root; an inherited path's stores its source's binding
+    on the base clause's instance (`InlineBinding`).
+  - Site: a declared path's record is written by the judge at `SpecificationPart ?? its clause`; an inherited path's at its conformance's
+    site, the heir's base clause (`Use`), after that clause's own checks (`ReportInheritedInlineCycles` after `ValidateBaseDeclarations`),
+    dependent when the clause failed by itself.
+  - Scope: the heir's conformance scope (D and the source's P) is built once per pass by `Binding.InheritedConformances`
+    (`PrepareInheritedScopes`, called by the pass driver before the judge) and read by the judge and `VerifyInheritedConformance`.
+  - Temporary structure: `ReportInheritedInlineCycles`' deferred write, marked `[Transitional("R7", Reason = "... (R7-E5).")]`, is a
+    write-order workaround for `Fail`'s silent drop of a later failure (PLAN G262: one node holds one failure). It goes at R7-E5 (a), the
+    stage COMPILER_ARCHITECTURE already gives that cause, once E2-E4 have migrated the `Fail` writers and a node keeps a later failure as
+    a fact; the judge then writes inherited paths' records with the declared ones. Until then these writers at an inherited path's `Use`
+    run after the write point, and the order decides which record that node keeps: `ValidateConformances`' agreement (an Error is
+    dependent; a Refuted or Unknown reaches only `PathStorage[0]`, an explicit path when one exists), `ValidateBoundConformanceAgreement`
+    (`a.Use`), and `PublishNeededLimits` (none computed on the 57 traced programs). The owner's O-96 (a) chose this order.
+  - Moves: i1, i1u, i5, i6 and i7, invalid by SPEC 6.2 under O-70 (a), are rejected; i1x and x3v keep their `GenerationResourceLimit_Kd`
+    beside the Language record (PLAN G631's remaining part).
+  - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
+    on P6); the record at `path.Use` before the base clause's checks (P5: independent records lost, design review 1's B1).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
