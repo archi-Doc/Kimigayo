@@ -13,14 +13,16 @@ namespace Kimi.Compiler;
 //   ProjectionSpecification's outcome (a binding with its Subject, conformance path and identity), the premise proof of a node's scope,
 //   and Binding.IsRecursive (SPEC 8.3.3).
 // - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order, and one at each
-//   such binding: its specification (SpecificationPart, SPEC 8.5.1), else its conformance clause.
+//   such binding: its specification (SpecificationPart, SPEC 8.5.1), else its conformance clause, an inherited path's at the heir's
+//   base clause after that clause's own checks (ReportInheritedInlineCycles, SPEC 8.6.2).
 // - Representation: a node per struct or enum declaration (its storage walked and proven in the declaration's scope) and per associated
-//   binding of a non-inherited conformance path (its binding walked and proven in that path's Scope, SPEC 8.8.2's D + P, keyed by the
-//   path and the identity; a binding's Origin arguments never change what it stores inline), each with its summary: the abstract parts
-//   its storage reaches by value. Every node is a root, declarations first. An instance at a by-value position adds the edge to its
-//   declaration and walks that summary under the instance; a completed projection adds the edge to its binding's node and walks that
-//   summary under the Subject (an inherited path's binding is its source's, on the base clause's instance). A node is invalid iff it lies
-//   on a cycle of the edges, a declaration and a binding alike.
+//   binding of a conformance path, inherited paths included (InlineBinding: an inherited path's binding is its source's on the base
+//   clause's instance; walked and proven in that path's Scope, SPEC 8.8.2's D + P, which Binding.InheritedConformances builds for an
+//   inherited path; keyed by the path and the identity; a binding's Origin arguments never change what it stores inline), each with its
+//   summary: the abstract parts its storage reaches by value. Every node is a root, declarations first. An instance at a by-value
+//   position adds the edge to its declaration and walks that summary under the instance; a completed projection adds the edge to its
+//   binding's node and walks that summary under the Subject. A node is invalid iff it lies on a cycle of the edges, a declaration and a
+//   binding alike.
 // - Invariants: Tarjan over the edges the walks discover, each summary computed before its first read (every read follows its edge, so
 //   dependencies are edges), a cyclic component re-walked until no summary grows: the result is the cycles of the least-fixpoint edge
 //   graph, whatever the declaration order. Termination: nodes are finite, a walk visits the written DAG, its substituted subterms and
@@ -63,9 +65,9 @@ public sealed partial class Binding
             {
                 var path = conformance.PathStorage[p];
                 var shape = path.Contract.Contract!;
-                for (var i = 0; path.InheritedFrom is null && i < shape.AssociatedTypes.Count; i++)
+                for (var i = 0; i < shape.AssociatedTypes.Count; i++)
                 {
-                    if (this.ResolveAssociated(path, shape.AssociatedTypes[i], out _) is { } binding &&
+                    if (this.InlineBinding(path, shape.AssociatedTypes[i]) is { } binding &&
                         this.Summary(path, shape.AssociatedTypes[i], binding, path.Scope) is { Index: 0 } summary)
                     {
                         this.SummarizeInlineStorage(summary);
@@ -85,9 +87,25 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.inlineSummaries.Count; i++)
         {
-            if (this.inlineSummaryPool[i] is { Path: { } path, Cyclic: true } node)
+            if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
             {
                 this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+            }
+        }
+    }
+
+    // SPEC 6.2, 8.6.2 (PLAN G631): an inherited binding on an inline cycle is invalid at its conformance, whose site is the heir's base
+    // clause (Use), written after that clause's own checks (ValidateBaseDeclarations), so their independent records keep its one slot
+    // (DIAGNOSTICS rule 4); a clause that failed by itself keeps it, the heir's binding being read from that clause's instance (rule W).
+    // The judge decided the node (Cyclic); only the write waits.
+    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262); the judge writes inherited paths' records with the declared ones once Fail's silent drop goes (R7-E5).")]
+    private void ReportInheritedInlineCycles()
+    {
+        for (var i = 0; i < this.inlineSummaries.Count; i++)
+        {
+            if (this.inlineSummaryPool[i] is { Path: { InheritedBase: not null } path, Cyclic: true })
+            {
+                this.Fail(path.Use, BindingFailure.InvalidInlineLayout);
             }
         }
     }
@@ -230,20 +248,26 @@ public sealed partial class Binding
         {
             this.VisitInlinePart(summary, specified, query);
         }
-        else if (outcome.Path!.InheritedFrom is not null)
+        else if (this.InlineBinding(outcome.Path!, outcome.Identity) is { } binding)
         {
-            // An inherited path's binding is its source's, formed in the source's conformance scope: the projection is resolved again on
-            // the base clause's instance, where ProveConformanceConditions proves an inherited path's conditions.
-            if (this.StoredType(outcome.Path.InheritedBase!, subject) is { } parent)
-            {
-                this.VisitInlinePart(summary, this.WithComponent(part, 0, parent), query);
-            }
-        }
-        else
-        {
-            this.VisitInlineNode(summary, this.Summary(outcome.Path, outcome.Identity, specified, outcome.Path.Scope), subject, query);
+            this.VisitInlineNode(summary, this.Summary(outcome.Path!, outcome.Identity, binding, outcome.Path!.Scope), subject, query);
         }
     }
+
+    // What a binding node stores, in its subject declaration's terms: a path's completed binding; an inherited path's is its
+    // source's on the base clause's instance (SPEC 8.6.2), the projection of InheritedBase, which the walk resolves to the source's node.
+    // So the heir has a node of its own, on a cycle the heir's base arguments close, and its source is on every cycle it closes itself.
+    private BoundType? InlineBinding(BoundConformancePath path, BoundRequirement identity)
+        => path.InheritedBase is { } inheritedBase ? this.InheritedProjection(inheritedBase, identity) : this.ResolveAssociated(path, identity, out _);
+
+    // The projection of `identity` on an inherited path's base clause instance.
+    private BoundType InheritedProjection(BoundType inheritedBase, BoundRequirement identity)
+        => this.types.Intern(
+            BoundTypeKind.AssociatedProjection,
+            identity.Symbol,
+            SemanticsKind.Owner,
+            [inheritedBase, this.ProjectionContract(identity.Symbol, identity.Contract)],
+            originArguments: this.AssociatedParameters(identity.Symbol.Declaration));
 
     // The edge from `summary` to `target` (a Tarjan step), then the target's summary under `instance`, an instance of its declaration.
     private void VisitInlineNode(InlineSummary summary, InlineSummary target, BoundType instance, uint query)
