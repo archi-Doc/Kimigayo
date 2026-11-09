@@ -14,8 +14,8 @@ group DictionaryStorage
         public var free: isize
 
     // Slot invariant (SPEC 5.2): a live slot holds its placed Links, key and value; a free slot below `used` holds only
-    // its Links; the slots from `used` up to the capacity hold no value. Growth and compaction relocate whole slots, and
-    // a release needs no destruction of Links, whose Fields are Copy (SPEC 5.6).
+    // its Links; the slots from `used` up to the capacity hold no value. Growth and compaction relocate whole slots;
+    // a release needs no destruction of Links, which declare no `drop` and whose Fields are Copy (SPEC 5.6, 16.3.2).
     #Layout("C")
     struct Links
         public var previous: isize
@@ -25,15 +25,13 @@ group DictionaryStorage
             self.previous = previous
             self.next = next
 
-    // The slot rule (IMPL 21.1.1; the slot is implementation storage, IMPL 21.1.3): the Links' 16 bytes at the slot's start, the key
-    // at 16, the value at the key's end aligned for it, the stride the value's end aligned for the slot, whose alignment is the largest
-    // of the Links' 8 and theirs. `slotStride`, `keyAt` and `valueAt` state it, the one statement every body that addresses a slot
-    // reads. They read each Type's own stride and alignment and lay out no aggregate of them, so a `K` or `V` over a generation limit
-    // is that limit's record (IMPL 21.3.2), and the slot's size is no layout obligation of the program (SPEC 8.15.3). Premises: every
-    // alignment is a power of two at most 16 (IMPL 21.1.3), so 16 is aligned for every key, and every size is a multiple of its
-    // alignment. Until K1b's second part removes it, the compiler's `DictionaryEntryLayout.Of` states the same rule for
-    // `dictionaryStorage`'s stride and `placeEntry`'s helper, which writes a placed entry at its offsets and hands its stride to
-    // `append`, which passes it on to `reserve`, `grow` and `appendSlot`.
+    // The slot rule (IMPL 21.1.1; the slot is implementation storage, IMPL 21.1.3): the Links' 16 bytes at the slot's
+    // start, the key at 16, the value at the key's end aligned for it, the stride the value's end aligned for the slot,
+    // whose alignment is the largest of the Links' 8 and theirs. `slotStride`, `keyAt` and `valueAt` state it, the one
+    // statement every body that addresses a slot reads. They read each Type's own stride and alignment and lay out no
+    // aggregate of them, so a `K` or `V` over a generation limit is that limit's record (IMPL 21.3.2), and the slot's
+    // size is no layout obligation of the program (SPEC 8.15.3). Premises: every alignment is a power of two at most 16
+    // (IMPL 21.1.3), so 16 is aligned for every key, and every size is a multiple of its alignment.
 
     /// The slot stride: the Links, a `K` and a `V`, rounded up to the slot's alignment.
     internal func slotStride<K, V>() -> isize
@@ -45,8 +43,8 @@ group DictionaryStorage
         let end = 16 + Storage.stride<K>() + Storage.stride<V>()
         return (end + alignment - 1) / alignment * alignment
 
-    // The alignment of `T`: the stride of a byte and no `T`, which this implementation aligns as `T` (IMPL 21.1.1). Its one stored
-    // part is the byte, so its size stays within every limit; a `T` over a limit is that limit's record.
+    // The alignment of `T`: the stride of a byte and no `T`, which this implementation aligns as `T` (IMPL 21.1.1). Its
+    // one stored part is the byte, so its size stays within every limit; a `T` over a limit is that limit's record.
     func alignmentOf<T>() -> isize => Storage.stride<(u8, [0 of T])>()
 
     /// Returns the address of the key in the slot that starts at `slot`, with the provenance and authority of `slot`.
@@ -66,15 +64,18 @@ group DictionaryStorage
         K is Equatable
         unsafe => return (*(value@follow@raw@raw/Handle)).capacity
 
+    // The bodies below read a Dictionary's Handle through the path their borrow gives (SPEC 5.2.1): a Dictionary's one
+    // component is its `Handle` (IMPL 21.1.3), so `value@follow@raw@raw/Handle` addresses it with that borrow's
+    // authority.
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
-            let handle = Storage.dictionaryStorage(value).0@raw/Handle
+            let handle = value@follow@raw@raw/Handle
             let stride = slotStride<K, V>()
             let buffer = (*handle).buffer
             Storage.destroyDictionaryEntries<K, V>(buffer, stride, (*handle).tail, (*handle).length)
-            // Free slots hold links too; all of them end before clearLinks lets appendSlot place links again. No step of
-            // the loop can Abort, so it vanishes where ending a Links does nothing.
+            // Free slots hold links too; all of them end before clearLinks lets appendSlot place links again. No step
+            // of the loop can Abort, so it vanishes where ending a Links does nothing.
             var slot = buffer
             var remaining = (*handle).used
             while remaining > 0
@@ -89,7 +90,7 @@ group DictionaryStorage
         let link = findEntry(value@follow@ref, key)
         require link != 0 else => return .None
         unsafe
-            let handle = Storage.dictionaryStorage(value).0@raw/Handle
+            let handle = value@follow@raw@raw/Handle
             let stride = slotStride<K, V>()
             let slot = (*handle).buffer + (link - 1) * stride
             unlink(handle, stride, link)
@@ -102,21 +103,21 @@ group DictionaryStorage
     internal unsafe func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
         K is Equatable
         unsafe
-            let slot = (*(Storage.dictionaryStorage(value).0@raw/Handle)).buffer + (link - 1) * slotStride<K, V>()
+            let slot = (*(value@follow@raw@raw/Handle)).buffer + (link - 1) * slotStride<K, V>()
             let previous = (*valueAt<K, V>(slot))@move
             Raw.initialize(valueAt<K, V>(slot), replacement@move)
             return previous@move
 
-    // The capacity operations carry the standard operation's caller location to every failure they detect (SPEC 22.5.1).
+    // The capacity operations carry the standard operation's caller location to each failure they detect (SPEC 22.5.1).
     internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
         K is Equatable
         unsafe
-            _ = reserve(Storage.dictionaryStorage(value).0@raw/Handle, slotStride<K, V>(), additional)
+            _ = reserve(value@follow@raw@raw/Handle, slotStride<K, V>(), additional)
 
     internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
-            shrinkToFit(Storage.dictionaryStorage(value).0@raw/Handle, slotStride<K, V>())
+            shrinkToFit(value@follow@raw@raw/Handle, slotStride<K, V>())
 
     unsafe func reserve(handle: raw/Handle, stride: isize, additional: isize) -> isize
         unsafe
@@ -165,11 +166,16 @@ group DictionaryStorage
             let needed = reserve(handle, stride, 1)
             return appendSlot(handle, stride, needed)
 
-    // Literal construction checks before evaluating the corresponding value.
-    // The backend supplies the failure callback solely to retain the key's source location.
-    func requireAbsent(link: isize, duplicate: () -> ())
-        if link != 0
-            duplicate()
+    /// Appends one slot, growing the storage first, and places `key` and `value` in it (SPEC 5.2, 4.9.6); growth
+    /// failure Aborts at the standard operation's caller location.
+    ///
+    /// - safety: `dictionary` stores no key equal to `key`, as the ordinary source decides.
+    internal unsafe func placeEntry<K, V>(dictionary: uniq/Dictionary<K, V>, key: K, value: V)
+        K is Equatable
+        unsafe
+            let slot = append(dictionary@follow@raw@raw/Handle, slotStride<K, V>())
+            Raw.initialize(keyAt<K, V>(slot), key@move)
+            Raw.initialize(valueAt<K, V>(slot), value@move)
 
     unsafe func shrinkToFit(handle: raw/Handle, stride: isize)
         unsafe

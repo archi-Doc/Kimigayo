@@ -253,8 +253,7 @@ public sealed partial class Binding
         var never = identity == KimiDeclarationId.WriterWrite && arguments.Length == 2 && !IsUnfittedLiteral(arguments[1]) &&
             ReferenceEquals(this.BindNode(arguments[1], scope), BoundType.Never);
         var call = root.Formatting!.Call(this, target, arguments, declaringType, never);
-        this.nodes.Add(call);
-        this.BindCall(call, scope, null);
+        this.BindSynthesizedCall(root, call, scope);
         return call;
     }
 }

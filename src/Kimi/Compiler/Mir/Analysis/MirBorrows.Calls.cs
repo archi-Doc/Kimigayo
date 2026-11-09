@@ -15,7 +15,7 @@ namespace Kimi.Compiler.Mir;
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
 // W's first step alone (Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
 // after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a raw parameter's stated layer
-// also writes the storage its Origin covers (Cover, PLAN G338), and with the `null` literal for its argument only that (NullLiteral).
+// also writes the storage its Origin covers (Cover, PLAN G338), and with an argument A5 proves null only that (Keep, PLAN G598).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
@@ -105,6 +105,7 @@ internal sealed partial class MirBorrows
         this.Destroying(state, call, checks);
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
+        result = this.sets.Union(result, this.unformedSet); // Never certainly null (PLAN G598): a call without a row may return any pointer.
         if (call.Target < 0)
         {
             return;
@@ -120,15 +121,17 @@ internal sealed partial class MirBorrows
     }
 
     // The store through one output: W from its argument's value (at a referent store, its first step alone; R4-M143), each holder taking its
-    // storage's record (Received). With covering inputs (Cover), W from theirs too; a `null` argument then has no first step of its own, a
-    // fact of the operand, which no write can change (PLAN G338). A Drop's drops store through the same path (MirBorrows.Destructions).
+    // storage's record (Received). With covering inputs (Cover), W from theirs too; an argument whose value is the empty set then has no
+    // first step of its own (PLAN G338): it is null on every path (PLAN G598, A5's must-null fact), since every pointer A5 sees formed
+    // names a Loan, an address or E, and Φ_N marks the bytes of an exposed holder and every call result, the only values a pointer A5
+    // does not see formed can reach (MirBorrows.Flow). A Drop's drops store through the same path (MirBorrows.Destructions).
     private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
         var input = this.TypeOf(this.Input(call, position));
         BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
-        if (this.covering.Count > 0 && this.NullLiteral(this.Input(call, position)))
+        if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
             this.BeginWalk();
             this.CoveredSteps();
@@ -144,8 +147,9 @@ internal sealed partial class MirBorrows
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var value = this.Received(state, call, written, target, checks);
-            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, JoinedThrough, issue: false);
+            var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
+            value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
+            this.AddSlot(target, value, 0, JoinedThrough, issue: false);
         }
     }
 

@@ -404,7 +404,7 @@ fn guarded @138
   bb41:
       StorageDead(_3) @143 s1
       StorageDead(_2) @142 s1
-      drop _1 -> bb42 @139
+      drop _1 -> bb42 [elide] @139
   bb42:
       unreachable @141
 fn half @175
@@ -1260,6 +1260,7 @@ fn returnTransfer @499
   _6: string var local @515 s2
   _7: string temp @519 s2
   _8: string temp (Result) @499
+  _9: string temp @519 s2
   s1: lexical in s0 @507
   s2: lexical in s1 @514
   bb0:
@@ -1315,19 +1316,20 @@ fn returnTransfer @499
       _8 = move _7 @518 s2
       goto bb14 @518 s2
   bb17:
-      drop _7 -> bb18 @519 s2
+      _9 = move _7 @518 s2
+      drop _7 -> bb18 [elide] @519 s2
   bb18:
       StorageDead(_7) @519 s2
       drop _6 -> bb19 @515 s2
   bb19:
       StorageDead(_6) @515 s2
-      drop _5 -> bb20 @511 s1
+      drop _5 -> bb20 [elide] @511 s1
   bb20:
       StorageDead(_5) @511 s1
       unreachable check bb1 @514
   bb21:
       StorageDead(_3) @504
-      drop _2 -> bb22 @501
+      drop _2 -> bb22 [elide] @501
   bb22:
       unreachable @503
 fn yieldTransfer @522
@@ -1340,6 +1342,7 @@ fn yieldTransfer @522
   _6: string var local @538 s2
   _7: string temp @542 s2
   _8: string temp (Result) @526
+  _9: string temp @542 s2
   s1: lexical in s0 @530
   s2: lexical in s1 @537
   bb0:
@@ -1383,13 +1386,14 @@ fn yieldTransfer @522
       _8 = move _7 @541 s2
       goto bb9 @541 s2
   bb12:
-      drop _7 -> bb13 @542 s2
+      _9 = move _7 @541 s2
+      drop _7 -> bb13 [elide] @542 s2
   bb13:
       StorageDead(_7) @542 s2
       drop _6 -> bb14 @538 s2
   bb14:
       StorageDead(_6) @538 s2
-      drop _5 -> bb15 @534 s1
+      drop _5 -> bb15 [elide] @534 s1
   bb15:
       StorageDead(_5) @534 s1
       unreachable @537
@@ -1434,6 +1438,7 @@ fn deepReturn @552
   _12: () temp (Result) @552
   _13: string temp @580 s3
   _14: string temp @560 s1
+  _15: string temp @580 s3
   s1: lexical in s0 @555
   s2: lexical in s1 @564
   s3: lexical in s2 @571
@@ -1535,10 +1540,11 @@ fn deepReturn @552
       _14 = move _13 @579 s3
       goto bb27 @579 s3
   bb30:
-      drop _13 -> bb31 @580 s3
+      _15 = move _13 @579 s3
+      drop _13 -> bb31 [elide] @580 s3
   bb31:
       StorageDead(_13) @580 s3
-      drop _8 -> bb32 @568 s2
+      drop _8 -> bb32 [elide] @568 s2
   bb32:
       StorageDead(_8) @568 s2
       unreachable @571 s1
@@ -1569,6 +1575,7 @@ fn nestedSubjects @583
   _8: string var b @606 s2
   _9: string temp @611 s3
   _10: string temp (Result) @583
+  _11: string temp @611 s3
   s1: lexical in s0 @591
   s2: lexical in s1 @602
   s3: lexical in s2 @609
@@ -1644,10 +1651,11 @@ fn nestedSubjects @583
       _10 = move _9 @610 s3
       goto bb20 @610 s3
   bb23:
-      drop _9 -> bb24 @611 s3
+      _11 = move _9 @610 s3
+      drop _9 -> bb24 [elide] @611 s3
   bb24:
       StorageDead(_9) @611 s3
-      drop _8 -> bb25 @606 s2
+      drop _8 -> bb25 [elide] @606 s2
   bb25:
       StorageDead(_8) @606 s2
       unreachable check bb4 @609 s1
@@ -1659,9 +1667,9 @@ fn nestedSubjects @583
       unreachable check bb1 @598
   bb28:
       StorageDead(_3) @588
-      drop _2 -> bb29 @585
+      drop _2 -> bb29 [elide] @585
   bb29:
-      drop _1 -> bb30 @584
+      drop _1 -> bb30 [elide] @584
   bb30:
       unreachable @587
 fn loopContinue @614
@@ -1879,7 +1887,7 @@ fn abortAfterAcquisition @664
   bb9:
       StorageDead(_3) @670
       StorageDead(_2) @669
-      drop _1 -> bb10 @665
+      drop _1 -> bb10 [elide] @665
   bb10:
       unreachable @669
 fn precedes @686

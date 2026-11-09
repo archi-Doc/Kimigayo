@@ -8,13 +8,16 @@ namespace Kimi.Compiler;
 // their direct and refinement paths here; conditional blocks (BindConditionalDeclarations) add theirs through
 // RegisterConformanceDeclaration, inherited paths (RegisterInheritedConformances) through ImplTable.Register.
 // Input: bound Self clauses, conditional blocks. Output: their paths in ImplTable; each Type's ObjectPayload opt-out, its own or inherited
-// (SPEC 8.7.3); the Self-clause failures: a closed or intrinsic Contract's grant, an invalid negated clause and a colliding direct
-// conformance (SPEC 8.7, 8.7.1, 8.9.1).
+// (SPEC 8.7.3), and the object forms formed before it (VerifyEarlyObjectForms); the Self-clause failures: a closed or intrinsic
+// Contract's grant, an invalid negated clause and a colliding direct conformance (SPEC 8.7, 8.7.1, 8.9.1).
 // Invariants: a clause registers its direct path before its ancestors' paths, in the Contract's ancestor order.
 // Must not: verify a path (ContractMatching, InheritedConformances) or decide availability at a use (ResolveConformance).
 public sealed partial class Binding
 {
     private readonly ImplTable impls = new();
+
+    // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
+    private List<(Koto Use, BoundType Target)>? earlyObjectForms;
 
     private void RegisterConformances()
     {
@@ -82,6 +85,40 @@ public sealed partial class Binding
                 symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
             }
         }
+    }
+
+    // SPEC 8.7.3: an object form over a concrete Type formed while the Constraints bind, before the opt-outs are published, is judged
+    // again by the same rule once they are (an early read of the opt-out, as BaseLayers' early reads; removed with them at R7-D2 d3, when
+    // a declaration's opt-out is read by demand).
+    private void VerifyEarlyObjectForms()
+    {
+        if (this.earlyObjectForms is not { Count: > 0 } forms)
+        {
+            return;
+        }
+
+        foreach (var (use, target) in forms)
+        {
+            if (use.BindingFailure == BindingFailure.None)
+            {
+                this.RenouncedObjectTarget(use, target);
+            }
+        }
+
+        forms.Clear();
+    }
+
+    // SPEC 8.7.3: the one read of an object form's concrete target against the opt-out, its own or inherited: an opted-out target fails
+    // the form with NotObjectPayload_Kd naming the declaring Type. BindType reads it at formation and VerifyEarlyObjectForms once more.
+    private bool RenouncedObjectTarget(Koto form, BoundType target)
+    {
+        if (target.Symbol?.ObjectPayloadOptOut is not { } renounced)
+        {
+            return false;
+        }
+
+        this.FailObjectPayload(form, renounced);
+        return true;
     }
 
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)

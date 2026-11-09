@@ -316,8 +316,8 @@ internal static partial class LegacyRuntimeHelpers
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
     // Code generation's expanded runtime texts (G350): the CLR initializes this class when a writer (WriteFormattingRuntime) first reads
-    // one for a module, never on the check path, whose collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows)
-    // but no text; no other member reads them.
+    // one for a module, never on the check path, whose collector reads the rows and ABIs (Row, IntrinsicRows) but no text; no other
+    // member reads them.
     private static class Texts
     {
         // The runtime templates with each row's routine definition spliced in once.

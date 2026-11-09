@@ -257,11 +257,13 @@ public class InheritedConformanceTest
         """;
 
     // PLAN G375: a failed signature is computed at each read, so the channel's cause (SPEC 23.1.1) reaches every reader, a call or a reference.
+    // An explicit Constraint's proof names the failed conformance it read, so its readers rest on the Unsupported_Kd too (DECISIONS Q13,
+    // rule W; R7-C8 U-D2 fix 2: LimitExplicit's three InvalidConstraint_Kd at Box<Leaf> are dependents).
     [Theory]
     [InlineData(LimitOneCall, "1*Unsupported_Kd")]
     [InlineData(LimitTwoCalls, "1*Unsupported_Kd")]
     [InlineData(LimitCallThenReference, "1*Unsupported_Kd")]
-    [InlineData(LimitExplicit, "3*InvalidConstraint_Kd 1*Unsupported_Kd")]
+    [InlineData(LimitExplicit, "1*Unsupported_Kd")]
     public void ALimitsCauseReachesEveryReaderOfASignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G375: a limited signature's answer depends on who asks, so none is stored. The conformance reads no signature (the owner's O-44), so the

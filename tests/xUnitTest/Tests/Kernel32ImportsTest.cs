@@ -112,8 +112,8 @@ public sealed class Kernel32ImportsTest
 
     // PLAN G366: a runtime is a template, so a definition marker line it lacks or repeats fails it.
     [Theory]
-    [InlineData("{{__kimi_array_free}}\n", "")]
-    [InlineData("{{__kimi_array_free}}\n", "{{__kimi_array_free}}\n{{__kimi_array_free}}\n")]
+    [InlineData("{{__kimi_write_line}}\n", "")]
+    [InlineData("{{__kimi_write_line}}\n", "{{__kimi_write_line}}\n{{__kimi_write_line}}\n")]
     public void ABrokenMarkerLineOfTheRuntimeFails(string marker, string replacement)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
@@ -124,8 +124,8 @@ public sealed class Kernel32ImportsTest
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
-    // expanded in one scan and kept: about 10 bytes per char of the texts (1,772,368 B for 179,112 chars on .NET 10, R8-S1e). The bound, 11
-    // bytes per char, admits no further whole copy of the formatting runtime (76% of the chars); the per-marker whole-text copies G358
+    // expanded in one scan and kept: about 10 bytes per char of the texts (1,768,896 B for 178,644 chars on .NET 10, R8-S1e). The bound, 11
+    // bytes per char, admits no further whole copy of the formatting runtime (77% of the chars); the per-marker whole-text copies G358
     // removed cost 51 bytes per char.
     [Trait("Purpose", "Allocation")]
     [Fact]
