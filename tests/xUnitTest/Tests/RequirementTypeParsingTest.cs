@@ -217,6 +217,65 @@ public class RequirementTypeParsingTest
         }));
     }
 
+    // G621: a requirement waits for the conformances by what its Types contain (Binding.ContainsProjection over Koto.TypeComponent). Every
+    // Type position BindTypeStructure binds is published, and the extras are exactly the named over-approximation: a GenericsKoto's head
+    // and length arguments (a GenericArgument's kind is the slot's), a RootName's path and a PathSuffix's qualifier. The bound positions
+    // are this table, not an observation of binding: the semantic-slot ratchet (ArchitectureRulesTest) keeps tests from reading a node's
+    // bound state, and a test-only seam into BindTypeStructure would be one more reader of it.
+    [Fact]
+    public void TypeComponentsPublishEveryBoundTypePosition()
+    {
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Outer<T>\n    public struct Inner\nstruct Zbox<T>\nfunc f(a: ref/i32?, b: (i32, u8), c: [2 of i32], d: (i32) -> u8, e: ::Zbox<i32>, g: Outer<i32>.Inner, h: (i32), k: Zbox<(i32)>) => ()\n");
+        var kinds = new HashSet<Type>();
+        Visit(c.Kotonoha.RootKoto);
+        Assert.Superset(new HashSet<Type> { typeof(TypeSemanticsKoto), typeof(ParenthesizedTypeKoto), typeof(OptionalTypeKoto), typeof(FixedArrayTypeKoto), typeof(TupleTypeKoto), typeof(FunctionTypeKoto), typeof(GenericsKoto), typeof(SyntaxFormKoto), typeof(MemberAccessKoto) }, kinds);
+
+        void Visit(Koto node)
+        {
+            Koto?[] expected = node switch
+            {
+                TypeSemanticsKoto { Type: { } inner } => [inner],
+                ParenthesizedTypeKoto group => [group.Type],
+                OptionalTypeKoto optional => [optional.Type],
+                FixedArrayTypeKoto array => [array.ElementType], // The length is bound as a length, and is no Type position.
+                TupleTypeKoto tuple => [.. tuple.ElementNodes],
+                FunctionTypeKoto function => [function.Parameters, function.ReturnType],
+                OriginApplicationKoto application => [application.Type],
+                GenericsKoto generic => [generic.Identifier, .. generic.TypeArguments], // Extras: the head and a length argument.
+                SyntaxFormKoto { Akind: KotoKind.RootName } root => [root.Operands[0]], // Extra: BindTypeStructure binds a rooted generic.
+                MemberAccessKoto member => [member.Left], // Extra: a PathSuffix's qualifier, searched for a projection in its arguments.
+                _ => [],
+            };
+
+            var published = new List<Koto?>();
+            for (var i = 0; i < node.TypeComponentCount; i++)
+            {
+                published.Add(node.TypeComponent(i));
+            }
+
+            Assert.Equal(expected.Where(static x => x is not null), published);
+            if (published.Count != 0)
+            {
+                kinds.Add(node.GetType());
+            }
+
+            foreach (var child in node.ChildNodes)
+            {
+                Visit(child);
+            }
+        }
+    }
+
+    // G621, open question 4: a constant path where a Type argument is expected names no declared Type, so its Constraint waits for the
+    // conformances (the over-approximation); waiting changes none of its records, the same as the base's.
+    [Fact]
+    public void ConstantPathArgumentWaitsWithTheSameRecords()
+    {
+        const string Source = "group Sizes\n    public let N = 2\nstruct Zbox<T>\nfunc g<T>(x: T)\n    T is Zbox<Sizes.N>\n    ()\npublic func main() => ()\n";
+        Assert.Equal("InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd", string.Join(' ', ContextualCaptureTest.PublishedRecords(Source).Select(static x => x.Code)));
+    }
+
     private static void AssertParents(Koto node)
     {
         foreach (var child in node.ChildNodes)

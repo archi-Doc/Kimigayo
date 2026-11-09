@@ -205,7 +205,7 @@ public static partial class Parser
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
         function.IsRequirement = true;
-        if ((function.Modifier.Judged() & ~(ModifierKind.Virtual | ModifierKind.Override)) is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
+        if ((function.Modifier.Judged() & ~(ModifierKind.Virtual | ModifierKind.Override)) is not (ModifierKind.NoModifier or ModifierKind.Unsafe))
         {
             function.Unexpected(SyntaxForm.Decoration);
         }
@@ -485,7 +485,7 @@ public static partial class Parser
                 return name;
             }
 
-            return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind == TokenKind.Let ? "let " : "var ", [name]);
+            return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind.ToText(), [name]);
         }
 
         if (reader.TryConsume(TokenKind.OpenParenthesis))
@@ -651,7 +651,7 @@ public static partial class Parser
                 return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.OpenParenthesis) };
             }
 
-            return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, "init", []);
+            return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, TokenKind.Init.ToText(), []);
         }
 
         return ParseName(ref reader);

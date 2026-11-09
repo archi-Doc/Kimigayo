@@ -1328,6 +1328,15 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 45 (2026-11-09, plan §14; the owner's answer to the Coordinator's review of the caps): §3.3, designers and reviewers at
   most three together per session; watchers wake only on rows that need an answer. Nothing frozen.
 - Revision 46 (2026-11-09, plan §14; the Front's D-168): §5.0's N1 row, e split into e1, e2 and e3. Nothing frozen.
+- Revision 48 (2026-11-09, plan §14; the Back's message): W2t lands before W1's remaining units. Nothing frozen.
+- Revision 49 (2026-11-09, plan §14; the owner's 「Adopt now」): quiet slots by one guard (`quiet_guard.py`) and a begin handshake. Nothing frozen.
+- Revision 50 (2026-11-09, plan §14; the owner's 「Adopt all three」): R7 spread over the three sessions (DECISIONS Q18). Nothing frozen.
+- Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
+- R8-SP3 (2026-11-09; the Back's D-181; drafted by R8-U1's designer, independent review ACCEPT): SPEC §15.7's first sentence
+  states `replace`, `exchange` and `swap` as safe functions with bodies whose unsafe obligations the section's rules meet, and
+  a call is checked against those rules, never a body. §15.7.1 is unchanged (the reviewer chose the draft's second option). No
+  rule changes; SPECJ follows (RQ10). Nothing frozen.
+- Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

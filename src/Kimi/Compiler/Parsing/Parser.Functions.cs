@@ -27,6 +27,13 @@ public static partial class Parser
     /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, bool anonymous = false, bool constructor = false, bool specialization = false)
     {
+        // A constructor, a specialization and an override take no attributes (SPEC 6.3, 8.13.2, 6.4.1): the prefix's are reported
+        // and attach to nothing.
+        if (constructor || specialization || (reader.ModifierKind & ModifierKind.Override) != 0)
+        {
+            ReportPendingAttributes(ref reader);
+        }
+
         var context = reader.TakeContext();
         var captures = anonymous && reader.CurrentTokenKind == TokenKind.OpenBracket ? ParseCaptures(ref reader) : null;
         var methodToken = reader.CurrentToken;
@@ -54,10 +61,8 @@ public static partial class Parser
         }
 
         // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (SpecializationHeader
-        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again. A
-        // constructor's attributes are its header Error's alone (SPEC 6.7): the report below names them, and they attach to nothing.
-        var header = specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } :
-            constructor ? context with { AttributeKoto = null } : context;
+        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
+        var header = specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context;
         var functionKoto = new FunctionKoto(
             ref reader,
             header,
@@ -94,14 +99,13 @@ public static partial class Parser
 
             // A constructor accepts an access modifier and a common Body (SPEC 6.3).
             if (genericArguments is not null || returnType is not null ||
-                context.AttributeKoto is not null || context.ModifierKind.Judged() != context.ModifierKind.ExtractAccessibilityModifiers())
+                context.ModifierKind.Judged() != context.ModifierKind.ExtractAccessibilityModifiers())
             {
-                // The attributes it reports attach to nothing (SPEC 6.7): the constructor is built without them.
                 functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
             }
         }
 
-        if (specialization && (genericArguments is null || context.AttributeKoto is not null || context.ModifierKind.Judged() != 0))
+        if (specialization && (genericArguments is null || context.ModifierKind.Judged() != 0))
         {
             // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
             var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
@@ -381,7 +385,7 @@ public static partial class Parser
         }
         else if (anonymous || allowsReceiverShorthand)
         {
-            parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, "_", []);
+            parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, TokenKind.Underscore.ToText(), []);
         }
         else
         {
@@ -439,7 +443,7 @@ public static partial class Parser
         var arguments = ParseArgumentList(ref reader, out var labels);
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
-        var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
+        var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, TokenKind.Base.ToText(), []);
         constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
     }
 

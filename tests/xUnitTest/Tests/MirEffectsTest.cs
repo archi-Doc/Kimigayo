@@ -22,6 +22,29 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
 
+    // A generic Type's method with an i32 specialization that destroys an Option<T>, and a pair-binder Container's (O-109 (a)).
+    private const string Box = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self) => ()\n" +
+        "    specialize func clear<i32>(self: uniq/Self) => self.item = .None\n";
+
+    private const string Holder = "struct Holder<s/T>\n    s is owner or uniq\n    public var n: i32 = 0\n    public func put<U>(self: ref/Self, v: s/T) => ()\n" +
+        "    specialize func put<i32>(self: ref/Self, v: s/T) => ()\n";
+
+    // The same forms in a nested generic Container, with two own slots, with an own pair binder the specialization fixes, and in a cycle
+    // between the specialization and its original (the O-109 design review's R17, R19, R20, R23).
+    private const string Nested = "struct Outer<T>\n    public struct Inner<U>\n        public var first: Option<T> = .None\n" +
+        "        public var second: Option<U> = .None\n        public func clear<V>(self: uniq/Self) => ()\n" +
+        "        specialize func clear<i32>(self: uniq/Self)\n            self.first = .None\n            self.second = .None\n";
+
+    private const string TwoSlots = "struct Box<T>\n    public var item: Option<T> = .None\n    public func m<A, B>(self: uniq/Self) => ()\n" +
+        "    specialize func m<i32, bool>(self: uniq/Self) => self.item = .None\n";
+
+    private const string OwnBinder = "struct Box<T>\n    public var n: i32 = 0\n    public func put<r/U>(self: ref/Self, v: r/U)\n        r is owner or uniq\n" +
+        "        let k = 0\n    specialize func put<";
+
+    private const string Cycle = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self, d: i32)\n" +
+        "        if d > 0 => self.clear<i32>(d - 1)\n    specialize func clear<i32>(self: uniq/Self, d: i32)\n        self.item = .None\n" +
+        "        if d > 0 => self.clear<u8>(d - 1)\n";
+
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
     private const string Noisy = "struct Noisy\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
@@ -117,20 +140,46 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n" +
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
-    // SPEC 7.2.3, 8.11.3: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the witness
-    // is a generic group function, which A4 is given without its arguments (LibraryWitnessGroup.EffectsLimit): a located Limit, never a
-    // decided effect, whose removal accepts these valid programs.
+    // SPEC 7.2.3, 8.11.3, 21.3.1: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the
+    // witness is a generic group function, which A4 enters at the Self's arguments (TyCtxt.LibraryInstance): a fixed array's enumeration, also
+    // of elements with a destructor, which it never destroys, and an integer's position read, whether or not a specialization covers the
+    // integer, have no effect (fail-before: each, a limit); a default that also writes to the console has one, a conflict under `confined`.
     [Theory]
-    [InlineData("H.walk(a)")]
-    [InlineData("H.place(b)")]
-    public void ALibraryWitnessInADefaultsCopyIsTheLimit(string call)
+    [InlineData("H.walk(a)", "")]
+    [InlineData("H.walk(c)", "")]
+    [InlineData("H.walk(d)", "")]
+    [InlineData("H.place(b)", "")]
+    [InlineData("H.place(7@u8)", "")]
+    [InlineData("H.place(7@isize)", "")]
+    [InlineData("H.loud(a)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void ADefaultsCopyEntersALibraryWitnessAtItsInstance(string call, string expected)
         => Assert.Equal(
-            Expected("Unsupported_Kd Self is Work 1"),
-            Problems("contract Work\n    func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32\n        effect confined\n" +
+            Expected(expected),
+            Problems(Loud + "contract Work\n" +
+                "    func run(self: ref/Self, a: ref/[2 of i32], b: i32, c: ref/[3 of i64], d: ref/[2 of Loud]) -> i32\n        effect confined\n" +
                 "group H\n    public func take<I>(item: I) -> bool => true\n" +
+                "    public func shout<I>(item: I) -> bool\n        Console.writeLine(\"shout\")\n        return true\n" +
                 "    public func walk<C>(values: ref/C, seen: bool = H.take(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
+                "    public func loud<C>(values: ref/C, seen: bool = H.shout(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
                 "    public func place<P>(p: P, at: Option<isize> = p.tryResolve(4)) -> i32\n        P is Position\n        return 1\n" +
-                $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32 => {call}\n"));
+                "struct W\n    Self is Work\n" +
+                $"    public func run(self: ref/Self, a: ref/[2 of i32], b: i32, c: ref/[3 of i64], d: ref/[2 of Loud]) -> i32 => {call}\n"));
+
+    // SPEC 7.2.3, 8.11.3, 15.6.4 (PLAN G589, G663; O-109 (a)): a default's copy calls a requirement on a closed Self whose witness has a
+    // specialization that writes to the console: A4 enters the witness's declaration, whose summary includes the writing `f<i32>` at
+    // every key, a conflict under `confined`. Only this record is asserted: the call's depth record is G664's.
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("i64")]
+    public void ADefaultsCopyEntersTheWitnessesSpecialization(string key)
+        => Assert.Contains(
+            "IncompatibleContractImplementation_Kd Self is Work 1",
+            Problems("contract Gen\n    func f<T>(self: ref/Self, x: ref/T) -> bool\nstruct S\n    Self is Gen\n" +
+                "    public func f<T>(self: ref/Self, x: ref/T) -> bool => true\n" +
+                "    specialize func f<i32>(self: ref/Self, x: ref/i32) -> bool\n        Console.writeLine(\"s\")\n        return true\n" +
+                $"contract Work\n    func run(self: ref/Self, s: ref/S, v: ref/{key}) -> i32\n        effect confined\n" +
+                $"group H\n    public func d<C>(c: ref/C, v: ref/{key}, seen: bool = c.f(v)) -> i32\n        C is Gen\n        return 1\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/{key}) -> i32\n        _ = H.d(s, v)\n        return 1\n"));
 
     // SPEC 7.2.3, 8.11.2, 13.4.1: a default's copy compares the call's closed Self, a Tuple with a string part: A4 reads each leaf the
     // comparison runs, the string's library witness among them, which has no environment effect; a leaf that writes to the console has one,
@@ -158,25 +207,52 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             "struct W\n    Self is Work\n    public func run(self: ref/Self, d: ref/Dictionary<(string, i32), i32>) -> bool\n" +
             "        let key = (\"a\", 1)\n        _ = d.tryGet(key@ref)\n        return true\n"));
 
-    // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
-    // A function item runs its selection too.
+    // SPEC 15.6.4, 12.7.2, 8.13.3 (the owner's O-109 (a)): a call's callee is the original declaration, whose summary includes every
+    // implementation of its closed explicit-specialization set, whichever body the key selects: an effect of either body is the call's.
+    // A function item's call too; with neither body writing, nothing.
     [Theory]
-    [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", "")]
+    [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", Failed)]
     [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(true)\n", Failed)]
-    [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(true)\n", "")]
+    [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(true)\n", Failed)]
     [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(1)\n", Failed)]
-    [InlineData("Console.writeLine(\"g\")", "()", "        let f = H.trace<i32>\n        f(1)\n", "")]
+    [InlineData("Console.writeLine(\"g\")", "()", "        let f = H.trace<i32>\n        f(1)\n", Failed)]
     [InlineData("()", "Console.writeLine(\"s\")", "        let f = H.trace<i32>\n        f(1)\n", Failed)]
-    public void CallsRunTheBodyTheirKeySelects(string original, string specialization, string call, string expected)
+    [InlineData("()", "()", "        H.trace(true)\n        H.trace(1)\n        let f = H.trace<i32>\n        f(1)\n", "")]
+    public void CallsRunEveryBodyOfTheirDeclaration(string original, string specialization, string call, string expected)
         => Assert.Equal(
             Expected(expected),
             Problems(Sink + Loud + $"group H\n    public func trace<T>(v: T) => {original}\n    specialize func trace<i32>(v: i32) => {specialization}\n" +
                 Witness + call + "        return .Ok(())\n"));
 
-    // SPEC 8.4: a conformance checks every implementation of its witness, specializations included; a specialization is closed, so its
-    // effect is reported in every view.
+    // SPEC 8.13.1, 15.6.4, 16.3.3 (O-109 (a)): a generic Type's method specialization fixes only its own slots, so the declaration's summary
+    // enters it in the Container's case of the caller's view: Box<Loud>'s family destroys an Option<Loud> at any key, Box<i32>'s nothing at
+    // the matching key (before: its atoms over T reached the caller), Holder<s/T> at uniq/Loud destroys no Loud at either key (before: every
+    // case at the matching key), the owner case does. The same in a nested Container, at a key matching one of two own slots, with an own
+    // pair binder the specialization fixes at Loud (destroyed) or Quiet, and in a cycle between the specialization and its original.
     [Theory]
-    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 18446744073709551615")]
+    [InlineData(Box, "b: uniq/Box<Loud>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Box, "b: uniq/Box<i32>", "b.clear<i32>()", "")]
+    [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<bool>(x)", "")]
+    [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<i32>(x)", "")]
+    [InlineData(Holder, "h: ref/Holder<Loud>, x: Loud", "h.put<bool>(x@move)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Nested, "b: uniq/Outer<Loud>.Inner<i32>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Nested, "b: uniq/Outer<i32>.Inner<Quiet>", "b.clear<i32>()", "")]
+    [InlineData(TwoSlots, "b: uniq/Box<Loud>", "b.m<i32, i32>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(TwoSlots, "b: uniq/Box<i32>", "b.m<i32, bool>()", "")]
+    [InlineData(OwnBinder + "Loud>(self: ref/Self, v: Loud) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(OwnBinder + "Quiet>(self: ref/Self, v: Quiet) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "")]
+    [InlineData(Cycle, "b: uniq/Box<Loud>", "b.clear<u8>(2)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Cycle, "b: uniq/Box<i32>", "b.clear<u8>(2)", "")]
+    public void AMethodSpecializationIsEnteredInItsContainersCase(string container, string parameters, string call, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Loud + Quiet + $"contract Work\n    func run(self: ref/Self, {parameters}) -> i32\n        effect confined\n" + container +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, {parameters}) -> i32\n        {call}\n        return 1\n"));
+
+    // SPEC 8.4, 15.6.4: a conformance checks every implementation of its witness, specializations included: the witness's summary includes
+    // its specialization's effect, reported in each view of the witness.
+    [Theory]
+    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 1")]
     [InlineData("()", "")]
     public void AWitnessesSpecializationsOweItsBound(string specialization, string expected)
         => Assert.Equal(
@@ -682,61 +758,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         }
     }
 
-    // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
-    // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
-    // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
-    // evaluations. The pooled arrays double, so the cold allocation steps where the program and the library together fill them; each
-    // interval must span the same number of those doublings, or the ratio measures where a step falls instead of the growth. N is
-    // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
-    // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
-    // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
-    // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData("    public func step{0}() => H.{1}()\n")]
-    [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
-    public void SummariesScaleLinearly(string member)
-    {
-        var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
-        var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                var next = n + 1 == sizes[i] ? "last" : $"step{n + 1}";
-                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, member, n, next, n == 0 ? sizes[i] - 1 : n - 1);
-            }
-
-            var source = text.Append("    public func last() => Console.writeLine(\"x\")\n")
-                .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append("        H.step0()\n        return .Ok(())\n").ToString();
-            var c = MirBuildTest.Compile(source);
-            var program = c.BuildMir();
-            Assert.Equal([Failed], Problems(c, program));
-            var (cases, report) = (new MirCases(c.Types), new MirReport());
-            var flow = new MirDataflow(new MirReach());
-            var effects = new MirEffects(c.Types, cases, flow);
-            analyses[i] = (effects, flow, cases, program, report);
-            return () => Analyze(effects, flow, cases, program, report);
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (effects, flow, cases, program, report) = analyses[i];
-            evaluations[i] = effects.Evaluations;
-            Assert.Equal(0, AllocationMeasurement.Measure(() =>
-            {
-                program.Version++; // A new version of the same bodies, which Local starts.
-                report.Clear();
-                Analyze(effects, flow, cases, program, report);
-            }));
-            Assert.Equal(evaluations[i], effects.Evaluations);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
-        Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
-    }
-
     // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
     private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
     {
@@ -774,4 +795,63 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private static string[] Problems(Compilation c, MirReport report)
         => [.. report.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
             DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
+        // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
+        // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
+        // evaluations. The pooled arrays double, so the cold allocation steps where the program and the library together fill them; each
+        // interval must span the same number of those doublings, or the ratio measures where a step falls instead of the growth. N is
+        // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
+        // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
+        // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
+        // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
+        [Theory]
+        [InlineData("    public func step{0}() => H.{1}()\n")]
+        [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
+        public void SummariesScaleLinearly(string member)
+        {
+            var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
+            var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    var next = n + 1 == sizes[i] ? "last" : $"step{n + 1}";
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, member, n, next, n == 0 ? sizes[i] - 1 : n - 1);
+                }
+
+                var source = text.Append("    public func last() => Console.writeLine(\"x\")\n")
+                    .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append("        H.step0()\n        return .Ok(())\n").ToString();
+                var c = MirBuildTest.Compile(source);
+                var program = c.BuildMir();
+                Assert.Equal([Failed], Problems(c, program));
+                var (cases, report) = (new MirCases(c.Types), new MirReport());
+                var flow = new MirDataflow(new MirReach());
+                var effects = new MirEffects(c.Types, cases, flow);
+                analyses[i] = (effects, flow, cases, program, report);
+                return () => Analyze(effects, flow, cases, program, report);
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (effects, flow, cases, program, report) = analyses[i];
+                evaluations[i] = effects.Evaluations;
+                Assert.Equal(0, AllocationMeasurement.Measure(() =>
+                {
+                    program.Version++; // A new version of the same bodies, which Local starts.
+                    report.Clear();
+                    Analyze(effects, flow, cases, program, report);
+                }));
+                Assert.Equal(evaluations[i], effects.Evaluations);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
+            Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
+        }
+    }
 }

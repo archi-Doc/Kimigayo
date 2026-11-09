@@ -61,15 +61,13 @@ internal sealed partial class InstanceCollector
         return program.Callee(new(MirCalleeKind.Fn, implementation));
     }
 
-    // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
-    // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
-    // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
-    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); the
-    // function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target its row names under the Item's Type
-    // argument, a part of the Item Type its site made (In), read only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an
-    // intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (an intrinsic whose row reads no Type argument); a function that is no
-    // compiler function, its import's item (Imported). A legacy or intrinsic row whose need is TypeArguments (a whole-value update,
-    // IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
+    // K 4.5 rows 2 and 8 (DECISIONS R5-M30, R5-M74): a callee without a MIR body whose published row runs a requirement on the Type below
+    // a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on that Type
+    // under the composed substitution; the function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target
+    // its row names under the Item's Type argument, a part of the Item Type its site made (In), read only for a row that reads one
+    // (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (an intrinsic whose row
+    // reads no Type argument); a function that is no compiler function, its import's item (Imported). An intrinsic row whose need is
+    // TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
         if (function.CompilerFunction == CompilerFunctionKind.None)
@@ -77,19 +75,9 @@ internal sealed partial class InstanceCollector
             return this.Imported(item, subject, function);
         }
 
-        if (subst is not null && LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Need: LayoutNeed.TypeArguments })
-        {
-            this.LaysOutArguments(item, subject, subst);
-        }
-
         if (this.types.Published(function) is { Runs: { } requirement, On: var on })
         {
             return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
-        }
-
-        if (this.types.Published(function) is { InPlace: true, Destroys: >= 0 and var destroys })
-        {
-            return this.Below(subject, function, subst, destroys) is { } destroyed ? this.GlueOf(item, subject, destroyed) : -1;
         }
 
         if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||

@@ -23,5 +23,5 @@ Kimi.Intrinsics.swap(first@uniq, second@uniq)
 if old == 11 and first == 30 and second == 20
     Output.writeLine("Exchange and swap complete.")
 
-// Kimi.Intrinsics.replace(first@uniq, with: first + 1) // Conflicting later read.
+// Kimi.Intrinsics.replace(first@uniq, with: first + 1) // Also valid: the reservation lets the argument read first.
 // Kimi.Intrinsics.swap(first@uniq, first@uniq)         // Overlapping targets.

@@ -45,8 +45,8 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract under the Contract reference its call recorded (MirCallee.Contract)
     // and that reference in the call's substitution (Subst.Declaring), as Witness reads them (Binding.Witnesses), appended to a caller-owned
-    // list with each target's declaring instance (none for a compiler function); false where none resolves.
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    // list with the instance each target runs at; false where none resolves.
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
         => binding.Witnesses(requirement, self, contract, reference, definition, into);
 
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.

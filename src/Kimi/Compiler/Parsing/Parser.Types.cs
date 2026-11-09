@@ -133,12 +133,7 @@ public static partial class Parser
             return type;
         }
 
-        // TEMPORARY until PLAN G621: a complete Type keeps a suffixed group a bare MemberAccessKoto, because Binding.DeferredConstraint
-        // defers a requirement only when its top node is one; wrapped, a valid requirement such as SPEC 15.3.1's
-        // `T.(Source).Item is (Cursor during y).Item` would be rejected. Removed when Binding reads whether a requirement's Type contains
-        // an associated projection anywhere.
-        var bareGroup = grouped && context == TypeContext.Type;
-        if (type is not TypeKoto && !bareGroup)
+        if (type is not (TypeKoto or ErrorKoto))
         {
             type = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, type.Span.End), type);
         }
@@ -200,7 +195,7 @@ public static partial class Parser
             var semantics = reader.GetSpan(token);
             string? semanticsParameter = default;
             DiagnosticKey? cause = null;
-            if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
+            if (!SemanticsMaskHelper.TryParse(semantics, out SemanticsKind semanticsKind))
             {
                 if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                 {

@@ -74,7 +74,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
         var tokenKind = token.Kind;
         if (tokenKind == TokenKind.Alias)
         {
-            // An alias takes no modifier or attribute: the pending ones are taken before its target is read, so none lands there.
+            // An alias takes no modifier or attribute (SPEC F.6.1 AliasDeclaration): the prefix's attributes are reported and attach to
+            // nothing, and its modifiers are taken before its target is read, so none lands there.
+            Parser.ReportPendingAttributes(ref reader);
             var context = reader.TakeContext();
             reader.Advance();
             string? aliasName = null;
@@ -106,7 +108,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                if (context.ModifierKind.Judged() != default || context.AttributeKoto is not null)
+                if (context.ModifierKind.Judged() != default)
                 {
                     reader.Unexpected(SyntaxForm.Decoration, token.Span);
                 }

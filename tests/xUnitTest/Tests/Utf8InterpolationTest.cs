@@ -171,6 +171,32 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationLiteral" + name, Formatters + "\n" + statements, allocations, allocations, bytes, expected);
     }
 
+    // SPEC 22.10.1, 22.10.5: an interpolated literal passed to `write`, or embedded in a $tryWrite, first builds its owning string, a
+    // bounded one in at most one allocation; writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 1, 13)]
+    [InlineData("Heap", "var buffer = Text.heap(4)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 2, 17)]
+    [InlineData("TryWrite", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "$tryWrite(writer@uniq, \"<\\(\"[\\(7)]\")>\")", "<[7]>", 1, 13)]
+    public void AnInterpolatedWriteValueAllocatesOnlyItsString(string name, string setup, string write, string expected, int allocations, int bytes)
+    {
+        var source = setup + "\nvar writer = Text.writer(buffer@uniq)\nmatch " + write + "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"full\")\n" +
+            "match buffer.text()@move\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"utf8\")";
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationWriteValue" + name, source, allocations, allocations, bytes, expected + "\n");
+    }
+
+    // The O2 corpus's Interpolation kernel and its checksum (benchmark-o2-corpus.ps1). Per round, its owning interpolation with a user
+    // formatter allocates at most twice (DeferredLiteralTextKeepsTheOldGeneratorsAllocations' Kernel row), and its $tryWrite into the
+    // cleared fixed buffer and its last line nothing (SPEC 22.10.5): a bound the adapter may lower but not raise.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TheInterpolationKernelKeepsItsChecksumWithinItsAllocations()
+    {
+        const long Bound = 2 * 1048576;
+        var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("src", "Benchmark", "Kimi", "Corpus", "Interpolation.kimi"));
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationKernel", source, new(0, Bound), new(0, Bound), NativeAllocationAudit.Bound.Any, "checksum 1676251827\n");
+    }
+
     [Fact]
     public void EmbeddedReturnKeepsTheEnclosingFunctionAsItsTarget()
     {
