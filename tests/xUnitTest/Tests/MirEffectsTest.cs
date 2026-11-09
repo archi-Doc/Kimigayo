@@ -117,20 +117,44 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n" +
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
-    // SPEC 7.2.3, 8.11.3: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the witness
-    // is a generic group function, which A4 is given without its arguments (LibraryWitnessGroup.EffectsLimit): a located Limit, never a
-    // decided effect, whose removal accepts these valid programs.
+    // SPEC 7.2.3, 8.11.3, 21.3.1: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the
+    // witness is a generic group function, which A4 enters at the Self's arguments (TyCtxt.LibraryInstance): a fixed array's enumeration, also
+    // of elements with a destructor, which it never destroys, and an integer's position read, whether or not a specialization covers the
+    // integer, have no effect (fail-before: each, a limit); a default that also writes to the console has one, a conflict under `confined`.
     [Theory]
-    [InlineData("H.walk(a)")]
-    [InlineData("H.place(b)")]
-    public void ALibraryWitnessInADefaultsCopyIsTheLimit(string call)
+    [InlineData("H.walk(a)", "")]
+    [InlineData("H.walk(c)", "")]
+    [InlineData("H.walk(d)", "")]
+    [InlineData("H.place(b)", "")]
+    [InlineData("H.place(7@u8)", "")]
+    [InlineData("H.place(7@isize)", "")]
+    [InlineData("H.loud(a)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void ADefaultsCopyEntersALibraryWitnessAtItsInstance(string call, string expected)
         => Assert.Equal(
-            Expected("Unsupported_Kd Self is Work 1"),
-            Problems("contract Work\n    func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32\n        effect confined\n" +
+            Expected(expected),
+            Problems(Loud + "contract Work\n" +
+                "    func run(self: ref/Self, a: ref/[2 of i32], b: i32, c: ref/[3 of i64], d: ref/[2 of Loud]) -> i32\n        effect confined\n" +
                 "group H\n    public func take<I>(item: I) -> bool => true\n" +
+                "    public func shout<I>(item: I) -> bool\n        Console.writeLine(\"shout\")\n        return true\n" +
                 "    public func walk<C>(values: ref/C, seen: bool = H.take(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
+                "    public func loud<C>(values: ref/C, seen: bool = H.shout(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
                 "    public func place<P>(p: P, at: Option<isize> = p.tryResolve(4)) -> i32\n        P is Position\n        return 1\n" +
-                $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32 => {call}\n"));
+                "struct W\n    Self is Work\n" +
+                $"    public func run(self: ref/Self, a: ref/[2 of i32], b: i32, c: ref/[3 of i64], d: ref/[2 of Loud]) -> i32 => {call}\n"));
+
+    // SPEC 7.2.3, 8.11.3, 8.13.3 (PLAN G589, G663): a default's copy calls a requirement on a closed Self whose witness has a specialization
+    // that writes to the console: A4 enters what the witness's instance may select, the writing `f<i32>` among them, a conflict under
+    // `confined` (fail-before: no such record). Only this record is asserted: the call's depth record is G664's.
+    [Fact]
+    public void ADefaultsCopyEntersTheWitnessesSpecialization()
+        => Assert.Contains(
+            "IncompatibleContractImplementation_Kd Self is Work 1",
+            Problems("contract Gen\n    func f<T>(self: ref/Self, x: ref/T) -> bool\nstruct S\n    Self is Gen\n" +
+                "    public func f<T>(self: ref/Self, x: ref/T) -> bool => true\n" +
+                "    specialize func f<i32>(self: ref/Self, x: ref/i32) -> bool\n        Console.writeLine(\"s\")\n        return true\n" +
+                "contract Work\n    func run(self: ref/Self, s: ref/S, v: ref/i32) -> i32\n        effect confined\n" +
+                "group H\n    public func d<C>(c: ref/C, v: ref/i32, seen: bool = c.f(v)) -> i32\n        C is Gen\n        return 1\n" +
+                "struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/i32) -> i32\n        _ = H.d(s, v)\n        return 1\n"));
 
     // SPEC 7.2.3, 8.11.2, 13.4.1: a default's copy compares the call's closed Self, a Tuple with a string part: A4 reads each leaf the
     // comparison runs, the string's library witness among them, which has no environment effect; a leaf that writes to the console has one,

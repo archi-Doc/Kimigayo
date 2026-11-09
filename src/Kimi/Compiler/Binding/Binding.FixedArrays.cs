@@ -15,8 +15,17 @@ public sealed partial class Binding
     {
         if (projection.Symbol is not { Name: "IteratorType" } associated || associated.Scope.Owner.BoundSymbol is not { } contract ||
             WitnessGroup(projection.Components[0], contract.LibraryDeclaration) is not { } group ||
-            this.ContractWitness(group, contract) is not { Type: { } result, Declaration: FunctionKoto witness } target ||
-            !this.RentWitnessArguments(group, target, projection.Components[0], out var types, out var lengths, out var count))
+            this.ContractWitness(group, contract) is not { Declaration: FunctionKoto witness } target)
+        {
+            return null;
+        }
+
+        // The witness's result is its Signature, a DeclQuery fact read only by demanding it (BindHeader, the kind's one entry): a source
+        // header may name this projection before the header loop reaches the library (PLAN G578). The demand never meets a Running or
+        // abandoned witness header: `iterate`, `iterateUniq` and `intoIterator` and their result Types' declarations name no fixed-array
+        // projection, and a program cannot change them.
+        this.BindHeader(target);
+        if (target.Type is not { } result || !this.RentWitnessArguments(group, target, projection.Components[0], out var types, out var lengths, out var count))
         {
             return null;
         }
