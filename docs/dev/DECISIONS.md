@@ -1008,6 +1008,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
   slot tables when it reads them. Not temporary. Its SPEC 4.9.6 sentence, `ArrayClear`/`Replace` clause and composite Limit are
   refined by R4-M28.
+  - Superseded in part by R4-M189: a call enters its declaration's summary, every specialization included (its per-key edge and its
+    rejection of edges to every specialization).
 - **R4-M23** (2026-10-12; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
@@ -5893,6 +5895,37 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
     `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
     not).
+- **R4-M189 A4: a function's summary is its declaration's, every implementation of its closed specialization set included (PLAN
+  G663; the owner's O-109 (a), verbatim 「(a)」)** (Middle, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT;
+  supersedes R4-M22's "an edge into each body the call may run (`TyCtxt.Implementation`, SPEC 8.13.3: the specialization a closed key
+  selects, else the function and each specialization its open key may still select, the rule the old summary shares; ...)" and its
+  "Rejected: edges to every specialization (...)", and BU-142's sentence "A4's `MirEffects.Require` enters each implementation that
+  instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the instance and a specialization at none, as A4's call, item
+  and comparison-leaf entries do") SPEC 15.6.4, 12.7.2, 8.13.1, 8.13.3, 8.4.
+  - **Owner.** A4, `MirEffects.Local`: each view of an original's Fn body has an edge into each specialization of its closed
+    explicit-specialization set (`TyCtxt.Implementation` with no substitution, which Binding already publishes), at the declaration's
+    own substitution (`TyCtxt.Identity`): a specialization fixes its own slots only (8.13.1), so the edge selects its views of the
+    original view's Container case and keeps its atoms over the Container's parameters for the caller to compose. A Fn body view's node is
+    thus its declaration's summary, "computed once per declaration" (SPEC 15.6.4).
+  - **Entries.** A call (`Function`; a comparison's Witness leaf through it), a function item and `Require` enter the callee's
+    declaration once, at their substitution; a default template is the original's, as before. The obligations judge the owing
+    definition's node per view, which holds every implementation (SPEC 8.4). The selection by key (SPEC 8.13.3) is the instance
+    collector's alone.
+  - **Moves.** Invalid programs newly rejected (`IncompatibleContractImplementation_Kd` at the conformance, or `UnsatisfiedEffectBound_Kd`
+    at a Callable-bound argument): a `confined` body calling a function, a function item, a method, a generic body's call or a default's
+    copy whose declaration has an implementation with an environment effect that the key does not select
+    (`MirEffectsTest.CallsRunEveryBodyOfTheirDeclaration`; three `EffectBoundImplementationTest.ConfinedJudgesEveryReachedBody` rows,
+    the owner's O-112, verbatim 「(a)でOKです。」). Valid programs newly accepted (base defects): a generic Type's method specialization
+    selected by the key was entered at no substitution, every Container case with its atoms over the Container's parameters
+    unsubstituted, also in nested Containers and at keys of several slots (`Box<i32>.clear<i32>`, `Holder<uniq/Loud>.put<i32>`;
+    `MirEffectsTest.AMethodSpecializationIsEnteredInItsContainersCase`). A specialization's obligation record is in the witness's views
+    (`AWitnessesSpecializationsOweItsBound`): the views of a NoBody problem, no record difference.
+  - **Open.** A requirement call on a closed Self records no own Type arguments, so a witness's parameter-dependent atom (`Drop(T)`)
+    composes to null, a Limit (`Unsupported_Kd` on valid programs; PLAN row below). The requirement call's own Types remain needed for
+    composing effects, not for selecting bodies. A definition whose body has a validator finding gives no verdict for its
+    specializations (reachable only after an `InternalInvariant_Kd`).
+  - **Rejected.** One loop at each entry (four copies of one rule, C-172 N5); per-key selection with the call's Types (O-109 (b));
+    entering a specialization at no substitution (design revision 0: every Container case, review 1 F1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10695,7 +10728,7 @@ resumed by R4-M86 (2026-10-20).
   - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
     compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
     `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
-    instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
+    instance and a specialization at none, as A4's call, item and comparison-leaf entries do (superseded by R4-M189: A4 enters the declaration, whose summary holds every specialization): every producer of a function with its
     `Subst` answers the original, and the consumer that enters or generates it selects once. That selection is A4's per-key rule
     (R4-M22) carried into `Require`; under the owner's O-109 (a) (SPEC 15.6.4: a callable's summary covers its whole closed
     explicit-specialization set) PLAN G663, the Middle's A4 unit, supersedes it at every A4 entry, `Require`'s loop among them.
