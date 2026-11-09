@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 
 /// <summary>The operation of a <see cref="BoundLength"/>, Binding's closed vocabulary (SPEC 4.2): a constant, a length parameter, and
 /// the unary minus and binary operators of a symbolic length, which Binding maps once from the syntax it binds (LengthOperationOf; a unary
-/// plus and grouping form no operation). Its order is <c>CompareLength</c>'s, which orders a commutative operation's operands.</summary>
+/// plus and grouping form no operation); and the interpolation-bound term, which no syntax forms (TyCtxt.InterpolationBound). Its order is
+/// <c>CompareLength</c>'s, which orders a commutative operation's operands.</summary>
 public enum LengthOperation : byte
 {
     Constant,
@@ -19,10 +20,14 @@ public enum LengthOperation : byte
     Rem,
     Add,
     Sub,
+    InterpolationBound,
 }
 
 /// <summary>Interned checked length expression. Symbolic arithmetic is validated at instantiation.</summary>
-public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right)
+/// <remarks>An interpolation-bound term (R8-W2; SPEC 22.10.5, rule L) is the stack region of a direct interpolation in a generic body:
+/// <see cref="Value"/> its literal bytes and <see cref="Values"/> the Tuple of its value Types, erased, at least one undecided
+/// (FormattingTypes.StackBound). A substitution folds it again (Binding.SubstituteLength).</remarks>
+public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right, BoundType? values = null)
 {
     public LengthOperation Operation { get; } = operation;
 
@@ -34,20 +39,31 @@ public sealed class BoundLength(LengthOperation operation, long value, BindingSy
 
     public BoundLength? Right { get; } = right;
 
-    public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null;
+    /// <summary>Gets an interpolation-bound term's value Types (a Tuple); null for every other length.</summary>
+    public BoundType? Values { get; } = values;
+
+    public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null && this.Values is null;
+
+    /// <summary>Gets a value indicating whether it holds a term whose value Types have an abstract part, an abstract part of every Type it
+    /// is a length of (BoundType.HasAbstractPart, ContainsParameter): only a substitution of those Types folds it.</summary>
+    internal bool HasAbstractPart { get; } = values is { HasAbstractPart: true } || left is { HasAbstractPart: true } || right is { HasAbstractPart: true };
 }
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right), BoundLength> lengths = new();
+    private readonly Dictionary<(LengthOperation Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right, BoundType? Values), BoundLength> lengths = new();
     private readonly List<BindingSymbol> activeLengthConstants = new();
     private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
 
-    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
+    // A length under a binder's substitution, its Type arguments `types` and length arguments `arguments`: a length slot's argument, an
+    // interpolation-bound term over its substituted value Types, folded again (TyCtxt.InterpolationBound), arithmetic evaluated once its
+    // operands are constant; null where a slot is unbound or the arithmetic fails (SPEC 4.2, 4.4.2).
+    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> arguments)
     {
         if (expression.Parameter is { } parameter)
         {
-            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
+            // Without length arguments (a Type-only substitution reaching a term) a slot stays.
+            return ReferenceEquals(parameter.Scope.Owner, binder) && !arguments.IsEmpty ? arguments[parameter.Slot] : expression;
         }
 
         if (expression.IsConstant)
@@ -55,8 +71,13 @@ public sealed partial class Binding
             return expression;
         }
 
-        var left = this.SubstituteLength(expression.Left!, binder, arguments);
-        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
+        if (expression.Values is { } values)
+        {
+            return this.SubstituteType(values, binder, types, arguments) is { } image ? this.types.InterpolationBound(image, expression.Value) : null;
+        }
+
+        var left = this.SubstituteLength(expression.Left!, binder, types, arguments);
+        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, types, arguments) : null;
         if (left is null || (expression.Right is not null && right is null))
         {
             return null;
@@ -74,6 +95,23 @@ public sealed partial class Binding
 
         return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
             ? this.InternLength(LengthOperation.Constant, unchecked((long)value)) : null;
+    }
+
+    // The one interning of a length: a commutative operation's operands in CompareLength's order, then one instance per key.
+    internal BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null, BoundType? values = null)
+    {
+        if (operation is LengthOperation.Add or LengthOperation.Mul && CompareLength(left, right) > 0)
+        {
+            (left, right) = (right, left);
+        }
+
+        var key = (operation, value, parameter, left, right, values);
+        if (!this.lengths.TryGetValue(key, out var result))
+        {
+            this.lengths.Add(key, result = new(operation, value, parameter, left, right, values));
+        }
+
+        return result;
     }
 
     // SPEC 4.2: the operation of a length's binary operator, mapped once where a length is bound.
@@ -118,7 +156,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a is null || b is null || a.Operation != b.Operation || a.Value != b.Value || !SignatureSlotEquals(a.Parameter, b.Parameter, aBinder, bBinder))
+        if (a is null || b is null || a.Operation != b.Operation || a.Value != b.Value || !ReferenceEquals(a.Values, b.Values) || !SignatureSlotEquals(a.Parameter, b.Parameter, aBinder, bBinder))
         {
             return false;
         }
@@ -225,23 +263,25 @@ public sealed partial class Binding
 
         if (result == 0)
         {
+            result = CompareValues(left.Values, right.Values);
+        }
+
+        if (result == 0)
+        {
             result = CompareLength(left.Left, right.Left);
         }
 
         return result == 0 ? CompareLength(left.Right, right.Right) : result;
     }
 
-    private BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null)
+    // A term's value Types by a key that never reads a reference (CompareLength): their count, then each one's kind and name.
+    private static int CompareValues(BoundType? left, BoundType? right)
     {
-        if (operation is LengthOperation.Add or LengthOperation.Mul && CompareLength(left, right) > 0)
+        var result = (left?.Components.Count ?? -1).CompareTo(right?.Components.Count ?? -1);
+        for (var i = 0; result == 0 && i < (left?.Components.Count ?? 0); i++)
         {
-            (left, right) = (right, left);
-        }
-
-        var key = (operation, value, parameter, left, right);
-        if (!this.lengths.TryGetValue(key, out var result))
-        {
-            this.lengths.Add(key, result = new(operation, value, parameter, left, right));
+            var (a, b) = (left!.Components[i], right!.Components[i]);
+            result = a.Kind != b.Kind ? ((int)a.Kind).CompareTo((int)b.Kind) : string.CompareOrdinal(a.Name, b.Name);
         }
 
         return result;
@@ -296,7 +336,7 @@ public sealed partial class Binding
             return ReferenceEquals(previous, supplied);
         }
 
-        var required = this.SubstituteLength(pattern, binder, arguments);
+        var required = this.SubstituteLength(pattern, binder, default, arguments); // A declared length holds no interpolation-bound term.
         // A later input may establish slots used by a compound expression. The
         // completed signature is checked after all direct-slot evidence is known.
         return required is null || ReferenceEquals(required, supplied);
@@ -400,7 +440,7 @@ public sealed partial class Binding
             parameter = to.BoundSymbol!.Schema!.GenericSlots[parameter.Slot].Symbol;
         }
 
-        return this.InternLength(length.Operation, length.Value, parameter, this.CorrespondingLength(length.Left, from, to), this.CorrespondingLength(length.Right, from, to));
+        return this.InternLength(length.Operation, length.Value, parameter, this.CorrespondingLength(length.Left, from, to), this.CorrespondingLength(length.Right, from, to), length.Values);
     }
 
     private BoundLength? BindLength(Koto syntax, BindingScope scope)
