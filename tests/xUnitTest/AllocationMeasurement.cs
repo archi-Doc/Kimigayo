@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Reflection.Emit;
 using System.Runtime;
 using Kimi.Compiler;
+using Xunit;
 
 namespace XunitTest;
 
@@ -140,10 +141,17 @@ internal static class AllocationMeasurement
     // fresh copy of the smallest size (fresh(0)), so that the process's one-time initialization of the operation (class constructors,
     // the runtime's first instantiations) falls in no measured run and every size is measured in the same process state, alone or after
     // other tests (R5-M172). That one-time cost stays measured and bounded on the check path by its owner,
-    // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own.
+    // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own. Its runs compare only in one
+    // process state (G650): the test process runs without tiered compilation (xUnitTest.csproj), and the series runs in
+    // AllocationIsolationCollection, where no other collection runs beside it, or it refuses before it makes any state.
     internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
     {
         ArgumentNullException.ThrowIfNull(fresh);
+        if (TestContext.Current.TestCollection?.TestCollectionClassName != typeof(AllocationIsolationCollection).FullName)
+        {
+            throw new InvalidOperationException("A cold series runs in AllocationIsolationCollection: put its test in a nested AllocationTests class.");
+        }
+
         if (!CompilerThread.IsCurrent)
         {
             return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
