@@ -14,8 +14,9 @@ namespace Kimi.Compiler.Mir;
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
 // W's first step alone (Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
-// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a raw parameter's stated layer
-// also writes the storage its Origin covers (Cover, PLAN G338), and with an argument A5 proves null only that (Keep, PLAN G598).
+// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a stated raw layer at a written
+// input's own address (its own, or one it holds by value at any holder: an element, a Field, a payload) also writes the storage its
+// Origin covers (Cover, PLAN G338, G598, G583), and with an argument A5 proves null only that (Keep, PLAN G598).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into

@@ -4,8 +4,9 @@ namespace Kimi.Compiler;
 
 // The raw layers an instance stores, read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs, .Keepers.cs) and Binding's instance
 // storage (Binding.Storage.cs; SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint 2): the authority such a
-// layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), the borrows
-// a raw parameter's own stated layer belongs to among a call's inputs (LayerMembers, A5's Cover), whether a declaration states a
+// layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), the parts a
+// written input holds at its own address (OwnLayers) and the borrows each stated layer there belongs to among a call's inputs
+// (LayerMembers), which A5's Cover reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
 // addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
@@ -69,6 +70,11 @@ internal sealed partial class TyCtxt
     // RawMembers appends nothing. Reads the declaration only, O(|positions|), total; allocates nothing.
     internal static BoundType? WrittenAt(BoundType instance, int part, ReadOnlySpan<int> positions) => Binding.WrittenAt(instance, part, positions, out _);
 
+    // SPEC 5.2 Placement, 5.6 (C-189): whether the operation contract stores no value through its parameter slot `input`, numbered as
+    // Signature numbers it (the catalog's NoStoreRow: `slice` its storage, `initialize` its value, `release` its storage, `transferBytes`
+    // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
+    internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
+
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
     // then the inline positions (a Tuple's component, a fixed array's element). Shared when the declaration states the layer with a slot
@@ -94,10 +100,65 @@ internal sealed partial class TyCtxt
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 
-    // SPEC 5.2.1, 5.7's table (PLAN G338): the borrows a raw parameter's own stated layer belongs to among a call's instantiated inputs,
-    // Binding's one reading, appended to `members`, each member's Input the slot it is found at; none for `self`, `static` or an unstated
-    // layer. False as RawMembers is.
+    // SPEC 5.2.1, 5.7's table (PLAN G338, G583): the borrows a stated layer a written input holds at its own address belongs to (a raw
+    // parameter's own layer, or an element's, a Field's or a payload's that OwnLayers lists) among a call's instantiated inputs, Binding's
+    // one reading, the RawMembers query the storage walk makes at that layer, appended to `members`, each member's Input the slot it is
+    // found at; none for `self`, `static` or an unstated layer. False as RawMembers is.
     internal bool LayerMembers(BoundType layer, ReadOnlySpan<BoundType> inputs, List<RawMember> members) => binding.LayerMembers(layer, inputs, members);
+
+    // SPEC 5.2.1 Retained dependencies, 5.7 Calls, Reading and Writing a Field, 15.6.4 (PLAN G583, G598, C-189): the parts the value at a
+    // Place's key holds at its own address, Binding's one reading (Binding.OwnLayers), so that the storage walk's output fold and A5's
+    // covering and pun rule enumerate the same raw layers by one criterion. Input: a PlaceKey: a call input's PlaceKey.Root(input) (a
+    // contract slot's declared Type under a call's substitution, no Written, no Holder, no dereference), or a Place's key, Select's fold of
+    // its path from its root. At its own address means the storage walk's by-value relation (Binding.ByValue) applied recursively at any
+    // holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (a Case key: its payload's components with
+    // the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
+    // Array, Dictionary, `string`) and a `Loan<T>`'s argument; any other Type argument adds nothing. Each part is read once per call through
+    // Holdings as the contract's body sees it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
+    // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
+    // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
+    // Writing a Field), and Unsupported through a U2 path; (null, step, Past) for each other part that reaches storage (a borrow or pair
+    // case, an rc or arc view, an abstract, erased, unsupported or unbound part); nothing for a part with no entry. Past is the key past
+    // the entry, with the path's last dereferenced layer past it (Binding.PastThrough). Unsupported is never a stated Origin: a reader takes
+    // it as no answer (A5: a located Unsupported_Kd or Φ kept, never a dropped Φ). The step is not the walked signature's cap (RawStepAt),
+    // which a covering needs not. A `during self` layer reached through a dereference has StepOf's cap-free kind (DECISIONS BU-24): past a
+    // `ref` it is Exclusive, an over-approximation of write authority that only adds writes (conservative); a borrow entry keeps Holdings'
+    // step (review N12). Named limit (review N13): a path rooted at a constructor's or `drop`'s receiver starts as PlaceKey.Root (no
+    // dereference), where PathOrigin gives the receiver's Origin, so past a `self` layer of the receiver the answer is Address, never a
+    // dropped Φ; where a valid program reaches it A5 gives a located Unsupported_Kd. Removal: a ReceiverRoot(type, receiver) key, the
+    // Origin PathOrigin's Receiver step gives, when a reader keys such a Place. The key holds Types only (PlaceKey.Through, a layer Type as
+    // every MIR Type is), so MIR reads no Origin from it but through the readers the raw Origin role ratchet covers (review N14). False at
+    // Binding's Limit. Total over what Binding accepts, a function of the key, allocating nothing warm. Must not decide a covering or a pun
+    // (A5's), read a call's arguments or solved Origins, or test a Type's Kind or Semantics to restrict a form.
+    internal bool OwnLayers(PlaceKey at, List<OwnLayer> into) => binding.OwnLayers(at, into);
+
+    // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189): the key of the Place `part` selects from `at`'s Place, one step of a
+    // Place's path from its root (PlaceKey.Root), `part` numbered as MIR numbers it: a struct's Field, an enum's Case (then that payload's
+    // component), a Tuple's or Closure's component; unread for a Type with one Place at or past its own address (a fixed array's element,
+    // a raw pointer's pointee, a borrow's or view's referent, an owning handle's payload, a collection's element, a pair layer's target).
+    // A slot is replaced by the holding value's binding (the kept part, StoredParts). The path's dereference past a value is PathOrigin's
+    // one rule (Binding.Dereferenced over Reached), a `during self` layer first read as ReadHolder reads it. A struct's base is selected
+    // by Base. Total: an unbound part gives Type null. A function of (at, part); allocates nothing warm. Must not decide a pun or
+    // covering (A5's).
+    internal PlaceKey Select(PlaceKey at, int part) => binding.Select(at, part);
+
+    // SPEC 5.7 (C-189): the key of a struct's base Place (MIR's Base, once per depth): its kept base (StoredParts' parent), inline, the
+    // path's dereference kept; Type null for any other Type.
+    internal PlaceKey Base(PlaceKey at)
+    {
+        BoundType? parent = null;
+        if (at.Type is { } type && AdtDef.IsStruct(type))
+        {
+            _ = this.StoredParts(type, out parent);
+        }
+
+        return at with { Type = parent, Written = null, Holder = null, Case = -1 };
+    }
+
+    // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal, raw Origins included: the structural part of a
+    // fit (Binding's relation walk, every Origin binding equal, no Never root rule), symmetric; reads no premise. Total, O(size of the
+    // smaller Type), allocates nothing. Must not stand for a fit (FitsStructuralPartAt keeps Never's root rule).
+    internal bool SameStructure(BoundType a, BoundType b) => binding.SameStructure(a, b);
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the
