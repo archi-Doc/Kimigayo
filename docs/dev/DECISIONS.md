@@ -16486,6 +16486,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     (c) LayoutNeeds by value; (d) prefix-view bodies (two producers). `v[0..]` stays invalid: a written start is a position resolved
     at run time whatever its value, and only `Start` is the static zero (SPEC 4.6.1, 8.15.3; the Middle's report O-88 (ii); 8.15.3
     does not name range views, and no SPEC change is asked).
+- **R8-M14 A sequence handle's layout is its representation struct's placement; `Layout.Rows`' handle rows and `LengthWord` go**
+  (Back, 2026-11-09; R8-R1b; Major; design reviews 1 REVISE (B1), 2 ACCEPT; on R8-M1; supersedes in part R5-M19 and R5-M124) SPEC
+  4.7.3, 22.2; IMPL 21.1.1-21.1.3.
+  - **Owner.** `Layout.Component(type)` is IMPL 21.1.3's Handles table in the compiler (Array → `Storage.ArrayRepr`, Slice →
+    `Storage.SliceRepr`, Dictionary → `DictionaryStorage.Handle`, the catalog row `DictionaryStorageHandle`). A handle stays a row, 0
+    high (placement heights and depth limits unchanged), whose record is its component's placement. `Component(string)` is null: the
+    string keeps its static row, R8-M1's O-43 (A) lasting pair with `RuntimeAbi.String`, not a missing component.
+  - **The open-Type exception (stated once).** `Layout`'s input is a closed Type, with one exception: a handle's component is its
+    declaration's own Type (`TyCtxt.SelfType(KimiDeclarationId)`, a reader of `Binding.SelfType`), open in its parameter. It has two
+    readers, placement (`Layout.Handle`) and code generation's `FunctionCodegen.Word`, and both rely on one premise: every Field of the
+    component is a row (a raw pointer or `isize`), so no element Type is read (X34) and each handle kind has one record. A Field that
+    read its parameter fails loudly in both: placement throws ("The component of T has no layout."), and `Word`'s `Layout.Row` throws
+    for a Type without a row. Neither gives a silent layout.
+  - **Code generation's one form for a handle's words.** `FunctionCodegen.Word(handle, record, name)` returns the component Field's
+    offset in the handle's record and the Field's row, by `AdtDef.IndexOf`'s by-name contract. `LoadWord` and `StoreWord` are its only
+    readers, used by `Length` (Len, Index bounds), `Buffer` (Index, `Storage`), `ArrayBuffer` (the empty Array's `data`, `length` and
+    `capacity`, the length, the result's `data`) and `Raw.slice`. No handle word is addressed by position. Which word a Len reads is now
+    code generation's Len lowering (the component's `length`), no longer `Layout.LengthWord`.
+  - **Moves: IR type text only.** A handle's storage type becomes the component's C-mode Field text: `{ ptr, i64 }` (Slice), `{ ptr,
+    i64, i64 }` (Array), `{ ptr, i64 × 6 }` (Dictionary), for `{ [0 x i64], [n x i8] }`. It appears in allocas, whole-value loads and
+    stores, statics and a C-layout struct's part text. Sizes, alignments, strides and Field offsets are unchanged
+    (`LayoutTest.SequenceHandlesArePlacedAsTheirComponentsForEveryElement`). Acceptance, records and MIR are unchanged (snapshot 0).
+  - **Guard renamed.** `LayoutTest.StringReprIsPlacedAsTheStringRow` is the `StringRepr` guard R8-M1 calls "LayoutTest's
+    `StringRepr` row"; R8-M1's text is kept.
+  - **Discharged:** R8-M1's two "Temporary, each removed at R1b" items (`Layout.Handles` and the pin theory's handle rows).
+    **Supersedes:** R5-M19's Slice, Array and Dictionary rows ("2, 3 and 7 pointer-aligned words ... `[Transitional("R8")]`"), and
+    R5-M124's Len bullet ("Layout's sequence handle rows name their length word (`Layout.LengthWord` ...)"). The reason that no longer
+    holds: the library declares the handles' components (R8-M1), so their placement states the words once.
+  - **Counts:** `[Transitional("R8")]` 11 → 10; `KimiDeclarationId` 193 → 194, catalog 189 → 190.
+  - **Rejected:** placing `ArrayRepr<E>` per element (it reads `E`, so the storage is Rejected after a failed Binding); a closed
+    stand-in `ArrayRepr<u8>` (silent if a Field ever read `T`); static rows filled from the library (a static row cannot read a
+    compilation's library); Binding owning the handle → component table; Len as a MIR Field read (a MIR form change); `data` by
+    position beside `length` by name (design review 1, B1).
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
   - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the premises of that scope make it comes first (`CallableContractType`: `ContractType` normalizes its associated projections, then `SubstituteIdentityPremises` substitutes its identity premises; OT2, C-159 (1), C-162, C-163), guarded by `HasAbstractPart`, so the compared Type has one owner. It is the one premising: `TyCtxt.Premised` publishes the same function to `MirTypes.Premised`, so MIR reads no second premising. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
