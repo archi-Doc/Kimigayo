@@ -339,7 +339,7 @@ public sealed partial class Binding
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
-                itemLengths[i] = argument is null || (lengths.IsEmpty && !argument.HasAbstractPart) ? argument : this.SubstituteLength(argument, binder, arguments, lengths);
+                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, arguments, lengths);
                 if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !ValidLength(itemLengths[i]!.Value))))
                 {
                     return null;

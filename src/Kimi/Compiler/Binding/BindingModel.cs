@@ -474,16 +474,17 @@ public sealed record BoundType
         this.carriesRawOrigin = raw;
         this.storesOrigin = stores;
         this.carriesOriginOrSlot = slot;
-        // R8-W2: an interpolation-bound term over abstract value Types is an abstract part, open until a substitution folds it.
-        var term = lengthExpression is { HasAbstractPart: true };
         foreach (var argument in this.LengthArguments)
         {
             parameter |= argument is { IsConstant: false };
-            term |= argument is { HasAbstractPart: true };
         }
 
-        parameter |= term;
-        abstractPart |= term;
+        // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
+        if (lengthExpression is { HasAbstractPart: true })
+        {
+            parameter = true;
+            abstractPart = true;
+        }
 
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
         // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).

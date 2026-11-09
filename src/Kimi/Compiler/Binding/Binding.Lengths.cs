@@ -44,9 +44,9 @@ public sealed class BoundLength(LengthOperation operation, long value, BindingSy
 
     public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null && this.Values is null;
 
-    /// <summary>Gets a value indicating whether it holds a term whose value Types have an abstract part, an abstract part of every Type it
-    /// is a length of (BoundType.HasAbstractPart, ContainsParameter): only a substitution of those Types folds it.</summary>
-    internal bool HasAbstractPart { get; } = values is { HasAbstractPart: true } || left is { HasAbstractPart: true } || right is { HasAbstractPart: true };
+    /// <summary>Gets a value indicating whether it is a term whose value Types have an abstract part, an abstract part of the fixed array it
+    /// is the length of (BoundType.HasAbstractPart, ContainsParameter): only that array's instance folds it.</summary>
+    internal bool HasAbstractPart => this.Values is { HasAbstractPart: true };
 }
 
 public sealed partial class Binding
@@ -62,8 +62,7 @@ public sealed partial class Binding
     {
         if (expression.Parameter is { } parameter)
         {
-            // Without length arguments (a Type-only substitution reaching a term) a slot stays.
-            return ReferenceEquals(parameter.Scope.Owner, binder) && !arguments.IsEmpty ? arguments[parameter.Slot] : expression;
+            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
         }
 
         if (expression.IsConstant)
@@ -96,6 +95,12 @@ public sealed partial class Binding
         return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
             ? this.InternLength(LengthOperation.Constant, unchecked((long)value)) : null;
     }
+
+    // A length in the instance a substitution makes, as StorageInstance makes a Type (TyCtxt.Compose's lengths): an interpolation-bound term
+    // over its value Types' instance (declaring Type, slots, Self and normalization), folded again; any other length by its slots.
+    internal BoundLength? InstanceLength(BoundLength length, Subst subst)
+        => length.Values is not { } values ? this.SubstituteLength(length, subst.Binder, subst.Types, subst.Lengths)
+            : this.StorageInstance(values, subst) is { } image ? this.types.InterpolationBound(image, length.Value) : null;
 
     // The one interning of a length: a commutative operation's operands in CompareLength's order, then one instance per key.
     internal BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null, BoundType? values = null)
@@ -274,7 +279,9 @@ public sealed partial class Binding
         return result == 0 ? CompareLength(left.Right, right.Right) : result;
     }
 
-    // A term's value Types by a key that never reads a reference (CompareLength): their count, then each one's kind and name.
+    // A term's value Types by a key that never reads a reference (CompareLength): their count, then each one's kind and name. Not total: two
+    // Types of one kind and name (two binders' T) tie and keep their order, so two such sums intern apart; unreached, since no producer
+    // forms arithmetic over a term (R8-W2 a2 uses one only as a whole length).
     private static int CompareValues(BoundType? left, BoundType? right)
     {
         var result = (left?.Components.Count ?? -1).CompareTo(right?.Components.Count ?? -1);

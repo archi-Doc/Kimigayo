@@ -39,8 +39,8 @@ public sealed partial class TyCtxtTest
         Assert.Equal("[(6 + bound(T, i32)) of u8]", TyCtxt.Name(region));
     }
 
-    // A term over T substitutes as a Type does (11 + literal for i32, 0 for string), whether a region's length or an Item's length argument,
-    // and Compose reaches it in an inner substitution's lengths, folding it over the outer Types.
+    // A region's term over T substitutes as a Type does (11 + literal for i32, 0 for string), and Compose reaches it in an inner
+    // substitution's lengths (made here through an Item), folding it over the outer instance.
     [Fact]
     public void ASubstitutionFoldsAnInterpolationBound()
     {
@@ -55,11 +55,47 @@ public sealed partial class TyCtxtTest
             values.Select(x => types.Apply(region, types.Synthesized(g, null, [x, BoundType.Boolean]))!).Select(static x => (x.Length, x.LengthExpression)));
         var keep = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
         var item = types.Intern(keep.Kind, keep.Symbol, keep.Semantics, keep.Components.ToArray(), lengthArguments: [term]);
-        Assert.True(item.HasAbstractPart && item.ContainsParameter);
         var inner = types.SubstOfItem(item)!;
         Assert.Same(term, inner.Lengths[0]);
         var composed = types.Compose(inner, types.Synthesized(g, null, [BoundType.I32, BoundType.Boolean])).Subst!;
         Assert.Equal((true, 17L), (composed.Lengths[0]!.IsConstant, composed.Lengths[0]!.Value));
+    }
+
+    // A term over an associated projection folds over its normalized instance, through Apply and Compose: S.Item is i32 for an IntItem
+    // (11 + literal) and string for a TextItem (0); a requirement's Self.Item alike under its conforming Self.
+    [Fact]
+    public void AProjectionTermFoldsInItsNormalizedInstance()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "contract HasItem\n    associate Item\n    func take(self: ref/Self, item: Self.Item) -> i32\n" +
+            "struct IntItem\n    Self is HasItem\n    associate HasItem.Item is i32\n    public func take(self: ref/Self, item: i32) -> i32 => item\n" +
+            "struct TextItem\n    Self is HasItem\n    associate HasItem.Item is string\n    public func take(self: ref/Self, item: string) -> i32 => 0\n" +
+            "func h<S>(x: S.Item, a: IntItem, b: TextItem) -> i32\n    S is HasItem\n    return 0\n" + BoundSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var types = c.Types;
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var h = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "h");
+        var parameters = h.Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var target = types.Identity(h).Target;
+        var u8 = BoundType.Primitives["u8"];
+        var term = types.InterpolationBound(types.Tuple([parameters[0]]), 6);
+        var region = types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [u8], lengthExpression: term);
+        var keep = nodes.Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
+        var inner = types.SubstOfItem(types.Intern(keep.Kind, keep.Symbol, keep.Semantics, keep.Components.ToArray(), lengthArguments: [term]))!;
+        long[] folded =
+        [
+            .. parameters[1..].SelectMany(x => new[]
+            {
+                types.Apply(region, types.Synthesized(target, null, [x]))!.Length,
+                types.Compose(inner, types.Synthesized(target, null, [x])).Subst!.Lengths[0]!.Value,
+            }),
+        ];
+        Assert.Equal([17, 17, 0, 0], folded);
+        var take = nodes.OfType<FunctionKoto>().Single(static x => x is { Name: "take", IsRequirement: true });
+        var selfTerm = types.InterpolationBound(types.Tuple([take.Parameters[1].Type.TypeOf()!]), 6);
+        var selfRegion = types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [u8], lengthExpression: selfTerm);
+        var contract = types.Identity(nodes.OfType<ContractKoto>().Single()).Target.Type!;
+        Assert.Equal(17, types.Apply(selfRegion, types.Synthesized(types.Identity(take).Target, parameters[1], contract))!.Length);
     }
 
     // CompareLength orders a commutative operation's term operands by a key of their value Types (count, then kind and name), never by
