@@ -656,7 +656,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Contains(buffer["Text.".Length..], body, StringComparison.Ordinal);
     }
 
-    // SPEC 22.6, 8.6.4 (DECISIONS R8-M__, ending R5-M146's BodylessWitness gap): a #LibraryImport function that is a requirement's witness
+    // SPEC 22.6, 8.6.4 (DECISIONS R8-M19, ending R5-M146's BodylessWitness gap): a #LibraryImport function that is a requirement's witness
     // is the Import item a requirement call and a requirement Item target, where the Item is formed and where it is called, with no record:
     // the one item of the import, which its direct call targets too.
     [Theory]

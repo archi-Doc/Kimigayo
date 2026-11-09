@@ -33,7 +33,7 @@ public class ForeignEmissionTest
         Assert.Equal(2, module.Startup.Instructions.Count(x => x.Callee == module.Function("GetLastError")));
     }
 
-    // SPEC 22.6, 8.6.4, 7.7.4 (DECISIONS R8-M__): a requirement call and a requirement Item's call whose witness is an import call the
+    // SPEC 22.6, 8.6.4, 7.7.4 (DECISIONS R8-M19): a requirement call and a requirement Item's call whose witness is an import call the
     // import by its C signature, as its direct call does, through the one declaration of its symbol.
     [Fact]
     public void AnImportWitnessCallsTheImport()

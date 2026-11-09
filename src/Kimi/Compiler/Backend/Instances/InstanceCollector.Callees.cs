@@ -4,7 +4,7 @@
 // Closure's body under its context, a function item's function or a requirement Item's witness, the implementation a function's
 // substitution selects, and for a function without a MIR body the requirement its published row runs, the glue of what it destroys in
 // place (each on the Type below a parameter, Below), or what its intrinsic's row names (and, where the row says so, its Type argument's
-// layout verdict, K 4.8), or for a #LibraryImport function its Import item (Imported; DECISIONS R8-M__); and the body of a DictionaryStorage
+// layout verdict, K 4.8), or for a #LibraryImport function its Import item (Imported; DECISIONS R8-M19); and the body of a DictionaryStorage
 // function the Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
 // (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage, Bodyless); the
@@ -94,7 +94,7 @@ internal sealed partial class InstanceCollector
         return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
-    // SPEC 22.6 (DECISIONS R8-M__): what a call of a function without a MIR body that is no compiler function runs, its direct call, its
+    // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no compiler function runs, its direct call, its
     // Item's or a requirement's whose witness it is (Called): a #LibraryImport function's item (TyCtxt.Bodyless: a foreign function), keyed
     // by the function alone (an import is never generic), with no target; code generation calls it by its C signature
     // (FunctionCodegen.Calls' Witness). None for a definition Binding rejected, that error's dependent (no record); any other, a compiler

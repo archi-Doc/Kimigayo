@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Backend;
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
 // signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
 // PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import target, a
-// #LibraryImport function's direct call or a requirement's whose witness it is, the import by its C signature (DECISIONS R8-M__).
+// #LibraryImport function's direct call or a requirement's whose witness it is, the import by its C signature (DECISIONS R8-M19).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -59,7 +59,7 @@ internal sealed partial class FunctionCodegen
     // signature (ModuleCodegen.Signature) with its operands in its body's order, a caller-location one given the call's location (Invoke); a
     // Fn callee calls the function it names whatever it implements (a direct base call, SPEC 6.4.4), a Requirement callee through the
     // virtual slot its witness runs. A call without a target is a broken contract: the collector gives every accepted call one, a
-    // #LibraryImport function's its Import item (SPEC 22.6; DECISIONS R8-M__).
+    // #LibraryImport function's its Import item (SPEC 22.6; DECISIONS R8-M19).
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -80,7 +80,7 @@ internal sealed partial class FunctionCodegen
     // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
     // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
     // shim item, Builtin or PropertyWitness, its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import
-    // item its import by its C signature (ModuleCodegen.Import; SPEC 22.6, DECISIONS R8-M__); any other item a broken contract. Null after a
+    // item its import by its C signature (ModuleCodegen.Import; SPEC 22.6, DECISIONS R8-M19); any other item a broken contract. Null after a
     // record at the source.
     private Run? Witness(int target, in SourceInfo source)
     {

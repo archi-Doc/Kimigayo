@@ -75,7 +75,7 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
-    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146, R8-M__): the target of a requirement call or of a requirement Item, where it is formed,
+    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146, R8-M19): the target of a requirement call or of a requirement Item, where it is formed,
     // called or erased, which code generation runs as a body, shim or import item (FunctionCodegen.Calls' Witness). A Body witness without a
     // MIR body is an import's item (Imported, SPEC 22.6), whose own rule also covers a witness Binding rejected and a broken contract; a
     // compiler function is no requirement's witness (the library's bodyless functions implement no Contract), so its row, which its direct

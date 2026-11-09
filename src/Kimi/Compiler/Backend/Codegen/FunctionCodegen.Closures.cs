@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 // operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine); any other
 // function's its body target, its function's body or a requirement Item's witness (through its slot when it implements one, BodyRun); a
 // virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); a #LibraryImport function's, or a requirement Item's whose
-// witness it is, its Import target (SPEC 22.6; DECISIONS R8-M__); any other is a broken contract (an unsafe or internal compiler function
+// witness it is, its Import target (SPEC 22.6; DECISIONS R8-M19); any other is a broken contract (an unsafe or internal compiler function
 // has no Item; DECISIONS R5-M146). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
@@ -117,7 +117,7 @@ internal sealed partial class FunctionCodegen
     // when it is one runtime routine (Routine, its slot-less values from the call's result Type, its Type argument or its target into
     // `given`, a formatting row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
     // its target runs (the collector's: its function's body, a requirement Item's witness or an import's item; FunctionCodegen.Calls'
-    // Witness, a virtual witness through its slot, an import by its C signature, the rule of its direct call; DECISIONS R5-M146, R8-M__); a
+    // Witness, a virtual witness through its slot, an import by its C signature, the rule of its direct call; DECISIONS R5-M146, R8-M19); a
     // virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own substitution (ModuleCodegen.Slot).
     // Null after a record at the source (an adapter's: its site): a broken contract (above).
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
