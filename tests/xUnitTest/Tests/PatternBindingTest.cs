@@ -536,6 +536,22 @@ public class PatternBindingTest
         Assert.Equal(0, binding.ImplicitFollows);
     }
 
+    // SPEC 15.1.6, 8.14, 8.15.2 (G642): an owned part is bound by its complete stored Type in each Semantics case, so `value`,
+    // `(s/T, i32)`, Copies where every case Copies (owner or ref, T is Copy: `(T, i32)`, `(ref/T, i32)`) and is as the 8.3 proof gives
+    // otherwise (`(uniq/T, i32)` is no Copy: CopyOrMove, which HIR lowers to Move). Both programs are valid. A part that is itself a
+    // pair layer is no owned part (its mode is never ByValue), so it stays a borrow.
+    [Theory]
+    [InlineData("owner or ref", PatternAcquisition.Copy)]
+    [InlineData("owner or uniq", PatternAcquisition.CopyOrMove)]
+    public void AnOwnedPairPartCopiesWhereEveryCaseCopies(string admitted, PatternAcquisition acquisition)
+    {
+        var c = Parse($"func f<s/T>(x: s/T) -> ()\n    s is {admitted}\n    T is Copy\n    match ((x@move, 1), 2)\n        (let value, _) => ()\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var binding = Assert.Single(Plan(c).Positions, p => p.Kind == BoundPatternKind.Binding);
+        Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
+        Assert.Equal(acquisition, binding.Acquisition);
+    }
+
     // SPEC 6.5.2 (G381): a stored Property's inferred Closure matches Cases, which are prepared before the headers that bind it (the Field
     // rows above, with their typed and local twins). A group's stored Property is static storage, a located limit for a Closure with or
     // without its written Type, and that limit is its one record (it was beside a false InvalidPattern_Kd, then a fault).

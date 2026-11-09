@@ -56,7 +56,7 @@ internal sealed partial class InstanceCollector
             var (at, runtime) = this.sites[i];
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, block.Terminator)
+                ? this.Edge(program, item, body, at.Block, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -72,9 +72,8 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
-    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts and a
-    // LegacyRow item's declared needs (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a
-    // fault.
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -91,9 +90,6 @@ internal sealed partial class InstanceCollector
                 return;
             case MonoKind.DropGlue:
                 this.DestructionTargets(program, item, site, type);
-                return;
-            case MonoKind.LegacyRow:
-                this.RowTargets(program, item, site);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
@@ -121,13 +117,13 @@ internal sealed partial class InstanceCollector
     // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
     // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
     // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
-    private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
+    private int Edge(MirProgram program, int item, MirBody body, int block, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed ||
+            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed || Elided(program, body, block, this.Set.Items[item].View) ||
                 (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
         }
 
@@ -276,7 +272,7 @@ internal sealed partial class InstanceCollector
             {
                 MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
                 _ when closed.Kind == BoundTypeKind.Dictionary =>
-                    this.Declared(program, item, subject, this.types.DictionaryStorage(LegacyRuntimeHelpers.Construction), null),
+                    this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.DictionaryStorageInitialize)!, null),
                 MirAggregateKind.Array when rvalue.Count > 0 =>
                     this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.StorageGrowArray)!, null),
                 _ => -1,

@@ -595,11 +595,12 @@ public sealed partial class Binding
                 constraintFailure = failure;
             }
 
-            unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;
+            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown && !unsolvedSlots.IsEmpty;
             premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
-                ConstraintProof.Proven => CandidateApplicability.Applicable,
+                // SPEC 10.1: an Unknown is an obligation checked after selection.
+                ConstraintProof.Proven or ConstraintProof.Unknown => CandidateApplicability.Applicable,
                 ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
                 ConstraintProof.Error => CandidateApplicability.Error,
                 _ => CandidateApplicability.Pending,

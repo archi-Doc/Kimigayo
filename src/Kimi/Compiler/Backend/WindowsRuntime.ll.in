@@ -276,13 +276,6 @@ done:
   ret void
 }
 
-{{__kimi_array_free}}
-entry:
-  %buffer = load ptr, ptr %handle, align 8
-  call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
-  ret void
-}
-
 {{__kimi_write_line}}
 entry:
   %data = load ptr, ptr %text, align 8

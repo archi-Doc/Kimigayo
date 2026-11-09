@@ -19,6 +19,11 @@ public sealed partial class Binding
     {
         var diagnostics = this.compilation.Diagnostics;
         diagnostics.Invalidate(DiagnosticPartition.Binding);
+        if (this.sitelessHeightRefusal)
+        {
+            diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
+        }
+
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
@@ -106,6 +111,10 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
             this.ReportCaseLimit(issue.Node, requirement);
+        }
+        else if (issue.Failure == BindingFailure.TypeHeightLimit)
+        {
+            issue.Node.Report(requirement, issue.Code, (long)TypeHeightLimit);
         }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {

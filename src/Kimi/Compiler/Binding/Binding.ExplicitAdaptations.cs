@@ -296,7 +296,8 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (operation != ConversionBinding.ObjectUpcast && IsBarePlace(conversion.Left) && this.ProveCopy(source, conversion) != ConstraintProof.Proven)
+        else if (operation != ConversionBinding.ObjectUpcast && IsBarePlace(conversion.Left) &&
+            !this.CopiesInEveryCase(source, this.ConstraintScope(conversion)))
         {
             this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             return false;

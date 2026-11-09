@@ -341,7 +341,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // which turns these rows clean.
     [Theory]
     [InlineData(BindingNamesItsConformance, "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InferredBindingNamesItsConformance, "4*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
+    [InlineData(InferredBindingNamesItsConformance, "5*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
     [InlineData(SignatureSpellsItsBinding, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
     [InlineData(BindingsNameEachOthersConformance, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
     public void ABindingNamingItsConformanceKeepsItsRecordsUntilS3(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));

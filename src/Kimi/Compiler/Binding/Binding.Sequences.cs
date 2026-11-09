@@ -243,7 +243,7 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Add((source, subject, entry));
-        if (this.BindCall(call, scope, null) is not { } iterator)
+        if (this.BindSynthesizedCall(source, call, scope) is not { } iterator)
         {
             return false;
         }
@@ -349,7 +349,7 @@ public sealed partial class Binding
         this.ResetSynthetic(plan.Next);
         this.ResetSynthetic(plan.Next.Method);
         this.ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
-        return this.BindCall(plan.Next, plan.Scope, null);
+        return this.BindSynthesizedCall(source, plan.Next, plan.Scope);
     }
 
     // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary match decomposition and its

@@ -11,7 +11,7 @@
 // Invariants: closed: a new form adds a row here or a Need on its table; every row's Type is TypeOf's but a comparison node's (its reader's
 // instance Type, DECISIONS R5-M166); a need past its root's storage is a
 // use (Layout.Indirect states the boundary), a call's Type arguments always (the size SPEC 8.15.3 names: raw allocation, a whole value's
-// transfer, an entry's layout).
+// transfer).
 // Must not: decide a use (the collector does, by the boundary), lay out a Type (Layout does) or read an instance (the readers map).
 
 using Kimi.Compiler.Mir;
@@ -31,7 +31,7 @@ internal enum LayoutNeed : byte
     /// <summary>The stride of a Type the form steps over: an Index's or a ConstIndex's element, a raw pointer displacement's pointee.</summary>
     Element,
 
-    /// <summary>The layouts of the call's Type arguments: an intrinsic's, a whole-value update's, a Dictionary kernel's.</summary>
+    /// <summary>The layouts of the call's Type arguments: an intrinsic's, a whole-value update's.</summary>
     TypeArguments,
 }
 
@@ -87,8 +87,8 @@ internal static class LayoutNeeds
         return pointer.Components[0];
     }
 
-    /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (a whole-value update's T, a Dictionary
-    /// kernel's K and V, an intrinsic's one argument).</summary>
+    /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (a whole-value update's T, an intrinsic's
+    /// one argument).</summary>
     /// <param name="subst">The call's, or its Item's, substitution.</param>
     /// <returns>The Types.</returns>
     internal static ReadOnlySpan<BoundType?> TypeOf(Subst subst) => subst.Types;

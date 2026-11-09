@@ -207,7 +207,7 @@ fn divergentReplacement @52
   bb14:
       _1[0] = move _3 @61 s1
       _2 = const () @61 s1
-      drop _3 -> bb15 @62 s1
+      drop _3 -> bb15 [elide] @62 s1
   bb15:
       StorageDead(_3) @62 s1
       StorageDead(_2) @61 s1
@@ -306,7 +306,7 @@ fn divergentReplacementIndex @75
       StorageDead(_15) @85 s1
       StorageDead(_5) @87 s1
       StorageDead(_4) @85 s1
-      drop _3 -> bb15 @85 s1
+      drop _3 -> bb15 [elide] @85 s1
   bb15:
       StorageDead(_3) @85 s1
       StorageDead(_2) @84 s1

@@ -61,7 +61,6 @@ public sealed partial class Binding
         ((Koto[])call.ArgumentNodes)[0] = conversion.Left;
         this.ResetSynthetic(generic);
         this.ResetSynthetic(call);
-        this.nodes.Add(call);
         if (selectedCase)
         {
             // Every row already proved the exact payload and acquisition. The written operand remains symbolic;
@@ -69,7 +68,7 @@ public sealed partial class Binding
             call.BoundSymbol = this.ResolveObjectCreation(conversion, source, target, call.CallStorage ??= new()).Target;
             Complete(call, target);
         }
-        else if (this.BindCall(call, scope, null) is null)
+        else if (this.BindSynthesizedCall(conversion, call, scope) is null)
         {
             return Complete(conversion, null);
         }
