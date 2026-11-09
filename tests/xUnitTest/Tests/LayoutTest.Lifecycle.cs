@@ -39,7 +39,7 @@ public partial class LayoutTest
         }
 
         Assert.True(c.Bind().IsComplete);
-        var fresh = new Layout();
+        var fresh = new Layout(c.Types);
         foreach (var type in types)
         {
             Assert.Equal(Verdict(fresh.Of(type)), Verdict(c.Layout.Of(type)));

@@ -132,7 +132,7 @@ public partial class Compilation
     private Layout? layout;
 
     /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which the collector and code generation read.</summary>
-    internal Layout Layout => this.layout ??= new();
+    internal Layout Layout => this.layout ??= new(this.Types);
 
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
     internal SemanticQuery Semantics => this.Binding.Semantics;

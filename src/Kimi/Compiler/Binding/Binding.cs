@@ -214,6 +214,7 @@ public sealed partial class Binding
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
+        this.PrepareInheritedScopes(); // SPEC 8.8.2: the heir scopes before their readers (inline layouts, verification).
         this.ValidateInlineLayouts();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
@@ -313,6 +314,7 @@ public sealed partial class Binding
         this.ValidateApiAccess(mode);
         // Base constraints need capability evidence; propagate failures before certificates.
         this.ValidateBaseDeclarations(mode);
+        this.ReportInheritedInlineCycles(); // After the base clauses' own checks (DIAGNOSTICS rule 4).
         this.RevalidateImplicitConstructors();
         // Property certificates must include final Origin and declaration API validity.
         this.ValidateProperties(mode);

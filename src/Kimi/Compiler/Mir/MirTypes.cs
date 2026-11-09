@@ -4,8 +4,8 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind and
-// pointer-cast facts.
+// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind,
+// pointer-cast and integer facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
@@ -19,7 +19,7 @@
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast and agreement facts.
+// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast, integer and agreement facts.
 
 using Kimi.Compiler.Parsing;
 
@@ -119,6 +119,24 @@ internal static partial class MirTypes
     /// <param name="source">The converted value's Type.</param>
     /// <returns>The Cast's kind.</returns>
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
+
+    /// <summary>Gets whether a Type has the integer operators (SPEC 13.3.1: an integer or wrapping integer Type), or one whose instance
+    /// decides it: an abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one, which stays constructed until substitution
+    /// (SPEC 3.1.1; TyCtxt.Intern). Binding proves the instance (its IsArithmeticInteger); MIR reads the shape, so no other Type with an
+    /// abstract part, such as Option&lt;T&gt; or ref/T, is one. An Integer, wrapping, numeric, bit or integer-to-pointer Cast converts such a
+    /// Type (MirValidator.Casts).</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>Whether it has the integer operators, concrete or generic.</returns>
+    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || type.IsAbstract ||
+        (type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping);
+
+    /// <summary>Gets whether an Integer constant (MirConstKind.Integer) has a Type: one with the integer operators, concrete or generic
+    /// (IsArithmeticInteger), char or a raw pointer, whose one constant is null (SPEC 3.1, 5.1). The one family MirValidator checks a
+    /// constant by.</summary>
+    /// <param name="type">The constant's Type.</param>
+    /// <returns>Whether an Integer constant has the Type.</returns>
+    internal static bool HoldsIntegerConstant(BoundType type)
+        => IsArithmeticInteger(type) || ReferenceEquals(type, BoundType.Char) || type.Semantics == SemanticsKind.Raw;
 
     // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
     // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.

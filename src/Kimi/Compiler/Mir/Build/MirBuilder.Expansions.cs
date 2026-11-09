@@ -264,7 +264,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, from
     // the second entry on looked up among the entries inserted (Absent; before the first no key is inserted, so it has no lookup and makes
-    // no equality call), then the value evaluated and the pair placed (one call of the placeEntry body over the literal's exclusive borrow),
+    // no equality call), then the value evaluated and the pair placed (one call of the placeEntry body over the literal's exclusive borrow,
+    // marked Places: the literal's insertion, not a call of the program; PLAN G442, the owner's O-97 (a)),
     // every step of the entry's insertion located at its key, where a failure inside it reports (SPEC 22.5.1; DECISIONS R5-M144). The
     // empty Dictionary is a part made before the entries, in a temp of its own that an interrupted entry's exit destroys, and moved to the
     // destination after the last entry, where the literal's value is created (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
@@ -293,7 +294,9 @@ internal sealed partial class MirBuilder
             this.arguments.Add(this.Borrow(SemanticsKind.Uniq, built, entry.Key));
             this.arguments.Add(MirOperand.Move(key));
             this.arguments.Add(MirOperand.Move(value));
+            var call = this.current;
             this.Invoke(this.Temp(BoundType.Unit, entry.Key), new(MirCalleeKind.Fn, place, subst), start, entry.Key);
+            this.body.Terminate(call, this.body.Blocks[call].Terminator with { Places = true }); // The literal's insertion (PLAN G442).
         }
 
         this.Use(destination, MirOperand.Move(built), dictionary);
