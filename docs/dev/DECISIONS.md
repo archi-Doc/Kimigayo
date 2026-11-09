@@ -8818,6 +8818,8 @@ resumed by R4-M86 (2026-10-20).
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
   - Superseded in part by BU-128 (R7-V5b-1, the owner's O-70 (a)): "a cycle of binding nodes alone is its conformance's error" no longer holds; a binding-only inline cycle is judged at the binding, and `Binding.InlineLayouts.cs`' "no record for a binding node" is withdrawn.
+  - Its inherited arm (the walk's re-resolution on the base clause's instance) is superseded by BU-141 (G631 part 1): an inherited path's
+    binding is the heir's node.
 
 - **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the owner's answer
   on G264 S1, verbatim 「(B)」; supersedes BU-52's interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does
@@ -10415,6 +10417,8 @@ resumed by R4-M86 (2026-10-20).
     after the failed Binding, which Layout rejects without a record. No instance-level fact.
   - Rejected: reporting at the struct whose instance is infinite (valid for other arguments, x7); reporting only components without a
     declaration (a mode); keying by the binding's Type (r7 reports both bindings); a new instance-level fact for Layout.
+  - Its root rule ("every completed associated binding of a non-inherited conformance path is a root") is superseded in part by BU-141
+    (G631 part 1): every conformance path's binding is a node and a root.
 - **BU-129 R7-E1d A clause's resting failure yields to its owner's own** (2026-11-08; plan §5.1 E1, `ruling-r2.md` §3; D-2; SPEC 15.3.3,
   23.1.2; DIAGNOSTICS rule 4). `FailOriginClause` writes `InvalidOrigin` into the owner of a failed Origin clause with an edge to the
   clause, a value that rests on another node. `Fail` lets the owner's own later failure take that slot and removes the clause's edge, so the
@@ -10589,6 +10593,43 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-141 An inherited binding is the heir's node (PLAN G631 part 1)** (2026-11-09; Front, Binding; Major, an acceptance mover; design
+  reviews 1-3 and the owner's O-96 (a); implementation review ACCEPT after I1) SPEC 6.2 (with the owner's O-70 (a)), 8.6.2, 8.8.2.
+  Supersedes in part BU-128's "every completed associated binding of a non-inherited conformance path is a root" and BU-65's inherited arm
+  (the walk's re-resolution on the base clause's instance; PLAN G328's subject).
+  - Rule (SPEC 6.2, 8.6.2, 8.8.2): every conformance path's binding is a node and a root; an inherited path's stores its source's binding
+    on the base clause's instance (`InlineBinding`).
+  - Site: a declared path's record is written by the judge at `SpecificationPart ?? its clause`; an inherited path's at its conformance's
+    site, the heir's base clause (`Use`), after that clause's own checks (`ReportInheritedInlineCycles` after `ValidateBaseDeclarations`),
+    dependent when the clause failed by itself.
+  - Scope: the heir's conformance scope (D and the source's P) is built once per pass by `Binding.InheritedConformances`
+    (`PrepareInheritedScopes`, called by the pass driver before the judge) and read by the judge and `VerifyInheritedConformance`.
+  - Temporary structure: `ReportInheritedInlineCycles`' deferred write, marked `[Transitional("R7", Reason = "... (R7-E5).")]`, is a
+    write-order workaround for `Fail`'s silent drop of a later failure (PLAN G262: one node holds one failure). It goes at R7-E5 (a), the
+    stage COMPILER_ARCHITECTURE already gives that cause, once E2-E4 have migrated the `Fail` writers and a node keeps a later failure as
+    a fact; the judge then writes inherited paths' records with the declared ones. Until then these writers at an inherited path's `Use`
+    run after the write point, and the order decides which record that node keeps: `ValidateConformances`' agreement (an Error is
+    dependent; a Refuted or Unknown reaches only `PathStorage[0]`, an explicit path when one exists), `ValidateBoundConformanceAgreement`
+    (`a.Use`), and `PublishNeededLimits` (none computed on the 57 traced programs). The owner's O-96 (a) chose this order.
+  - Moves: i1, i1u, i5, i6 and i7, invalid by SPEC 6.2 under O-70 (a), are rejected; i1x and x3v keep their `GenerationResourceLimit_Kd`
+    beside the Language record (PLAN G631's remaining part).
+  - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
+    on P6); the record at `path.Use` before the base clause's checks (P5: independent records lost, design review 1's B1).
+- **BU-139 A fixed array's projection in a declaration position: the formation maps through a declared subject only, and the
+  witness's Signature is demanded (PLAN G578)** (2026-11-09; G578-1; Major; design review 1 ACCEPT, implementation review ACCEPT; the
+  Front's ruling 1) SPEC 8.5.2, 8.5.4, 22.1.
+  - Rule A: `ValidateAssociatedApplications` maps an applied projection's formation Type through the subject declaration's slots
+    (`StoredType(formation, subject)`) only when the subject has a declaration. A subject without one (a fixed array, Tuple, primitive
+    or Callable Core) has no slots, so the step is the identity there, and `ContractType` still substitutes `Self`. On dev the step
+    dereferenced a null declaration (CheckFaulted_Kd).
+  - Rule B: `FixedArrayIteratorType` reads the entry witness's result Type through the Signature query (`BindHeader`, the kind's one
+    entry; BU-105), not as a published field: source headers precede the library's in the header loop, so on dev a source header's
+    fixed-array projection named no Type (a false TypeMismatch_Kd at a `return`, InternalInvariant_Kd at a parameter). The witness
+    headers name no fixed-array projection, so the demand never meets a Running or abandoned header.
+  - Rejected: `StoredType` answering null for an owner without a declaration (a silent null for every other caller's broken
+    precondition); the projection's declaring reference interned in the use's terms (the projection identity is G170's and G302's);
+    library headers bound first (an order dependence R7-D2 g deletes); a pending outcome that abandons the source header. The Contract
+    base form (`w1`) stays PLAN G578, for R7-D2 d's Contract-shape kind.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -16218,21 +16259,20 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open:**
     - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
     - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
-- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149).
-  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149; amended 2026-11-09 by G643-G644, PLAN G643-G645: design review and implementation review 1 ACCEPT, the Middle's reviewer, and G645 (the Back's review ACCEPT, C-171)).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand, by MIR's published family `MirTypes.HoldsIntegerConstant`, and code generation reads it in an instance (`FunctionCodegen.Constant`).
   - **The rule.** It accepts an Integer `MirConst` only in these cases:
     1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
-    2. A widthless Type that code generation also lowers (`FunctionCodegen.Values`): `char`; a raw pointer (null); or a Type whose instance decides it. That last test is the validator's own `Integral` (`HasIntegerArithmetic || HasAbstractPart`), owned by `MirValidator.Types` and also read by the Cast rows. It covers a Type parameter's generic literal.
+    2. A widthless Type of the family `MirTypes.HoldsIntegerConstant`: a Type with the integer operators, concrete or generic (`MirTypes.IsArithmeticInteger`, SPEC 13.3.1's set and Binding's name for it: integer arithmetic, an abstract Type, or `Wrapping` over one, which stays constructed until substitution, SPEC 3.1.1, 8.7.4), `char`, or a raw pointer. Its value is ranged: `char` a Unicode scalar value (SPEC 3.1), a raw pointer only null, 0 (SPEC 5.1), and a Type whose instance decides it a generic literal, 0 through 127, a value of every instance (SPEC 8.7.4, BU-133). A literal Binding fits through an identity premise (`T is i32`: 200) has the complete Type, while MIR keeps the premised parameter (BU-72), so it holds by its width under case 1. The integer Cast rows (Integer, Wrap, Numeric, Bits, IntToPointer) read the same `MirTypes.IsArithmeticInteger`.
     3. Any other Type: `MirViolation.Const` (`InternalInvariant_Kd`).
   - **Reason.** Before this entry, no rule held: C-142 N3's 2^127 validated in i32 and in u8. A widthless constant was accepted whatever its Type, a silent default over an open family. The Backend already rejects every other instance Type, so validated MIR now states the same family before code generation does.
   - **Rejected:**
     - accepting every widthless Type;
     - an allowlist of the validator's own, which would be a second rule;
-    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule.
-  - **Open limits:**
-    - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
-    - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
-    - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
+    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
+    - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
+  - **Open limits** (N5, N6/F4 and the family's second copy closed by G643-G645):
+    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
