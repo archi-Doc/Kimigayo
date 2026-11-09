@@ -115,17 +115,16 @@ internal sealed partial class MirValidator
             }
         }
 
-        // An integer Type, or one whose instance decides it (SPEC 8.7.4: a PrimitiveInteger T, Wrapping<T>).
-        private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
-
-        // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
+        // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type; an integer one converts Types
+        // with the integer operators, concrete or generic (MirTypes.IsArithmeticInteger).
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch
         {
-            MirCastKind.Integer or MirCastKind.Wrap => Integral(source) && Integral(target),
+            MirCastKind.Integer or MirCastKind.Wrap => MirTypes.IsArithmeticInteger(source) && MirTypes.IsArithmeticInteger(target),
             MirCastKind.Floating => source.IsFloatingPoint && target.IsFloatingPoint,
-            MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint ? Integral(target) : Integral(source) && target.IsFloatingPoint,
+            MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint
+                ? MirTypes.IsArithmeticInteger(target) : MirTypes.IsArithmeticInteger(source) && target.IsFloatingPoint,
             MirCastKind.Pointer => source.Semantics == SemanticsKind.Raw && (target.Semantics == SemanticsKind.Raw || ReferenceEquals(target, BoundType.USize)),
-            MirCastKind.IntToPointer => Integral(source) && target.Semantics == SemanticsKind.Raw,
+            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.Semantics == SemanticsKind.Raw,
             MirCastKind.Upcast => source.Semantics == target.Semantics && (source.HandleMode is not null || source.IsObjectBorrow),
             MirCastKind.Erasure => source.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && target.Kind == BoundTypeKind.Function,
             _ => false,
