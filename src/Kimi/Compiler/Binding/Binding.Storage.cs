@@ -512,11 +512,6 @@ public sealed partial class Binding
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
-                    if (member.AttributeChain is not null)
-                    {
-                        this.Fail(member, BindingFailure.InvalidTypeFormation);
-                    }
-
                     // The Case and its payload Types were prepared before the headers (PrepareCases).
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {

@@ -277,26 +277,6 @@ public sealed class BindingReportTest
         Assert.InRange(time.ElapsedMilliseconds, 0, 30_000);
     }
 
-    // The same, through the whole cold path: an import with n Types without a C counterpart has n records, at bytes linear in n. The points lie
-    // past the step a pass's tables take between 384 and 512 parameters, which a valid import has too.
-    [Fact]
-    [Trait("Purpose", "Allocation")]
-    public void AnImportsPartsTakeLinearBytes()
-    {
-        int[] parts = [512, 1024, 2048];
-        var compilations = new Compilation[parts.Length];
-        var bytes = AllocationMeasurement.MeasureSeries(parts.Length, i =>
-        {
-            var c = compilations[i] = CompilationTestHelper.Parse(ManyParts(parts[i]));
-            return () => c.Bind();
-        });
-        Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
-        for (var i = 0; i < parts.Length; i++)
-        {
-            Assert.Equal(parts[i], compilations[i].Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidImportSignature_Kd));
-        }
-    }
-
     private static string ManyParts(int count)
         => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(" +
             string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: string")) + ") -> i32\n";
@@ -313,5 +293,29 @@ public sealed class BindingReportTest
         }
 
         return [.. chain];
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // The same, through the whole cold path: an import with n Types without a C counterpart has n records, at bytes linear in n. The points lie
+        // past the step a pass's tables take between 384 and 512 parameters, which a valid import has too.
+        [Fact]
+        public void AnImportsPartsTakeLinearBytes()
+        {
+            int[] parts = [512, 1024, 2048];
+            var compilations = new Compilation[parts.Length];
+            var bytes = AllocationMeasurement.MeasureSeries(parts.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(ManyParts(parts[i]));
+                return () => c.Bind();
+            });
+            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+            for (var i = 0; i < parts.Length; i++)
+            {
+                Assert.Equal(parts[i], compilations[i].Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidImportSignature_Kd));
+            }
+        }
     }
 }

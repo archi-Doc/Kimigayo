@@ -13,6 +13,12 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => this.Type is null ? 0 : 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Type!;
+
     private SemanticsKind semanticsKind;
 
     /// <inheritdoc/>
