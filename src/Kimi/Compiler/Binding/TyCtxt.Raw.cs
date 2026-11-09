@@ -19,6 +19,16 @@ internal sealed partial class TyCtxt
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.
     internal static bool RawStated(BoundType layer) => layer.RawOrigin?.Kind == OriginKind.Unstated;
 
+    // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672): whether a part of a raw Place of this Type is itself a raw Place, so that a Take moves it
+    // without state tracking: the storage of an `owner` struct (a stored Field, a base), Tuple (an element) or fixed array (an element at
+    // any position, from-end included) holds the part itself. So does an `owner` enum's: a Case payload's components are parts of the
+    // value's Place (SPEC 3.4), which no Take observes, since no source form takes a payload Place in place (a Subject is borrowed,
+    // SPEC 15.1.6; `@move` takes the whole value). An Array's, view's or Dictionary's element is the referent of `index`/`indexUniq`,
+    // and a reference's or handle's part a referent: never raw Places. The one statement of the rule: Binding's IsRawPlace walk
+    // (ElementAccess) and MIR's move paths (MirMoveData.Resolve) read it per step. A read of the Type; total; allocates nothing.
+    internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
+        (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container) || AdtDef.IsEnum(container));
+
     // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
     // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
     // call (`seen`, the caller's scratch, cleared first: the answer is the part's alone), by index; allocates nothing when warm.
