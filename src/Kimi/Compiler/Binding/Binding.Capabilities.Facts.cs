@@ -23,17 +23,51 @@ namespace Kimi.Compiler;
 // - Prohibitions: no proof decision reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
 public sealed partial class Binding
 {
+    // The first local region of an Origin or of its meet's operands.
+    private static BoundOrigin? RegionOperand(BoundOrigin origin)
+    {
+        if (IsLocalRegion(origin))
+        {
+            return origin;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (RegionOperand(origin.Operands[i]) is { } region)
+            {
+                return region;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`; a null Origin argument and an
     // unproven Origin are Unknown.
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
-        if (origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, scope.Owner))
+        if (origin is not null && (this.ProvesOriginOutlives(origin, BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
         {
             return ConstraintProof.Proven;
         }
 
         this.ScopeReads.Origin ??= origin;
         return ConstraintProof.Unknown;
+    }
+
+    // SPEC 15.2.3, 15.3.6, 8.3.3 (DECISIONS: G572 U2a): whether a local region's solved value, in `origin` or a meet's operand, is
+    // `static`, the oracle's one reading of a region (UniversalRelations.Outlives); its bounds are complete once no body is being bound,
+    // and until then it has no answer.
+    private bool SolvedStatic(BoundOrigin origin)
+    {
+        if (this.formingBody.IsBody || RegionOperand(origin) is not { } region)
+        {
+            return false;
+        }
+
+        using var relations = this.UniversalRelationsOf(region.Body);
+        relations.Close(BoundOrigin.Static, 0);
+        return relations.Outlives(origin);
     }
 
     // An Owned query that also returns its subject's rest (R4-M161): the parts its work found not Proven; none without a work (a context

@@ -22,6 +22,7 @@ fn keep @4
   _7: T temp @30 s1
   _8: T temp @35 s1
   _9: T temp (Result) @4
+  _10: T temp @35 s1
   s1: lexical in s0 @18
   b0: T Value, Uniq
   bb0:
@@ -76,7 +77,8 @@ fn keep @4
       _9 = move _8 @34 s1
       goto bb12 @34 s1
   bb15:
-      drop _8 -> bb16 @35 s1
+      _10 = move _8 @34 s1
+      drop _8 -> bb16 [elide] @35 s1
   bb16:
       StorageDead(_8) @35 s1
       drop _4 -> bb17 @24 s1
@@ -87,7 +89,7 @@ fn keep @4
       StorageDead(_3) @19 s1
       drop _2 -> bb19 @16
   bb19:
-      drop _1 -> bb20 @14
+      drop _1 -> bb20 [elide] @14
   bb20:
       unreachable @18
 fn both @38
@@ -104,6 +106,7 @@ fn both @38
   _10: U temp @85 s1
   _11: ref/closure () -> U temp @86 s1
   _12: U temp (Result) @38
+  _13: U temp @85 s1
   s1: lexical in s0 @63
   b0: T Value, Uniq
   b1: U Value, Ref
@@ -170,7 +173,8 @@ fn both @38
       _12 = move _10 @84 s1
       goto bb15 @84 s1
   bb18:
-      drop _10 -> bb19 @85 s1
+      _13 = move _10 @84 s1
+      drop _10 -> bb19 [elide] @85 s1
   bb19:
       StorageDead(_11) @86 s1
       StorageDead(_10) @85 s1
@@ -187,7 +191,7 @@ fn both @38
   bb23:
       drop _2 -> bb24 @59
   bb24:
-      drop _1 -> bb25 @57
+      drop _1 -> bb25 [elide] @57
   bb25:
       unreachable @63
 closure @79
@@ -204,6 +208,7 @@ fn peek @87
   _2: U arg seen @99
   _3: U temp @106 s1
   _4: U temp (Result) @87
+  _5: U temp @106 s1
   s1: lexical in s0 @104
   b0: U Value, Uniq
   bb0:
@@ -230,7 +235,8 @@ fn peek @87
       _4 = move _3 @105 s1
       goto bb6 @105 s1
   bb9:
-      drop _3 -> bb10 @106 s1
+      _5 = move _3 @105 s1
+      drop _3 -> bb10 [elide] @106 s1
   bb10:
       StorageDead(_3) @106 s1
       drop _2 -> bb11 @99
@@ -246,6 +252,7 @@ fn caller @107
   _4: T temp seen (PendingSlot) @122 s1
   _5: ref/s/T temp @122 s1
   _6: T temp (Result) @107
+  _7: T temp @122 s1
   s1: lexical in s0 @120
   s2: inlined in s1 @122
   b0: T Value, Uniq
@@ -287,13 +294,14 @@ fn caller @107
       _6 = move _2 @121 s1
       goto bb7 @121 s1
   bb12:
-      drop _2 -> bb13 @122 s1
+      _7 = move _2 @121 s1
+      drop _2 -> bb13 [elide] @122 s1
   bb13:
-      drop _4 -> bb14 @122 s1
+      drop _4 -> bb14 [elide] @122 s1
   bb14:
       StorageDead(_5) @122 s1
       StorageDead(_4) @122 s1
-      drop _3 -> bb15 @124 s1
+      drop _3 -> bb15 [elide] @124 s1
   bb15:
       StorageDead(_3) @124 s1
       StorageDead(_2) @122 s1

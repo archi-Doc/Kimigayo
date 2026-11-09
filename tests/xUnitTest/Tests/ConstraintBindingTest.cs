@@ -430,15 +430,15 @@ public class ConstraintBindingTest
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
     // explains none while PLAN G375's sigref1 stays open (null Note).
     [Theory]
-    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")]
-    [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "H.init(f: g@move)", "Call init requires F is Callable<(ref/i32) -> i32>; this condition cannot be proven for (ref/i32) -> i32")]
-    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: u@move)", "Call init requires T is Owned; this condition cannot be proven for U")]
+    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", null)] // G572 U2a (Q13): the Final record without the clause fact (U2a-2)
+    [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "g@move", "F is Callable<(ref/i32) -> i32> compares whole contracts and is not proven: the 1st parameter requires the omitted Origin of ref/i32 outlives static; its Origin part is judged from the premises alone (SPEC 8.10, 10.7, 15.6.1)")] // G572 U2a (Q13): the Callable record at its argument (U2a-2)
+    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "InvalidConstraint_Kd", "H.init(t: u@move)", null)] // G572 U2a (Q13): the call rests on mk's failed H<U>
     [InlineData(CallableHolder + "func use(g: i32) -> i32\n    let h = H.init(f: g)\n    return 0", "NoApplicableOverload_Kd", "H.init(f: g)", "init requires F is Callable<(ref/i32) -> i32>; this condition is refuted for i32")]
     [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id: H requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2: H requires T is Copy; this condition is refuted for string")]
     [InlineData(CopyHolder + "func g<U>() -> i32 => 0\nfunc use() -> i32\n    return g<K<string>>()", "NoApplicableOverload_Kd", "g<K<string>>()", "g: K requires T is Copy; this condition is refuted for string")]
     [InlineData(CopyHolder + "func id<U>(u: i32) -> i32 => 0\nfunc use() -> i32\n    let f: (i32) -> i32 = id<K<string>>\n    return 0", "UnsatisfiedConstraint_Kd", "id<K<string>>", "Function Item id: K requires T is Copy; this condition is refuted for string")]
-    [InlineData(OwnedHolder + "func mk<U>(h: ref/H<U>) -> i32 => 0\nfunc use(h: ref/H<i32>) -> i32\n    return mk(h: h)", "UnprovenConstraint_Kd", "mk(h: h)", null)]
+    [InlineData(OwnedHolder + "func mk<U>(h: ref/H<U>) -> i32 => 0\nfunc use(h: ref/H<i32>) -> i32\n    return mk(h: h)", "UnprovenConstraint_Kd", "H<U>", null)] // G572 U2a (Q13): the declaration's record; the call rests on it (sigref1)
     public void ATypeFormationExplainsTheUseThatRestsOnIt(string source, string code, string use, string? note)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -537,6 +537,38 @@ public class ConstraintBindingTest
         var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
+    }
+
+    // SPEC 10.1, 8.3.3 (DECISIONS: G572 U2a): a field's Type that holds with a judgment held pending does not depend on it. The unproven
+    // tagOf<Entry>() is selected and its result i32 holds, so Entry is Owned is then proven from tag: i32 (entry, and entry-i-two, whose
+    // unproven candidate is strictly best). Entry<T> is Owned needs T is Owned, unproven, so that obligation fails after selection. The
+    // first row was MirBuildTest.ValuesBindingDidNotFormAreDerived's (Q13: a valid program rejected before, a corrected label).
+    [Theory]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func tagOf<T>(extra: i32 = 0) -> i64\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry<T>\n    var tag = Tags.tagOf<Entry<T>>()\n    public let v: T\n", "Tags.tagOf<Entry<T>>()")]
+    public void AFieldTypeHoldingWithItsObligationPendingIsNoCycle(string source, string? rejectedAt)
+    {
+        var check = DiagnosticCorpus.Check(source + "public func main() => ()\n");
+        if (rejectedAt is null)
+        {
+            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+            return;
+        }
+
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+    }
+
+    // SPEC 23.1.2, 14.6.2, 10.1 (DECISIONS: G572 U2a): a loop over a conditional IntoIterable whose condition no premise proves selects its
+    // entry call under the rule, and that call's obligation fails after selection. The loop rests on its entry call, so the one fact is one
+    // record at the loop (it was the loop's own record beside the call's).
+    [Fact]
+    public void ALoopRestsOnItsEntryCallsObligation()
+    {
+        var source = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    var n: i32 = 0\n    public func next(self: uniq/Self) -> Option<i32>\n        require self.n < 3 else => return .None\n        self.n += 1\n        return .Some(self.n)\nstruct Bag<T>\n    let value: T\n    Self is IntoIterable when T is Owned\n        associate IntoIterable.IteratorType is Counter\n        public func intoIterator(self: Self) -> Counter => Counter.init()\nfunc f<U>(b: Bag<U>) -> i32\n    var n: i32 = 0\n    for x in b@move => n += x\n    return n\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source, "Library").Diagnostics);
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
     }
 
     private static Compilation Parse(string source, bool allowParserErrors = false)

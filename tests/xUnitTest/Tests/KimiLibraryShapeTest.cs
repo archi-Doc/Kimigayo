@@ -76,9 +76,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
-        (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
-        (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)\nK is Equatable"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
         (KimiDeclarationId.StorageTryAllocateBytes, "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
@@ -127,7 +125,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(187, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(189, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -303,27 +301,6 @@ public partial class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
-    // F2c (DECISIONS R5-M28): the DictionaryStorage view names each function by the one symbol Binding declares for it, a source
-    // function declared once in the DictionaryStorage group; None names no function.
-    [Fact]
-    public void DictionaryStorageViewNamesTheDeclaredFunctions()
-    {
-        var c = Library.Value;
-        string[] names = ["findEntry", "clearEntries", "requireAbsent", "append", "initialize", "reserve"];
-        Assert.Equal(names.Length + 1, Enum.GetValues<DictionaryCallee>().Length);
-        for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
-        {
-            var symbol = c.Library.DictionaryStorage(callee);
-            var container = Container(symbol.Declaration);
-            Assert.Equal("DictionaryStorage", Path(container));
-            Assert.Same(symbol.Declaration, Assert.Single(Declarations(container, names[(int)callee - 1], true)));
-            Assert.Same(symbol, symbol.Declaration.SymbolOf());
-            Assert.True(HasBody(symbol.Declaration));
-        }
-
-        Assert.Throws<InvalidOperationException>(() => c.Library.DictionaryStorage(DictionaryCallee.None));
-    }
-
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
     // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), whether in place,
     // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan), and the
@@ -440,6 +417,9 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)")]
     [InlineData(KimiDeclarationId.StorageShrinkArray, "internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)")]
     [InlineData(KimiDeclarationId.StorageDestroyArray, "internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)")]
+    [InlineData(KimiDeclarationId.StorageDestroyDictionary, "internal unsafe func destroyDictionary<K, V>(handle: raw/DictionaryStorage.Handle)")]
+    [InlineData(KimiDeclarationId.StorageReleaseDictionary, "internal unsafe func releaseDictionary(handle: raw/DictionaryStorage.Handle)")]
+    [InlineData(KimiDeclarationId.DictionaryStorageInitialize, "unsafe func initialize(handle: raw/Handle)")]
     [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)

@@ -122,7 +122,7 @@ internal sealed partial class FunctionCodegen
     {
         if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
         {
-            this.RowSlots(call, legacy, block);
+            this.RowSlots(call, legacy);
             return;
         }
 
@@ -185,22 +185,15 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A legacy row's slots (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128): a fixed-symbol routine's OwnedSlot parameters (LegacyRow.Fixed:
-    // writeLine's, a formatting routine's), as an intrinsic routine's; a row's in its function's instance (LegacyRow.InInstance) as a body
-    // callee's (OperandSlots), since its helper takes an element in memory by pointer and copies it after it grows (`a.append(a[0])`);
-    // a swap of a value in memory the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference,
-    // which has no copy slot of its own; none for the others, which read their operands in place, no callee seeing them.
-    private void RowSlots(in MirTerminator call, LegacyRow row, int block)
+    // A legacy row's slots (DECISIONS R5-M116, R5-M128): a fixed-symbol routine's OwnedSlot parameters (LegacyRow.Fixed: writeLine's, a
+    // formatting routine's), as an intrinsic routine's; a swap of a value in memory the one slot holding its first value
+    // (FunctionCodegen.Updates), numbered at its first operand, a reference, which has no copy slot of its own; none for the others, which
+    // read their operands in place, no callee seeing them.
+    private void RowSlots(in MirTerminator call, LegacyRow row)
     {
         if (row.Fixed)
         {
             this.RoutineSlots(call, row.Routine);
-            return;
-        }
-
-        if (row.InInstance)
-        {
-            this.OperandSlots(call, block);
             return;
         }
 

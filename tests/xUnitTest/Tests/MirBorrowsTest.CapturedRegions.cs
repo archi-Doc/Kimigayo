@@ -144,14 +144,30 @@ public sealed partial class MirBorrowsTest
     public void AGenericCallReadsAVarOverOneSourceAsItsLetTwin(string source)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("b = 3", null)));
 
-    // A recorded limit (the owner's O-57, verbatim 「両方とも(a)でお願いします。」): valid and accepted before G570, rejected until the Front's
-    // G565 lands. `StaticOrigin` is Unknown for a region, so a `static`-only region is not Owned: (s1 and its renamed twin w4, O-57, G565) a
-    // bound, (s2, O-57, G565) a capture's erasure, (s4, O-57, G565) a constructor's bound. The class, as the owner's O-59 names it (verbatim
-    // 「すべて (a)」, amending O-57), keeps a struct's clause at its constructor: (t31, O-59, G572 U2) in the region's own body, as n21 is nested.
-    // Each is this record, here, until its unit turns it accepted.
+    // SPEC 10.1, 8.3.3, 15.2.3, 15.3.6 (DECISIONS: G572 U2a): an Unknown at step 5 is an obligation judged after every body is bound, when a
+    // local region's bounds are complete, so `T is Owned` over a region whose bounds are all `static` holds: a bound over a Closure's result
+    // (s1), a constructor's bound (s4), a local (g4), beside a waiting Closure argument (w1) and through a method (w1m). The rows left
+    // AConstraintOverAnEnclosingRegionIsARecordedLimit (s1, s4), valid by SPEC 15.2.3 (Q13: a valid program rejected before).
     [Theory]
-    [InlineData("func need<T>(x: T)\n    T is Owned\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    need(c())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "need(c())", null)]
-    [InlineData(See + "struct Box<T>\n    public var v: T\n    public init(v: T)\n        T is Owned\n        self.v = v@move\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let b = Box.init(c())\n    see(b.v)\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "Box.init(c())", null)]
+    [InlineData("func need<T>(x: T)\n    T is Owned\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    need(c())\n" + Main)]
+    [InlineData(See + "struct Box<T>\n    public var v: T\n    public init(v: T)\n        T is Owned\n        self.v = v@move\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let b = Box.init(c())\n    see(b.v)\n" + Main)]
+    [InlineData("func need<T>(t: T) -> ()\n    T is Owned\nfunc t(x: ref/i32 during static)\n    var s = x\n    need(s)\n" + Main)]
+    [InlineData("func apply<T>(t: T, f: (T) -> ()) -> ()\n    T is Owned\n    return\nfunc t(x: ref/i32 during static)\n    var s = x\n    apply(s, func (v) => ())\n" + Main)]
+    [InlineData("struct K\n    public init() => ()\n    public func need<T>(self: ref/Self, t: T) -> ()\n        T is Owned\n        ()\nfunc t(x: ref/i32 during static)\n    let k = K.init()\n    var s = x\n    k.need(s)\n" + Main)]
+    public void AStaticOnlyRegionIsOwnedOnceEveryBodyIsBound(string source) => MirTargetSide.Check(source);
+
+    // SPEC 10.1, 15.2.3: the invalid twins, a later local source, so the region is not `static` and the obligation fails at the call (h5, and
+    // w1n beside a waiting argument).
+    [Theory]
+    [InlineData("func need<T>(t: T) -> ()\n    T is Owned\nfunc t(x: ref/i32 during static)\n    var a: i32 = 1\n    var s = x\n    need(s)\n    s = a@ref\n    see(s)\n" + See + Main, "need(s)")]
+    [InlineData("func apply<T>(t: T, f: (T) -> ()) -> ()\n    T is Owned\n    return\nfunc t(x: ref/i32 during static)\n    var a: i32 = 1\n    var s = x\n    apply(s, func (v) => ())\n    s = a@ref\n    see(s)\n" + See + Main, "apply(s, func (v) => ())")]
+    public void AnOwnedRegionWithALaterSourceIsUnproven(string source, string context)
+        => MirTargetSide.Check(source, (DiagnosticCode.UnprovenConstraint_Kd, MirTargetSide.At(context, null)));
+
+    // A recorded limit (the owner's O-57, verbatim 「両方とも(a)でお願いします。」, amended by O-59, verbatim 「すべて (a)」): a struct's clause at its
+    // constructor over an enclosing region (t31, n21; G572 U2c) stays this record until its unit turns it accepted. Its bound and constructor
+    // forms (s1, s4) left the class with G572 U2a (AStaticOnlyRegionIsOwnedOnceEveryBodyIsBound); the erasure (s2) is G572 U2b's.
+    [Theory]
     [InlineData(See + "struct P {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\nfunc f(p: ref/i32)\n    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "P.init(c(), p)", null)]
     public void AConstraintOverAnEnclosingRegionIsARecordedLimit(string source, DiagnosticCode code, string context, string? subject)
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));

@@ -293,7 +293,9 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     public void ConstraintsKeepTakingPartInApplicability()
     {
         var source = "func hold<T>(x: T, n: i32) -> i32\n    T is Owned\n    return 1\n\nfunc hold<T>(x: T, n: i64) -> i32 => 2\n\nfunc caller(p: ref/i32) -> i32 => hold(p, 1)\n\nfunc staticCaller(p: ref/i32 during static) -> i32 => hold(p, 1)\n" + Main;
-        Assert.Equal([nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        // SPEC 10.1 (DECISIONS: G572 U2a): an unproven candidate is compared as though applicable, so with neither strictly best the call is
+        // ambiguous, as its Proven twin is (Q13: the first call was UnprovenConstraint_Kd by the deferral).
+        Assert.Equal([nameof(DiagnosticCode.AmbiguousBinding_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
     // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location.

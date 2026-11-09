@@ -60,6 +60,24 @@ public class DictionaryCostTest
         NativeAllocationAudit.WriteFixture("DictionaryCostQueries", Source, 1, 1, 96, transferred: 0);
     }
 
+    // SPEC 4.9.5, 4.9.7, 5.6 (DECISIONS R8-K1c): `[:]` allocates nothing, so destroying it frees nothing through either glue body,
+    // releaseDictionary (cleanup-free entries) or destroyDictionary (a string value); both are in the checked set, so the row does not
+    // pass by a skipped destruction.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnEmptyDictionarysDestructionFreesNothing()
+    {
+        const string Source = """
+            var scalars: Dictionary<i32, i32> = [:]
+            var strings: Dictionary<i32, string> = [:]
+            require scalars.length + strings.length == 0 else => $abort("empty")
+            """;
+        var items = MinimalEmissionTest.Analyze(Source).Instances!.Items.ToArray();
+        Assert.Contains(items, static x => x.Key.Body.Def.Decl?.Name == "releaseDictionary");
+        Assert.Contains(items, static x => x.Key.Body.Def.Decl?.Name == "destroyDictionary");
+        NativeAllocationAudit.WriteFixture("DictionaryCostEmptyDestruction", Source, 0, 0, 0);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]

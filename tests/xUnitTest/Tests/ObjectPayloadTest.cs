@@ -22,6 +22,27 @@ public class ObjectPayloadTest
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.NotObjectPayload_Kd);
     }
 
+    // SPEC 8.7.3 (G600): an object form written in a Constraint is formed before the opt-outs are published and is judged again once
+    // they are: a conformance's Contract argument, a function's and a struct's Constraint, through an own, a nominal and a projected
+    // opt-out, `rc/` and a nested form. Each is one NotObjectPayload_Kd at its form and no other issue (fail-before: each was accepted).
+    [Theory]
+    [InlineData("contract K<T>\nstruct D\n    Self is not ObjectPayload\n    public init() => ()\nstruct W\n    Self is K<obj/D>\n", "obj/D")]
+    [InlineData("contract K<T>\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nstruct D2: P\n    public init(): base() => ()\nstruct W\n    Self is K<obj/D2>\n", "obj/D2")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P3\nopen struct P3\n    Self is not ObjectPayload\n    public init() => ()\nstruct D3: Source.HasBase.Parent\n    public init(): base() => ()\nstruct W\n    Self is K<obj/D3>\n", "obj/D3")]
+    [InlineData("contract K<T>\nstruct D\n    Self is not ObjectPayload\n    public init() => ()\nfunc f<T>(a: T)\n    T is K<obj/D>\n    ()\n", "obj/D")]
+    [InlineData("contract K<T>\nstruct D\n    Self is not ObjectPayload\n    public init() => ()\nstruct S<T>\n    T is K<obj/D>\n    var x: T\n", "obj/D")]
+    [InlineData("contract K<T>\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nstruct D2: P\n    public init(): base() => ()\nfunc f<T>(a: T)\n    T is K<obj/D2>\n    ()\n", "obj/D2")]
+    [InlineData("contract K<T>\nstruct D\n    Self is not ObjectPayload\n    public init() => ()\nstruct W\n    Self is K<rc/D>\n", "rc/D")]
+    [InlineData("contract K<T>\nstruct D\n    Self is not ObjectPayload\n    public init() => ()\nstruct W\n    Self is K<Option<obj/D>>\n", "obj/D")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P3\nopen struct P3\n    Self is not ObjectPayload\n    public init() => ()\nstruct D3: Source.HasBase.Parent\n    public init(): base() => ()\nstruct S<T>\n    T is K<obj/D3>\n    var x: T\n", "obj/D3")]
+    public void AnObjectFormInAConstraintIsJudgedOnceTheOptOutIsPublished(string source, string form)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((DiagnosticCode.NotObjectPayload_Kd, form), (issue.Code, issue.Node.ToString()));
+    }
+
     private const string Parser = "struct Parser\n    Self is not ObjectPayload\n    public var pos: i32 = 0\n";
 
     [Theory]

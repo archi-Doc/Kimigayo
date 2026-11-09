@@ -964,9 +964,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry through placeEntry, whose handle
-    // `raw/Dictionary<K, V>` admits K and V and addresses the Dictionary's holder (dictionaryStorage's handle), so an element keeps its
-    // Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry by one call of placeEntry over its
+    // exclusive borrow (R8-K1b-2), an insertion's published effect that stores the key and the value in the Dictionary, so an element
+    // keeps its Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
     [Fact]
     public void ADictionaryLiteralKeepsItsElementsLoans()
         => Assert.Equal(
@@ -981,6 +981,35 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var value = 42
                     let entries = [1: value@ref]
                     value = 99
+                """));
+
+    // PLAN G255 (C2) (SPEC 4.9.6, 12.4.3, 15.6.4; DECISIONS R8-K1b-2): from the second entry on, a literal's placement is the same one
+    // call, so a raw layer beside an entry's Loan reaches no earlier entry's holder: a write after the Dictionary is dead and two `uniq`
+    // Loans of distinct locals are valid (fail-before: ComparisonLoanConflict_Kd at the writes, and at the locals' declarations), while a
+    // write while it is used afterwards keeps its one record (fail-before: also one at the second local's declaration).
+    [Fact]
+    public void ADictionaryLiteralOfRawLayersKeepsOnlyItsEntriesLoans()
+        => Assert.Equal(
+            ["live: x = 3"],
+            Problems("""
+                func dead(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, ref/i32)> = [1: (q, x@ref), 2: (q, y@ref)]
+                    inspect(d@ref)
+                    x = 3
+                    y = 4
+                func distinct(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, uniq/i32)> = [1: (q, x@uniq), 2: (q, y@uniq)]
+                    inspect(d@ref)
+                func live(q: raw/u8)
+                    var x = 1
+                    var y = 2
+                    let d: Dictionary<i32, (raw/u8, ref/i32)> = [1: (q, x@ref), 2: (q, y@ref)]
+                    x = 3
+                    inspect(d@ref)
                 """));
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value

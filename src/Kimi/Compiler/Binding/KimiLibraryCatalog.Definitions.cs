@@ -163,11 +163,9 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.PositionRange, "PositionRange"),
         new(KimiDeclarationId.Start, "Start"),
         new(KimiDeclarationId.End, "End"),
-        new(KimiDeclarationId.StorageDictionaryLayout, "dictionaryStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDictionaryLayout),
         new(KimiDeclarationId.DictionaryIndex, "index", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.DictionaryIndexUniq, "indexUniq", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: Equality),
         new(KimiDeclarationId.StorageMissingDictionaryKey, "missingDictionaryKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageMissingDictionaryKey),
-        new(KimiDeclarationId.StoragePlaceDictionaryEntry, "placeEntry", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryEntry),
         // SPEC 22.2: private primitives that hold no collection logic, used by the DictionaryStorage capacity bodies.
         new(KimiDeclarationId.StorageCountOverflow, "countOverflow", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageCountOverflow),
         new(KimiDeclarationId.StorageAllocationSizeExceeded, "allocationSizeExceeded", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageAllocationSizeExceeded),
@@ -178,13 +176,17 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyDictionary, "destroyDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageReleaseDictionary, "releaseDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageArrayCapacity, "arrayCapacity", KimiLibraryContainer.Storage, SourceFunction: true, Row: None),
         new(KimiDeclarationId.DictionaryStorageCapacity, "capacity", SourceFunction: true, Owner: "DictionaryStorage", Row: None),
+        new(KimiDeclarationId.DictionaryStorageInitialize, "initialize", SourceFunction: true, Owner: "DictionaryStorage"), // SPEC 4.3: `[:]`'s target.
         // SPEC 22.5.1: the Kimigayo capacity decisions carry the standard operation's caller context to their failures.
         new(KimiDeclarationId.DictionaryStorageReserveEntries, "reserveEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageGrow, "grow", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageAppend, "append", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
+        new(KimiDeclarationId.DictionaryStoragePlaceEntry, "placeEntry", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageShrinkEntries, "shrinkEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageShrinkToFit, "shrinkToFit", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageFindEntry, "findEntry", SourceFunction: true, Owner: "DictionaryStorage", Row: Equality), // SPEC 12.4.3.

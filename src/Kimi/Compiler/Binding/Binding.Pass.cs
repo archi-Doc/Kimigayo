@@ -23,9 +23,11 @@ public sealed partial class Binding
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();
+        this.earlyObjectForms?.Clear();
         this.storageMarks.Clear();
         this.storageStack.Clear();
         this.issues.Clear();
+        this.sitelessHeightRefusal = false;
         this.lints.Clear();
         this.callableSelectionFailures.Clear();
         this.callableSelectionParties.Clear();
