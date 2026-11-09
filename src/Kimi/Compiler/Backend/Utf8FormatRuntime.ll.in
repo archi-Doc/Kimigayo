@@ -243,10 +243,14 @@ entry:
   %valid = load i64, ptr %validp, align 8
   %complete = icmp eq i64 %length, %valid
   call void @__kimi_window_advance(ptr %window, i64 %amount)
-  %committed = call i64 @__kimi_window_commit(ptr %window)
+  %startp = getelementptr i8, ptr %window, i64 8
+  %writtenp = getelementptr i8, ptr %window, i64 16
+  %start = load i64, ptr %startp, align 8
+  %written = load i64, ptr %writtenp, align 8
+  %newlength = add i64 %start, %written
+  store i64 %newlength, ptr %lengthp, align 8
   br i1 %complete, label %validated, label %done
 validated:
-  %newlength = load i64, ptr %lengthp, align 8
   store i64 %newlength, ptr %validp, align 8
   br label %done
 done:

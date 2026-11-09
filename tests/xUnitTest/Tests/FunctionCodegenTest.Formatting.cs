@@ -152,26 +152,22 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextFixed, CompilerFunctionKind.WindowPush,
-                CompilerFunctionKind.WindowAppend, CompilerFunctionKind.WindowLimit, CompilerFunctionKind.WindowCommit,
+                CompilerFunctionKind.TextFixed,
             ]),
             FormattingCalls(ir, c, "fxRun"));
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextHeap, CompilerFunctionKind.WindowPush,
-                CompilerFunctionKind.WindowCommit,
+                CompilerFunctionKind.TextHeap,
             ]),
             FormattingCalls(ir, c, "hpRun"));
         foreach (var (name, kind, shape) in new[]
         {
             ("fxRun", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 8)"),
-            ("fxRun", CompilerFunctionKind.WindowPush, "call void @(ptr %, ptr %, i8 65)"),
             ("hpRun", CompilerFunctionKind.TextHeap, $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
             ("vwLength", CompilerFunctionKind.TextUtf8, "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
             ("vwCheck", CompilerFunctionKind.TextValidateUtf8, "call void @(ptr %, ptr %)"),
             ("vwShow", CompilerFunctionKind.WriteLineUtf8, $"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})"),
-            ("wrStatus", CompilerFunctionKind.WriterStatus, "call void @(ptr %, ptr %)"),
             ("itFixed", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 4)"),
         })
         {
@@ -186,6 +182,13 @@ public sealed partial class FunctionCodegenTest
             var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => reserves.Contains(x.Callee!));
             Assert.Equal($"call void @(ptr %, ptr %, i64 {minimum}, ptr @, i64 {Located(Buffers, site)})", call.Shape);
         }
+
+        // SPEC 22.5.1, 22.9.4 (R8-W1b): the window operations are bodies; limit has a CallerLocation row, so the user's call passes its own
+        // location, and the status test is a body without a routine.
+        var limit = Assert.Single(FunctionsOf(ir, c, "limit"));
+        var cut = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "fxRun"))), x => x.Callee == limit);
+        Assert.Equal($"call void @(ptr %, ptr %, i64 4, ptr @, i64 {Located(Buffers, "(window@move).limit(4)")})", cut.Shape);
+        Assert.Single(FunctionsOf(ir, c, "status"));
 
         var validate = ir.Function(Routines(CompilerFunctionKind.TextValidateUtf8)[0]);
         var check = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwCheck"))), x => x.Callee == validate);

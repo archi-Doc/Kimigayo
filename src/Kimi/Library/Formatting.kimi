@@ -16,8 +16,10 @@ public struct WriteWindow {source}
     Self is not ObjectPayload
     let state: raw/u8 during source
     let start: isize
-    public let written: isize
-    public let remaining: isize
+    public var written: isize
+        private set
+    public var remaining: isize
+        private set
     let loan: Loan<uniq/u8 during source>
 
     /// A window of `remaining` bytes after the `start` committed bytes of the buffer at `state`. The caller's obligations,
@@ -29,6 +31,44 @@ public struct WriteWindow {source}
         self.written = 0
         self.remaining = remaining
         self.loan = Loan<uniq/u8 during source>.init()
+
+    /// Writes `byte` after the written bytes; `BufferFull`, changing nothing, when no capacity remains (SPEC 22.9.4).
+    public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>
+        if self.remaining == 0 => return .Err(BufferFull.init())
+        unsafe => *self.next() = byte
+        self.written += 1
+        self.remaining -= 1
+        return .Ok(())
+
+    /// Writes `bytes` after the written bytes; `BufferFull`, changing nothing, unless all of them fit (SPEC 22.9.4).
+    public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>
+        let length = bytes.length
+        if length > self.remaining => return .Err(BufferFull.init())
+        if length != 0
+            // The source is readable bytes, never this window's unwritten capacity, so the two ranges do not overlap.
+            unsafe => Storage.transferBytes(self.next(), (*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, length)
+        self.written += length
+        self.remaining -= length
+        return .Ok(())
+
+    /// The window with capacity `min(capacity, maximum)` (SPEC 22.9.4).
+    ///
+    /// - abort: `maximum` is below `written`.
+    public func limit(self: owner/Self, maximum: isize) -> Self{r}
+        origin r.source == self.source
+        if maximum < self.written => Storage.argumentOutOfRange()
+        var window = self@move
+        if maximum - window.written < window.remaining => window.remaining = maximum - window.written
+        return window@move
+
+    /// Commits the written prefix and returns its length (SPEC 22.9.4).
+    public func commit(self: owner/Self) -> isize
+        unsafe => (*(self.state@raw/Storage.BufferRepr)).length = self.start + self.written
+        return self.written
+
+    // The first unwritten byte: the buffer's data past `start + written`.
+    func next(self: ref/Self) -> raw/u8
+        unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.start + self.written
 
 public struct Utf8Writer {target}
     Self is not ObjectPayload
@@ -43,6 +83,11 @@ public struct Utf8Writer {target}
     let pendingLength: isize
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
+
+    /// The recorded failure (SPEC 22.10.1).
+    public func status(self: ref/Self) -> Result<(), BufferFull>
+        if self.failed => return .Err(BufferFull.init())
+        return .Ok(())
 
 public group Text
     public struct InvalidUtf8
