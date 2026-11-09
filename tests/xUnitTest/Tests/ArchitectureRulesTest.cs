@@ -1,6 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.RegularExpressions;
+using Kimi.Compiler.Lexing;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace XunitTest;
@@ -189,6 +193,68 @@ public class ArchitectureRulesTest
             .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
             .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // R9-F4 (the owner's O-98, O-99, O-100 and O-106, (a)): TokenHelper's spelling table is the one statement of an F.3 keyword, so no
+    // other Lexing or Parsing literal starts with one, alone or after '#' (SPEC F.11 writes "#" "if" and "#" "switch" with the keyword
+    // tokens). Roslyn reads every literal token, those in interpolation holes included: string, UTF-8 string, char, raw string and the
+    // text parts of interpolated strings, each by its value. The spellings come from the table itself (TokenKind.ToText over the keyword
+    // kinds). A '$' name inside the quotes does not start with a spelling: after '$', F.3 matches a Composition Root operation name by
+    // spelling ($require, $expect), and $try.value and $try.error are synthesized names. Each allowed site is a file, its member and the
+    // literal, with the reason SPEC fixes its text. Bounded: the two folders only.
+    [Fact]
+    public void KeywordSpellingsStayInTheTable()
+    {
+        string[] sites =
+        [
+            // '_' as a Name character (SPEC 2.5), not the keyword.
+            "Lexing/Tokenizer.cs|ScanAsciiIdentifierLength|'_'",
+
+            // The destructor's Name (SPEC 16.2.1).
+            "Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs|TryParsePropertyOrFunction|\"drop\"",
+
+            // A constructor's Name (SPEC 6.3).
+            "Parsing/Koto/Declarations/FunctionKoto.cs|FunctionKoto|\"init\"",
+            "Parsing/Parser.Functions.cs|TryParseFunctionName|\"init\"",
+
+            // The discard Name (SPEC 14.8.1).
+            "Parsing/Parser.ControlFlow.cs|TryParseForBinding|\"_\"",
+            "Parsing/Parser.Syntax.cs|ParsePattern|\"_\"",
+
+            // The Origin names static and _ (SPEC 15.2.1, 15.2.3).
+            "Parsing/Parser.Origins.cs|ParseTypeOrigin|\"static\"",
+            "Parsing/Parser.Origins.cs|ParseTypeOrigin|\"_\"",
+            "Parsing/Parser.AssociatedTypes.cs|ValidateAssociatedParameters|\"static\"",
+            "Parsing/Parser.AssociatedTypes.cs|ValidateAssociatedParameters|\"_\"",
+        ];
+        SyntaxKind[] literals =
+        [
+            SyntaxKind.StringLiteralToken, SyntaxKind.Utf8StringLiteralToken, SyntaxKind.CharacterLiteralToken,
+            SyntaxKind.SingleLineRawStringLiteralToken, SyntaxKind.MultiLineRawStringLiteralToken, SyntaxKind.Utf8SingleLineRawStringLiteralToken,
+            SyntaxKind.Utf8MultiLineRawStringLiteralToken, SyntaxKind.InterpolatedStringTextToken,
+        ];
+        var spellings = Enumerable.Range(1, (int)TokenKind.Identifier - 1).Select(static x => ((TokenKind)x).ToText()).Where(static x => x.Length > 0);
+        var spelling = new Regex(@"^\s*#?(?:" + string.Join("|", spellings.OrderByDescending(static x => x.Length).Select(Regex.Escape)) + @")(?!\w)");
+        var root = Path.Combine(Repository.Root, "src/Kimi/Compiler");
+        var actual = SourceFiles("src/Kimi/Compiler/Lexing", "*.cs").Concat(SourceFiles("src/Kimi/Compiler/Parsing", "*.cs"))
+            .Where(static x => Path.GetFileName(x) != "TokenHelper.cs")
+            .SelectMany(file => CSharpSyntaxTree.ParseText(File.ReadAllText(file), new CSharpParseOptions(LanguageVersion.Preview)).GetRoot()
+                .DescendantTokens().Where(x => literals.Contains(x.Kind()) && spelling.IsMatch(x.ValueText))
+                .Select(x => $"{Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/')}|{Member(x)}|" +
+                    (x.IsKind(SyntaxKind.CharacterLiteralToken) ? $"'{x.ValueText}'" : $"\"{x.ValueText}\"")))
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Order(StringComparer.Ordinal).SequenceEqual(actual), $"Keyword spellings outside the table: {string.Join("; ", actual)}.");
+
+        // The nearest named declaration around a token: its method, constructor, property, field or type.
+        static string Member(SyntaxToken token) => token.Parent!.AncestorsAndSelf().Select(static x => x switch
+        {
+            MethodDeclarationSyntax method => method.Identifier.Text,
+            ConstructorDeclarationSyntax constructor => constructor.Identifier.Text,
+            PropertyDeclarationSyntax property => property.Identifier.Text,
+            FieldDeclarationSyntax field => field.Declaration.Variables[0].Identifier.Text,
+            BaseTypeDeclarationSyntax type => type.Identifier.Text,
+            _ => null,
+        }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
     // A directory that does not exist (deleted, or not yet created) has no files.

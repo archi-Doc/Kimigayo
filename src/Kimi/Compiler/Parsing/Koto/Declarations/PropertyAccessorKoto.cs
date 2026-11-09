@@ -52,7 +52,7 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
     public bool IsBodyless => this.Body is null;
 
     /// <summary>Gets the source keyword for this accessor.</summary>
-    public string AccessorText => this.AccessorKind == PropertyAccessorKind.Get ? Constants.GetKeyword : Constants.SetKeyword;
+    public string AccessorText => this.AccessorKind == PropertyAccessorKind.Get ? TokenKind.Get.ToText() : TokenKind.Set.ToText();
 
     /// <summary>Initializes a new instance of the <see cref="PropertyAccessorKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

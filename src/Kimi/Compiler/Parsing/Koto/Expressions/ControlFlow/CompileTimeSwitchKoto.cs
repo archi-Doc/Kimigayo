@@ -28,7 +28,7 @@ public sealed class CompileTimeSwitchKoto : ExpressionKoto
         var span = this.Span;
         if (source is null || span.Length == 0 || span.End > source.Length)
         {
-            builder.Append("#switch");
+            builder.Append(Parser.SwitchDirectiveText);
             return;
         }
 

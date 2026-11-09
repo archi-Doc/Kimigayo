@@ -636,26 +636,40 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
-    // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
-    // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
-    // (code generation runs a witness only as a body or shim item).
-    [Theory]
-    [InlineData("    match w.reserve(4)\n", "w.reserve(4)")]
-    [InlineData("    let reserve = W.reserve\n    match reserve(w, 4)\n", "W.reserve | reserve(w, 4)")]
-    [InlineData(null, "C.now()")]
-    public void ABodylessWitnessIsAGapAtTheCall(string? reserve, string sites)
+    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, a #LibraryImport function, is the
+    // BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a requirement call, and a requirement
+    // Item where it is formed and where it is called, whether or not the output calls the function (code generation runs a witness only as a
+    // body or shim item).
+    [Fact]
+    public void ABodylessWitnessIsAGapAtTheCall()
     {
-        var source = reserve is null
-            ? "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
-                "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n"
-            : "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
-                "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n";
-        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        var c = MirBuildTest.Compile(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
+            "public func main() -> () => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.All(c.BuildMir().Records(MirRecordClass.Collection), static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
-        Assert.Equal(sites, string.Join(" | ", c.BuildMir().Records(MirRecordClass.Collection).Select(x => c.SyntaxOf(x.Subject).ToString())));
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // SPEC 22.9.4 (R8-W1a, ending R5-M146's buffer half): FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies, so a requirement call
+    // and a requirement Item of BufferWriter.reserve at either buffer admit that body as their target and record nothing.
+    [Theory]
+    [InlineData("Text.FixedBuffer", "    match w.reserve(4)\n")]
+    [InlineData("Text.FixedBuffer", "    let reserve = W.reserve\n    match reserve(w, 4)\n")]
+    [InlineData("Text.HeapBuffer", "    match w.reserve(4)\n")]
+    [InlineData("Text.HeapBuffer", "    let reserve = W.reserve\n    match reserve(w, 4)\n")]
+    public void AStandardBufferReserveIsABodyWitness(string buffer, string reserve)
+    {
+        var c = MirBuildTest.Compile(
+            "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+            $"func use(buffer: uniq/{buffer}) -> i32 => room(buffer)\npublic func main() -> () => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var body = Assert.Single(set.Items.ToArray().Select(x => Label(program, x)), static x => x.StartsWith("library Fn reserve ", StringComparison.Ordinal));
+        Assert.Contains(buffer["Text.".Length..], body, StringComparison.Ordinal);
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M146, X2 review B1): the gap is the witness's own (TyCtxt.Bodyless: a compiler or foreign function), so an
@@ -1141,11 +1155,11 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 4.9.6 (DECISIONS R5-M116): replace destroys its target's old value in place, Binding's published row, so its call
-    // targets the glue of that Type when it may need a drop, as its Item's Value call and its adapter do; an i32 needs none, and exchange
-    // and swap destroy nothing.
+    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
+    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
+    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
     [Fact]
-    public void AReplaceTargetsTheGlueOfTheValueItDestroysInPlace()
+    public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             "func r(t: uniq/Res, v: Res) => Kimi.Intrinsics.replace(t, with: v@move)\nfunc n(t: uniq/i32) => Kimi.Intrinsics.replace(t, with: 2)\n" +
@@ -1154,13 +1168,19 @@ public sealed partial class InstanceCollectorTest
             "func v(t: uniq/Res, w: Res)\n    let f = Kimi.Intrinsics.replace<Res>\n    f(t, w@move)\n" +
             "func a() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn r"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn n"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn e"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn s"));
-        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn v"));
-        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
-        Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+        var replaces = Instances("replace");
+        Assert.Contains(replaces, static x => x.Label.EndsWith("i32]", StringComparison.Ordinal));
+        Assert.Contains(replaces, static x => x.Label.EndsWith("Res]", StringComparison.Ordinal));
+        Assert.All(replaces, static x => Assert.Equal(x.Label.EndsWith("Res]", StringComparison.Ordinal) ? "DropGlue Res" : string.Empty, x.Glue));
+        var others = Instances("exchange").Concat(Instances("swap")).ToArray();
+        Assert.Equal(2, others.Length);
+        Assert.All(others, static x => Assert.Empty(x.Glue));
+
+        // Each instance of a library function by its label, with the glue items it targets.
+        (string Label, string Glue)[] Instances(string name) => [.. Enumerable.Range(0, set.Items.Length)
+            .Select(x => (Label: Label(program, set.Items[x]), Item: x))
+            .Where(x => x.Label.StartsWith($"library Fn {name} in ", StringComparison.Ordinal))
+            .Select(x => (x.Label, string.Join(", ", set.Targets(x.Item).ToArray().Select(y => Label(program, set.Items[y.Item])).Where(static y => y.StartsWith("DropGlue", StringComparison.Ordinal)))))];
     }
 
     // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call; an Array<isize> is

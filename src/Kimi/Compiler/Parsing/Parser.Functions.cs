@@ -385,7 +385,7 @@ public static partial class Parser
         }
         else if (anonymous || allowsReceiverShorthand)
         {
-            parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, "_", []);
+            parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, TokenKind.Underscore.ToText(), []);
         }
         else
         {
@@ -443,7 +443,7 @@ public static partial class Parser
         var arguments = ParseArgumentList(ref reader, out var labels);
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
-        var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
+        var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, TokenKind.Base.ToText(), []);
         constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
     }
 

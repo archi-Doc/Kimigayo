@@ -1,4 +1,4 @@
-// O2 timing corpus (O2Corpus.md): a user Iterator through a generic consumer, Slice and range iteration, and the owning adapter.
+// O2 timing corpus (O2Corpus.md): user Iterators through a generic consumer, Slice and range iteration, and the owning adapter.
 struct Countdown
     Self is Iterator
     associate Iterator.Item is i64
@@ -8,6 +8,29 @@ struct Countdown
         require self.remaining > 0 else => return .None
         self.remaining -= 1
         return .Some(self.remaining)
+
+// Four slots handed out once each, each taken by `exchange` with `.None` (Milestone 29's shape; R8-U1's `exchange` row).
+struct Slots<T>
+    Self is Iterator
+    associate Iterator.Item is T
+    var first: Option<T>
+    var second: Option<T>
+    var third: Option<T>
+    var fourth: Option<T>
+    var position: i32 = 0
+    public init(a: T, b: T, c: T, d: T)
+        self.first = .Some(a@move)
+        self.second = .Some(b@move)
+        self.third = .Some(c@move)
+        self.fourth = .Some(d@move)
+    public func next(self: uniq/Self) -> Option<T>
+        require self.position < 4 else => return .None
+        self.position = self.position + 1
+        return match self.position
+            1 => Kimi.Intrinsics.exchange(self.first@uniq, with: .None)
+            2 => Kimi.Intrinsics.exchange(self.second@uniq, with: .None)
+            3 => Kimi.Intrinsics.exchange(self.third@uniq, with: .None)
+            _ => Kimi.Intrinsics.exchange(self.fourth@uniq, with: .None)
 
 func drain<I>(iterator: uniq/I) -> i64
     I is Iterator
@@ -37,5 +60,7 @@ public func main()
             sum ^= value + round@i64
         for value in Kimi.Iteration.owning(Countdown.init(32))
             sum ^= (value << 4) + round@i64
+        var slots = Slots<i64>.init(round@i64, sum, (round >> 3)@i64, 7)
+        sum ^= drain(slots@uniq)
         checksum = fold(checksum, sum)
     Console.writeLine("checksum \(checksum)")

@@ -77,11 +77,10 @@ internal sealed partial class InstanceCollector
 
     // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146): the target of a requirement call or of a requirement Item, where it is formed, called or
     // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
-    // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function (FixedBuffer's or HeapBuffer's reserve) or
-    // a #LibraryImport function is the BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding
-    // rejected is that error's dependent (no record); any other is a broken contract (Report). The other edges a requirement runs on (a
-    // compiler function's published row, Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the
-    // function itself.
+    // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function or a #LibraryImport function is the
+    // BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding rejected is that error's dependent
+    // (no record); any other is a broken contract (Report). The other edges a requirement runs on (a compiler function's published row,
+    // Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the function itself.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         if (target.Kind != RequirementTargetKind.Body)
