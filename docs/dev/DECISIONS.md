@@ -16889,7 +16889,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     by-value `T`. Measurements are in the commit.
 - **R8-M21 The interpolation-bound term: BoundLength's `Values` and Binding's `LengthOperation`** (2026-11-09; R8-W2 a1-0 and a1,
   the Back's design §4a, its design review 3 ACCEPT, in the Front's files with the Front's consent, C-179; the Back's reviewer's
-  implementation review B1 fixed) SPEC 4.1, 22.9.2.
+  implementation review B1 fixed)
   - `BoundLength`'s tag is Binding's closed `LengthOperation` (Constant, Parameter, Neg, Mul, Div, Rem, Add, Sub,
     InterpolationBound), mapped once from the syntax where a length is bound; its order is `CompareLength`'s (KotoKind's relative
     order of the same forms). No `KotoKind` is added or reused.
