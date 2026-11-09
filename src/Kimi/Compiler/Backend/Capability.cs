@@ -7,8 +7,7 @@
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
 // a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed (a held instance with an Origin
 // position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS R5-M157, BU-60), and of a
-// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67), and of a requirement call or Item whose
-// witness has no MIR body (DECISIONS R5-M146);
+// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67);
 // the declaration row of a static whose storage P42 has not brought, a generic
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
@@ -42,12 +41,6 @@ internal enum CapabilityGap : byte
     // or owning requirement receiver (OCC-X, SPEC 12.7.1; Binding's refused witness, DECISIONS R5-M22, R5-M67).
     ExclusiveInheritedWitness,
 
-    // A requirement call or requirement Item whose witness is a function without a MIR body (SPEC 8.6.4, 7.7.4; DECISIONS R5-M146,
-    // R5-M148): a #LibraryImport function (SPEC 22.6) until R8's G2, when the collector publishes the import as the call's target; a witness
-    // runs as a body item or a shim item. FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies since R8-W1a.
-    [Transitional("R8", Reason = "R8's G2 publishes an import as its call's target (R5-M146, R5-M148).")]
-    BodylessWitness,
-
     // A static whose storage P42 has not brought (SPEC 22.4, 22.4.4; STATUS "Static members"): one a root module declares that can be set,
     // whose Type is not a scalar, or in a generic container's group, whose storage the MIR keys by its symbol alone (X33 (a)), used or not,
     // since code generation reaches only what the output requires (DECISIONS R5-M77, R5-M82).
@@ -68,7 +61,6 @@ internal static class Capability
         CapabilityGap.StorageNesting => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.EnclosingInstance => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.ExclusiveInheritedWitness => DiagnosticCode.Unsupported_Kd,
-        CapabilityGap.BodylessWitness => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.StaticStorage => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideDivision => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideFloatConversion => DiagnosticCode.Unsupported_Kd,

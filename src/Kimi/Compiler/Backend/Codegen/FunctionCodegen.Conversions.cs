@@ -65,7 +65,7 @@ internal sealed partial class FunctionCodegen
     {
         if (type.HasIntegerArithmetic)
         {
-            return type.Underlying.IsUnsignedInteger ? Scalar.Unsigned : Scalar.Signed;
+            return type.IsSigned ? Scalar.Signed : Scalar.Unsigned;
         }
 
         if (type.IsFloatingPoint)

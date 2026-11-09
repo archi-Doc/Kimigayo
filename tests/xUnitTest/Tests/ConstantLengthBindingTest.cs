@@ -94,7 +94,7 @@ public class ConstantLengthBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.TypeOf()!.LengthExpression!;
-        Assert.Equal(KotoKind.Plus, expression.Operation);
+        Assert.Equal(LengthOperation.Add, expression.Operation);
         var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
         Assert.Equal(4, constant.Value);
         Assert.Null(constant.Parameter);
@@ -118,7 +118,7 @@ public class ConstantLengthBindingTest
     {
         var type = BoundType.Primitives[name];
         var width = ScalarTypes.Width(type);
-        var max = (System.Numerics.BigInteger.One << (width - (ScalarTypes.Signed(type) ? 1 : 0))) - 1;
+        var max = (System.Numerics.BigInteger.One << (width - (type.IsSigned ? 1 : 0))) - 1;
         var declaration = $"let Max: {name} = {max}\n";
         var valid = MinimalEmissionTest.Analyze(declaration + "let row: [(Max - Max) of u8]");
         Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
