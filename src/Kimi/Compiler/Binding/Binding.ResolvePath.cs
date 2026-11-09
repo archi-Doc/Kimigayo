@@ -16,30 +16,31 @@ namespace Kimi.Compiler;
 //   Container's members are read through MemberTypes (SPEC 9.6, 18.2.1): no path, `::` member step or import stage reaches a formal
 //   parameter, which only the scope walk finds.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
+
+// The candidate filters of a lookup; a row fixes its namespace. Value is SPEC 9.2's Value role, the only Value-namespace row. The Type
+// rows are not SPEC 9.2's roles: Any filters nothing and is the only row that reaches stage 4, at qualifiers and at the other positions
+// (Constraint subjects, Contract names) alike; NoContainer drops Containers; Type and Semantics are an adaptation target's two roles
+// (SPEC 13.5.1). Type legality rejects the rest after selection.
+internal enum LookupRole : byte
+{
+    Any,
+    NoContainer,
+    Type,
+    Semantics,
+    Value,
+}
+
+internal enum PathEnd : byte
+{
+    Selected,
+    Unresolved,
+    Ambiguous,
+    QualificationStop,
+}
+
 public sealed partial class Binding
 {
     private readonly List<NameStep> nameSteps = new();
-
-    // The candidate filters of a lookup; a row fixes its namespace. Value is SPEC 9.2's Value role, the only Value-namespace row. The Type
-    // rows are not SPEC 9.2's roles: Any filters nothing and is the only row that reaches stage 4, at qualifiers and at the other positions
-    // (Constraint subjects, Contract names) alike; NoContainer drops Containers; Type and Semantics are an adaptation target's two roles
-    // (SPEC 13.5.1). Type legality rejects the rest after selection.
-    private enum LookupRole : byte
-    {
-        Any,
-        NoContainer,
-        Type,
-        Semantics,
-        Value,
-    }
-
-    private enum PathEnd : byte
-    {
-        Selected,
-        Unresolved,
-        Ambiguous,
-        QualificationStop,
-    }
 
     private enum NameStepKind : byte
     {
