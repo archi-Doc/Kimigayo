@@ -132,7 +132,7 @@ internal static partial class MirTypes
 
     /// <summary>Gets whether an Integer constant (MirConstKind.Integer) has a Type: one with the integer operators, concrete or generic
     /// (IsArithmeticInteger), char or a raw pointer, whose one constant is null (SPEC 3.1, 5.1). The one family MirValidator checks a
-    /// constant by.</summary>
+    /// constant by and code generation reads in an instance (FunctionCodegen.Constant), where no Type is abstract.</summary>
     /// <param name="type">The constant's Type.</param>
     /// <returns>Whether an Integer constant has the Type.</returns>
     internal static bool HoldsIntegerConstant(BoundType type)

@@ -8,13 +8,13 @@ public sealed partial class Binding
 {
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under the Contract reference
     // the call selected (InstanceContract: `recorded`, the call's dispatching Contract reference, and `reference`, that reference instantiated
-    // in the call's substitution, as TyCtxt.Witness reads them) and a definition's premises, each target with its declaring instance: a
-    // built-in comparison's plan leaves, another built-in target itself (no instance), else the conformance's witness, an inherited one
-    // included, or the accessor an accessor-call Property witness runs (SPEC 11.9.2); false where none resolves, a standard Property
-    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads, and a library witness of a row with
-    // EffectsLimit (LibraryWitnessGroup). A virtual witness dispatches through its slot, whose bound the caller reads (SPEC 6.4.6,
-    // DispatchBounds).
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    // in the call's substitution, as TyCtxt.Witness reads them) and a definition's premises, each target with the instance it runs at: a
+    // built-in comparison's plan leaves, another built-in target itself, the conformance's witness, an inherited one included, or the
+    // accessor an accessor-call Property witness runs (SPEC 11.9.2), each under its declaring instance (binding nothing for a compiler
+    // function), and a library witness at the Self's arguments (TyCtxt.LibraryInstance); false where none resolves, a standard Property
+    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches through
+    // its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
     {
         var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
@@ -22,35 +22,23 @@ public sealed partial class Binding
             target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
         {
             var declaring = requirement.Scope.Owner.BoundSymbol!; // The comparison's own Contract, whose mapping the plan follows.
-            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value) is { } plan && Leaves(plan, into);
+            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value) is { } plan && this.Leaves(plan, into);
         }
 
         switch (witness.Kind)
         {
             case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
-            case RequirementWitnessKind.LibraryWitness when !witness.Group.EffectsLimit:
-                into.Add((witness.Target!, witness.Declaring));
+                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [])));
+                return true;
+            case RequirementWitnessKind.LibraryWitness when this.types.LibraryInstance(witness, self, [], []) is { } instance:
+                into.Add((witness.Target!, instance));
                 return true;
             case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
-                into.Add((this.AccessorFunction(witness.Property.Implementation).BoundSymbol!, witness.Declaring));
+                var accessor = this.AccessorFunction(witness.Property.Implementation).BoundSymbol!;
+                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [])));
                 return true;
             default:
                 return false;
-        }
-
-        static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
-        {
-            if (plan.Implementation is { } call)
-            {
-                into.Add((call.Target, call.DeclaringType));
-            }
-
-            foreach (var part in plan.Parts)
-            {
-                _ = Leaves(part, into);
-            }
-
-            return true;
         }
     }
 
@@ -90,6 +78,22 @@ public sealed partial class Binding
     // owning input has no outer Origin slot, so its absence (null) stays.
     internal BoundOrigin WitnessOrigin(BoundOrigin? origin, Koto requirement, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
         => origin is null ? null! : this.SubstituteStoredOrigin(origin, requirement, origins, inputs);
+
+    // A legacy comparison plan's leaves in walk order, each under its declaring instance (Witnesses).
+    private bool Leaves(BoundComparison plan, List<(BindingSymbol Target, Subst Instance)> into)
+    {
+        if (plan.Implementation is { } call)
+        {
+            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [])));
+        }
+
+        foreach (var part in plan.Parts)
+        {
+            _ = this.Leaves(part, into);
+        }
+
+        return true;
+    }
 
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
