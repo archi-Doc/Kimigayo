@@ -405,6 +405,32 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
+    // R8-W1b-3: a Requested row's call requests its own routine's module part (IntrinsicRow.Requests): ErasedReserve's routine is the kept
+    // runtime's, defined there once, so its call needs no other requester; the storage byte primitives keep their pair; every other row
+    // requests nothing. A module without formatting writes neither the kept runtime nor its reserve routine.
+    [Fact]
+    public void ARequestedRowRequestsItsRoutinesModulePart()
+    {
+        var reserve = IntrinsicRows.Of(IntrinsicId.ErasedReserve);
+        Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.ErasedWriter), (reserve.Writer, reserve.Requests));
+        Assert.Contains(reserve.Routine!, LlvmModuleText.ErasedWriterDefinitions);
+        Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
+        Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
+        foreach (var id in Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None))
+        {
+            var row = IntrinsicRows.Of(id);
+            var expected = id switch
+            {
+                IntrinsicId.ErasedReserve => ModuleCodegen.Needs.ErasedWriter,
+                IntrinsicId.TryAllocateBytes or IntrinsicId.MoveBytes => ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory,
+                _ => ModuleCodegen.Needs.None,
+            };
+            Assert.True(row.Requests == expected && (row.Writer == IntrinsicWriter.Requested) == (expected != ModuleCodegen.Needs.None), id.ToString());
+        }
+
+        Assert.DoesNotContain("@__kimi_erased_reserve(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
+    }
+
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
     // char, bool, Unit and string; -1 exactly for a Type without built-in formatting.
     [Fact]

@@ -1,7 +1,6 @@
 ; Checked buffer runtime: {data, capacity, length, validated}, Window: {state, start, written, remaining}.
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
 ; The adapter's routine __kimi_text_writer is the kept ErasedWriterRuntime.ll.in's.
-declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
 
 {{__kimi_write_line_utf8}}
 entry:

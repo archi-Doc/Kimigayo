@@ -234,8 +234,8 @@ internal static partial class LlvmModuleText
         return false;
     }
 
-    /// <summary>Gets the routines the erased writer's kept runtime defines: the ErasedWriter intrinsic's (IntrinsicRows); its
-    /// __kimi_erased_reserve is a plain definition.</summary>
+    /// <summary>Gets the routines the erased writer's kept runtime defines: the ErasedWriter intrinsic's and the ErasedReserve
+    /// intrinsic's (IntrinsicRows), in that order.</summary>
     internal static FunctionAbi[] ErasedWriterDefinitions => ErasedWriter.Definitions;
 
     /// <summary>Gets the erased writer's kept runtime (ErasedWriterRuntime.ll.in), expanded once.</summary>
@@ -284,10 +284,11 @@ internal static partial class LlvmModuleText
     }
 
     // The kept runtime's definitions and text, initialized on first use: the ErasedWriter row's routine (IntrinsicRows), whose ABI
-    // the formatting rows state until R8-W2, then the template expanded with it.
+    // the formatting rows state until R8-W2, and the ErasedReserve row's; then the template expanded with them.
     private static class ErasedWriter
     {
-        internal static readonly FunctionAbi[] Definitions = [IntrinsicRows.Of(IntrinsicId.ErasedWriter).Routine!];
+        internal static readonly FunctionAbi[] Definitions =
+            [IntrinsicRows.Of(IntrinsicId.ErasedWriter).Routine!, IntrinsicRows.Of(IntrinsicId.ErasedReserve).Routine!];
 
         internal static readonly string Text = Read();
 

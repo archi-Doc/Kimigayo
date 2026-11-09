@@ -170,7 +170,7 @@ internal static class MirDescriptors
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Row(MirAccess.None, MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
-        IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.ErasedReserve => Row(MirAccess.None, MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
         IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.Abort => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
         IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),

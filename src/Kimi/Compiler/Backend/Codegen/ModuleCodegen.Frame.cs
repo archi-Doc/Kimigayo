@@ -51,7 +51,8 @@ internal sealed partial class ModuleCodegen
         Objects = 8,
 
         /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: Text.writer's adapter and the reserve through
-        /// its dispatch word), for Text.writer, and with the formatting runtime, whose reservation calls it, until R8-W2.</summary>
+        /// its dispatch word), for Text.writer and an ErasedReserve call (its row's Requests), and with the formatting runtime,
+        /// whose reservation calls it and which calls its llvm.memset declaration, until R8-W2.</summary>
         ErasedWriter = 32,
 
         /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>

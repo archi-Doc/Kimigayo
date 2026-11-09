@@ -66,21 +66,35 @@ public struct WriteWindow {source}
         unsafe => (*(self.state@raw/Storage.BufferRepr)).length = self.start + self.written
         return self.written
 
+    /// Commits the written prefix as an adapter commit: the validated length follows when the buffer was fully
+    /// validated, so output written only through adapters needs no later scan (SPEC 22.9.3).
+    internal func commitUtf8(self: owner/Self)
+        unsafe
+            let buffer = self.state@raw/Storage.BufferRepr
+            let complete = (*buffer).length == (*buffer).validated
+            (*buffer).length = self.start + self.written
+            if complete => (*buffer).validated = (*buffer).length
+
     // The first unwritten byte: the buffer's data past `start + written`.
     func next(self: ref/Self) -> raw/u8
         unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.start + self.written
 
 public struct Utf8Writer {target}
     Self is not ObjectPayload
+    // `destination` and `dispatch` are the adapter's first two words, which the kept runtime's `__kimi_erased_reserve`
+    // reads (`RuntimeLayoutsAreFixed` pins them).
     let destination: raw/u8 during target
     // The selected `reserve` implementation's code, or null: nothing reads or writes through it.
     let dispatch: raw/u8 during static
+    // The destination's writer kind, `LegacyRuntimeHelpers.WriterKind`'s closed numbering until R8-W2: 0 a
+    // `Text.FixedBuffer`, 1 a `Text.HeapBuffer`, 2 a user Writer, reserved through `dispatch`.
     let kind: isize
-    let failed: bool
+    var failed: bool
+    // An owning interpolation's growth hint: its later literal bytes and values (SPEC 22.10.5); 0 elsewhere.
     let hint: isize
     // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
     let pending: raw/u8 during static
-    let pendingLength: isize
+    var pendingLength: isize
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
@@ -88,6 +102,59 @@ public struct Utf8Writer {target}
     public func status(self: ref/Self) -> Result<(), BufferFull>
         if self.failed => return .Err(BufferFull.init())
         return .Ok(())
+
+    /// Writes `text` with one exact reservation, none when it is empty, and records a failed reservation
+    /// (SPEC 22.10.1). It has no failure test of its own: only the adapter `write` has that guard.
+    internal func writeUtf8(self: uniq/Self, text: Text.Utf8Slice) -> Result<(), BufferFull>
+        let bytes = text.bytes()
+        if bytes.length == 0 => return .Ok(())
+        var window = try self.reserve(bytes.length)
+        try (window@uniq).append(bytes)
+        (window@move).commitUtf8()
+        return .Ok(())
+
+    /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): `BufferFull` when a failure is recorded;
+    /// else the destination's window for `amount` and the deferred literal, which it writes first, or a recorded
+    /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the kind-1 arm reads
+    /// the hint, which a buffer that must grow adds unless the sum exceeds the maximum object size. The caller's
+    /// obligation, which the signature cannot state: it commits or drops the window before the next reservation of
+    /// this adapter, since the window's Origin is the destination's, not this borrow's.
+    ///
+    /// - abort: `amount` and the deferred literal exceed the maximum object size.
+    internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
+        if self.failed => return .Err(BufferFull.init())
+        let largest: isize = 9223372036854775807
+        if amount > largest - self.pendingLength => Storage.allocationSizeExceeded()
+        var minimum = amount + self.pendingLength
+        unsafe
+            if self.kind == 0
+                let fixed = self.destination@raw/(Text.FixedBuffer during target)
+                return self.settled(((*fixed)@uniq).reserve(minimum))
+            if self.kind == 1
+                let heap = self.destination@raw/Text.HeapBuffer
+                let length = (*heap).length
+                if minimum > (*heap).capacity - length and minimum <= largest - length
+                    if self.hint <= largest - length - minimum => minimum += self.hint
+                return self.settled(((*heap)@uniq).reserve(minimum))
+        if self.kind == 2
+            let reserved = Storage.erasedReserve(self, minimum)
+            return self.settled(reserved@move)
+        $abort("Utf8Writer: writer kind outside 0, 1 and 2")
+
+    // Every kind's shared tail (SPEC 22.10.1): a failure recorded; else the deferred literal written first.
+    func settled(self: uniq/Self, reserved: Result<WriteWindow during target, BufferFull>)
+        -> Result<WriteWindow during target, BufferFull>
+        match reserved@move
+            .Ok(let window)
+                var settled = window@move
+                let pending = self.pendingLength
+                if pending != 0
+                    unsafe => try (settled@uniq).append(Raw.slice(self.pending, pending))
+                    self.pendingLength = 0
+                return .Ok(settled@move)
+            .Err(_)
+                self.failed = true
+                return .Err(BufferFull.init())
 
 public group Text
     public struct InvalidUtf8

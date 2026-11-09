@@ -511,6 +511,18 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
+    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
+    // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
+    // its confined bound where Text.writer erases it. No body reaches the call before S2a's built-in bodies, its first callers.
+    [Fact]
+    public void AnErasedReserveCallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
+    }
+
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
     // an interpolation (fail-before: each, a limit).
     [Theory]
