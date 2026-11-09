@@ -590,9 +590,9 @@ public sealed partial class Binding
             if (this.nodes[i] is DeclarationContainerKoto container && this.scopes.TryGetValue(container, out var scope) &&
                 this.BeginOriginDeclaration(container, scope) is { } declaration)
             {
-                for (var b = 0; b < container.Bases.Count; b++)
+                for (var b = 0; container is not ContractKoto && b < container.Bases.Count; b++)
                 {
-                    this.BindType(container.Bases[b], scope);
+                    this.BindType(container.Bases[b], scope); // A Contract's parents are its registration's (BindNode).
                 }
 
                 this.CompleteOriginDeclaration(declaration);

@@ -302,7 +302,8 @@ public sealed partial class Binding
             // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
             // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
             var generic = GenericParentApplication(name);
-            var parent = this.TypeName(name, this.scopes[contract], LookupRole.Any);
+            var parentPath = this.NamePath(name, this.scopes[contract], LookupRole.Any);
+            var parent = parentPath.Symbol;
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
@@ -316,6 +317,8 @@ public sealed partial class Binding
             if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
                 (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
+                // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;

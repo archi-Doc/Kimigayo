@@ -365,7 +365,8 @@ public sealed partial class Binding
                     this.BindType(container.GenericParameterNodes[i], scope);
                 }
 
-                for (var i = 0; i < container.Bases.Count; i++)
+                // A Contract's parents are ContractReferences (F.6) bound by its registration (BuildContract), never Type occurrences.
+                for (var i = 0; container is not ContractKoto && i < container.Bases.Count; i++)
                 {
                     this.BindType(container.Bases[i], scope);
                 }

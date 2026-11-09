@@ -208,7 +208,15 @@ public sealed partial class Binding
             Complete(qualified.Right, BoundType.Unit);
         }
 
-        var receiverSymbol = this.TypeName(receiver, scope, LookupRole.Any);
+        // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
+        // projection forms nothing from it.
+        var receiverPath = this.NamePath(receiver, scope, LookupRole.Any);
+        if (receiverPath.End is PathEnd.QualificationStop or PathEnd.Ambiguous)
+        {
+            return null;
+        }
+
+        var receiverSymbol = receiverPath.Symbol;
         if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol?.Declaration is ContractKoto && TypeSpelling(receiver) != "Self"))
         {
             return null;

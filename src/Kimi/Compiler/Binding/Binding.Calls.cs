@@ -192,7 +192,8 @@ public sealed partial class Binding
                         argumentName = UnwrapTypeSyntax(parentheses.Type);
                     }
 
-                    if (isLength && this.TypeName(argumentName, scope, LookupRole.Any) is not null)
+                    // A Type argument's own row (a Type position): its one lookup, which its BindType reads.
+                    if (isLength && this.TypeName(argumentName, scope, LookupRole.NoContainer) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;

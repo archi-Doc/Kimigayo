@@ -27,6 +27,7 @@ internal struct HirTables
     internal BindingFailure[] Failures;
     internal object?[] Meanings;
     internal BindingSymbol?[] Symbols;
+    internal UseLookup[] Lookups; // A Type-name use's published lookup (Binding.NamePath, R7-N1e2-1R).
     internal BoundType?[] ErasedTypes;
     internal int[] PlanIndexes;
     internal HirOp[]? Ops;
@@ -51,6 +52,7 @@ internal struct HirTables
         this.Failures = new BindingFailure[length];
         this.Meanings = new object?[length];
         this.Symbols = new BindingSymbol?[length];
+        this.Lookups = new UseLookup[length];
         this.ErasedTypes = new BoundType?[length];
         this.PlanIndexes = new int[length];
         this.Plans = new PlanRow[plans + 1];
@@ -70,6 +72,8 @@ internal struct HirTables
     internal static BoundType? TypeOf(Koto node) => Meaning(node) as BoundType;
 
     internal static BindingSymbol? Symbol(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Symbols[node.SyntaxId] : null;
+
+    internal static UseLookup LookupOf(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Lookups[node.SyntaxId] : default;
 
     internal static BoundType? ErasedType(Koto node) => node.SyntaxOwner is { } table ? table.Hir.ErasedTypes[node.SyntaxId] : null;
 
@@ -171,6 +175,7 @@ internal struct HirTables
         Array.Resize(ref this.Failures, length);
         Array.Resize(ref this.Meanings, length);
         Array.Resize(ref this.Symbols, length);
+        Array.Resize(ref this.Lookups, length);
         Array.Resize(ref this.ErasedTypes, length);
         Array.Resize(ref this.PlanIndexes, length);
         this.Plans ??= new PlanRow[16];
@@ -193,6 +198,7 @@ internal struct HirTables
         target.Failures[to] = this.Failures[from];
         target.Meanings[to] = this.Meanings[from];
         target.Symbols[to] = this.Symbols[from];
+        target.Lookups[to] = this.Lookups[from];
         target.ErasedTypes[to] = this.ErasedTypes[from];
     }
 

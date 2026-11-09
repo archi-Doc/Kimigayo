@@ -291,12 +291,23 @@ public sealed partial class Binding
                 return element is null ? null : this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
             case OriginApplicationKoto application:
                 return this.BindAssociatedApplication(application, scope);
-            case GenericsKoto generic:
-                var definition = this.TypeName(generic, scope, LookupRole.NoContainer);
-                return this.BindConstructedType(generic, definition, scope, context);
         }
 
-        var symbol = this.TypeName(syntax, scope, LookupRole.NoContainer);
+        return this.BindNamedType(syntax, scope, context, applyingOrigins);
+    }
+
+    // The named Type a use's one lookup selected: the lookup published on the use (a requirement's, a qualifier's, a Contract parent's,
+    // an Origin set's), else BindType's own, the use's first. Nothing here looks the name up again; a failed lookup's facts (a
+    // qualification stop, an ambiguity) are the ones FailMissing explains.
+    private BoundType? BindNamedType(Koto syntax, BindingScope scope, TypeBindingContext context, bool applyingOrigins)
+    {
+        var head = this.NamePath(syntax, scope, UseRow(syntax));
+        if (syntax is GenericsKoto generic)
+        {
+            return this.BindConstructedType(generic, head.Symbol, scope, context);
+        }
+
+        var symbol = head.Symbol;
         if (syntax is MemberAccessKoto projection && symbol is null)
         {
             var associated = this.BindAssociatedProjection(projection, scope);

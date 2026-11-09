@@ -321,7 +321,7 @@ public sealed partial class Binding
         => clause.IsAssociatedConstraint || clause.Left is MemberAccessKoto || this.ContainsProjection(clause.Right, scope);
 
     private bool ContainsProjection(Koto node, BindingScope scope)
-        => node is MemberAccessKoto ? this.TypeName(node, scope, LookupRole.Any) is null :
+        => node is MemberAccessKoto ? this.TypeName(node, scope, LookupRole.NoContainer) is null : // The requirement's own lookup (its row).
             (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
@@ -385,7 +385,7 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
-        var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.Any);
+        var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.NoContainer); // The subject's one lookup, the row that forms its Type.
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapAssociatedHead(application.Type) is MemberAccessKoto associatedMember
             ? this.BindAssociatedRefinement(clause, application, associatedMember, scope)
@@ -486,7 +486,10 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    var target = this.TypeName(node, scope, LookupRole.Any);
+                    // One lookup serves both readings, a Contract and a complete Type: dev formed the Type with NoContainer, so the
+                    // requirement takes that row (no group, no stage 4: SPEC 9.2, 9.5).
+                    var requirement = this.NamePath(node, scope, LookupRole.NoContainer);
+                    var target = requirement.Symbol;
                     if (target?.Declaration is ContractKoto)
                     {
                         if (target.Intrinsic == IntrinsicKind.Callable)
@@ -512,6 +515,7 @@ public sealed partial class Binding
                     }
                     else
                     {
+                        // A complete Type (SPEC 8.2), formed from the requirement's own lookup (BindNamedType).
                         var type = this.BindType(node, scope);
                         result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node, scope) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
                     }
@@ -706,7 +710,7 @@ public sealed partial class Binding
             this.Missing |= missing;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.TypeName(node, this.Scope, LookupRole.Any)?.Kind == BindingSymbolKind.Container;
+            this.Invalid |= missing && binding.ProbePath(node, this.Scope, LookupRole.Any, 0)?.Kind == BindingSymbolKind.Container; // A question, not the use's lookup.
             node.VisitChildren(this);
         }
     }
