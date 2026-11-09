@@ -107,6 +107,27 @@ public class ContractBindingTest
         Assert.False(c.Bind().IsComplete);
     }
 
+    // SPEC 8.5.1 Qualification, 8.5.3: in a Contract, `associate C.X is R` names an ancestor C, with its Type arguments, and one of
+    // its associated Types; the Contract itself, under any path, is no ancestor.
+    [Theory]
+    [InlineData("contract D\n    associate Item\n    associate D.Item is i32", false)]
+    [InlineData("group G\n    contract D\n        associate Item\n        associate G.D.Item is i32", false)]
+    [InlineData("contract D<T>\n    associate Item\n    associate D<T>.Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D\n    associate C.Item is i32", false)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate C<i64>.Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate C.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D<T>: C<T>\n    associate C<T>.Item is T\nfunc f<U>(x: U.(C<i32>).Item) -> i32\n    U is D<i32>\n    return x", true)]
+    public void AContractsAssociatedSpecificationNamesAnAncestor(string source, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        }
+    }
+
     [Theory]
     [InlineData("associate Element is i32", "i32", true)]
     [InlineData("associate C.Element is i32", "i32", true)]
