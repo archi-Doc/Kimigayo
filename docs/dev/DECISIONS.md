@@ -15525,7 +15525,7 @@ structure is recorded here by the unit that first implements it.
     given: two names equal after folding only through different normalization (a precomposed and a decomposed letter) are distinct here,
     and U9a-3b's NFC check, which `CheckNames` runs first, rejects the non-NFC one.
   - U9a-3b: `CheckNames` first rejects a name not in NFC (or ill-formed UTF-16), then folds. NFC has one check,
-    `UnicodeIdentifierHelper.IsNormalized` (identifiers' too), whose canonical combining classes now come from the complete table
+    `IdentifierHelper.IsNormalized` (identifiers' too; R9-M5), whose canonical combining classes now come from the complete table
     `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73) instead of the identifier properties, which held them
     for identifier scalars only; identifiers' results are unchanged (their classes are equal). Tests: a decomposed letter, U+037E (a
     non-identifier singleton) and marks out of canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before).
@@ -16770,3 +16770,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     in excluded syntax, or before an override at the root or in a group).
   - **A SPEC gap, reported (no SPEC change):** F.6.1's `Declaration := AttributePrefix? UnattributedDeclaration` admits a prefix where
     6.7, 6.4.1 and 16.3 reject one; the implementation follows the body rules.
+- **R9-M5 One keyword spelling table** (2026-11-09; R9-F4; Major, behavior-preserving; the Front's review, RP17; the owner's O-98 and
+  O-99, verbatim 「どちらも (a)」, O-100, verbatim 「すべて推奨のaでお願いします」, and O-106, verbatim 「(a)」) SPEC F.3.
+  - **Cause.** SPEC F.3's keywords were written in `TokenHelper` twice (the kind-to-spelling rows and `GetKeywordOrIdentifierKind`'s hand
+    switch), in `Constants`' 59 `*Keyword` strings, and as literals in Lexing and Parsing (unparse, `SyntaxFormKoto` prefixes, a repair
+    text, the lexer's `else` look-ahead).
+  - **Decision.** `TokenHelper.TokenTexts` is the one spelling table; every F.3 spelling in Lexing and Parsing reads it
+    (`TokenKind.X.ToText()` or the classifier); the classifier reads a keyword index derived from it at type initialization
+    (`KeywordEntry`: each spelling as the integers that hold its characters, grouped by length and first character; a keyword it cannot
+    hold fails initialization). `CompilerHelper` is gone (the access part of a `ModifierKind` beside `Judged` in `Parser.ItemPrefixes`;
+    the semantics kind names in `SemanticsMaskHelper`); `UnicodeIdentifierHelper` is merged into `IdentifierHelper` (U9a-3b's NFC check is
+    `IdentifierHelper.IsNormalized`).
+  - **Rejected.** A per-candidate `SequenceEqual` against the table's strings (T-68: `ReadAllTokens` warm min 1.073, Test1 1.025); a hand
+    switch checked against the table by a test (a second statement); a hash (it hashes every identifier); `Constants` as the table.
+  - **Candidates.** `SemanticsMask.ToText`'s single-kind rows, the Name check in `Compilation`/`DependencyConfiguration`, `HoverBuilder`'s
+    `& 7` access mask.
