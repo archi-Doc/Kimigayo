@@ -35,7 +35,7 @@ internal sealed partial class FunctionCodegen
         switch (callee.Kind)
         {
             case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)), callee.Subst);
+                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -249,25 +249,12 @@ internal sealed partial class FunctionCodegen
     // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
     // carries: a runtime routine through the one call writer (Invoke), the row's (Routine) or a formatting routine
     // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
-    // site's location; a whole-value update (FunctionCodegen.Updates). The call's substitution is its direct call's or its Item's
-    // (SubstOfItem), whose Types a row's TypeArguments need names (LayoutNeeds; DECISIONS R5-M149).
-    private void Legacy(in MirTerminator call, LegacyRow row, int target, Subst? subst)
+    // site's location.
+    private void Legacy(in MirTerminator call, LegacyRow row, int target)
     {
-        if (row.Updates)
-        {
-            this.Update(call, row.Writer, target, subst!);
-            return;
-        }
-
         if (this.Routine(row, target, call.Source, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
-            return;
-        }
-
-        if (!row.Fixed)
-        {
-            throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
         }
     }
 

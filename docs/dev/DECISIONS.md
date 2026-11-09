@@ -1008,6 +1008,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
   slot tables when it reads them. Not temporary. Its SPEC 4.9.6 sentence, `ArrayClear`/`Replace` clause and composite Limit are
   refined by R4-M28.
+  - Superseded in part by R4-M189: a call enters its declaration's summary, every specialization included (its per-key edge and its
+    rejection of edges to every specialization).
 - **R4-M23** (2026-10-12; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
@@ -5893,6 +5895,104 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
     `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
     not).
+- **R4-M189 A4: a function's summary is its declaration's, every implementation of its closed specialization set included (PLAN
+  G663; the owner's O-109 (a), verbatim 「(a)」)** (Middle, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT;
+  supersedes R4-M22's "an edge into each body the call may run (`TyCtxt.Implementation`, SPEC 8.13.3: the specialization a closed key
+  selects, else the function and each specialization its open key may still select, the rule the old summary shares; ...)" and its
+  "Rejected: edges to every specialization (...)", and BU-142's sentence "A4's `MirEffects.Require` enters each implementation that
+  instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the instance and a specialization at none, as A4's call, item
+  and comparison-leaf entries do") SPEC 15.6.4, 12.7.2, 8.13.1, 8.13.3, 8.4.
+  - **Owner.** A4, `MirEffects.Local`: each view of an original's Fn body has an edge into each specialization of its closed
+    explicit-specialization set (`TyCtxt.Implementation` with no substitution, which Binding already publishes), at the declaration's
+    own substitution (`TyCtxt.Identity`): a specialization fixes its own slots only (8.13.1), so the edge selects its views of the
+    original view's Container case and keeps its atoms over the Container's parameters for the caller to compose. A Fn body view's node is
+    thus its declaration's summary, "computed once per declaration" (SPEC 15.6.4).
+  - **Entries.** A call (`Function`; a comparison's Witness leaf through it), a function item and `Require` enter the callee's
+    declaration once, at their substitution; a default template is the original's, as before. The obligations judge the owing
+    definition's node per view, which holds every implementation (SPEC 8.4). The selection by key (SPEC 8.13.3) is the instance
+    collector's alone.
+  - **Moves.** Invalid programs newly rejected (`IncompatibleContractImplementation_Kd` at the conformance, or `UnsatisfiedEffectBound_Kd`
+    at a Callable-bound argument): a `confined` body calling a function, a function item, a method, a generic body's call or a default's
+    copy whose declaration has an implementation with an environment effect that the key does not select
+    (`MirEffectsTest.CallsRunEveryBodyOfTheirDeclaration`; three `EffectBoundImplementationTest.ConfinedJudgesEveryReachedBody` rows,
+    the owner's O-112, verbatim 「(a)でOKです。」). Valid programs newly accepted (base defects): a generic Type's method specialization
+    selected by the key was entered at no substitution, every Container case with its atoms over the Container's parameters
+    unsubstituted, also in nested Containers and at keys of several slots (`Box<i32>.clear<i32>`, `Holder<uniq/Loud>.put<i32>`;
+    `MirEffectsTest.AMethodSpecializationIsEnteredInItsContainersCase`). A specialization's obligation record is in the witness's views
+    (`AWitnessesSpecializationsOweItsBound`): the views of a NoBody problem, no record difference.
+  - **Open.** A requirement call on a closed Self records no own Type arguments, so a witness's parameter-dependent atom (`Drop(T)`)
+    composes to null, a Limit (`Unsupported_Kd` on valid programs; PLAN row below). The requirement call's own Types remain needed for
+    composing effects, not for selecting bodies. A definition whose body has a validator finding gives no verdict for its
+    specializations (reachable only after an `InternalInvariant_Kd`).
+  - **Rejected.** One loop at each entry (four copies of one rule, C-172 N5); per-key selection with the call's Types (O-109 (b));
+    entering a specialization at no substitution (design revision 0: every Container case, review 1 F1).
+
+- **R4-M190 A5's must-facts: a body's direct store of an input's own part where its contract refuses it (PLAN G581-1)** (2026-11-09;
+  Middle; Major, an acceptance mover; design review 2 ACCEPT, implementation review ACCEPT after REVISE; the owner's O-110 (a), verbatim
+  「O-110 (a)」, approving the vocabulary, and O-103 (a), verbatim 「どちらもaでお願いします」; O-72 (a), O-58 (a), O-62 (a), O-56 (a); commits 45e713ed3
+  (restructure), 8ff78b946 (the rule), c7ca5b153 (review fixes)) SPEC 5.2.1 Retained dependencies, 15.6.4.
+  - Two must-facts in A5 (`MirBorrows.Storing`), silent wherever lost (O-62 (a)). On values, M(h) per holder slot, chain-local, in a
+    MirLoanSets namespace of its own: Own(i, part), input i's own part through the layer named by `part` (a parameter's own pointer: the
+    root; a by-value input's layer: the Place before its first layer Deref), and Past(i), a pointer past i's referent. Empty at every
+    chain head but each unexposed, non-receiver input's Own(i, root) (a parameter is let-like); a whole store keeps the value's M (empty
+    into an exposed holder, R4-M186); any other change of a holder, a part read of a local, a call result give empty. On Places, the
+    landing fact: a Place rooted at input i with d layer Derefs lands at depth d of i's region while the body writes no pointer layer
+    those Derefs read; `Redirects`, one flow-insensitive pass per body view, takes per input the least depth at which a store, a
+    non-shared borrow or Reborrow, or a Move may write a pointer layer of its region, and depth 1 for every input at a call or drop taking
+    a pointer, a raw Place or an Opaque site.
+  - Rule, at a direct store in safe code (not in an `unsafe` scope): a value whose M holds Own(i, ·), stored where it certainly lands past
+    i (depth 2 or more; record: the Reached entry of the storage's erased case Type, else All), or at depth 1 in the storage of another
+    layer of i than the value's own part (record: `Writes[i].Own`), where the body's own contract (`TyCtxt.Retains` over its declaration)
+    gives a record that is untied and lets i neither by Value nor by a pair: `UnretainedRawStore_Kd`, at the store. Never where the
+    value's part is the destination's layer (a self-link, O-56 (a)). The record carries no fact (the Middle's DECISIONS Q13: an Anchor
+    reads as a Loan's; PLAN G673).
+  - A5 producer (D5; R4-M141's list gains one): a body whose contract writes an untied storage and that forms an own part of an input the
+    rule names without issuing a Loan (a raw address or Storage of a Place of its region, or a read of a by-value input's pointer part)
+    runs A5, for this rule.
+  - Silence (O-62 (a)), as STATUS's Raw pointers row names it: a fact lost at a join, a loop head, a part read or part store, a call
+    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store, non-shared
+    borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a storage record
+    Binding joins with another position that lets the input by Value; storage reached through an own step (an object payload, `during
+    self` storage; PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's receiver;
+    `unsafe` scopes.
+  - Cost (review 2's N7): about 3.4 µs warm and 2.2 KB cold per gated body, allocation linear in the gated bodies (the cold Analyze step
+    at 400 stores is garbage-collection timing).
+  - Rejected: a chain-local landing kill (it re-arms at chain heads, so a redirect before a join or loop head, by a call or through a
+    local reborrow, gives false errors: design review 1's v01-v05, v13); revision 0's landing from the Place's syntax (the same); M across
+    heads (no labelled program needs it; G581-3 if one does); the may-set rules of rounds 1-3 (false errors, a silent bound); a points-to
+    fact per storage; reading "a raw layer without an Origin" from the Place's Type (Mir/ reads no raw Origin; the record's Untied is
+    Binding's); computing a body's contract only where A5 runs (it would not touch a gated body).
+- **R4-M191 An address names its Place (PLAN G667a; O-105 (b))** (2026-11-09; Major; design review 1 (step 1 ACCEPT within REVISE)
+  and design review 2 ACCEPT (`middle\a5-place-review.md`); the owner's O-105 (b), verbatim 「O-105 は (b) で」) SPEC 5.2.1 condition 1,
+  15.6 Addresses, 15.6.5; R4-M154 Revision 8; R4-M116.
+  - A5's plain address entry is keyed by the Place `P` of `P@raw` (its root and interned projection, key `~projection`; a whole root
+    and a Drop receiver keep dev's key `~0`; a Storage of a fixed array keys by the array Place) and keeps P and its steps, as a
+    Loan does; it still names the holder at P's root (15.6 Addresses). So a call's write past a holder through an address takes the
+    Reached entry of P's Type (Revision 8's reading for addresses: "choose the record by the Type of the place the Loan names ... Do
+    not use the root local's Type"), and a part's address is no whole-value reference for rule W (`Reach.Whole`,
+    `Causes.WholeTarget`; 15.6.5's part read). Holder states stay one may-set (R4-M160) and exposure per root local (R4-M186). One
+    record sequence (`MirBorrows.Record`) serves Loans and address entries.
+  - Records: `OwnershipDepthLimit_Kd` at a call where W reaches a Deep holder through two part addresses of different Types
+    (`Changes`, R4-M153), on programs the base rejects (Q13, dependent; none in the diagnostic corpus: 0 snapshot differences).
+  - Cost: k part addresses of one root in one holder are k entries where dev had one: N such addresses read at N locations cost N²
+    against dev's N (`MirBorrowsTest.PartAddressesInOneHolderCostAsTheirEntries`: work factor 2.00 → 2.91, bytes flat → 3.88, within
+    the quadratic bound 5); none without a part address.
+  - Rejected: per-part holder states (SPEC 15.6 Holders: a value read from a part carries every Loan and address the holder carries;
+    and every transfer would read projections); keeping the root key (the address breaks Revision 8's rule that Loans follow).
+
+- **R4-M192 One owner of an integer Type's signedness** (2026-11-09; PLAN G669; under R5-M148 and BU-130; commit e4ac4573f) An
+  integer Type's signedness is its BoundType's numeric category, decided once at construction from the Core (`Categorize`; a
+  wrapping integer Type has its argument's, SPEC 3.1.1), and published as `BoundType.IsSigned`, false for every other Type. The
+  canonical reader moves from the root `ScalarTypes` to Binding's Type model: `ScalarTypes.Signed`, a second derivation of the same
+  fact from the name's first letter (G659, ARCH's MIR builder row), is deleted, and every reader in Binding, the MIR builder, the
+  Backend and Testing reads `IsSigned`. `IsUnsignedInteger` stays SPEC 13.3.1's unary-minus rule (false for every wrapping Type),
+  read by Binding only; the Backend's operator column and conversion class and the builder's Proven no longer read it for a
+  representation. `ScalarTypes` keeps SPEC 3.1's Scalar predicate, `Width` (the profile's `SizeWidth`, BU-130), `TryLiteral` and
+  `Normalize`. Behavior-preserving: both answers agreed on every Type that reached a reader (each is guarded to the 12 integer and
+  12 wrapping Types).
+  - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
+    second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
+    the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10695,7 +10795,7 @@ resumed by R4-M86 (2026-10-20).
   - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
     compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
     `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
-    instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
+    instance and a specialization at none, as A4's call, item and comparison-leaf entries do (superseded by R4-M189: A4 enters the declaration, whose summary holds every specialization): every producer of a function with its
     `Subst` answers the original, and the consumer that enters or generates it selects once. That selection is A4's per-key rule
     (R4-M22) carried into `Require`; under the owner's O-109 (a) (SPEC 15.6.4: a callable's summary covers its whole closed
     explicit-specialization set) PLAN G663, the Middle's A4 unit, supersedes it at every A4 entry, `Require`'s loop among them.
@@ -13421,6 +13521,8 @@ structure is recorded here by the unit that first implements it.
     Needs column for replace's glue (a second statement of Binding's published row); the general rule "Destroys ≥ 0 → glue" (Array.clear's
     row stands for its elements, C8d's ElementGlue); a Kernel column (above); re-pointing the old lowering to the map now (D5, no consumer
     in C8b).
+  - Superseded in part by R8-M17 (R8-U1): `replace`, `exchange` and `swap` are Kimigayo bodies; the Updates paragraph, the update rows of
+    the legacy map (`LegacyWriter.Replace/Exchange/Swap`, `LegacyRow.Updates`) and `FunctionCodegen.Updates` are gone.
 - **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, after C8b's design and before its behavior commit; verbatim
   「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two (R5-M115) and C8b's two) The two departures R5-M116
   records are confirmed: an inline Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no
@@ -13428,6 +13530,7 @@ structure is recorded here by the unit that first implements it.
   in-place row (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row
   declares (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
   StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six.
+  - Superseded in part by R8-M17 (R8-U1): the first departure no longer applies, since no inline Body-disposition row remains.
 - **R5-M118 Strings in MIR code generation: the string column and string constants put whole (C8c)** (2026-10-25; under R5-M18 form 2
   (G:library-1), R5-M16, R5-M75, R5-M76, R5-M92 and R5-M116)
   - Form: every string comparison MIR builds is one form, a `BinaryOp` of `Eq` to `Ge` whose operands are a string constant (Type
@@ -16393,7 +16496,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     `FunctionCodegen.Stores.cs:Text` read the same words, and `RuntimeAbi` is process-wide and cannot read a compilation's placement.
     No Transitional tag and no removal stage. The guard is permanent, and each part holds one thing: `LayoutTest`'s `StringRepr` row and
     `RecordFieldsAreFixed` hold `StringRepr` against `RuntimeAbi.String`; `MinimalEmissionTest.cs:34` holds `%kimi.string`'s definition;
-    `FunctionCodegenTest.Strings.cs:164-167` and `.Updates.cs:115, 144` hold `Stores.cs:Text`; the templates' Field order
+    `FunctionCodegenTest.Strings.cs:164-167` holds `Stores.cs:Text` (R8-M17); the templates' Field order
     (`WindowsRuntime.ll.in:104, :264, :299`, `TestRuntime.ll`) has only native runs: `String*`, `Utf*` and `Abort*`.
   - Supersedes: the plan's §5.2 SP1 row for this fact (the rest of SP1 stays with its units), and §2.2's RQ11 "the punnable list of
     Appendix E gains the pairs", which names no existing list (it is SPEC 5.2's) and needs no pair once the Fields are ordinary Places.
@@ -16753,6 +16856,35 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** the collector deriving "nothing initialized" itself (a second owner of A2's fact); a destruction laying out an element
     only where its destruction runs (accepts `I_dDrop`, `I_aDrop`, against the planning session's ruling); a move into the Destination
     on the check edge.
+- **R8-M17 `replace`, `exchange` and `swap` are Kimigayo bodies** (Back, 2026-11-09; R8-U1; Major; design and SP3 reviews ACCEPT; the
+  Middle's RP17 consent C-174 YES; plan RP20, RQ9; on R8-M3; supersedes in part R5-M116 and R5-M117; amends R8-M1's guard list) SPEC 15.7
+  as R8-SP3 states it, 15.7.1, 22.5.1.
+  - **Owner.** Safe bodies in `Intrinsics.kimi` (the root `public group Intrinsics`, merged into the group `KimiLibrary` creates; the
+    other signatures in `IntrinsicOperations.kimi`): `replace` destroys the old value in place and places the new one (`Raw.initialize`);
+    `exchange` takes, places and returns the old value; `swap` holds the first, places the second, then the held one. Callers keep the
+    identity contract: the published rows, `Binding.Retention.Transfers`' keys and BU-42's `ReferentStores` (empty).
+  - **Temporary: `replace`'s destruction.** `replace` destroys through `Storage.destroyValues<T>(place@raw/u8, 1)`, because
+    `_ = (*p)@move` destroys a temporary copy today (PLAN G670). Removal: when G670 lands (the Middle's fix of `MirBuilder.Discard`), a
+    Back Minor unit moves `replace` to `_ = (*place)@move`, which then destroys the Place itself (SPEC 5.2.3) and is the library's one
+    form for destroying one value in place; `destroyValues` stays the form for a sequence of n values.
+  - **Rows.** `replace` takes `CallerLocation` (its glue receives the call's location, SPEC 22.5.1) and keeps `Row: Replace`. `exchange`
+    and `swap` gain `Row: None`. Only A4 read the old bodiless `Inputs` class, and it composes the empty row instead, the same summary;
+    the borrow readers (`Destroying`'s `Destroys`, `InPlaceTarget`'s `InPlace`) give the same answer for a `None` row as for no row, and
+    A5's transfers and referent stores are keyed by identity. The two bodies are now checked against the empty row
+    (`EachRowOperationsBodyStaysWithinItsRow`), a proof the `Inputs` class never had.
+  - **Deleted.** `FunctionCodegen.Updates`; `LegacyWriter.Replace/Exchange/Swap`; `LegacyRow.Updates`, `.Need`, `.Fixed`; `RowSlots`;
+    `WriteAdapter`'s update entry; `Legacy`'s update branch; `Routine(LegacyRow)`'s default arm; `InstanceCollector.Bodyless`' legacy
+    TypeArguments need and in-place glue branch.
+  - **Counts (RQ9).** `CompilerFunctionKind` 62 → 59 (RP20 by removal, no RP6 row, as R8-M2); `IntrinsicId`, `KimiDeclarationId` and
+    `[Transitional("R8")]` unchanged.
+  - **Supersedes** R5-M116's "Updates" paragraph and its update rows of the legacy map (R5-M116 rejected bodies only "now (R8's stage)"),
+    and R5-M117's first departure (an inline Body-disposition row has no `LegacyRow` item: no such row remains). **Amends R8-M1:** its
+    guard list loses `FunctionCodegenTest.Updates.cs:115, 144`; `Stores.cs:Text` stays held by `FunctionCodegenTest.Strings.cs:164-167`.
+  - **Rejected.** (B) intrinsic-table rows (hand-written IR, new `IntrinsicId`s); (C) a `Raw.take` function (a second form of
+    `(*p)@move`); (A2) no row for `exchange` and `swap` (A4 entering the bodies at each call).
+  - **RP8** (T-84): every O2 kernel compiles to the same code, the `Iterators` kernel's new `exchange` row (`Slots<T>`, Milestone 29's
+    shape) included; `replace` has equal O2 counts on every fixture, and O0 records a call per update and a copy slot for an in-memory
+    by-value `T`. Measurements are in the commit.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

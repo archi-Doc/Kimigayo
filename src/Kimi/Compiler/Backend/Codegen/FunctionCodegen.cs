@@ -30,8 +30,8 @@
 // (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per
 // Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a
 // Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle
-// operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace,
-// exchange and swap (.Updates.cs), the legacy rows of compiler functions (DECISIONS R5-M116); the formatting rows' Context words and
+// operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the legacy rows of compiler functions
+// (DECISIONS R5-M116); the formatting rows' Context words and
 // witness targets, a user formatter's write wrapper and Text.writer's words (.Formatting.cs; DECISIONS R5-M128, R5-M130); an owning
 // interpolation's buffer, hints and end, its estimate and its buffer's Region home (.Interpolation.cs; DECISIONS R5-M131); the Array rows
 // written in place: an Array from none, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written
