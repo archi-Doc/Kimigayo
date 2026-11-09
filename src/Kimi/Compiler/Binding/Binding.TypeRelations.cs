@@ -21,6 +21,15 @@ public sealed partial class Binding
     internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
         => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected, own: own);
 
+    // IsSubtype with the walk's first failure, for a comparison that records its mismatch (FailMismatch).
+    internal static bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
+    {
+        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var fits = walk.Fits(actual, expected);
+        failure = walk.Failure;
+        return fits;
+    }
+
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.
     internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
