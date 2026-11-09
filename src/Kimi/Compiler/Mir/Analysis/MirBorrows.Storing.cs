@@ -331,13 +331,26 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // M of an rvalue: a value-keeping rvalue's operand's (Keeps), a Ref's or Storage's landing (Own at depth 1, Past deeper), an aggregate's
-    // operands' union; none for any other.
+    // M of an rvalue: a value-keeping rvalue's operand's (Keeps; a pointer cast to another Type keeps Own but not Past, whose storage the
+    // rule reads by the pointer's pointee Type), a Ref's or Storage's landing (Own at depth 1, Past deeper), an aggregate's operands' union;
+    // none for any other.
     private int MustOf(in MirRvalue rvalue)
     {
         if (this.Keeps(rvalue))
         {
-            return this.MustOperand(rvalue.Start);
+            var kept = this.MustOperand(rvalue.Start);
+            if (rvalue is not { Kind: MirRvalueKind.Cast, Type: { } to } || ReferenceEquals(types.Erase(cases.Type(to)), types.Erase(this.TypeOf(rvalue.Start)!)))
+            {
+                return kept;
+            }
+
+            var owns = 0;
+            foreach (var element in this.sets.Elements(kept))
+            {
+                owns = (element & 1) == 0 ? this.sets.Add(owns, element) : owns;
+            }
+
+            return owns;
         }
 
         switch (rvalue.Kind)
