@@ -67,7 +67,7 @@ internal sealed partial class InstanceCollector
     // it nongeneric): its parameters' and result's Types (TyCtxt.Signature; none where Binding failed it) are by-value uses at their written
     // Types (TyCtxt.SignatureSite, which indexes the written parameters by the slot: an import is receiverless, without special parameters),
     // beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are always laid out). It is no
-    // item: no body, no target, nothing generated.
+    // root: a called import is the Import item its calls target (Imported; DECISIONS R8-M19), with no target, nothing generated.
     private void LayOutImports()
     {
         var imports = this.types.Imports; // Read by index: a warm run allocates no enumerator.

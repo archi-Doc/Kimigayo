@@ -112,7 +112,7 @@ internal sealed partial class MirBuilder
                 value = MirOperand.Copy(wide);
             }
 
-            if (ScalarTypes.Signed(type))
+            if (type.IsSigned)
             {
                 this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type, -extreme))), value, outside, node);
             }

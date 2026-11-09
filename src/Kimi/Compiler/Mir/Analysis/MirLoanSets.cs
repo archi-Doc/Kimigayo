@@ -2,7 +2,8 @@
 
 // Owns interned immutable Loan sets: Add (an element or an ascending run), Union (of two or of any number), Remove, Range; the only Loan-set
 // form in Mir (design A3 §6.1; DECISIONS R4-M53).
-// Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
+// Input: the elements, the Loan and marker ids A5 numbers, and in a second namespace the storing rule's must-set elements (Own, Past;
+// MirBorrows.Storing), whose sets are never joined with the first's. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
 // sets, a set with an ascending run added (interned in one pass, R4-M132, G263) and the set of a Range of consecutive elements as node
 // ids, Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
 // elements its operations read and wrote, which A5's work counts.
