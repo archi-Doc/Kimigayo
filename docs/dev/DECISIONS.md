@@ -5882,6 +5882,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
     `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
     not).
+- **R4-M190 A5's must-facts: a body's direct store of an input's own part where its contract refuses it (PLAN G581-1)** (2026-11-09;
+  Middle; Major, an acceptance mover; design review 2 ACCEPT, implementation review ACCEPT after REVISE; the owner's O-110 (a), verbatim
+  「O-110 (a)」, approving the vocabulary, and O-103 (a), verbatim 「どちらもaでお願いします」; O-72 (a), O-58 (a), O-62 (a), O-56 (a); commits 45e713ed3
+  (restructure), 8ff78b946 (the rule), c7ca5b153 (review fixes)) SPEC 5.2.1 Retained dependencies, 15.6.4.
+  - Two must-facts in A5 (`MirBorrows.Storing`), silent wherever lost (O-62 (a)). On values, M(h) per holder slot, chain-local, in a
+    MirLoanSets namespace of its own: Own(i, part), input i's own part through the layer named by `part` (a parameter's own pointer: the
+    root; a by-value input's layer: the Place before its first layer Deref), and Past(i), a pointer past i's referent. Empty at every
+    chain head but each unexposed, non-receiver input's Own(i, root) (a parameter is let-like); a whole store keeps the value's M (empty
+    into an exposed holder, R4-M186); any other change of a holder, a part read of a local, a call result give empty. On Places, the
+    landing fact: a Place rooted at input i with d layer Derefs lands at depth d of i's region while the body writes no pointer layer
+    those Derefs read; `Redirects`, one flow-insensitive pass per body view, takes per input the least depth at which a store, a
+    non-shared borrow or Reborrow, or a Move may write a pointer layer of its region, and depth 1 for every input at a call or drop taking
+    a pointer, a raw Place or an Opaque site.
+  - Rule, at a direct store in safe code (not in an `unsafe` scope): a value whose M holds Own(i, ·), stored where it certainly lands past
+    i (depth 2 or more; record: the Reached entry of the storage's erased case Type, else All), or at depth 1 in the storage of another
+    layer of i than the value's own part (record: `Writes[i].Own`), where the body's own contract (`TyCtxt.Retains` over its declaration)
+    gives a record that is untied and lets i neither by Value nor by a pair: `UnretainedRawStore_Kd`, at the store. Never where the
+    value's part is the destination's layer (a self-link, O-56 (a)). The record carries no fact (the Middle's DECISIONS Q13: an Anchor
+    reads as a Loan's; PLAN G673).
+  - A5 producer (D5; R4-M141's list gains one): a body whose contract writes an untied storage and that forms an own part of an input the
+    rule names without issuing a Loan (a raw address or Storage of a Place of its region, or a read of a by-value input's pointer part)
+    runs A5, for this rule.
+  - Silence (O-62 (a)), as STATUS's Raw pointers row names it: a fact lost at a join, a loop head, a part read or part store, a call
+    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store, non-shared
+    borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a storage record
+    Binding joins with another position that lets the input by Value; storage reached through an own step (an object payload, `during
+    self` storage; PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's receiver;
+    `unsafe` scopes.
+  - Cost (review 2's N7): about 3.4 µs warm and 2.2 KB cold per gated body, allocation linear in the gated bodies (the cold Analyze step
+    at 400 stores is garbage-collection timing).
+  - Rejected: a chain-local landing kill (it re-arms at chain heads, so a redirect before a join or loop head, by a call or through a
+    local reborrow, gives false errors: design review 1's v01-v05, v13); revision 0's landing from the Place's syntax (the same); M across
+    heads (no labelled program needs it; G581-3 if one does); the may-set rules of rounds 1-3 (false errors, a silent bound); a points-to
+    fact per storage; reading "a raw layer without an Origin" from the Place's Type (Mir/ reads no raw Origin; the record's Untied is
+    Binding's); computing a body's contract only where A5 runs (it would not touch a gated body).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
