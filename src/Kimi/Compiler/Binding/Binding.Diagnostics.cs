@@ -712,7 +712,8 @@ public sealed partial class Binding
             return null;
         }
 
-        var missing = !members.Types.TryGetValue(name, out var first);
+        var first = MemberTypes(members, name);
+        var missing = first is null;
 
         for (var candidate = first; candidate is not null; candidate = candidate.Next)
         {

@@ -3203,6 +3203,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   amended by Q11; superseded in part by R7-M2: the session names)
   - R4 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared representation at a
     time; designers and reviewers at most two (two designs in parallel, or a review beside the next design).
+  - Amended (the owner, 2026-11-09, verbatim 「設計とレビューの上限 aでお願いします」; plan revision 45): designers and reviewers at most three
+    together per session; implementers stay at two and heavy runs at three. Binds every area session (R5-M113, R7-M2).
   - Heavy runs (full Sessions (default, mir or sel); full Functional runs, ledger runs included; native fixture and milestone sweeps) are
     at most three at once across R4, BU and R5, registered in `artifacts/heavy-runs/` (a file per running run); a session whose run
     would exceed three announces it and waits. Design and review probes run selected classes and reuse full-suite bases (diagnostic
@@ -5830,6 +5832,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
     needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
     a later measurement asks for it.
+- **R4-M187 A Dictionary literal's first entry has no lookup (PLAN G442 U1)** (2026-11-09; Major; design review 2 and implementation
+  review ACCEPT, the Middle's reviewer) SPEC 12.4.3, 22.5.1; IMPL 21.3.2.
+  - Rule (`MirBuilder.Expansions`, `Dictionary`): an entry's key is looked up among the entries already inserted (its plan's
+    `findEntry` call, the duplicate test and the KIMI_E_DUPLICATE_KEY fail block, located at the key) from the second entry on. The
+    first entry has none: no key is inserted before it, and 12.4.3 calls key equality only against an inserted key.
+  - Why: the first lookup was lowered code with no SPEC operation behind it. It borrowed the first key, which G442's A1 rule (U2)
+    would check as a read, and it made a one-entry literal instantiate `findEntry`, `findDictionaryLink`, `splitFirst` and the key's
+    `equals`. Run time is identical: `findDictionaryLink` returns 0 on the empty Dictionary without `equals`, and 12.4.3 leaves the
+    number of equality calls unspecified.
+  - Moves: the MIR goldens lose the first entry's lookup locals and fail block, and the later entries' `link`/`test` StorageLive
+    moves after the key's evaluation; a one-entry literal instantiates no `findEntry`; a one-entry literal whose value is 60-62
+    storage levels deep is accepted where the first lookup's instance hit the storage-nesting bound (`Unsupported_Kd`, an
+    implementation limit, IMPL 21.3.2), and a two-entry literal keeps the second key's record. No Language record moves.
+  - Rejected: keeping the first lookup and exempting its borrow in A1 (a consumer deciding by syntax what the builder should not emit).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9810,6 +9826,14 @@ resumed by R4-M86 (2026-10-20).
   - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
   - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
   - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
+  - Amended by R7-N1e1 (2026-11-09; Major; the Front's ruling 1, no design review: option A of the N1e design): a Container's Type
+    members are read by name through `MemberTypes(container, name)` (SPEC 9.6, 18.2.1: formal parameters, Origins and `Self` are not
+    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check, `ProjectionQualifier`
+    and the unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default
+    alias's segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto
+    the path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
+    filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -16392,12 +16416,63 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** one body always (an O(n) link walk at O0 and per-Type instances for cleanup-free entries); `clearEntries` as the
     callee (a link reset before the release); a `needsDrop<T>()` intrinsic; a Backend helper reading the buffer word; a name table
     beside the catalog.
+- **R8-M13 The address where a built-in view starts is MIR's `Storage(place)`; a view whose start boundary is `Start` needs no
+  element layout** (Back, 2026-11-09; OI-1b, PLAN G597; Major; the owner's O-92 (a), verbatim 「すべて推奨の内容でお願いします」;
+  the Middle's design reviews 1 REVISE, 2 ACCEPT, implementation review ACCEPT and RP17 YES, C-160, N8-N11) SPEC 4.6.1-4.6.2,
+  4.8.1, 5.3, 5.6, 8.15.3; IMPL 21.1.3.
+  - **Adopted.** `Storage(P)` is the address of the first element of a sequence Place: a fixed array's own address, or an
+    `Array<E>`'s or `Slice<E>`'s `data` word. Its Type is `raw/E`. The validator admits exactly `[N of E]`, `Array<E>` and
+    `Slice<E>`, never through a reference (N9). It projects no element and reads no element layout (no LayoutNeeds row); its
+    descriptor is a raw borrow with no effect and no bounds check. A5 reads it exactly as `&raw P[i]`: P's step walk followed by P's
+    element step (`MirSteps.Element`), covering Formation, `Values`, `Loans`' rawRefs and the store at `MirBorrows.Flow.cs:64` (N8).
+    Codegen shares one statement of the buffer word (`FunctionCodegen.Buffer`) with an Index's element address. The dump writes
+    `storage(_n)`. An Opaque temp's Place is Unlent (R4-M149). `MirRvalueKind` 10 → 11 (the owner's approval above).
+  - **Producer.** `MirBuilder.Slice` only. A `Start` start boundary gives the pointer `Storage(seq)`: a direct range's omitted start
+    (read from the node, N4), or a key whose Type is the library's `Range` or `ClosedRange` with `Start` first. Any other start gives
+    `Storage(seq)` plus a raw `Add`, proven: the one statement of displacement, whose LayoutNeeds row reads the stride. The `Index`
+    step and its redundant bounds check leave views. The `count == 0` branch stays (N7: only an O2 measurement removes it).
+  - **The split as it is on dev (N10).** MIR's `Storage` serves the built-in selections (`v[r]`, `Array.slice()` and
+    `FixedArray.slice()` through `self[..]`). R8-M6's remainders (`borrowStorage*`, read from `ArrayRepr.data` and `@raw` of a fixed
+    referent) serve the iterators and `sliceUniq`. L1: `UniqSlice.init` stores the remainder's `storage` undisplaced (a doc-line
+    obligation: a remainder at its first untaken element); `Storage.sliceUniq` is the one library displacement. L2, remainders
+    without `position`, is the removal condition of that obligation (PLAN G597).
+  - **Moves.** Accepted: a view whose start boundary is `Start`, over an element whose layout fails, which formerly recorded
+    `InvalidCLayout_Kd` conservatively (the Back's 19 probes and the Middle's 3 twins, listed in the commit). Invalid newly accepted:
+    0 of 24 + 27. Views over reference elements: as on dev. Q13, one class: false records at whole-view formations are removed, or
+    one instance record moves to the true use.
+  - **Removed:** the Index step in views and its bounds check; the false whole-view records; `UniqSlice.init`'s displacement.
+  - **Rejected:** (a) library base bodies (an untied raw call result, `TyCtxt.Retention.cs:57-61`, `MirBorrows.Calls.cs:107`, newly
+    rejected valid views over reference elements); (a3) with stated Origins (the Slice row cannot state one, `SliceRepr.data`); (a3′)
+    `SliceRepr {source}` (it changes IMPL 21.1.3 for one reader); (g) a `Start`-typed Index operand (a second meaning of `Index`);
+    (c) LayoutNeeds by value; (d) prefix-view bodies (two producers). `v[0..]` stays invalid: a written start is a position resolved
+    at run time whatever its value, and only `Start` is the static zero (SPEC 4.6.1, 8.15.3; the Middle's report O-88 (ii); 8.15.3
+    does not name range views, and no SPEC change is asked).
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
-  - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the identity premises of that scope make it comes first (`SubstituteIdentityPremises`, as Binding substitutes node Types), so the compared Type has one owner. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same identity premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
+  - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the premises of that scope make it comes first (`CallableContractType`: `ContractType` normalizes its associated projections, then `SubstituteIdentityPremises` substitutes its identity premises; OT2, C-159 (1), C-162, C-163), guarded by `HasAbstractPart`, so the compared Type has one owner. It is the one premising: `TyCtxt.Premised` publishes the same function to `MirTypes.Premised`, so MIR reads no second premising. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
   - **Published.** `TyCtxt.OperandTerminal(Koto, BoundType)` publishes it for MIR; `MirBuilder.Witnessed` reads it for an operator's operand (the right one's after a Never left) and a Literal Pattern's position (an identity there).
   - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
   - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
+  - **Moves (OT2).** Below, "the chain" is `T is H.Item`, `H.Item is X`, with `a, b: ref/T`.
+    - Acceptance (valid, newly accepted): `b == "x"` and `b < 1` for `b: ref/T` with a pair target T under `T is string` / `T is i32`
+      (G157 (29), t2, t3; were `UnprovenConstraint_Kd`); `a < b` under the chain with f64 (the Middle's nf1; was
+      `UnsatisfiedConstraint_Kd`); a literal compared with a chain-premised operand, `a == 1.5` (f64) and `a == "x"` (string) (r5, r6;
+      were `TypeMismatch_Kd` at the literal).
+    - Output (valid): `==`/`!=` on NaN under the chain with f64 print IEEE's `false true`, also with `T is Equatable` added (nf3, r11;
+      dev printed the Contract mapping's `true false`, wrong by SPEC 8.2.3; the direct `T is f64` prints `false true` on both).
+    - Records on valid programs (a wrong Language error becomes the implementation limit, as the direct premise already gives): `a[1]`
+      on a chain-premised `[2 of i32]`, `NotIndexable_Kd` to `Unsupported_Kd` (nc3); `a.0` on a chain-premised `(i32, i32)`, through
+      `ref/T` or `T`, `TypeMismatch_Kd` to `Unsupported_Kd` (r15, r16; `Binding.Elements`' tuple branch).
+    - Records on invalid programs (Q13, the same failure at the same node or line): x6, x7 `UnprovenConstraint_Kd` to
+      `TypeMismatch_Kd`; under the chain, `a < b` on bool `UnsatisfiedConstraint_Kd` to `OperatorNotDefined_Kd` (nb1), `a < "x"` on
+      f64 `UnsatisfiedConstraint_Kd` at the comparison to `TypeMismatch_Kd` at the literal (r8), and `a + 1` on string
+      `TypeMismatch_Kd` at the literal to `NonNumericOperand_Kd` at the operand (c10).
+    - IR only: a premised projection operand (`p.v == q.v`, `v: H.Item` under `H.Item is string`) calls the witness, not a `BinaryOp`
+      at `ref/H.Item`; under the chain, string calls the same witness after `Viewed`'s retype, and bool `==` is an inline `icmp`, not
+      the Contract requirement's helper.
+  - **Rejected (OT2):** a second premising function for operands (R8-S1e-b's (a)); guarding by "the operand's scope has identity
+    premises" (`HasParameterIdentity`, `HasAssociatedProjection` are published, but neither states what `ContractType` reads: it
+    normalizes completed associated identities through the conformance tables too, so the guard would restate the rule's reach).
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
