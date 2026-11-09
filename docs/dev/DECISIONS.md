@@ -6009,7 +6009,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kind with two meanings); wording by code (a switch arm for one form); fact kinds of their own (`Formed`, `Carrier`: vocabulary
     entries needing the owner; one owner question for both codes if a later unit needs the formation).
 - **R4-M194 G670: an explicit discard of a raw Place destroys it in place** (2026-11-09; Middle; PLAN G670, Q17 class 1, wrong code;
-  design review 1 REVISE (F1, F2), revision 2 ACCEPT; the Back's C-181 and C-183, the Front's C-184 consent and ACCEPT on the
+  design review 1 REJECT (F1, F2), revision 2 ACCEPT; the Back's C-181 and C-183, the Front's C-184 consent and ACCEPT on the
   Binding hunks) SPEC 4.7.4, 5.2, 5.2.3, 5.4, 14.2.4.
   - Binding publishes whether `_ = P@move` takes a raw Place: `Binding.DestroysInPlace` (beside `OffersTake`) holds when the
     operand, unparenthesized, is a completed Transfer (`ConversionBinding.Transfer`, set only after `OffersTake` allowed the Take)
