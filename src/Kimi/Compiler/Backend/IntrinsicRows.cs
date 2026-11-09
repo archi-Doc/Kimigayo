@@ -6,7 +6,7 @@
 // TypeArguments: its Type argument's layout, a use the collector checks; K 4.8, DECISIONS R5-M44, R5-M149). Columns Writer and Routine:
 // how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row no MIR producer
 // makes yet is Unproduced, whose producing unit writes it (DECISIONS R5-M146). Column Requests: the module parts a Requested row's routine
-// needs, which its call requests (DECISIONS R8-M__). Whether a row reads its call's Type argument follows from
+// needs, which its call requests (DECISIONS R8-M18). Whether a row reads its call's Type argument follows from
 // Need and Target (ReadsTypeArgument), the one rule every reader of it applies (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
