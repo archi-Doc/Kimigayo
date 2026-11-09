@@ -1,17 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the drop glue of a Type (SPEC 16.3, 16.4; R5 package K 4.5 "DropGlue", package C 3.6, S2-S4 X3, X23, X27; DECISIONS R5-M60, R5-M78,
-// R5-M95): what destroying a value of a closed Type destroys directly, in destruction order, the one enumeration (Parts) the instance
-// collector's DropGlue items target and FunctionCodegen writes their functions from, so the two cannot disagree; and the row of a Type's
-// glue function (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string
-// row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); an erased function's
-// calls its drop entry (C5b), an owning handle's releases its object (C6b); a collection's, an Array's or a Dictionary's, calls its one
-// destruction body (DECISIONS R8-M5, R8-K1c); and the one walk of a drop group (Destroyed, PLAN G641): what a Drop destroys through glue,
-// in destruction order, the targets the instance collector gives the Drop's site and the order FunctionCodegen writes the Drop in, so the
-// two cannot disagree either, by the row governing each part (Governing, Highest).
+// R5-M95): what destroying a value of a closed Type destroys directly, in destruction order (Parts); the row of a Type's glue function
+// (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string row, C0c); a
+// struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); an erased function's calls its drop
+// entry (C5b), an owning handle's releases its object (C6b); a collection's, an Array's or a Dictionary's, calls its one destruction body
+// (DECISIONS R8-M5, R8-K1c); and the one walk of what destroying a value by a drop group's row, or a glue function's level, destroys
+// (Destroyed, PLAN G641), by the row governing each part (Governing, Highest): the steps the instance collector targets a Drop's site
+// and a DropGlue item by, and FunctionCodegen writes the Drop and the glue function from, so the two cannot disagree.
 // Input: a closed Type of a compilation and its TyCtxt (Sealed); for a walk, a body's drop table rows (A2's MirDropTable) and a group's
-// row. Output: a Type's row, the string row's routine and a glue function's parameters; what a group's row destroys through glue, in
-// destruction order (Destroyed); the Type's direct parts in destruction order, each with its position in its aggregate: a declared
+// row. Output: a Type's row, the string row's routine and a glue function's parameters; the walk's steps in destruction order
+// (Destroyed); the Type's direct parts in destruction order, each with its position in its aggregate: a declared
 // destructor alone for a struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in
 // reverse logical declaration order, then its base; a Tuple's elements in decreasing index; a fixed array's element (each element,
 // from the last); an enum's Case payload elements, each Case's in reverse declaration order; a Closure environment's captures in
@@ -62,6 +61,24 @@ internal enum DropGlueRow : byte
 /// a Tuple's or a Case payload's elements, a capture); -1 for a fixed array's element, which stands for every element, and for a part
 /// without a position (a destructor, a collection's element Type, a Sealed payload).</param>
 internal readonly record struct DropPart(DropPartKind Kind, BoundType Type, int Ordinal = 0, int Index = -1);
+
+/// <summary>What a step of a drop group's walk is (<see cref="DropGlue.Destroyed"/>).</summary>
+internal enum DropStepKind : byte
+{
+    Whole, // A part destroyed whole through its glue (a destructor alone), by its row's verdict, or by its parent's own bit without a row.
+    Run, // A fixed array's elements without a row, from Last down to First, through the element's glue under the parent's own bit.
+    Open, // A level destroyed part by part: its steps follow, up to its End.
+    End, // The end of a level.
+}
+
+/// <summary>A step of a drop group's walk (<see cref="DropGlue.Destroyed"/>).</summary>
+/// <param name="Kind">What the step is.</param>
+/// <param name="Part">The part (the destroyed value's own Type at the top), its position in its aggregate the part's.</param>
+/// <param name="Parent">The row whose own bit a part without a row, or a Run, follows; -1 for none (set on every path).</param>
+/// <param name="Row">The part's governing row, or -1.</param>
+/// <param name="First">A fixed array element's position, or a Run's first; -1 for any other part.</param>
+/// <param name="Last">A Run's last position.</param>
+internal readonly record struct DropStep(DropStepKind Kind, DropPart Part, int Parent, int Row, long First, long Last = -1);
 
 /// <summary>The drop glue of the Backend (SPEC 16.3.2).</summary>
 internal static class DropGlue
@@ -161,54 +178,30 @@ internal static class DropGlue
         }
     }
 
-    /// <summary>Appends what a row of a drop group destroys through glue, in destruction order (SPEC 16.3.2, 15.1.3; R4-M6a): no row (-1),
-    /// a Keep, a Flag or an Elide row its Type whole (an Elide row as the whole glue's admission reaches it, until R3-U2b); an Open row (never
-    /// a struct's that declares a drop: A2's MovedPlace_Kd) each direct part (<see cref="Parts"/>) whose governing row
-    /// (<see cref="Governing"/>) is Open by that row's walk, any other part whole, so its parts without a row and a base without one; a fixed
-    /// array's element whole once (the one glue of its runs and of its elements' rows), then each element's Open row's walk, from the last
-    /// (<see cref="Highest"/>).</summary>
+    /// <summary>Appends the walk of what destroying a closed Type's value by a row of a drop group destroys, in destruction order (SPEC
+    /// 16.3.2, 15.1.3; R4-M6a), each part a step: a Keep, a Flag or an Elide row the value whole (an Elide row as the whole glue's admission
+    /// reaches it, until R3-U2b); an Open row (never a struct's that declares a drop: A2's MovedPlace_Kd), or no row (-1: a glue function's
+    /// level, which no row governs), an Open step, then each direct part (<see cref="Parts"/>) by its governing row
+    /// (<see cref="Governing"/>), by that row's walk, so a part without a row whole under its parent's own bit, then the End step; a fixed
+    /// array's elements from the last, each run of elements without a row one Run step (without a row, one run of every element, none
+    /// left out for no element), each element with a row by its row's walk (<see cref="Highest"/>).</summary>
     /// <param name="types">The Type context, whose Sealed proofs decide an owning handle's payload.</param>
     /// <param name="rows">The body's drop table rows (none for no row).</param>
     /// <param name="row">The row, or -1.</param>
     /// <param name="type">The row's closed Type.</param>
-    /// <param name="into">The list what is destroyed is appended to.</param>
-    internal static void Destroyed(TyCtxt types, ReadOnlySpan<MirDropRow> rows, int row, BoundType type, List<DropPart> into)
+    /// <param name="parts">The scratch list of <see cref="Parts"/>, left as it was.</param>
+    /// <param name="into">The list the steps are appended to.</param>
+    internal static void Destroyed(TyCtxt types, ReadOnlySpan<MirDropRow> rows, int row, BoundType type, List<DropPart> parts, List<DropStep> into)
     {
-        if (row < 0 || rows[row].Verdict != MirDropVerdict.Open)
+        DropPart value = new(DropPartKind.Part, type);
+        if (row < 0)
         {
-            into.Add(new(DropPartKind.Part, type));
-            return;
+            Level(types, rows, value, -1, row, -1, parts, into); // A glue function's level.
         }
-
-        var start = into.Count;
-        Parts(types, type, into);
-        var end = into.Count; // The parts, read in order, then removed: what they destroy follows them.
-        for (var i = start; i < end; i++)
+        else
         {
-            var part = into[i];
-            var child = type.Kind == BoundTypeKind.FixedArray ? -1 : Governing(rows, type, part, row).Child;
-            if (child >= 0 && rows[child].Verdict == MirDropVerdict.Open)
-            {
-                Destroyed(types, rows, child, part.Type, into);
-                continue;
-            }
-
-            into.Add(part);
-            for (var last = type.Kind == BoundTypeKind.FixedArray ? type.Length - 1 : -1; last >= 0; last = rows[child].Arg - 1)
-            {
-                if ((child = Highest(rows, row, last)) < 0)
-                {
-                    break; // No element row is left.
-                }
-
-                if (rows[child].Verdict == MirDropVerdict.Open)
-                {
-                    Destroyed(types, rows, child, part.Type, into);
-                }
-            }
+            Step(types, rows, value, -1, row, -1, parts, into);
         }
-
-        into.RemoveRange(start, end - start);
     }
 
     /// <summary>Gets the rows governing a direct part under an Open row (SPEC 16.3.2; R4-M6a): its child row, named by the part's move-path
@@ -220,7 +213,7 @@ internal static class DropGlue
     /// <param name="part">The direct part.</param>
     /// <param name="row">The Open row, or -1 (a glue function's level: none).</param>
     /// <returns>The parent row whose own bit a part without a row follows, and the child row, or -1 for none.</returns>
-    internal static (int Parent, int Child) Governing(ReadOnlySpan<MirDropRow> rows, BoundType type, in DropPart part, int row)
+    private static (int Parent, int Child) Governing(ReadOnlySpan<MirDropRow> rows, BoundType type, in DropPart part, int row)
     {
         if (AdtDef.IsEnum(type))
         {
@@ -244,7 +237,7 @@ internal static class DropGlue
     /// <param name="row">The fixed array's row, or -1.</param>
     /// <param name="last">The highest position.</param>
     /// <returns>The child row, or -1.</returns>
-    internal static int Highest(ReadOnlySpan<MirDropRow> rows, int row, long last)
+    private static int Highest(ReadOnlySpan<MirDropRow> rows, int row, long last)
     {
         if (row < 0)
         {
@@ -261,6 +254,61 @@ internal static class DropGlue
         }
 
         return found;
+    }
+
+    // A part's walk by its governing row (-1: none) under its parent, at an element position (-1: none): an Open row's level, else whole.
+    private static void Step(TyCtxt types, ReadOnlySpan<MirDropRow> rows, in DropPart part, int parent, int row, long position, List<DropPart> parts, List<DropStep> into)
+    {
+        if (row >= 0 && rows[row].Verdict == MirDropVerdict.Open)
+        {
+            Level(types, rows, part, parent, row, position, parts, into);
+        }
+        else
+        {
+            into.Add(new(DropStepKind.Whole, part, parent, row, position));
+        }
+    }
+
+    // A level's steps under its row (-1: a glue function's), from its Open step to its End.
+    private static void Level(TyCtxt types, ReadOnlySpan<MirDropRow> rows, in DropPart part, int parent, int row, long position, List<DropPart> parts, List<DropStep> into)
+    {
+        var (type, start) = (part.Type, parts.Count);
+        into.Add(new(DropStepKind.Open, part, parent, row, position));
+        Parts(types, type, parts);
+        var end = parts.Count; // The level's parts, read in order, then removed: the walks of nested levels follow them.
+        for (var i = start; i < end; i++)
+        {
+            if (type.Kind != BoundTypeKind.FixedArray)
+            {
+                var (governor, child) = Governing(rows, type, parts[i], row);
+                Step(types, rows, parts[i], governor, child, -1, parts, into);
+                continue;
+            }
+
+            if (row < 0)
+            {
+                into.Add(new(DropStepKind.Run, parts[i], row, -1, 0, type.Length - 1)); // Every element (none for no element).
+                continue;
+            }
+
+            for (long last = type.Length - 1, first; last >= 0; last = first - 1)
+            {
+                var child = Highest(rows, row, last);
+                first = child < 0 ? 0 : rows[child].Arg + 1;
+                if (first <= last)
+                {
+                    into.Add(new(DropStepKind.Run, parts[i], row, -1, first, last));
+                }
+
+                if (child >= 0)
+                {
+                    Step(types, rows, parts[i], row, child, --first, parts, into);
+                }
+            }
+        }
+
+        parts.RemoveRange(start, end - start);
+        into.Add(new(DropStepKind.End, part, parent, row, position));
     }
 
     // The child row of a row by its step, among the rows of its depth below it in the group's pre-order; -1 for none or no row.

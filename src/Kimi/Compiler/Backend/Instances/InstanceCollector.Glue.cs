@@ -17,23 +17,40 @@ internal sealed partial class InstanceCollector
         => program.Drops.Incomplete(body.Ordinal) is null && program.Drops.Elides(body.Ordinal, block, view);
 
     // SPEC 16.3.2, 8.15.3 (PLAN G641): a Drop's targets at its site, with the site's runtime bit: the target of each part its group's first
-    // row destroys (PartTarget), in DropGlue.Destroyed's order, the walk code generation writes the Drop by (FunctionCodegen.Drops); a Drop
-    // without a group (one only the checks reach, or of a body whose verdicts are inexact) destroys its Type whole.
+    // row destroys (Destroys), the walk code generation writes the Drop by (FunctionCodegen.Drops); a Drop without a group (one only the
+    // checks reach, or of a body whose verdicts are inexact) destroys its Type whole.
     private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in MirLocation at, bool runtime, BoundType closed)
     {
         var drops = program.Drops;
         var group = drops.Incomplete(body.Ordinal) is null ? drops.Group(body.Ordinal, at.Block, this.Set.Items[item].View) : -1;
-        var (parts, start) = (this.parts, this.parts.Count);
-        DropGlue.Destroyed(this.types, group < 0 ? default : drops.RowsOf(body.Ordinal), group, closed, parts);
-        for (var i = start; i < parts.Count; i++)
+        if (group < 0)
         {
-            if (this.PartTarget(program, item, subject, parts[i]) is >= 0 and var target)
+            if (this.GlueOf(item, subject, closed) is >= 0 and var glue)
+            {
+                this.Set.Target(item, new(glue, at, runtime));
+            }
+
+            return;
+        }
+
+        this.Destroys(program, item, subject, drops.RowsOf(body.Ordinal), group, closed, at, runtime);
+    }
+
+    // The targets of what destroying a value by a row of a drop group destroys (-1: a glue function's level), in its walk's order
+    // (DropGlue.Destroyed), each at a site with its runtime bit: per Whole or Run step its part's (PartTarget).
+    private void Destroys(MirProgram program, int item, SourceRef subject, ReadOnlySpan<MirDropRow> rows, int row, BoundType type, in MirLocation at, bool runtime)
+    {
+        var (steps, start) = (this.steps, this.steps.Count);
+        DropGlue.Destroyed(this.types, rows, row, type, this.parts, steps);
+        for (var i = start; i < steps.Count; i++)
+        {
+            if (steps[i].Kind is DropStepKind.Whole or DropStepKind.Run && this.PartTarget(program, item, subject, steps[i].Part) is >= 0 and var target)
             {
                 this.Set.Target(item, new(target, at, runtime));
             }
         }
 
-        parts.RemoveRange(start, parts.Count - start);
+        steps.RemoveRange(start, steps.Count - start);
     }
 
     // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
@@ -91,9 +108,9 @@ internal sealed partial class InstanceCollector
         return this.types.Instantiates(initializer.Key.Decl!) ? -1 : this.Admit(item, subject, initializer, null);
     }
 
-    // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its direct parts in destruction order (DropGlue.Parts): a destructor's
-    // Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; a collection's, its one destruction body
-    // (Collection), whose body reaches the elements' glue by its own edges.
+    // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its level's walk (Destroys, row -1: its direct parts in destruction
+    // order): a destructor's Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; a collection's, its
+    // one destruction body (Collection), whose body reaches the elements' glue by its own edges.
     private void DestructionTargets(MirProgram program, int item, SourceRef site, BoundType type)
     {
         if (DropGlue.Row(type) == DropGlueRow.Collection)
@@ -102,15 +119,7 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        var parts = this.parts;
-        var start = parts.Count;
-        DropGlue.Parts(this.types, type, parts);
-        for (var i = start; i < parts.Count; i++)
-        {
-            this.Target(item, this.PartTarget(program, item, site, parts[i]));
-        }
-
-        parts.RemoveRange(start, parts.Count - start);
+        this.Destroys(program, item, site, default, -1, type, default, runtime: true);
     }
 
     // The target of a part a destruction destroys: a destructor's Body (Destructor), else the part's glue (Glue); -1 for none.
