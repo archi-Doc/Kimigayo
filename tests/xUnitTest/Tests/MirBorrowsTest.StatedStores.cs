@@ -5,7 +5,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A5's store through a raw parameter's stated layer (PLAN G338; SPEC 5.2.1, 5.7): W's first step reads the Origin's holders.</summary>
+/// <summary>A5's store through a stated raw layer at a written input's own address (PLAN G338, G598; SPEC 5.2.1, 5.7): W's first step
+/// reads the Origin's holders.</summary>
 public sealed partial class MirBorrowsTest
 {
     private const string StatedForms = """
@@ -63,6 +64,27 @@ public sealed partial class MirBorrowsTest
         func writens(target: uniq/(raw/u8) during a, q: (i32, Option<raw/u8 during static>)) => ()
         func writer(target: uniq/(raw/u8) during a, q: RB during a) => ()
         func writer2(target: uniq/(raw/u8) during a, q: RB2 during a) => ()
+        func writett(target: uniq/(raw/u8) during a, q: ((raw/u8 during a, i32), i32)) => ()
+        func write2(target: uniq/(raw/u8) during a, q: (raw/u8 during a, raw/u8 during a)) => ()
+        func writea(target: uniq/(raw/u8) during a, q: [2 of raw/u8 during a]) => ()
+        func writeat(target: uniq/(raw/u8) during a, q: [2 of (raw/u8 during a, i32)]) => ()
+        func writeA(target: uniq/(raw/u8) during a, q: Array<raw/u8 during a>) => ()
+        func writeu(target: uniq/(raw/u8) during a, q: (raw/u8 during a, raw/u8)) => ()
+        func writes(target: uniq/(raw/u8) during a, k: ref/u8 during a, q: (raw/u8 during a, i32)) => ()
+        func writeb(target: uniq/(raw/u8) during a, k2: uniq/(raw/u8) during b, q: (raw/u8 during a, raw/u8 during b)) => ()
+        func writetg<T>(target: uniq/T during a, q: (raw/u8 during a, i32)) => ()
+        func writete<T>(target: uniq/(raw/u8) during a, q: (raw/u8 during a, T)) => ()
+        struct Empty
+            public init() => ()
+        func nop(x: raw/u8) => ()
+        func writei<F>(target: uniq/(raw/u8) during a, q: (raw/u8 during a, F))
+            F is Callable<(raw/u8) -> ()>
+            q.1(target@follow)
+        func writec<F>(target: uniq/(raw/u8) during a, q: (raw/u8 during a, F))
+            F is Callable<() -> ()>
+            q.1()
+        func mks(p: raw/u8) -> raw/u8 during static
+            unsafe => return Raw.allocate<u8>(8)@(raw/u8 during static)
         func endOk()
             var spare: raw/u8 = null
             write(spare@uniq, null)
@@ -327,6 +349,175 @@ public sealed partial class MirBorrowsTest
             var other: u8 = 0
             writer2(spare@uniq, RB2.init(other@ref, heap()))
             kk = 2
+        func tupleNullOk()
+            var spare: raw/u8 = null
+            writet(spare@uniq, (null, 0))
+        func tupleHeldNullOk()
+            var spare: raw/u8 = null
+            let t: (raw/u8 during static, i32) = (null, 0)
+            writet(spare@uniq, t)
+        func nestedTupleNullOk()
+            var spare: raw/u8 = null
+            writett(spare@uniq, ((null, 1), 0))
+        func twoLayerNullOk()
+            var spare: raw/u8 = null
+            write2(spare@uniq, (null, null))
+        func fixedArrayNullOk()
+            var spare: raw/u8 = null
+            writea(spare@uniq, [null, null])
+        func tuplePartNullOk()
+            var spare: raw/u8 = null
+            var t: (raw/u8 during static, i32) = (null, 0)
+            t.1 = 5
+            writet(spare@uniq, t)
+        func tupleJoinedNullOk(c: bool)
+            var spare: raw/u8 = null
+            var t: (raw/u8 during static, i32) = (null, 0)
+            if c
+                t = (null, 1)
+            writet(spare@uniq, t)
+        func twoOriginsNullOk()
+            var spare: raw/u8 = null
+            var spare2: raw/u8 = null
+            writeb(spare@uniq, spare2@uniq, (null, null))
+        func emptyElementNullOk()
+            var spare: raw/u8 = null
+            writete<Empty>(spare@uniq, (null, Empty.init()))
+        func genericElementNullOk()
+            var spare: raw/u8 = null
+            writete<i32>(spare@uniq, (null, 0))
+        func genericTargetNullOk()
+            var spare: raw/u8 = null
+            writetg<raw/u8>(spare@uniq, (null, 0))
+        func arrayOfTuplesNullOk()
+            var spare: raw/u8 = null
+            let t: [2 of (raw/u8 during static, i32)] = [(null, 0), (null, 1)]
+            writeat(spare@uniq, t)
+        func joinedOriginsNullOk(c: bool)
+            var other: raw/u8 = null
+            let b = other@uniq
+            var spare: raw/u8 = null
+            let t0: (raw/u8 during static, i32) = (null, 0)
+            var t: (raw/u8 during b, i32) = t0
+            if c
+                t = (null, 1)
+            writet(spare@uniq, t)
+        func itemElementNullOk()
+            var spare: raw/u8 = null
+            writei(spare@uniq, (null, nop))
+        func closureElementNullOk()
+            var spare: raw/u8 = null
+            let n: i32 = 0
+            writec(spare@uniq, (null, func [n] () => ()))
+        func copyThenPartNullOk()
+            var spare: raw/u8 = null
+            let t: (raw/u8 during static, i32) = (null, 0)
+            var t2 = t
+            t2.0 = heap()
+            writet(spare@uniq, t)
+            usep(t2.0)
+        func arrayNullOk()
+            var spare: raw/u8 = null
+            let t: Array<raw/u8 during static> = [null, null]
+            writeA(spare@uniq, t@move)
+        func optionNullOk()
+            var spare: raw/u8 = null
+            writeo(spare@uniq, .None)
+        func optionElementNullOk()
+            var spare: raw/u8 = null
+            let o: Option<raw/u8 during static> = .None
+            writen(spare@uniq, (0, o))
+        func fieldCallFalseError()
+            var spare: raw/u8 = null
+            writef(spare@uniq, Wrap<raw/u8 during static>.init(null))
+        func tupleUnstatedFalseError()
+            var spare: raw/u8 = null
+            writeu(spare@uniq, (null, null))
+        func tupleSharedFalseError()
+            var spare: raw/u8 = null
+            var kk: u8 = 0
+            writes(spare@uniq, kk@ref, (null, 0))
+        func tupleReadBad()
+            var spare: raw/u8 = null
+            writet(spare@uniq, (null, 0))
+            usep(spare)
+        func nestedTupleHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writett(spare@uniq, ((heap(), 1), 0))
+            kk = 2
+        func twoLayerHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            write2(spare@uniq, (null, heap()))
+            kk = 2
+        func fixedArrayHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            let t: [2 of raw/u8 during static] = [null, heap()]
+            writea(spare@uniq, t)
+            kk = 2
+        func tupleUnstatedHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writeu(spare@uniq, (null, heap()))
+            kk = 2
+        func tuplePartHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t: (raw/u8 during static, i32) = (null, 0)
+            t.0 = heap()
+            writet(spare@uniq, t)
+            kk = 2
+        func tupleJoinedHeapBad(c: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t: (raw/u8 during static, i32) = (null, 0)
+            if c
+                t = (heap(), 1)
+            writet(spare@uniq, t)
+            kk = 2
+        func tuplePunnedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t: (raw/u8 during static, i32) = (null, 0)
+            pun(t@raw@raw/usize, heap()@usize)
+            writet(spare@uniq, t)
+            kk = 2
+        func tupleLoopHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t: (raw/u8 during static, i32) = (null, 0)
+            var i = 0
+            while i < 2
+                writet(spare@uniq, t)
+                t = (heap(), 0)
+                i = i + 1
+            kk = 2
+        func tupleCopiedPunBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t: (raw/u8 during static, i32) = (null, 0)
+            pun(t@raw@raw/usize, heap()@usize)
+            let t2 = t
+            writet(spare@uniq, t2)
+            kk = 2
+        func tupleCalledBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            let t = (mks(null), 0)
+            writet(spare@uniq, t)
+            kk = 2
         """;
 
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
@@ -351,6 +542,14 @@ public sealed partial class MirBorrowsTest
     // Option payload, a Field or a Type argument included"): an Option payload, a Field of T, an Option in a Tuple, a Field a declaration
     // states with a slot kept by `uniq` (whose Loan of `other` the store keeps too); each Bad row was accepted before. Their Ok twins state
     // `static`, hide the layer behind T (15.6.4), or keep the slot by `ref` (no write authority, 5.2.1 condition 3).
+    // The stated layers a written input holds at its own address cover as a raw parameter's own layer does (PLAN G598; SPEC 5.7 "Tuple and
+    // fixed-array elements alike"; TyCtxt.OwnLayers): a null in each, A5's must-null fact, leaves nothing in E (the Ok rows from tupleNullOk
+    // to optionElementNullOk, each an error at spare's declaration with G583 alone): a Tuple literal, held, nested, two layers or two
+    // Origins, a fixed array, a part store of an integer, joined, a generic element or target, a field-less struct, a Function Item or a
+    // Closure element, an Array moved in, an Option payload and an Option in a Tuple. A constructor's result is never certainly null, so
+    // a null Field of T keeps E under the owner's O-107 (a) (fieldCallFalseError), as an unstated element beside a stated one and a shared
+    // member keep it under O-60 (the other FalseError rows); a read of spare errs as readBad does (tupleReadBad); a heap address in any of
+    // these forms keeps E, as tupleHeapBad's (the Bad rows from nestedTupleHeapBad on, dev's records).
     [Theory]
     [InlineData("endOk", "")]
     [InlineData("wholeWriteOk", "")]
@@ -398,6 +597,39 @@ public sealed partial class MirBorrowsTest
     [InlineData("nestedStaticOk", "")]
     [InlineData("declaredFieldBad", "declaredFieldBad: kk = 2; declaredFieldBad: var other: u8 = 0; declaredFieldBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("declaredRefOk", "")]
+    [InlineData("tupleNullOk", "")]
+    [InlineData("tupleHeldNullOk", "")]
+    [InlineData("nestedTupleNullOk", "")]
+    [InlineData("twoLayerNullOk", "")]
+    [InlineData("fixedArrayNullOk", "")]
+    [InlineData("tuplePartNullOk", "")]
+    [InlineData("tupleJoinedNullOk", "")]
+    [InlineData("twoOriginsNullOk", "")]
+    [InlineData("emptyElementNullOk", "")]
+    [InlineData("genericElementNullOk", "")]
+    [InlineData("genericTargetNullOk", "")]
+    [InlineData("arrayOfTuplesNullOk", "")]
+    [InlineData("joinedOriginsNullOk", "")]
+    [InlineData("itemElementNullOk", "")]
+    [InlineData("closureElementNullOk", "")]
+    [InlineData("copyThenPartNullOk", "")]
+    [InlineData("arrayNullOk", "")]
+    [InlineData("optionNullOk", "")]
+    [InlineData("optionElementNullOk", "")]
+    [InlineData("fieldCallFalseError", "fieldCallFalseError: var spare: raw/u8 = null")]
+    [InlineData("tupleUnstatedFalseError", "tupleUnstatedFalseError: var spare: raw/u8 = null")]
+    [InlineData("tupleSharedFalseError", "tupleSharedFalseError: var kk: u8 = 0; tupleSharedFalseError: var spare: raw/u8 = null")]
+    [InlineData("tupleReadBad", "tupleReadBad: usep(spare)")]
+    [InlineData("nestedTupleHeapBad", "nestedTupleHeapBad: kk = 2; nestedTupleHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("twoLayerHeapBad", "twoLayerHeapBad: kk = 2; twoLayerHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("fixedArrayHeapBad", "fixedArrayHeapBad: kk = 2; fixedArrayHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tupleUnstatedHeapBad", "tupleUnstatedHeapBad: kk = 2; tupleUnstatedHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tuplePartHeapBad", "tuplePartHeapBad: kk = 2; tuplePartHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tupleJoinedHeapBad", "tupleJoinedHeapBad: kk = 2; tupleJoinedHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tuplePunnedBad", "tuplePunnedBad: kk = 2; tuplePunnedBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tupleLoopHeapBad", "tupleLoopHeapBad: kk = 2; tupleLoopHeapBad: spare@uniq; tupleLoopHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tupleCopiedPunBad", "tupleCopiedPunBad: kk = 2; tupleCopiedPunBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tupleCalledBad", "tupleCalledBad: kk = 2; tupleCalledBad: var spare: raw/u8 = r@follow@raw")]
     public void AStoreThroughAStatedLayerWritesWhatItsOriginCovers(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
