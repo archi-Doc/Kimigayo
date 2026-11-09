@@ -4,7 +4,7 @@
 // DECISIONS R5-M16): the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses
 // (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the helpers through this static component (promoted, never copied).
 // Input: the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
-// formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
+// formatting kind it gives (FormatKind), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable
@@ -14,17 +14,17 @@
 // it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
 // formatting witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
 // 4.9.6), which the collector reads there; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
-// and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is the runtime's bound at its kind (FormatBound),
-// which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormatStackLimit; R3-10).
+// and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is FormattingTypes.Bound's,
+// which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormattingTypes.StackLimit; R3-10).
 // The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
-// writer: writeLine's runtime routine, the whole-value updates and
+// writer: writeLine's runtime routine and
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; the expanded runtime texts (Texts) are built only when a code
 // generation writer first reads one, never on the check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
-// destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
+// destination for its kind (FormatKind, WriterKind), or use LINQ.
 
 #pragma warning disable SA1402 // The helper records are this component's request vocabulary.
 
@@ -53,34 +53,14 @@ internal enum LegacyWriter : byte
     /// length of the fixed array its operand refers to and its kind Context its witness target's Self's (FunctionCodegen.Formatting;
     /// DECISIONS R5-M128).</summary>
     Formatting,
-
-    /// <summary>SPEC 15.7: the target's old value destroyed in place, then the new one put (FunctionCodegen.Updates).</summary>
-    Replace,
-
-    /// <summary>SPEC 15.7: the target's old value put at the result, then the new one at the target.</summary>
-    Exchange,
-
-    /// <summary>SPEC 15.7: the two targets' values exchanged.</summary>
-    Swap,
 }
 
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer and a routine row's runtime routine.</summary>
 /// <param name="Writer">How MIR code generation writes a call.</param>
-/// <param name="Routine">The runtime routine of a <see cref="LegacyRow.Fixed"/> row.</param>
+/// <param name="Routine">The row's runtime routine.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null)
 {
-    /// <summary>Gets a value indicating whether the row is a whole-value update (SPEC 15.7): the one place that names the update writers.</summary>
-    internal bool Updates => this.Writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap;
-
-    /// <summary>Gets a value indicating whether the row's call is its row's own fixed-symbol routine (writeLine's, a formatting routine;
-    /// DECISIONS R5-M128): the one place that names those writers.</summary>
-    internal bool Fixed => this.Writer is LegacyWriter.Routine or LegacyWriter.Formatting;
-
-    /// <summary>Gets the row's layout need (LayoutNeeds; DECISIONS R5-M149): a whole-value update's call reads its Type argument's layout
-    /// (T's size); every other row reads none.</summary>
-    internal LayoutNeed Need => this.Updates ? LayoutNeed.TypeArguments : LayoutNeed.None;
-
     /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M128): the formatting runtime for a formatting routine, the
     /// need every formatting row declares (FormattingRow; DECISIONS R5-M30).</summary>
     internal HelperNeeds Needs => this.Writer == LegacyWriter.Formatting ? HelperNeeds.FormattingRuntime : HelperNeeds.None;
@@ -101,9 +81,6 @@ internal static partial class LegacyRuntimeHelpers
     {
         CompilerFunctionKind.None => null,
         CompilerFunctionKind.WriteLine => new(LegacyWriter.Routine, RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
-        CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
-        CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
-        CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
 
         // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds and WriteLineUtf8, their formatting routines
         // (P1d's rows, one text); a Body-disposition kind without a row is a fault.

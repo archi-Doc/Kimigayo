@@ -22,6 +22,29 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
 
+    // A generic Type's method with an i32 specialization that destroys an Option<T>, and a pair-binder Container's (O-109 (a)).
+    private const string Box = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self) => ()\n" +
+        "    specialize func clear<i32>(self: uniq/Self) => self.item = .None\n";
+
+    private const string Holder = "struct Holder<s/T>\n    s is owner or uniq\n    public var n: i32 = 0\n    public func put<U>(self: ref/Self, v: s/T) => ()\n" +
+        "    specialize func put<i32>(self: ref/Self, v: s/T) => ()\n";
+
+    // The same forms in a nested generic Container, with two own slots, with an own pair binder the specialization fixes, and in a cycle
+    // between the specialization and its original (the O-109 design review's R17, R19, R20, R23).
+    private const string Nested = "struct Outer<T>\n    public struct Inner<U>\n        public var first: Option<T> = .None\n" +
+        "        public var second: Option<U> = .None\n        public func clear<V>(self: uniq/Self) => ()\n" +
+        "        specialize func clear<i32>(self: uniq/Self)\n            self.first = .None\n            self.second = .None\n";
+
+    private const string TwoSlots = "struct Box<T>\n    public var item: Option<T> = .None\n    public func m<A, B>(self: uniq/Self) => ()\n" +
+        "    specialize func m<i32, bool>(self: uniq/Self) => self.item = .None\n";
+
+    private const string OwnBinder = "struct Box<T>\n    public var n: i32 = 0\n    public func put<r/U>(self: ref/Self, v: r/U)\n        r is owner or uniq\n" +
+        "        let k = 0\n    specialize func put<";
+
+    private const string Cycle = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self, d: i32)\n" +
+        "        if d > 0 => self.clear<i32>(d - 1)\n    specialize func clear<i32>(self: uniq/Self, d: i32)\n        self.item = .None\n" +
+        "        if d > 0 => self.clear<u8>(d - 1)\n";
+
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
     private const string Noisy = "struct Noisy\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
@@ -142,19 +165,21 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "struct W\n    Self is Work\n" +
                 $"    public func run(self: ref/Self, a: ref/[2 of i32], b: i32, c: ref/[3 of i64], d: ref/[2 of Loud]) -> i32 => {call}\n"));
 
-    // SPEC 7.2.3, 8.11.3, 8.13.3 (PLAN G589, G663): a default's copy calls a requirement on a closed Self whose witness has a specialization
-    // that writes to the console: A4 enters what the witness's instance may select, the writing `f<i32>` among them, a conflict under
-    // `confined` (fail-before: no such record). Only this record is asserted: the call's depth record is G664's.
-    [Fact]
-    public void ADefaultsCopyEntersTheWitnessesSpecialization()
+    // SPEC 7.2.3, 8.11.3, 15.6.4 (PLAN G589, G663; O-109 (a)): a default's copy calls a requirement on a closed Self whose witness has a
+    // specialization that writes to the console: A4 enters the witness's declaration, whose summary includes the writing `f<i32>` at
+    // every key, a conflict under `confined`. Only this record is asserted: the call's depth record is G664's.
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("i64")]
+    public void ADefaultsCopyEntersTheWitnessesSpecialization(string key)
         => Assert.Contains(
             "IncompatibleContractImplementation_Kd Self is Work 1",
             Problems("contract Gen\n    func f<T>(self: ref/Self, x: ref/T) -> bool\nstruct S\n    Self is Gen\n" +
                 "    public func f<T>(self: ref/Self, x: ref/T) -> bool => true\n" +
                 "    specialize func f<i32>(self: ref/Self, x: ref/i32) -> bool\n        Console.writeLine(\"s\")\n        return true\n" +
-                "contract Work\n    func run(self: ref/Self, s: ref/S, v: ref/i32) -> i32\n        effect confined\n" +
-                "group H\n    public func d<C>(c: ref/C, v: ref/i32, seen: bool = c.f(v)) -> i32\n        C is Gen\n        return 1\n" +
-                "struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/i32) -> i32\n        _ = H.d(s, v)\n        return 1\n"));
+                $"contract Work\n    func run(self: ref/Self, s: ref/S, v: ref/{key}) -> i32\n        effect confined\n" +
+                $"group H\n    public func d<C>(c: ref/C, v: ref/{key}, seen: bool = c.f(v)) -> i32\n        C is Gen\n        return 1\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/{key}) -> i32\n        _ = H.d(s, v)\n        return 1\n"));
 
     // SPEC 7.2.3, 8.11.2, 13.4.1: a default's copy compares the call's closed Self, a Tuple with a string part: A4 reads each leaf the
     // comparison runs, the string's library witness among them, which has no environment effect; a leaf that writes to the console has one,
@@ -182,25 +207,52 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             "struct W\n    Self is Work\n    public func run(self: ref/Self, d: ref/Dictionary<(string, i32), i32>) -> bool\n" +
             "        let key = (\"a\", 1)\n        _ = d.tryGet(key@ref)\n        return true\n"));
 
-    // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
-    // A function item runs its selection too.
+    // SPEC 15.6.4, 12.7.2, 8.13.3 (the owner's O-109 (a)): a call's callee is the original declaration, whose summary includes every
+    // implementation of its closed explicit-specialization set, whichever body the key selects: an effect of either body is the call's.
+    // A function item's call too; with neither body writing, nothing.
     [Theory]
-    [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", "")]
+    [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", Failed)]
     [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(true)\n", Failed)]
-    [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(true)\n", "")]
+    [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(true)\n", Failed)]
     [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(1)\n", Failed)]
-    [InlineData("Console.writeLine(\"g\")", "()", "        let f = H.trace<i32>\n        f(1)\n", "")]
+    [InlineData("Console.writeLine(\"g\")", "()", "        let f = H.trace<i32>\n        f(1)\n", Failed)]
     [InlineData("()", "Console.writeLine(\"s\")", "        let f = H.trace<i32>\n        f(1)\n", Failed)]
-    public void CallsRunTheBodyTheirKeySelects(string original, string specialization, string call, string expected)
+    [InlineData("()", "()", "        H.trace(true)\n        H.trace(1)\n        let f = H.trace<i32>\n        f(1)\n", "")]
+    public void CallsRunEveryBodyOfTheirDeclaration(string original, string specialization, string call, string expected)
         => Assert.Equal(
             Expected(expected),
             Problems(Sink + Loud + $"group H\n    public func trace<T>(v: T) => {original}\n    specialize func trace<i32>(v: i32) => {specialization}\n" +
                 Witness + call + "        return .Ok(())\n"));
 
-    // SPEC 8.4: a conformance checks every implementation of its witness, specializations included; a specialization is closed, so its
-    // effect is reported in every view.
+    // SPEC 8.13.1, 15.6.4, 16.3.3 (O-109 (a)): a generic Type's method specialization fixes only its own slots, so the declaration's summary
+    // enters it in the Container's case of the caller's view: Box<Loud>'s family destroys an Option<Loud> at any key, Box<i32>'s nothing at
+    // the matching key (before: its atoms over T reached the caller), Holder<s/T> at uniq/Loud destroys no Loud at either key (before: every
+    // case at the matching key), the owner case does. The same in a nested Container, at a key matching one of two own slots, with an own
+    // pair binder the specialization fixes at Loud (destroyed) or Quiet, and in a cycle between the specialization and its original.
     [Theory]
-    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 18446744073709551615")]
+    [InlineData(Box, "b: uniq/Box<Loud>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Box, "b: uniq/Box<i32>", "b.clear<i32>()", "")]
+    [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<bool>(x)", "")]
+    [InlineData(Holder, "x: uniq/Loud, h: ref/Holder<uniq/Loud during x>", "h.put<i32>(x)", "")]
+    [InlineData(Holder, "h: ref/Holder<Loud>, x: Loud", "h.put<bool>(x@move)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Nested, "b: uniq/Outer<Loud>.Inner<i32>", "b.clear<bool>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Nested, "b: uniq/Outer<i32>.Inner<Quiet>", "b.clear<i32>()", "")]
+    [InlineData(TwoSlots, "b: uniq/Box<Loud>", "b.m<i32, i32>()", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(TwoSlots, "b: uniq/Box<i32>", "b.m<i32, bool>()", "")]
+    [InlineData(OwnBinder + "Loud>(self: ref/Self, v: Loud) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(OwnBinder + "Quiet>(self: ref/Self, v: Quiet) => ()\n", "b: ref/Box<i32>, x: uniq/Loud", "b.put(x)", "")]
+    [InlineData(Cycle, "b: uniq/Box<Loud>", "b.clear<u8>(2)", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData(Cycle, "b: uniq/Box<i32>", "b.clear<u8>(2)", "")]
+    public void AMethodSpecializationIsEnteredInItsContainersCase(string container, string parameters, string call, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Loud + Quiet + $"contract Work\n    func run(self: ref/Self, {parameters}) -> i32\n        effect confined\n" + container +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, {parameters}) -> i32\n        {call}\n        return 1\n"));
+
+    // SPEC 8.4, 15.6.4: a conformance checks every implementation of its witness, specializations included: the witness's summary includes
+    // its specialization's effect, reported in each view of the witness.
+    [Theory]
+    [InlineData("Console.writeLine(\"s\")", "IncompatibleContractImplementation_Kd Self is Show 1")]
     [InlineData("()", "")]
     public void AWitnessesSpecializationsOweItsBound(string specialization, string expected)
         => Assert.Equal(

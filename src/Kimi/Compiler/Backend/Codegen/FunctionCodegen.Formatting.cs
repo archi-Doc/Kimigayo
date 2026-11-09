@@ -151,6 +151,19 @@ internal sealed partial class FunctionCodegen
         return null;
     }
 
+    // The Type below the reference layer of a Type in the item's instance (TyCtxt.Layer, as the collector reads it); null, with
+    // InternalInvariant_Kd at the body, for a Type with no reference layer.
+    private BoundType? ReferencedType(BoundType? reference)
+    {
+        if (TyCtxt.Layer(reference, out var referent, out _) == HirPlaceKind.Deref)
+        {
+            return referent;
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The validator checked the input against the declaration.
+        return null;
+    }
+
     // SPEC 22.9.2: a capacity Context's word, the length of the fixed array below the reference its parameter receives; null after one
     // InternalInvariant_Kd for another Type, a broken contract (Binding admits only uniq/[N of u8] there): ReferencedType's for a Type without a
     // reference layer, else this one.

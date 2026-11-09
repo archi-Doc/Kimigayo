@@ -73,7 +73,7 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
     // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
-    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs); an Import's none. A kind without a row is a fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -94,6 +94,8 @@ internal sealed partial class InstanceCollector
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
                 return;
+            case MonoKind.Import:
+                return; // SPEC 22.6: a foreign function calls nothing the program generates.
             default:
                 throw new InvalidOperationException($"The mono item kind {key.Kind} has no target row.");
         }

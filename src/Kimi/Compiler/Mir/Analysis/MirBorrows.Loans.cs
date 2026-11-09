@@ -131,25 +131,7 @@ internal sealed partial class MirBorrows
             anchored |= this.walk[i].Class == MirStepClass.Raw;
         }
 
-        MirDataflow.Grow(ref this.loans, this.loanCount + 1);
-        MirDataflow.Grow(ref this.loanSteps, this.loanStepCount + count);
-        this.walk.AsSpan(0, count).CopyTo(this.loanSteps.AsSpan(this.loanStepCount));
         var (key, root) = (this.Key(place.Root), direct ? place.Root : -1);
-        this.loans[this.loanCount] = new()
-        {
-            Root = key,
-            Place = place,
-            Group = place.IsStatic ? moves.Paths.Length + ~place.Root : moves.Find(place, out _),
-            Start = this.loanStepCount,
-            Count = count,
-            Mode = mode,
-            Holder = into,
-            Named = root,
-            Direct = direct,
-            Anchored = anchored,
-            Location = location,
-        };
-        this.loanStepCount += count;
         if (place.IsStatic && !this.borrowed[key] && this.body.Statics[~place.Root].Mutable)
         {
             this.effectRoots.Add(key);
@@ -161,7 +143,30 @@ internal sealed partial class MirBorrows
             this.named[root] |= (byte)(mode == MirRefKind.Shared ? NamedHolder : NamedHolder | ExposedHolder);
         }
 
-        return this.loanCount++;
+        var loan = new Loan
+        {
+            Root = key,
+            Place = place,
+            Group = place.IsStatic ? moves.Paths.Length + ~place.Root : moves.Find(place, out _),
+            Mode = mode,
+            Holder = into,
+            Named = root,
+            Direct = direct,
+            Anchored = anchored,
+            Location = location,
+        };
+        return this.Record(this.loanCount++, loan, count);
+    }
+
+    // Records a Loan, or an address entry (MirBorrows.Addresses), at its index, with the step walk's first `count` steps as its Place's.
+    private int Record(int index, in Loan loan, int count)
+    {
+        MirDataflow.Grow(ref this.loans, index + 1);
+        MirDataflow.Grow(ref this.loanSteps, this.loanStepCount + count);
+        this.walk.AsSpan(0, count).CopyTo(this.loanSteps.AsSpan(this.loanStepCount));
+        this.loans[index] = loan with { Start = this.loanStepCount, Count = count };
+        this.loanStepCount += count;
+        return index;
     }
 
     /// <summary>A Loan (A3 3).</summary>

@@ -341,7 +341,7 @@ SourceItem           := AliasDeclaration | Declaration | ExecutableItem | Direct
 Declaration          := AttributePrefix? UnattributedDeclaration
 UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration | StructureDeclaration
                       | EnumDeclaration | ContractDeclaration | FunctionDefinition
-                      | ForeignFunctionDeclaration | SpecializationDeclaration
+                      | BodilessFunctionDeclaration | SpecializationDeclaration
                       | StoredPropertyDeclaration | ComputedDeclaration
                       | ConstructorDeclaration | DropDeclaration
 Attribute            := "#" AttributeName ("(" TrailingList<Argument>? ")")?
@@ -459,7 +459,7 @@ FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
 FunctionModifier     := "unsafe" | "virtual" | "override"
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
-ForeignFunctionDeclaration := FunctionHeader   // with #LibraryImport, [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports)
+BodilessFunctionDeclaration := FunctionHeader   // an import, [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports), or a Kimi declaration without a definition, [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)
 FunctionBody         := Body<FunctionItem>
 FunctionItem         := Expression | LocalBinding | AttributedFunctionDefinition | Statement
                       | ConstraintClause | OriginRelation | EffectClause
@@ -468,7 +468,7 @@ SpecializationDeclaration := "specialize" "func" Name TypeArguments
                              "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
                              ("->" Type)? ExecutableBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
-ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody
+ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody?   // no Body only where [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) allows
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
 DropDeclaration      := "drop" ExecutableBody
 ParameterList<P>     := "(" TaskSlot? (TrailingList<P> | List<P>? "!" TrailingList<P>)? ")"
@@ -484,7 +484,7 @@ Initializer          := "noinit" | Expression
 - A function body's leading region holds ConstraintClauses (with their effect lists), OriginRelations and, in an original virtual function, EffectClauses, in any order; the grammar admits them as items, and [§7.5](../07-functions-and-callable-values.md#75-function-constraints) restricts their placement, including the misplaced-Constraint error and the accessor and destructor limits.
 - `ReceiverShorthand` is valid only where [§7.3](../07-functions-and-callable-values.md#73-receivers) allows a receiver; the `!` boundary is defined in [§7.2.1](../07-functions-and-callable-values.md#721-argument-name-boundary).
 - Which lists admit the task slot is defined in [§24.2.1](../24-suspension-and-asynchronous-tasks.md#2421-form).
-- A ForeignFunctionDeclaration has no body and appears only where [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports) allows. Explicit specializations follow [§8.13](../08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization), constructors [§6.3](../06-declarations-and-containers.md#63-constructors), and `drop` [§16.3](../16-scope-exit-and-destruction.md#163-destruction-declarations).
+- A BodilessFunctionDeclaration has no body and appears only where [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports) (an import) or [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) (a Kimi declaration without a definition) allows; a Body that holds only a leading region is a FunctionBody. Explicit specializations follow [§8.13](../08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization), constructors [§6.3](../06-declarations-and-containers.md#63-constructors), and `drop` [§16.3](../16-scope-exit-and-destruction.md#163-destruction-declarations).
 - After `func`, a Name starts a function definition and `(` or `[` starts a FunctionExpression ([§F.9.1](#f91-productions)).
 
 ```kimi

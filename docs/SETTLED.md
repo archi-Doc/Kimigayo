@@ -271,7 +271,22 @@
   ```
 
 - **Proposed fix:** Add constructor delegation or whole-`self` placement, admit them only in the Kimi library, or spell the operation as a factory function such as `Array.repeating(value, count:)`.
-- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.3.3, §6.3.4). A factory splits infallible construction from `init` (§6.3.5, STYLE §5.2) and loses constructor inference (§10.8). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.
+- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.3.3, §6.3.4). A factory splits infallible construction from `init` (§6.3.5, STYLE §5.2) and loses constructor inference (§10.8). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain; the Kimi Kotonoha's implementation Attributes only identify that definition and grant no rule (§6.7, §22.1).
+
+## The managed Types as ordinary structs over their storage words
+
+- **Problem:** The Kimi library writes the operations of `Array`, `Slice` and `string` in Kimigayo over their storage words. An ordinary struct declaring those words as Fields would give the bodies the same access.
+- **Example:**
+
+  ```kimi
+  public struct Array<T>        // Rejected: Array<T> as a struct whose facts follow these Fields.
+      var data: raw/T
+      var length: isize
+      var capacity: isize
+  ```
+
+- **Proposed fix:** Declare each managed Type as an ordinary struct with its storage words as Fields, so its bodies read them as ordinary Fields.
+- **Why not applied:** A struct's variance and dependencies follow its Fields (§15.3.5), and its Copy is an opt-in that its Fields must permit (§3.5.2). §22.1's rows and §3.5.2's table instead state each managed Type's facts directly: `Slice<T>` is a Copy view over `ref/T during source`, `Array<T>` is Non-Copy and Owned when `T` is, and `UniqSlice<T>` is a Non-Copy exclusive view. As ordinary structs, each fact would be stated twice, by the row and through the Fields, which the struct rules would govern. The internal representation structs (IMPL §21.1.3) give the bodies the storage words as ordinary raw Places, while the Types keep the facts §22.1 states.
 
 ## `place` as sugar for a reference followed at the call
 
