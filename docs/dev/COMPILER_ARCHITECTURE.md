@@ -249,7 +249,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     owner, 2026-11-06, 「一括承認します。」);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
-  - `LegacyRuntimeHelpers`, the Backend's static formatting and string-comparison runtime text and the legacy row
+  - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row
     map of the Body-disposition compiler functions, with `FormatKind`, `WriterKind`, `FormatBound`, `FormatEstimate` and the
     conversion text (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word
     counts (R8, DECISIONS R5-M19);

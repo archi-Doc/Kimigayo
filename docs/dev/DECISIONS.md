@@ -12210,6 +12210,7 @@ structure is recorded here by the unit that first implements it.
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
     writing the wide declarations from `FunctionCodegen` (module-level text, duplicated per function); a raw-pointer column now
     (not verifiable before C1b, C2b or C8a produce a pointer value).
+  - Superseded in part by R8-M15 (R8-S1e-b, 2026-11-09): the operator table's string column is deleted.
 - **R5-M77 The Generated mark at emit** (2026-10-19; plan K11; under R5-M18, R5-M35, R5-M64 and R5-M65; DEC Q6 form 1; its Library
   roots amended by R5-M153) MIR code generation writes exactly the items of the checked set the output requires (IMPL 21.3.1), the
   closure of its output roots over runtime targets. The generation entry (`Compilation.Generation.cs`), after gate step 1 and
@@ -13293,6 +13294,8 @@ structure is recorded here by the unit that first implements it.
     text (PD2); the shim in C8c (its frame for one leaf Type); a located `Unsupported_Kd` for a pair-layer operand (the symptom
     G:closure's review flagged in `Closures.cs`' PairLayer arm).
   - Amended and superseded in part by R8-M7: its Form (a `BinaryOp`) goes, with a literal Pattern's test and a tuple's string leaf, except for a comparison whose left operand has a qualifying pair layer, which keeps it until R8-S1e; its String column and Routines at R8-S1e. Its statement that no valid program reaches a pair layer in an operand is false (a generic body's operand `value: s/string`, `s is ref or uniq`, reaches the column and prints the right values on dev): it reads "an operand of a qualifying pair layer reaches the column in a generic body, its instance's Type below the layer being string". Its rule that a string constant has no destruction obligation stands. Its sentence "A string constant has no Value" reads: "at the string Type a string constant has no Value; at `ref/string` it has its record's address". Its Rejected line "string comparisons as Calls of BuiltinEquals/Compare (R5-M75: a second form of one comparison)" no longer holds: the call is the only form from R8-S1e, and the callee is a library body.
+  - Superseded in part by R8-M15 (R8-S1e-b, 2026-11-09): the string column is deleted; a string constant put whole stands
+    (`FunctionCodegen.Aggregates.cs` and `.Intrinsics.cs` cite it).
 - **R5-M119 The owner confirms C8c's departures** (owner, 2026-10-25, after C8c's design and before its behavior commit; verbatim 「C8c の逸脱
   2 件（文字列の BuiltinEquals/Compare シムを C8f へ移すこと、Strings カーネルの O2 と前提 E7 を E7 と C9c の遅い方へ移し C8c は一時カーネルで参考測定すること）を承認します。」) The two
   departures R5-M118 records are confirmed: `BuiltinEquals` and `BuiltinCompare` on strings, a string Self's shim included, move from plan
@@ -16317,7 +16320,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **The transfer counter.** `word` and `half` read through `transferBytes`, so a comparison's reads enter the native audit's transfer counter, which means storage copied. At O0 only; O2 folds them into loads. In this unit's corpus (6,124 `.ll` at b075b71d2): 637 audit fixtures, 44 with a stated bound, at most 311 reach `word` or `half`, 0 do both; every `*Audit.ll` passes unchanged. A string-keyed cost fixture written from now on counts those reads.
   - **`compare`'s value.** It answers -1, 0 or 1; the old routine answered `memcmp`'s value. SPEC 13.4.1 fixes only the sign. No fixture of `*Audit`, `String`, `Tuple`, `Match` or `Dictionary` depended on the value (all pass).
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
-  - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
+  - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` was admitted by the validator until R8-S1e-b, which removed the route (R8-M15).
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
   - Amended by R8-M9 (the owner's O-84 (a)): the staged removal moves to R8-S1e-b, after the Front's one-owner unit (C-151); R8-S1e-a closes the pair-layered left operand's route.
 - **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
@@ -16430,7 +16433,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the premises of that scope make it comes first (`CallableContractType`: `ContractType` normalizes its associated projections, then `SubstituteIdentityPremises` substitutes its identity premises; OT2, C-159 (1), C-162, C-163), guarded by `HasAbstractPart`, so the compared Type has one owner. It is the one premising: `TyCtxt.Premised` publishes the same function to `MirTypes.Premised`, so MIR reads no second premising. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
   - **Published.** `TyCtxt.OperandTerminal(Koto, BoundType)` publishes it for MIR; `MirBuilder.Witnessed` reads it for an operator's operand (the right one's after a Never left) and a Literal Pattern's position (an identity there).
   - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
-  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
+  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself went at R8-S1e-b (R8-M15).
   - **Moves (OT2).** Below, "the chain" is `T is H.Item`, `H.Item is X`, with `a, b: ref/T`.
     - Acceptance (valid, newly accepted): `b == "x"` and `b < 1` for `b: ref/T` with a pair target T under `T is string` / `T is i32`
       (G157 (29), t2, t3; were `UnprovenConstraint_Kd`); `a < b` under the chain with f64 (the Middle's nf1; was
@@ -16452,6 +16455,28 @@ R8-M* and R9-M* by the stage of the recording unit.
     premises" (`HasParameterIdentity`, `HasAssociatedProjection` are published, but neither states what `ContractType` reads: it
     normalizes completed associated identities through the conformance tables too, so the guard would restate the rule's reach).
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+- **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
+  2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
+  - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
+    `FunctionCodegen.Strings.cs`, `ModuleCodegen.Needs.Strings` and `LegacyRuntimeHelpers`' string routines with `declare i32 @memcmp`;
+    the Backend's `Terminal` follows ref and uniq layers only.
+  - **Rule.** `MirValidator`'s comparison arm computes one statement per operand, `PremisedTerminal` =
+    `Terminal(MirTypes.Premised(body, type))` (premising before the structural walk, so a layer a premise gives is walked), which both
+    the agreement and the string test read (`OperandsCompare`): a check over `Binding.OperandTerminal`, not a reader of it. The owner and
+    the validator premise by one function, `CallableContractType` (OT2), in one premise scope (SPEC 8.2.3).
+  - **Open family:** a comparison `BinaryOp` at a Type the operator table does not lower; string is its one row here. The closed form, a
+    whitelist over the operator table's domain read by the validator and the Backend from one statement, exceeds the unit because
+    `ComparisonTypes.OperatorTableRuns` (Unit admitted) and the Backend's `Column` (Unit not) disagree (PLAN G662).
+  - **Order:** on OT2, both commits in one window (without OT2 a Field of a projection Type, `p.v == q.v` under `H.Item is string`, is a
+    `BinaryOp` at `ref/H.Item`, which 1/2 leaves unlowered and 2/2 reports).
+  - **Moves:** valid newly accepted (from `InternalInvariant_Kd`): a comparison `BinaryOp` whose operand's layer an identity premise
+    gives, directly, through a chain or in a Closure, now agrees at the premised terminals (m1, m1r, m1l: `T is ref/i32 during o`
+    against `ref/i32` or a literal; the Middle's rC2, rK3; rR1: `T is ref/(raw/i32) during o` against `raw/i32`); a premise-given uniq
+    layer stays (G355). Checked up to emit only: every call to such a definition is rejected, so no native run lowers one.
+  - **Rejected:** premising after the walk (C-139 review 2's B2); a string test beside the old agreement, two orders in one arm (C-158
+    B1); the validator reading `TyCtxt.OperandTerminal` (a validator reading its producer checks nothing) or
+    `SubstituteIdentityPremises` (a second premising); two premising functions with an invariant between them (refuted, C-159); the
+    whitelist now (`OperatorTableRuns` and `Column` disagree on Unit).
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
