@@ -8,7 +8,7 @@ namespace XunitTest;
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
 /// have one id, 0 is the empty set, Add (of an element or a run), Union (of two or of any number, R4-M138), Remove and Range keep the set
 /// laws and repeat through their memos (a run's Add through its result), and the storage is pooled.</summary>
-public sealed class MirLoanSetsTest(ITestOutputHelper output)
+public sealed class MirLoanSetsTest
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
     // node 0 however it is reached.
@@ -248,55 +248,6 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal([0, 3, 64, 70, 5_000], sets.Elements(result).ToArray());
     }
 
-    // V16, A3 §6.2's ν: n Unions of overlapping runs of k elements, [w, w + k) and [w + 1, w + k + 1), each make one node of k + 1
-    // elements, so the bytes created grow by exactly that, and the cold allocation of the runs and the Unions grows linearly in n;
-    // repeated, the Unions make no node.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void UnionsScaleLinearlyInTheBytesCreated()
-    {
-        const int K = 8;
-        var (sizes, bytes) = (new[] { 256, 512, 1024 }, new long[3]);
-        var (runsOf, setsOf, madeOf) = (new int[3][], new MirLoanSets[3], new long[3]);
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var runs = runsOf[i] = new int[sizes[i] + 1];
-            return () =>
-            {
-                var sets = setsOf[i] = new MirLoanSets();
-                for (var w = 0; w < runs.Length; w++)
-                {
-                    for (var element = w; element < w + K; element++)
-                    {
-                        runs[w] = sets.Add(runs[w], element);
-                    }
-                }
-
-                madeOf[i] = sets.Bytes;
-                Unions(sets, runs);
-            };
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (runs, sets, made) = (runsOf[i], setsOf[i], madeOf[i]);
-            bytes[i] = sets.Bytes - made;
-            Assert.Equal(sizes[i] * (K + 1) * sizeof(int), bytes[i]);
-            Unions(sets, runs);
-            Assert.Equal(made + bytes[i], sets.Bytes);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: Union bytes created {string.Join(", ", bytes)}, cold allocation {string.Join(", ", allocated)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold allocation {string.Join(", ", allocated)}");
-
-        static void Unions(MirLoanSets sets, int[] runs)
-        {
-            for (var w = 0; w + 1 < runs.Length; w++)
-            {
-                sets.Union(runs[w], runs[w + 1]);
-            }
-        }
-    }
-
     // A set of elements, added in their order.
     private static int Of(MirLoanSets sets, params int[] elements) => elements.Aggregate(0, sets.Add);
 
@@ -314,5 +265,58 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         }
 
         return all;
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16, A3 §6.2's ν: n Unions of overlapping runs of k elements, [w, w + k) and [w + 1, w + k + 1), each make one node of k + 1
+        // elements, so the bytes created grow by exactly that, and the cold allocation of the runs and the Unions grows linearly in n;
+        // repeated, the Unions make no node.
+        [Fact]
+        public void UnionsScaleLinearlyInTheBytesCreated()
+        {
+            const int K = 8;
+            var (sizes, bytes) = (new[] { 256, 512, 1024 }, new long[3]);
+            var (runsOf, setsOf, madeOf) = (new int[3][], new MirLoanSets[3], new long[3]);
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var runs = runsOf[i] = new int[sizes[i] + 1];
+                return () =>
+                {
+                    var sets = setsOf[i] = new MirLoanSets();
+                    for (var w = 0; w < runs.Length; w++)
+                    {
+                        for (var element = w; element < w + K; element++)
+                        {
+                            runs[w] = sets.Add(runs[w], element);
+                        }
+                    }
+
+                    madeOf[i] = sets.Bytes;
+                    Unions(sets, runs);
+                };
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (runs, sets, made) = (runsOf[i], setsOf[i], madeOf[i]);
+                bytes[i] = sets.Bytes - made;
+                Assert.Equal(sizes[i] * (K + 1) * sizeof(int), bytes[i]);
+                Unions(sets, runs);
+                Assert.Equal(made + bytes[i], sets.Bytes);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: Union bytes created {string.Join(", ", bytes)}, cold allocation {string.Join(", ", allocated)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold allocation {string.Join(", ", allocated)}");
+
+            static void Unions(MirLoanSets sets, int[] runs)
+            {
+                for (var w = 0; w + 1 < runs.Length; w++)
+                {
+                    sets.Union(runs[w], runs[w + 1]);
+                }
+            }
+        }
     }
 }

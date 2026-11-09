@@ -11,6 +11,12 @@ public sealed class ParenthesizedTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.ParenthesizedType;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Type;
+
     /// <summary>Gets the complete type enclosed by the parentheses.</summary>
     public Koto Type { get; private set; }
 

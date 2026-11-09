@@ -88,6 +88,26 @@ internal sealed partial class TyCtxt
     // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
     internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
 
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
+    // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.
+    internal Subst? LibraryInstance(in Binding.RequirementWitness witness, BoundType self, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    {
+        var target = witness.Target!;
+        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), origins, inputs);
+        }
+        finally
+        {
+            binding.ReturnWitnessArguments(types, lengths);
+        }
+    }
+
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
     private void ResetDispatch()
@@ -161,22 +181,7 @@ internal sealed partial class TyCtxt
         return Body(accessor, this.Intern(accessor, null, witness.Declaring, [], [], origins[..at], origins[at..]));
     }
 
-    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness).
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (LibraryInstance).
     private RequirementTarget LibraryWitness(in Binding.RequirementWitness witness, BoundType self, Subst subst)
-    {
-        var target = witness.Target!;
-        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
-        {
-            return default;
-        }
-
-        try
-        {
-            return Body(target, this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), subst.Origins, subst.Inputs));
-        }
-        finally
-        {
-            binding.ReturnWitnessArguments(types, lengths);
-        }
-    }
+        => this.LibraryInstance(witness, self, subst.Origins, subst.Inputs) is { } instance ? Body(witness.Target!, instance) : default;
 }

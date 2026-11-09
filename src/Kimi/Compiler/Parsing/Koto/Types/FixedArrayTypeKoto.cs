@@ -21,6 +21,12 @@ public sealed class FixedArrayTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.FixedArrayType;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.ElementType;
+
     /// <summary>Gets the unevaluated length.</summary>
     public Koto Length { get; private set; }
 
