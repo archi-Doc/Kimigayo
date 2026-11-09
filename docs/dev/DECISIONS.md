@@ -849,7 +849,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
 - **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
-  compiler temporary is never a Place of the program" by R4-M188) Move paths and
+  compiler temporary is never a Place of the program" by R4-M188; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
+  Deref is untracked only into `TyCtxt.RawPart`'s parts, elsewhere it has no Move Path) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
@@ -10568,6 +10569,15 @@ resumed by R4-M86 (2026-10-20).
   - Supersedes in part BU-127's "Only A5 reads it" (reason above); the deferral's comments "an Unknown premise that can affect the selection defers it" (8.3.3) go. Narrows R4-M184's limit: `s1`, `s4` leave the class.
   - Removes `SlotProof`. The selection's old deferral stays as a second path that only rejects, a staged removal (PLAN G654, U2a-2): `PremisesCannotAffect`, `PremisesOnly`, `FailPendingConstraint` go there.
   - Rejected: the region test in `Prove` (one reason of a general rule, and it changes `Prove`'s other readers); the trial's line alone (records lose their facts, an obligation is lost in `ArrayMembersTest`, synthesized calls go unchecked); the Final check as its own copy of the conjunction (other parts, another order, the trial's Unknown not judged again); the conjunction's 14 parameters (an argument bag, CR-R2; `CandidateBindings` names the substitution once); the Final clause list without a constructor's declaring Type (valid repeating constructions rejected); reading the signature at Final (it faults on library declarations); one fix per consumer of a selection, or a re-check in HIR (the cause is one fact the owner publishes); a new obligation kind (the Final loop already is the check).
+  - Amended by G671 (2026-11-09; the Front's design, the Back's implementation under Q18, the Front's consent on C-191):
+    `CandidateBindings` holds the bound Contract reference of a requirement candidate (SPEC 8.6.4), the binding of the Contract's
+    parameters: the trial supplies the reference `CallSelection` tries it under, the plan `CallPlan.RequirementContract`, and
+    `StepFiveConjunction` judges under it, restoring the enclosing reference. The selected call's Callable effect uses (SPEC 8.11.4)
+    read the same published reference through `ContractConstraint`'s `reference:` parameter, as `AvailableEffectBounds` does.
+    Rejected: the plan setting the field itself (the reference stays outside BU-136's value, so the trial and the plan agree only
+    through ambient state, and each further reader needs its own setting); an explicit reference parameter of `CheckConstraints`
+    (over the parameter limit; a second mechanism beside the trial's field); setting the field around the effect uses (it brings the
+    caller-context read of a written Type argument under the requirement's reference).
 - **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
   「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
   conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
@@ -10924,6 +10934,26 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a separate Type-level dereference rule (review 2 B2); a closed step vocabulary (Select takes MIR's Arg); the nearest
     instance's key (review 1 B1); a path-span reader; a `LayerOrigin` reader; a raw Origin in the key (review 3 N14); an
     Origin-erased key; Binding computing the pun facts; a `CallRetention` or `MirDescriptors` column for the no-store bit.
+- **BU-146 A raw Place's parts: `TyCtxt.RawPart`** (2026-11-10; PLAN G672; Major, an acceptance mover; design review 2 ACCEPT,
+  implementation review ACCEPT; the Middle's consent C-194; supersedes R4-M21's untracked-Take clause) SPEC 3.4, 4.7.1, 5.2, 5.2.2,
+  15.1.5, 15.1.6.
+  - `TyCtxt.RawPart(container)` is the one rule of which parts of a raw Place are raw Places: an `owner` struct's, Tuple's or fixed
+    array's storage holds the part itself (a stored Field or base, an element, a fixed-array element at any position, from-end
+    included), and so does an `owner` enum's (no Take observes a payload Place, a Subject being borrowed, 15.1.6); an Array's,
+    view's, Dictionary's or user element and a part past a reference or handle are referents.
+  - Binding's `ElementAccess.IsRawPlace` (Take: `OffersTake`; an explicit discard's in-place destruction, R4-M194) and MIR's
+    `MirMoveData.Resolve` (A1's Raw access) read it per step; a Move below a raw Deref through another step has no Move Path
+    (`StaticMovePathRequired_Kd`, as a local Array's element), and a part past a reference stored in raw storage is Binding's
+    `ExclusivePathTake_Kd`. The borrow, address and place-ness sites read a separate fact, `ElementAccess.IsRawRooted` (a Place
+    rooted at a raw Place, SPEC 5.2.2's anchor with 4.7.1's receiver; it also passes a reference stored in raw storage and stops at
+    a from-end position).
+  - Why R4-M21's clause no longer holds: it took "below a raw Deref" for SPEC's raw Place; SPEC 4.7.1 and 15.1.5 make an Array's or
+    view's element a referent.
+  - Open (PLAN G672): `MirSteps.Walk` and `MirValidator.IsSharedPath` still derive the raw-Place rule themselves.
+  - Rejected: narrowing one fact for every site (destination-fitted borrows of an Array element lost 5.2.2's anchor); a Binding
+    complement arm refusing every other Take below a raw Deref (false Notes against BU-16 and G181 (1); from-end positions refused);
+    S2, MIR keeping its Raw class below every raw Deref and trusting Binding (A1 admits a Move there: fails open); a builder-carried
+    raw-Take flag on the Move (a new MIR form for a fact of the Place's Types); MIR's own narrowed rule (a second copy).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -16923,6 +16953,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     premises" (`HasParameterIdentity`, `HasAssociatedProjection` are published, but neither states what `ContractType` reads: it
     normalizes completed associated identities through the conformance tables too, so the guard would restate the rule's reach).
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+  - Amended (PLAN G593, 2026-11-10; Minor; `claude/m-g593` 7686346fb, 5c9023510): the builder's Reborrow contract
+    (`MirBuilder.Reborrowed`) and its Place walks (`Follow`'s stop, `Lent`'s base walk) read `MirTypes.Agrees` too, so a Place whose
+    own Type agrees with Binding's Type only under the premises (`uniq/One<T>` against `uniq/One<uniq/Meter during a>`) is
+    Reborrowed and borrowed as it is, and a base's method borrows the base subobject that agrees (`HBase<T>` against `HBase<i32>`);
+    the builder and the validator judge a Place's Type by one agreement. `Viewed` keeps the structural `Agree` (it tests whether the
+    premises change a Type); `Identical` (BU-72's exact test of the published receiver Type against the premise's) and `Dispatched`
+    (an Upcast of one Type under a premise, equivalent IR; a Y5 candidate) keep it too.
 - **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
   2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
   - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
