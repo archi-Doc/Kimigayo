@@ -205,21 +205,9 @@ heap:
   call void @__kimi_buffer_reserve(ptr %ret, ptr %destination, i64 %requested, i1 true, i64 %hint, ptr %location, i64 %location_length)
   br label %check
 user:
-  %functionp = getelementptr i8, ptr %self, i64 8
-  %function = load ptr, ptr %functionp, align 8
-  call void %function(ptr %ret, ptr %destination, i64 %amount)
-  %tag0 = load i32, ptr %ret, align 4
-  %ok0 = icmp eq i32 %tag0, 0
-  br i1 %ok0, label %validate, label %full
-validate:
-  %writtenp = getelementptr i8, ptr %ret, i64 24
-  %remainingp = getelementptr i8, ptr %ret, i64 32
-  %written = load i64, ptr %writtenp, align 8
-  %remaining = load i64, ptr %remainingp, align 8
-  %empty = icmp eq i64 %written, 0
-  %enough = icmp sge i64 %remaining, %amount
-  %valid = and i1 %empty, %enough
-  br i1 %valid, label %done, label %full
+  ; The kept ErasedReserve routine: the Writer's reserve through the dispatch word, its window checked.
+  call void @__kimi_erased_reserve(ptr %ret, ptr %self, i64 %amount)
+  br label %check
 check:
   %tag = load i32, ptr %ret, align 4
   %ok = icmp eq i32 %tag, 0

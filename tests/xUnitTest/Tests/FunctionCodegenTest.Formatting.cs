@@ -380,6 +380,28 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain("@" + Routines(CompilerFunctionKind.TextFixed)[0] + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
     }
 
+    // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
+    // own, written once in a module that calls Text.writer and in none without formatting; the formatting runtime defines neither routine.
+    [Fact]
+    public void TheErasedWriterRuntimeIsWrittenOnRequest()
+    {
+        using var formatting = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
+        string[] definitions = ["define internal void @" + Routines(CompilerFunctionKind.TextWriter)[0] + "(", "define internal void @__kimi_erased_reserve("];
+        var text = Generate(Analyze(Writers, OutputKind.Library));
+        var at = text.IndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal);
+        Assert.True(at >= 0);
+        Assert.Equal(at, text.LastIndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal));
+        var none = Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library));
+        foreach (var definition in definitions)
+        {
+            Assert.Equal(at, text.IndexOf(definition, StringComparison.Ordinal) - LlvmModuleText.ErasedWriterRuntime.IndexOf(definition, StringComparison.Ordinal));
+            Assert.Equal(text.IndexOf(definition, StringComparison.Ordinal), text.LastIndexOf(definition, StringComparison.Ordinal));
+            Assert.DoesNotContain(definition, formatting.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(definition, none, StringComparison.Ordinal);
+        }
+    }
+
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
     // char, bool, Unit and string; -1 exactly for a Type without built-in formatting.
     [Fact]

@@ -7,15 +7,16 @@ namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
-// zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the formatting runtime and the
-// Dictionary helpers, the storage byte primitives, the buffered definitions, the entry, the object runtime and the footer. The external
-// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations
-// (DECISIONS R5-M143), the memory declarations, the formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable
-// Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime (DECISIONS R5-M110) are written only when a definition
-// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every definition
-// (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each
-// test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's
-// test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
+// zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the formatting runtime, the erased
+// writer's kept runtime and the Dictionary helpers, the storage byte primitives, the buffered definitions, the entry, the object runtime
+// and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit
+// overflow declarations (DECISIONS R5-M143), the memory declarations, the formatting runtime (DECISIONS R5-M128), the erased writer's kept
+// runtime (R8-W1b), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime
+// (DECISIONS R5-M110) are written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the
+// Dictionary helpers (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through FunctionCodegen's one
+// call writer (PD3): an Application's its startup root, a test build's each test root in catalog order inside the test runtime's entry
+// (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's test variant followed by the test runtime's routines
+// (TestRuntime.Text, with the memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -49,6 +50,10 @@ internal sealed partial class ModuleCodegen
         /// <summary>The object runtime (ObjectRuntime.WriteRuntime), for a descriptor, a clone or a runtime Type test (DECISIONS R5-M110).</summary>
         Objects = 8,
 
+        /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: Text.writer's adapter and the reserve through
+        /// its dispatch word), for Text.writer, and with the formatting runtime, whose reservation calls it, until R8-W2.</summary>
+        ErasedWriter = 32,
+
         /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
 
@@ -62,13 +67,14 @@ internal sealed partial class ModuleCodegen
     internal void Request(Needs need) => this.needs |= need;
 
     /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the formatting runtime with the memory declarations.</summary>
+    /// row's needs to the frame's parts: the formatting runtime with the memory declarations and, until R8-W2, the erased writer's kept
+    /// runtime, which the formatting runtime calls.</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {
         if ((needs & HelperNeeds.FormattingRuntime) != 0)
         {
-            this.Request(Needs.Formatting | Needs.Memory);
+            this.Request(Needs.Formatting | Needs.Memory | Needs.ErasedWriter);
         }
     }
 
@@ -98,6 +104,11 @@ internal sealed partial class ModuleCodegen
         if ((this.needs & Needs.Formatting) != 0)
         {
             LegacyRuntimeHelpers.WriteFormattingRuntime(output);
+        }
+
+        if ((this.needs & Needs.ErasedWriter) != 0)
+        {
+            output.Write(LlvmModuleText.ErasedWriterRuntime);
         }
 
         output.Write(this.helperText.GetStringBuilder());

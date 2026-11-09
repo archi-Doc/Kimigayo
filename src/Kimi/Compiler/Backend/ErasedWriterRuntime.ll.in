@@ -1,0 +1,42 @@
+; The erased writer's kept runtime (SPEC 22.9.2, 22.9.4, 22.10.1): Text.writer's adapter (ErasedWriter) and the call of a
+; Writer's reserve through the adapter's dispatch word with the window check (ErasedReserve). Adapter offsets: destination 0,
+; dispatch 8, kind 16 (Utf8Writer's Fields). A Result has an i32 tag (Ok=0, Err=1) and its window {state, start, written,
+; remaining} at byte 8. Until R8-W2 the formatting runtime is written with this text and declares llvm.memset.
+
+{{__kimi_text_writer}}
+entry:
+  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 64, i1 false)
+  store ptr %self, ptr %ret, align 8
+  %dispatchp = getelementptr i8, ptr %ret, i64 8
+  %kindp = getelementptr i8, ptr %ret, i64 16
+  store ptr %dispatch, ptr %dispatchp, align 8
+  store i64 %kind, ptr %kindp, align 8
+  ret void
+}
+
+; A window from the Writer's reserve is accepted only with written == 0 and remaining >= amount; otherwise the result is
+; BufferFull, and the caller records the failure.
+define internal void @__kimi_erased_reserve(ptr %ret, ptr %writer, i64 %amount) #0 {
+entry:
+  %destination = load ptr, ptr %writer, align 8
+  %functionp = getelementptr i8, ptr %writer, i64 8
+  %function = load ptr, ptr %functionp, align 8
+  call void %function(ptr %ret, ptr %destination, i64 %amount)
+  %tag = load i32, ptr %ret, align 4
+  %ok = icmp eq i32 %tag, 0
+  br i1 %ok, label %validate, label %done
+validate:
+  %writtenp = getelementptr i8, ptr %ret, i64 24
+  %remainingp = getelementptr i8, ptr %ret, i64 32
+  %written = load i64, ptr %writtenp, align 8
+  %remaining = load i64, ptr %remainingp, align 8
+  %empty = icmp eq i64 %written, 0
+  %enough = icmp sge i64 %remaining, %amount
+  %valid = and i1 %empty, %enough
+  br i1 %valid, label %done, label %invalid
+invalid:
+  store i32 1, ptr %ret, align 4
+  br label %done
+done:
+  ret void
+}

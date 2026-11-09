@@ -274,7 +274,8 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        // A routine the erased writer's kept runtime defines (Text.writer's) is not this text's.
+        var symbols = new HashSet<string>(StringComparer.Ordinal) { LlvmModuleText.ErasedWriterDefinitions[0].Name };
         var definitions = new List<FunctionAbi>(FormattingRows.Length);
         foreach (var row in FormattingRows)
         {
