@@ -129,7 +129,7 @@ internal sealed partial class MirBuilder
         => this.Unlent(place, reference) ?? MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
 
     // SPEC 23.1.2, 3.6 (DECISIONS R4-M149): an Opaque temp is no storage, so an rvalue of a Type that would lend a Place in one (a Ref, a
-    // pair-case acquisition, a case adaptation) is its consumer's derived value instead: an Opaque located at the temp's node whose site
+    // pair-case acquisition, a case adaptation, a view's Storage) is its consumer's derived value instead: an Opaque located at the temp's node whose site
     // names only the temp, built already; null for a Place in other storage.
     private MirRvalue? Unlent(MirPlace place, BoundType type) => this.opaqueTemps.Contains(place.Root)
         ? MirRvalue.Opaque(type, this.body.AddOpaque(this.body.Locals[place.Root].Source.Syntax, [place.Root])) : null;

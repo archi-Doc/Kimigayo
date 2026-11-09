@@ -242,7 +242,7 @@ internal sealed partial class MirBuilder
                 this.arguments.Add(FoldOperand(template.Operands[rvalue.Start + i]));
             }
 
-            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Adapt
+            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage or MirRvalueKind.Adapt
                 ? FoldPlace(rvalue.Place) : default;
             return rvalue with { Place = place, Start = this.Flush(start), Type = rvalue.Type is { } type ? FoldType(type) : null };
         }

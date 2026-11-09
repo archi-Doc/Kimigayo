@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 // holders a set reaches or a call's store writes (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {
-    // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's (a raw one's its parents and address, formed), the union of an aggregate's
+    // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's (a raw one's and a Storage's its parents and address, formed), the union of an aggregate's
     // operands, a value-keeping Cast's operand's (between raw pointer Types, 5.4; none to usize, 5.5), a displacement's pointer's (5.3), an
     // integer's pointer {Φ_E} (D8), an Opaque site's {Φ_E} (R4-M70: the site rests on a recorded error, so a problem only its roots' Loans
     // would give never arises); under the view an Adapt is the rvalue its case selects (none: its operand's value).
@@ -28,9 +28,10 @@ internal sealed partial class MirBorrows
                 return (this.Operand(state, rvalue.Start), 0);
             case MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.IntToPointer:
                 return (this.escapedSet, 0);
+            case MirRvalueKind.Ref or MirRvalueKind.Storage when (MirRefKind)rvalue.Op == MirRefKind.Raw:
+                return (this.RawAddress(state, rvalue.Place, location), 0);
             case MirRvalueKind.Ref:
-                var (parents, issued) = this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
-                return (MirRefKind)rvalue.Op == MirRefKind.Raw ? (this.Formed(this.sets.Union(parents, issued)), 0) : (parents, issued);
+                return this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
             case MirRvalueKind.Aggregate:
                 var value = 0;
                 for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
@@ -66,6 +67,14 @@ internal sealed partial class MirBorrows
     {
         var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk));
         return this.Layered(place.Root, place.Projection, layer, parents);
+    }
+
+    // A raw address's value, a raw Ref's and a Storage's alike (O-92 (a)): the parents of its Place's step walk (a Storage's with the
+    // element step, AddressWalk) with the address entry its location issued, formed (Φ_E where untracked).
+    private int RawAddress(ulong[] state, MirPlace place, int location)
+    {
+        var parents = this.Prefix(state, place.Root, this.AddressWalk(place, location)).Parents;
+        return this.Formed(this.loanAt[location] >= 0 ? this.sets.Add(parents, this.loanBase + this.loanAt[location]) : parents);
     }
 
     // A borrow's value (A3 5 issued, E3): its Loan with the parents of every borrow layer it follows, from the last shared layer on (the

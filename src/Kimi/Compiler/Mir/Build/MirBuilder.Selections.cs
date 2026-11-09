@@ -9,6 +9,12 @@ namespace Kimi.Compiler.Mir;
 // which only the selection's one bounds check rejects (SPEC 4.6.3).
 internal sealed partial class MirBuilder
 {
+    // SPEC 4.6.1-4.6.2, 8.15.3: whether a range key's view starts at its receiver's storage: its Type at the selection is the library's Range
+    // or ClosedRange whose start boundary is Start. A resolved range, a Type parameter or another PositionRange starts at a position.
+    private static bool StartsAtStorage(BoundType? key)
+        => key?.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange &&
+            key.Components[0].Symbol?.LibraryDeclaration == KimiDeclarationId.Start;
+
     // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
     // (Folded); the position evaluates nothing.
     private MirPlace ConstElement(IndexKoto index, bool input)
@@ -138,7 +144,8 @@ internal sealed partial class MirBuilder
     // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
-    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
+    // serves (R3 decision 5) of the elements from the receiver's Storage, displaced by a start whose boundary is not Start (SPEC 5.3,
+    // 8.15.3; O-92 (a)), any address for none (SPEC 5.6), backed by what the
     // Slice retains (DECISIONS R4-M40): a Slice receiver's handle, its value and no handle variable, read where it is located (Handle), or
     // a shared borrow of an array's whole Place made where it is located, before the boundaries, which is the receiver's check (R4-M56).
     private void Slice(MirPlace destination, IndexKoto index)
@@ -160,13 +167,16 @@ internal sealed partial class MirBuilder
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         MirPlace start, last;
+        bool based;
         if (range is not null)
         {
+            based = range.Start is null;
             start = range.Start is null ? this.Position(zero, index, index) : this.Boundary(range.Start, length, index);
             last = range.End is null ? length : this.Boundary(range.End, length, index);
         }
         else
         {
+            based = StartsAtStorage(HirTables.TypeOf(index.Right));
             var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } key ? this.Resolve(key, index, sequence) : this.Place(index.Right), 16);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
@@ -192,19 +202,20 @@ internal sealed partial class MirBuilder
 
         var element = TypeOf(index).Components[0];
         var pointer = this.Temp(compilation.Types.Pointer(element), index);
+        var first = based ? pointer : this.Temp(this.body.TypeOf(pointer)!, index);
         var some = this.body.AddBlock();
         var empty = this.body.AddBlock();
         var join = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(count), this.body.AddCase(0, empty), 1, some, this.Info(index)));
-        this.body.Push(
-            some,
-            MirStatement.Assign(
-            pointer,
-            this.Ref(
-            this.body.Project(sequence, MirProjectionKind.Index, start.Root),
-            this.body.TypeOf(pointer)!,
-            input: false),
-            this.Info(index)));
+        var storage = this.Unlent(sequence, this.body.TypeOf(pointer)!) ?? MirRvalue.Storage(sequence, this.body.TypeOf(pointer)!);
+        this.body.Push(some, MirStatement.Assign(first, storage, this.Info(index)));
+        if (!based)
+        {
+            var displaced = this.body.AddOperand(MirOperand.Copy(first));
+            this.body.AddOperand(MirOperand.Copy(start));
+            this.body.Push(some, MirStatement.Assign(pointer, MirRvalue.Binary(MirBinaryOp.Add, displaced, proven: true), this.Info(index)));
+        }
+
         this.body.Push(
             empty,
             MirStatement.Assign(
