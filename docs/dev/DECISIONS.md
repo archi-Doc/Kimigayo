@@ -5962,6 +5962,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     heads (no labelled program needs it; G581-3 if one does); the may-set rules of rounds 1-3 (false errors, a silent bound); a points-to
     fact per storage; reading "a raw layer without an Origin" from the Place's Type (Mir/ reads no raw Origin; the record's Untied is
     Binding's); computing a body's contract only where A5 runs (it would not touch a gated body).
+- **R4-M191 An address names its Place (PLAN G667a; O-105 (b))** (2026-11-09; Major; design review 1 (step 1 ACCEPT within REVISE)
+  and design review 2 ACCEPT (`middle\a5-place-review.md`); the owner's O-105 (b), verbatim 「O-105 は (b) で」) SPEC 5.2.1 condition 1,
+  15.6 Addresses, 15.6.5; R4-M154 Revision 8; R4-M116.
+  - A5's plain address entry is keyed by the Place `P` of `P@raw` (its root and interned projection, key `~projection`; a whole root
+    and a Drop receiver keep dev's key `~0`; a Storage of a fixed array keys by the array Place) and keeps P and its steps, as a
+    Loan does; it still names the holder at P's root (15.6 Addresses). So a call's write past a holder through an address takes the
+    Reached entry of P's Type (Revision 8's reading for addresses: "choose the record by the Type of the place the Loan names ... Do
+    not use the root local's Type"), and a part's address is no whole-value reference for rule W (`Reach.Whole`,
+    `Causes.WholeTarget`; 15.6.5's part read). Holder states stay one may-set (R4-M160) and exposure per root local (R4-M186). One
+    record sequence (`MirBorrows.Record`) serves Loans and address entries.
+  - Records: `OwnershipDepthLimit_Kd` at a call where W reaches a Deep holder through two part addresses of different Types
+    (`Changes`, R4-M153), on programs the base rejects (Q13, dependent; none in the diagnostic corpus: 0 snapshot differences).
+  - Cost: k part addresses of one root in one holder are k entries where dev had one: N such addresses read at N locations cost N²
+    against dev's N (`MirBorrowsTest.PartAddressesInOneHolderCostAsTheirEntries`: work factor 2.00 → 2.91, bytes flat → 3.88, within
+    the quadratic bound 5); none without a part address.
+  - Rejected: per-part holder states (SPEC 15.6 Holders: a value read from a part carries every Loan and address the holder carries;
+    and every transfer would read projections); keeping the root key (the address breaks Revision 8's rule that Loans follow).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
