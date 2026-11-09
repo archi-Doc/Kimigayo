@@ -189,7 +189,10 @@ public sealed partial class Binding
                 var syntax = application.ArgumentNodes[i];
                 if (syntax is not IdentifierNameKoto { IdentifierName: not ("_" or "static") } name)
                 {
-                    this.AddPrerequisite(node, syntax); // A parameter the parser rejected explains the failure.
+                    // The parser's recovery parameter keeps the family's count (ValidateAssociatedParameters); its unnamed atom keeps the
+                    // family's Origin arguments complete, no name resolves to it, and the binder rests on the rejected parameter.
+                    parameters[i] = this.OriginAtom(node, OriginKind.Parameter, i);
+                    this.AddPrerequisite(node, syntax);
                     this.Fail(node, BindingFailure.InvalidOrigin);
                     continue;
                 }
