@@ -255,7 +255,15 @@ internal sealed partial class MirBuilder
 
     // IMPL 21.3.3: whether an integer Type's range lies within another's (T and Wrapping<T>, u8 in u32, i8 in i64), so converting between
     // them checks nothing; false where an instance decides a width.
-    private bool Within(BoundType source, BoundType target) => ScalarTypes.Width(source) is var from and > 0 &&
-        ScalarTypes.Width(target) is var to and > 0 && ScalarTypes.Signed(source) is var signed && ScalarTypes.Signed(target) is var wide &&
-        (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
+    private bool Within(BoundType source, BoundType target)
+    {
+        var (from, to) = (ScalarTypes.Width(source), ScalarTypes.Width(target));
+        if (from == 0 || to == 0)
+        {
+            return false;
+        }
+
+        var (signed, wide) = (ScalarTypes.Signed(source), ScalarTypes.Signed(target));
+        return (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
+    }
 }
