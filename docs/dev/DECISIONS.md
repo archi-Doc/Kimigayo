@@ -5805,6 +5805,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M183 A store through a stated raw layer writes what its Origin covers (PLAN G338)** (2026-11-08; the owner's O-55 (c), verbatim 「O-55は(c)でお願いします。」, leaves Binding's rows; the owner's exception to AGENTS' narrow-subset rule, O-60, verbatim 「すべて (a)」). SPEC 5.2.1, 5.7's table. W's first step at a raw parameter's own stated layer: the argument's referents and the first step of each exclusive input whose outer Origin is that Origin (`MirBorrows.Cover`); only the `null` literal written at the call adds no E there, under the owner's exception (O-60): a `null` reaching the parameter any other way stays dev's false error, a named limit (PLAN G598). Rejected: dropping E for an empty set (seven invalid programs accepted, since A5 does not follow a scalar written through a raw pointer); a null set element (a must-fact in A5's may-sets, stopped by reading); W replacing q's referents (`c5`: a fit lets q address a second holder); "a value naming nothing writes nothing" at every store (it makes `a8` valid, ahead of G339's row and of G581; and it reads no Origin). None where another input also names the Origin: a slot keeper's storage has no first step (`keeperBad`); none for a Value callee. A5 reads the members through `TyCtxt.LayerMembers` over `Binding.LayerMembers`, a new reader of Binding's one `RawMembers`, since ArchitectureRulesTest's raw Origin role ratchet leaves Mir/ no read of a raw layer's Origin; no row changes. Option A's per-holder exclusion was prototyped and failed (`fj2`); evidence in the G338 state file, for O-55's return.
   - Amended by R4-M185 (PLAN G584): a Function Item's Value call covers as a direct call; "none for a Value callee" now holds for Closures, Function-typed parameters and erased values only.
   - Amended by R4-M186 (G598-1): the literal test is A5's must-null fact; O-60's exception remains for the residue PLAN G598 lists.
+  - Amended by R4-M195 (PLAN G598): Cover reads the stated layers a written input holds at its own address (`TyCtxt.OwnLayers`), not
+    only a raw parameter's own layer.
 - **R4-M184 One region, one tense: a Closure's result keeps an enclosing region, and a local region reaches the meet of all its sources (PLAN G570)** (2026-11-08; Major; C-108; replaces G553's rule and removes its limit) SPEC 15.3.6, 15.4.4, 15.6.4, 15.6.5, 15.8.2.
   - Cause. `ResolveLocalResultOrigins` cut an inferred result from an enclosing region R to R's sources as of the literal, while every other reading of R is whole-body (`JudgeLocalRegion`). So one Origin had two forms and two tenses: result against environment (G553), result against parameter and later bounds (Kind U: Argument, Store, Order, reading freed memory in straight-line code). Every G553 shape reconciled a whole-body region published as of one moment.
   - Rule. (1) A published result resolves only its own body's regions (`RegionIn`): an enclosing region is fixed there (BU-28) and stays, so the inferred form is the annotated form. (2) A region of an enclosing anonymous function is a Closure Type's Origin argument (`Binds`, R4-M159), so it leaves its body as its sources; this also opens the stated form, Unsupported before. (3) A local region reaches the meet of all its sources, read at the retention in the tense of Binding's fit (`AddRegionMeet`): retention's own edge, in a per-computation environment no proof reads. `BoundClosure.CapturedRegions`, its writers and `retentionCaptured` go.
@@ -5848,6 +5850,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
     needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
     a later measurement asks for it.
+  - Amended by R4-M195: its residue list loses a null stated layer inside a Tuple, fixed array, Array or Option (a0t).
 - **R4-M187 A Dictionary literal's first entry has no lookup (PLAN G442 U1)** (2026-11-09; Major; design review 2 and implementation
   review ACCEPT, the Middle's reviewer) SPEC 12.4.3, 22.5.1; IMPL 21.3.2.
   - Rule (`MirBuilder.Expansions`, `Dictionary`): an entry's key is looked up among the entries already inserted (its plan's
@@ -6025,6 +6028,35 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Type, a default's copy; design review 1 F1); a FakeRead (generates nothing; shared with match guards); a MIR re-derivation of
     the raw-Place rule (a further copy; Binding judges the Take; review 1 F2); a codegen rule forming an elided Drop's Place
     (C-183's withdrawn hunk).
+- **R4-M195 The stated layers a written input holds at its own address cover as a raw parameter's own layer (PLAN G598, with G583)**
+  (2026-11-09; Major; design review 2 ACCEPT, implementation review ACCEPT (`middle\g598-2a-impl-review.md`); amends R4-M183 and
+  R4-M186; lands with G583 in one window, the owner's O-107 (a)) SPEC 5.1, 5.2.1, 5.7 (Fits, Calls), 15.6.4.
+  - `MirBorrows.Cover` reads the parts a written input holds at its own address from Binding (`TyCtxt.OwnLayers`: the storage walk's
+    by-value relation at any holder, published with G583, BU-143) and each layer's members by `TyCtxt.LayerMembers`. Covering iff
+    the reader lists a part, every listed part is a layer stepping Exclusive, and each layer's members are non-empty and all
+    exclusive inputs' outer borrows; the covering is the union of their positions. A raw parameter is one layer: R4-M183's rule
+    unchanged. The declared-syntax gate (`Semantics: Raw`) is deleted; Cover keeps no walk of its own.
+  - Soundness rests on R4-M186's must-null fact alone: Keep drops E only for an empty argument set (the union of its parts', so
+    every pointer in it null); the covering only chooses which null arguments move and adds covered steps for a non-empty set, so a
+    reader gap can only keep a valid program rejected. Exception (review N2): a Callable or Contract part's own stores into static
+    storage are not seen by Cover's E-drop; statics stay `Unsupported_Kd` until P42, so nothing is accepted by it now (P42's row
+    carries it).
+  - Moves (one window with G583, O-107 (a)): 17 valid programs newly accepted (a0t and its held, nested, two-layer, two-Origin,
+    fixed-array, array-of-Tuples, part-stored, joined, generic element and target, field-less struct, Function Item, Closure and
+    moved-Array forms), and cItemHeap, cClosureHeap, cContractHeap and cItemHeapWrap (valid by SPEC 15.6.4: a call's retention is
+    its instantiated public contract's, and a block the callee allocates itself is neither its result nor storage it writes through
+    an argument; the Middle's ruling on review N1); a0o and the Option forms stay accepted where G583 alone rejects them. Newly
+    rejected by the pair: G583's invalid fixes, a0w (a null through a constructor's result is never proven null where its Type holds
+    a pointer: O-60's residue under O-107 (a); review N4) and vShort (G339). Record-only (Q13): false errors through E written by a
+    null argument leave programs rejected on both (a8t, rB1otherOrigin, rH2closureArg, rH3itemArg). `arrayNullOk` has no invalid
+    counterpart row (review N3).
+  - O-60's residue loses a null stated layer inside a Tuple, fixed array, Array or Option (a0t); it keeps an unstated, `static` or
+    `during self` layer beside a stated one, a shared member, an exposed holder and a call result (a0w), with the rest of R4-M186's
+    list.
+  - Rejected: Cover's own Holdings walk with the `Holder`-null criterion (revision 1: a second copy of RawReach's criterion, which
+    G583 deletes); a walk of the Type's syntax; LayerMembers over the whole written Type (it conflates unstated layers); a per-layer
+    covering that ignores an unstated element ("a null writes nothing" at an unstated store: G598-2b, after G339).
+  - Open (N8'): G599's `WritesScalar` reads `TyCtxt.OwnLayers` when it lands (O-105), not a walk of its own.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10866,6 +10898,32 @@ resumed by R4-M86 (2026-10-20).
     target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
     Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
+- **BU-145 The pun rule's Type facts are Binding's published readers (PLAN G667, C-189)** (2026-11-10; Major; the Front's design,
+  the Middle's implementation under Q18; design reviews 1-3 and the re-check under the owner's O-126 (a); the Front's implementation review ACCEPT; the Middle's consent on
+  C-189) SPEC 3.8, 5.2, 5.6, 5.7, 15.6.1, 22.1.
+  - A raw layer's stated Origin at a Place is a function of the Place's path (5.7). `PlaceKey` (Holdings' key, the payload Case, and
+    `Through`, the last dereferenced layer as the path reads it; the key holds Types only) is stepped by `TyCtxt.Select(key, MIR's
+    Arg)` and `TyCtxt.Base` from `PlaceKey.Root`. Its dereference is `Dereferenced`/`Reached`, `PathOrigin`'s one rule;
+    `PathOrigin`'s Follow and SliceElement steps call `Dereferenced`.
+  - `OwnLayers(PlaceKey)` lists the layers at the Place with their step there and each entry's `Past` key; a call input is
+    `Root(input)` (G583's contract; G598-2a's Cover reads it so). The `self` test reads Holdings' published step (Own; Own with Raw
+    on the past entry), never the raw Origin role: no new role site (BU-24). Past a dereference a `self` layer has `StepOf`'s
+    cap-free kind (BU-24); Exclusive past a `ref` over-approximates write authority (conservative). Unsupported (U2) is never a
+    stated Origin.
+  - Named limit: a constructor's or `drop`'s receiver root reads as `Root` (no dereference): Address past its `self` layers (Phi
+    kept; A5 a located `Unsupported_Kd` where a valid program reaches it). Removal: `ReceiverRoot(type, receiver)` when a reader
+    keys such a Place.
+  - `SameStructure`: 5.2's and 15.6.1's identity with Origins equal, the relation walk's structural part (OriginPart.Everywhere, no
+    Never root rule), symmetric, allocation-free, reading no premise.
+  - `NoStoreRow`/`TyCtxt.NoStore`: per operation contract the parameter slots through which it stores no value (slice storage,
+    initialize value, release storage, transferBytes source); false for a body, a foreign import and a missing row;
+    `KimiLibraryShapeTest` pins each row to a bodiless contract's named parameter.
+  - The key's walk is `Binding.Retention.PlaceKeys.cs`, beside the storage walk it reads (OwnParts stays in `.Storage`). With
+    G667b's revision 3 it removes A5's copies in `MirBorrows.Puns.cs` (`Same`, `Inline`, `Layers`, `Part`'s AdtDef walk,
+    `PartCount`, `PartAt`, `Components`); until then A5 reads none of the new readers.
+  - Rejected: a separate Type-level dereference rule (review 2 B2); a closed step vocabulary (Select takes MIR's Arg); the nearest
+    instance's key (review 1 B1); a path-span reader; a `LayerOrigin` reader; a raw Origin in the key (review 3 N14); an
+    Origin-erased key; Binding computing the pun facts; a `CallRetention` or `MirDescriptors` column for the no-store bit.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
