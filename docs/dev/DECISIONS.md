@@ -16804,6 +16804,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     B1); the validator reading `TyCtxt.OperandTerminal` (a validator reading its producer checks nothing) or
     `SubstituteIdentityPremises` (a second premising); two premising functions with an invariant between them (refuted, C-159); the
     whitelist now (`OperatorTableRuns` and `Column` disagree on Unit).
+  - Superseded in part by R8-M20 (G662): the open family is closed by `OperatorCompares`; the Unit disagreement is none (`Apply`'s zero-sized row).
 - **R8-M16 FixedBuffer's and HeapBuffer's operations are Kimigayo bodies; `BodylessWitness`'s buffer half ends** (Back, 2026-11-09;
   R8-W1a; plan RP20, RQ9; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation review ACCEPT; on R8-M1, R8-M2,
   R8-M4, R8-M6; supersedes R5-M146 in part) SPEC 5.7, 22.5.1, 22.9.1, 22.9.3, 22.9.4; IMPL 21.4.3.
@@ -16885,6 +16886,27 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **RP8** (T-84): every O2 kernel compiles to the same code, the `Iterators` kernel's new `exchange` row (`Slots<T>`, Milestone 29's
     shape) included; `replace` has equal O2 counts on every fixture, and O0 records a call per update and a copy slot for an in-memory
     by-value `T`. Measurements are in the commit.
+- **R8-M20 The operator table's comparison domain is one statement, `ComparisonTypes.OperatorCompares`** (Middle, 2026-11-09; PLAN
+  G662; Major; design reviews 1 REVISE (B1, B2), 2 ACCEPT; implementation review ACCEPT; the Back's C-187, the Front's C-190; on
+  R8-M4's `OperatorTableRuns`; supersedes R8-M15's "Open family" bullet) SPEC 3.1.3, 5.1, 13.4, 13.4.1.
+  - **Rule.** `OperatorCompares(type, contract)` (`==` and `!=` under Equatable, the ordering operators under Comparable) is
+    `OperatorTableRuns` (the built-in conformances), a floating-point Type's order, a raw pointer's equality and every comparison at
+    Never (no value; Binding admits each at a Never terminal). MirValidator's comparison BinaryOp stands only there at its premised
+    terminal, or at any abstract operand or Wrapping over one (`MirTypes.IsArithmeticInteger`: MIR reads the shape and trusts
+    Binding's proof of the instance); the Never value's unknown Type takes the other operand's; any other is an Operation finding
+    (`InternalInvariant_Kd`). The Backend's `Column` reads it under Equatable as the table's domain (every Type with a built-in
+    operator has equality) before numbering its columns.
+  - **Unit and Never** are in the domain. Neither has a column read: their one value or none needs no operation, and both are
+    zero-sized (Never's layout is Unit's), so `Apply`'s zero-sized branch (the row's Reflexive result) is their row.
+  - **Staged removal** (the Front's, PLAN G681): Binding's operator rules restate the statement: `ComparisonApplicability` (Never,
+    ordered, equality-only arms), `CompleteComparison` (the BinaryOp test), `ComparisonKindOf` and `ComparisonProof` (`operators &&
+    IsNumeric`). Removal condition: they read `OperatorCompares`, which also accepts a raw pointer element of a Tuple under `==` and
+    `!=` (SPEC 13.4; rejected on dev).
+  - **Rejected:** string, struct, enum and Tuple rows (an open family); a validator-local copy of Column's predicates, or of
+    Binding's Never row ("a Never terminal is unknown"); widening `OperatorTableRuns` (floats Comparable, pointers Equatable,
+    against SPEC 13.4.1); a root operand-class enum that Column maps to columns (moves the Backend's columns out of their owner; no
+    second reader yet); a Unit column (no operation).
+  - **Moves:** none (no accepted program forms a comparison BinaryOp outside the domain; probes, twins, snapshots).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
