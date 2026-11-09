@@ -4,8 +4,9 @@ namespace Kimi.Compiler;
 
 // The raw layers an instance stores, read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs, .Keepers.cs) and Binding's instance
 // storage (Binding.Storage.cs; SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint 2): the authority such a
-// layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), the borrows
-// a raw parameter's own stated layer belongs to among a call's inputs (LayerMembers, A5's Cover), whether a declaration states a
+// layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), the parts a
+// written input holds at its own address (OwnLayers) and the borrows each stated layer there belongs to among a call's inputs
+// (LayerMembers), which A5's Cover reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
 // addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
@@ -84,10 +85,27 @@ internal sealed partial class TyCtxt
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 
-    // SPEC 5.2.1, 5.7's table (PLAN G338): the borrows a raw parameter's own stated layer belongs to among a call's instantiated inputs,
-    // Binding's one reading, appended to `members`, each member's Input the slot it is found at; none for `self`, `static` or an unstated
-    // layer. False as RawMembers is.
+    // SPEC 5.2.1, 5.7's table (PLAN G338, G583): the borrows a stated layer a written input holds at its own address belongs to (a raw
+    // parameter's own layer, or an element's, a Field's or a payload's that OwnLayers lists) among a call's instantiated inputs, Binding's
+    // one reading, the RawMembers query the storage walk makes at that layer, appended to `members`, each member's Input the slot it is
+    // found at; none for `self`, `static` or an unstated layer. False as RawMembers is.
     internal bool LayerMembers(BoundType layer, ReadOnlySpan<BoundType> inputs, List<RawMember> members) => binding.LayerMembers(layer, inputs, members);
+
+    // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598): the parts a value of `input` holds at its own address, Binding's
+    // one reading (Binding.OwnLayers), so that the storage walk's output fold and A5's covering enumerate the same raw layers by one
+    // criterion. Input: an instantiated Type (a contract slot's declared Type under a call's substitution), walked with no Written and no
+    // Holder. At its own address means the storage walk's by-value relation (Binding.ByValue) applied recursively at any holder, with no
+    // Holder gate: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (Option's included), a Closure's
+    // environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`, Array, Dictionary, `string`) and a
+    // `Loan<T>`'s argument; any other Type argument has no address and adds nothing. Each part is read once per (Type, Written, Holder)
+    // through Holdings, so a stored layer steps by DeclaredStep under its holding instance. Output, appended to `into` in walk order:
+    // (layer, step) for each raw layer met there (Holdings' entries carry Raw and it is no pair layer), not gone past; (null, step) for
+    // each other part there that reaches storage (a borrow or pair case, an rc or arc view, an abstract, erased, unsupported or unbound
+    // part); nothing for a part with no entry (a scalar, a Function Item, a Range, a struct with no Fields). The step is Holdings', not the
+    // walked signature's cap (RawStepAt); each layer's members are LayerMembers'. False at Binding's Limit (Holdings false). Total over what
+    // Binding accepts, a function of the Type alone, allocating nothing warm. Must not decide a covering (A5's), read a call's arguments or
+    // solved Origins, or test a Type's Kind or Semantics to restrict a form.
+    internal bool OwnLayers(BoundType input, List<OwnLayer> into) => binding.OwnLayers(input, into);
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the

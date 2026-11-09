@@ -40,6 +40,29 @@ public sealed partial class MirBorrowsTest
             public var p: raw/u8
             public init() => self.p = null
             public func mark(q: raw/u8 during a, self, target: uniq/(raw/u8) during a) => ()
+        struct Wrap<T>
+            public var value: T
+            public init(value: T) => self.value = value@move
+        struct RB {a}
+            public var k: uniq/u8 during a
+            public var p: raw/u8 during a
+            public init(k: uniq/u8 during a, p: raw/u8 during a)
+                self.k = k
+                self.p = p
+        struct RB2 {a}
+            public let k: ref/u8 during a
+            public var p: raw/u8 during a
+            public init(k: ref/u8 during a, p: raw/u8 during a)
+                self.k = k
+                self.p = p
+        func writeo(target: uniq/(raw/u8) during a, q: Option<raw/u8 during a>) => ()
+        func writeos(target: uniq/(raw/u8) during a, q: Option<raw/u8 during static>) => ()
+        func writef(target: uniq/(raw/u8) during a, q: Wrap<raw/u8 during a>) => ()
+        func writeft<T>(target: uniq/(raw/u8) during a, q: Wrap<T>) => ()
+        func writen(target: uniq/(raw/u8) during a, q: (i32, Option<raw/u8 during a>)) => ()
+        func writens(target: uniq/(raw/u8) during a, q: (i32, Option<raw/u8 during static>)) => ()
+        func writer(target: uniq/(raw/u8) during a, q: RB during a) => ()
+        func writer2(target: uniq/(raw/u8) during a, q: RB2 during a) => ()
         func endOk()
             var spare: raw/u8 = null
             write(spare@uniq, null)
@@ -254,6 +277,56 @@ public sealed partial class MirBorrowsTest
             let f = ownItemReadBad
             f(spare@uniq, null)
             usep(spare)
+        func optionHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writeo(spare@uniq, Option<raw/u8 during static>.Some(heap()))
+            kk = 2
+        func optionStaticOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writeos(spare@uniq, Option<raw/u8 during static>.Some(heap()))
+            kk = 2
+        func fieldHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writef(spare@uniq, Wrap<raw/u8 during static>.init(heap()))
+            kk = 2
+        func fieldHiddenOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writeft<raw/u8 during static>(spare@uniq, Wrap<raw/u8 during static>.init(heap()))
+            kk = 2
+        func nestedHeapBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writen(spare@uniq, (0, Option<raw/u8 during static>.Some(heap())))
+            kk = 2
+        func nestedStaticOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            writens(spare@uniq, (0, Option<raw/u8 during static>.Some(heap())))
+            kk = 2
+        func declaredFieldBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: u8 = 0
+            writer(spare@uniq, RB.init(other@uniq, heap()))
+            kk = 2
+        func declaredRefOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: u8 = 0
+            writer2(spare@uniq, RB2.init(other@ref, heap()))
+            kk = 2
         """;
 
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
@@ -274,6 +347,10 @@ public sealed partial class MirBorrowsTest
     // substitution (genericItem*), its slots in declared order, q first (itemReadBad) or a receiver declared second (methodItem*, 7.3.4).
     // The Ok rows were errors at spare's end (and at m's for methodItemOk). In the Item's own body the call is decided as the direct call
     // is (ownItemOk, accepted); elsewhere it keeps the Value call's located Unsupported_Kd at its `null`, outside these Loan codes.
+    // A stated layer an argument holds by value stores as tupleHeapBad's does wherever it lies (PLAN G583; SPEC 15.6.4 "a Tuple element, an
+    // Option payload, a Field or a Type argument included"): an Option payload, a Field of T, an Option in a Tuple, a Field a declaration
+    // states with a slot kept by `uniq` (whose Loan of `other` the store keeps too); each Bad row was accepted before. Their Ok twins state
+    // `static`, hide the layer behind T (15.6.4), or keep the slot by `ref` (no write authority, 5.2.1 condition 3).
     [Theory]
     [InlineData("endOk", "")]
     [InlineData("wholeWriteOk", "")]
@@ -313,6 +390,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("methodItemReadBad", "methodItemReadBad: usep(spare)")]
     [InlineData("ownItemOk", "")]
     [InlineData("ownItemReadBad", "ownItemReadBad: usep(spare)")]
+    [InlineData("optionHeapBad", "optionHeapBad: kk = 2; optionHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("optionStaticOk", "")]
+    [InlineData("fieldHeapBad", "fieldHeapBad: kk = 2; fieldHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("fieldHiddenOk", "")]
+    [InlineData("nestedHeapBad", "nestedHeapBad: kk = 2; nestedHeapBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("nestedStaticOk", "")]
+    [InlineData("declaredFieldBad", "declaredFieldBad: kk = 2; declaredFieldBad: var other: u8 = 0; declaredFieldBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("declaredRefOk", "")]
     public void AStoreThroughAStatedLayerWritesWhatItsOriginCovers(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
