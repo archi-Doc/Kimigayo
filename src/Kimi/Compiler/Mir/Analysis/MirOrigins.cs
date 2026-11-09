@@ -62,6 +62,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private int classCount;
     private int containedCount;
     private int rowWords;
+    private long work; // The stratum's own work; the chains' is TyCtxt.OriginChains.Work.
     private ulong allViews;
     private Binding.UniversalRelations? ownOracle; // The body's oracle and its layer's, opened on first use and disposed after Judge.
     private Binding.UniversalRelations? layerOracle;
@@ -72,7 +73,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
 
     /// <summary>Gets the work of the last <see cref="Judge"/> (2a0-D §6.4): node visits, edge steps, bitset and mask words, and the
     /// oracle's Close and Outlives calls, summed over its classes.</summary>
-    internal long Work { get; private set; }
+    internal long Work => this.work + this.chains.Work;
 
     /// <summary>Gets the classes of views the last <see cref="Judge"/> formed (V16's 64-view body).</summary>
     internal int Classes => this.classCount;
@@ -87,7 +88,8 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     /// <param name="report">The program's problems.</param>
     internal void Judge(MirBody body, long views, MirReport report)
     {
-        (this.body, this.classCount, this.containedCount, this.Work, this.refCount, this.causeCount) = (body, 0, 0, 0, 0, 0);
+        (this.body, this.classCount, this.containedCount, this.work, this.refCount, this.causeCount) = (body, 0, 0, 0, 0, 0);
+        this.chains.Work = 0;
         this.edgesClass = -1;
         this.pending.Clear();
         this.pendingFacts.Clear();

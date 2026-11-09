@@ -16590,6 +16590,38 @@ R8-M* and R9-M* by the stage of the recording unit.
   `PublishedBindingTypes` is unchanged). R2b-D3 still holds for `UniversalRelations`, `EffectBoundTable` (R7-V2f decides) and
   `AvailableBounds` (R7-C7). Demand-built paths come with R7-D2 d3. Rejected: keeping the fields in Registration (the readers would
   change again in V2b, V2c and D2b); renaming the record in V2a (it is renamed in V2b, the part that changes its meaning).
+- **R7-M17 R4-M118's chain judgment is one TyCtxt function family, `TyCtxt.OriginChains`, read by A5's Origin stratum and the
+  declaration judge** (2026-11-10; PLAN G318, the Middle's under plan revision 50, DECISIONS Q18; design review 1 REVISE (B1-B3),
+  repeated review ACCEPT; the Front's consent on C-197; supersedes BU-62's staged move and its
+  `[Transitional("R7")]` copy)
+  - Home: `Binding/TyCtxt.OriginChains.cs`, nested in TyCtxt beside the C1-F4 view's `OriginAtomKind`: the only home both may read
+    (MIR analyses read MIR, declaration tables and pure TyCtxt functions; Binding must not read Mir; R7-T2 deletes the root
+    helpers). Pure: no TyCtxt, Binding or MIR state; storage pooled in the caller's instance. Owning area: it is a Front file
+    holding A5's chain core, so later A5 changes to it are Front hunks under a hold (Q18, RP17: the Front reviews and consents), as
+    are the declaration adapter's (the Front's C-197 N5).
+  - Component: MeetNode's rule (`Relate`, through `IOriginChainRelation`), the Fixed-Fixed hand-back (`Joins`), Tarjan's components
+    over the inner nodes, finite and fixed source bitsets in topological order through one pooled arena, each edge into a Fixed node
+    handed to the judge (`IOriginChainJudge.Refuted`, `Unknown`). Only a Finite node or a Fixed tail is a source and only a Fixed
+    head a judged target. No proof, condition, limit or record; its `Work` is A5's V16 count's chain part
+    (`OriginProofMetrics.ChainWork` counts the core's Work only). `Begin` scopes `Relate`'s shorter-meet stamps: A5 one per class,
+    the declaration judge one per row (so a row's operand edges carry its Condition) and one for its graph.
+  - A5's adapter (`MirOrigins.Chains`): classes of views, ClassEdges with the Unclassed limit and the meet law, Direct (oracle,
+    Equality merge), Refuted and Unknown (oracle per part, NestedLimit, records), the storage limit (`Admits`). Verdicts and Work
+    unchanged.
+  - The declaration adapter (`Binding.OriginClauses.Chains`): BU-62's premise contract and the input rule (D1) stay in
+    `JudgeDeclarationRows`/`CollectDeclarationRows`. One graph per pass whose nodes are the chains' states (a Fixed Origin; a
+    Dependent Origin under each path condition a Fixed Origin reaches it with), formed forward, so a row no chain connects forms
+    nothing; each (row, last edge, source) judged under each of its minimal path conditions until one records (SPEC 15.6.5); direct
+    edges first, in row order. Cost: the states and their edges (the copy's search states merged over its sources), components x
+    sources / 64 words, conditions squared per end key (the ends' minimal-condition rule is quadratic per key by design).
+  - Record order: the judged set is the copy's, but where two sources fail at one use the primary record may change (the Front's
+    twins r4-order and r2-cycle: the same records, codes and spans, the order of non-direct judgments only: target state, in-edge,
+    source bit instead of source order): record selection under DECISIONS Q13, not a regression; a window snapshot whose corpus
+    holds such a node shows an order difference there.
+  - Open (PLAN G691): the declaration graph has no meet law at a Dependent shorter meet.
+  - Rejected: a root file (not readable by MIR analyses; R7-T2); conditions in the core's bitsets (A5's Work changes); the copy's
+    per-source search as the core (A5's Work and order change); one graph per OR-closed candidate condition (revision 0: 2^k graphs
+    for k independent rows, measured 51 s at k = 13); views for declarations (no MirCases).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
