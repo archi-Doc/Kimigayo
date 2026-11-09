@@ -245,6 +245,44 @@ public sealed partial class MirBuildTest
         Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
     }
 
+    // SPEC 8.2.3, 3.5.1, 13.5.6 (DECISIONS R8-M9; PLAN G593): a Place whose own Type agrees with the Type Binding names for it only under
+    // the body's identity premises (`uniq/One<T>` against `uniq/One<uniq/Meter during a>`) is Reborrowed and borrowed as it is: the
+    // Reborrow's contract and the Place walks read MirTypes.Agrees, so indexUniq's receiver is a Reborrow at `*_1` (for an argument, a
+    // receiver, or an explicit Type argument's parameter) and `one@ref` borrows `_1` itself, under a premise of any Type, with no record or
+    // finding (fail-before: InternalInvariant_Kd at the receiver `one`, and a borrow of `*_1` the validator rejects at `one@ref`); a
+    // conflict through such a Place is the analysis' record, as its concrete twin's. Each row: the premise, the statements, a statement of
+    // f's MIR and the module-0 problems.
+    [Theory]
+    [InlineData("T is uniq/Meter during a", "g(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("T is uniq/Meter during a", "one[0].bump()\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("T is uniq/Meter during a", "gg<Meter>(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("T is i32", "let view = one@ref\n    return take(view)", "= &_1: ref/uniq/One<i32>", "")]
+    [InlineData(
+        "T is uniq/Meter during a",
+        "let view = one@ref\n    g(one[0])\n    return take(view)",
+        "= &_1: ref/uniq/One<uniq/Meter>",
+        "CallActivationConflict_Kd one[0]|CallActivationConflict_Kd g(one[0])")]
+    public void APlaceAgreeingUnderPremisesIsBorrowedAsItIs(string premise, string statements, string statement, string problems)
+    {
+        var c = Compile("struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+            "struct One<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n" +
+            "    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            "func g(m: uniq/Meter) => m.bump()\nfunc gg<V>(m: uniq/V) -> () => ()\nfunc take<V>(v: ref/V) -> i32 => 0\n" +
+            $"func f<T>(one: uniq/One<T>, w: ref/i32 during a) -> i32\n    {premise}\n    {statements}\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        Assert.Contains(statement, dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], StringComparison.Ordinal);
+    }
+
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one
     // check, after every boundary is evaluated, at the selection: the range's one Fail follows the later boundary's call (fail-before: ^x
     // failed where it was evaluated, at ^x, before next() was called).
