@@ -10,10 +10,10 @@ namespace Kimi.Compiler.Backend;
 // Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand read at
 // its terminal Place through its ref and uniq layers (SPEC 13.4; TerminalAddress). No string reaches it: a string comparison is its library
 // witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b), and MirValidator rejects a comparison BinaryOp
-// at a string (OperandsCompare). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check
-// Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics'
-// declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract
-// (DECISIONS R5-M143).
+// outside the table's domain (OperandsCompare, by ComparisonTypes.OperatorCompares, which Column reads). A Proven operation
+// (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts at the statement's location text (SPEC
+// 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics' declarations, which the frame's fixed set omits
+// (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // The first UnaryOp's row.
@@ -99,11 +99,18 @@ internal sealed partial class FunctionCodegen
     // The entry an operand Type takes, by its terminal below its ref and uniq layers (Terminal; SPEC 13.4: a comparison operand denotes its
     // terminal Place, and an operand's Type keeps its layers where MIR inspects the terminal in place, a raw pointer's, and where an
     // identity premise gives them, which the item's instance substitutes, `a: T` under `T is ref/i32`; DECISIONS R5-M75, R5-M143) (SPEC
-    // 3.1, 3.1.1, 13.4, 5.1, 8.2.3): an integer's or a wrapping integer's by its signedness, a floating-point Type's, bool's and char's the
-    // unsigned integer's, a raw pointer's; -1 for a Type with no operator.
+    // 3.1, 3.1.1, 13.4, 5.1, 8.2.3) in the table's domain, the Types with built-in equality (ComparisonTypes.OperatorCompares, the
+    // statement MirValidator's comparison BinaryOp reads): an integer's or a wrapping integer's by its signedness, a floating-point Type's
+    // and a raw pointer's own, bool's and char's the unsigned integer's; Unit's and Never's, the unsigned integer's too, is never read:
+    // zero-sized, they compare by the row's Reflexive result (Apply); -1 for a Type with no operator.
     private static int Column(BoundType type)
     {
         type = Terminal.Of(type).Type!;
+        if (!ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable))
+        {
+            return -1;
+        }
+
         if (type.Semantics == SemanticsKind.Raw)
         {
             return 5;
@@ -114,12 +121,7 @@ internal sealed partial class FunctionCodegen
             return (type.IsWrappingInteger ? 2 : 0) + (type.IsSigned ? 0 : 1);
         }
 
-        if (type.IsFloatingPoint)
-        {
-            return 4;
-        }
-
-        return ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) ? 1 : -1;
+        return type.IsFloatingPoint ? 4 : 1;
     }
 
     // The row of a MIR operator, a statement's or an arithmetic shim's (BuiltinArithmetic): MirBinaryOp's members, then MirUnaryOp's.
