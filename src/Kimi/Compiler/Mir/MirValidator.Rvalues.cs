@@ -121,6 +121,7 @@ internal sealed partial class MirValidator
         private bool Rvalue(in MirRvalue rvalue, BoundType? destination)
         {
             if (!MirDescriptors.Of(rvalue.Kind).Defined || (rvalue.Kind == MirRvalueKind.Ref && rvalue.Op > (byte)MirRefKind.Raw) ||
+                (rvalue.Kind == MirRvalueKind.Storage && rvalue.Op != (byte)MirRefKind.Raw) ||
                 (rvalue.Kind == MirRvalueKind.Adapt && rvalue.Op > (MirRvalue.AdaptShorthand | MirRvalue.AdaptInput)))
             {
                 this.Report(MirViolation.UnknownKind);

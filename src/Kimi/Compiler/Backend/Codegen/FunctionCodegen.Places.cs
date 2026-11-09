@@ -111,6 +111,10 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
+    // A sequence's first element's address: a fixed array's own, an Array's or Slice's buffer word, a pointer (IMPL 21.1.3); an Index's and a
+    // Storage's one statement of it.
+    private Value Buffer(BoundType type, Value start) => type.Kind == BoundTypeKind.FixedArray ? start : this.LoadAt(start, RuntimeAbi.StringReference.Layout);
+
     // An Index: the bounds check at the position local's location, then the element's address at its stride (its Element need, Needed); a
     // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read. False after a record.
     private bool Element(MirPlace step, MirPlace prefix, Value start, out Value address)
@@ -127,8 +131,7 @@ internal sealed partial class FunctionCodegen
 
         var isize = this.slots[position].Value;
         var index = this.Load(position);
-        // An Array's or Slice's buffer word, a pointer (IMPL 21.1.3).
-        var buffer = type.Kind == BoundTypeKind.FixedArray ? start : this.LoadAt(start, RuntimeAbi.StringReference.Layout);
+        var buffer = this.Buffer(type, start);
         var length = this.Length(type, sequence, start);
 
         var id = this.next++;

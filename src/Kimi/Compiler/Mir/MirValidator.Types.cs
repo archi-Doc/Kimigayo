@@ -179,7 +179,7 @@ internal sealed partial class MirValidator
             var op = (MirBinaryOp)rvalue.Op;
             var first = operands.Length > 0 ? this.TypeOf(operands[0]) : null;
             var second = operands.Length > 1 ? this.TypeOf(operands[1]) : null;
-            var place = rvalue.Kind == MirRvalueKind.Ref && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
+            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
             var (type, admitted) = rvalue.Kind switch
             {
                 MirRvalueKind.Use or MirRvalueKind.UnaryOp => (first, true),
@@ -191,6 +191,11 @@ internal sealed partial class MirValidator
                     _ => MirTypes.Agrees(body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
+                // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
+                MirRvalueKind.Storage => (rvalue.Type, place is null ||
+                    (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
+                    rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
+                    MirTypes.Agrees(body, element, place.Components[0]))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||
