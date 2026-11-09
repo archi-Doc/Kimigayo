@@ -35,9 +35,9 @@ public class RawPointerSyntaxTest
     [Fact]
     public void UnsafeIsNoSemanticsName()
     {
-        Assert.True(CompilerHelper.TryParse("raw", out var raw));
+        Assert.True(SemanticsMaskHelper.TryParse("raw", out SemanticsKind raw));
         Assert.Equal(SemanticsKind.Raw, raw);
-        Assert.False(CompilerHelper.TryParse("unsafe", out _));
+        Assert.False(SemanticsMaskHelper.TryParse("unsafe", out SemanticsKind _));
         Assert.Equal("raw", SemanticsKind.Raw.ToText());
     }
 

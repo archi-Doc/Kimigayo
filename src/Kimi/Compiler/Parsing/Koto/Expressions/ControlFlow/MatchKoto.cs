@@ -64,7 +64,7 @@ public class MatchKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(Constants.MatchKeyword);
+        builder.Append(TokenKind.Match.ToText());
         builder.AppendSpace();
         this.Expression.WriteTo(ref builder);
         builder.AppendLine();
@@ -80,7 +80,9 @@ public class MatchKoto : ExpressionKoto
             arm.Pattern.WriteTo(ref builder);
             if (arm.Guard is not null)
             {
-                builder.Append(" if ");
+                builder.Append(' ');
+                builder.Append(TokenKind.If.ToText());
+                builder.Append(' ');
                 arm.Guard.WriteTo(ref builder);
             }
 
