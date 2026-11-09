@@ -1,0 +1,7 @@
+func bounded(n: i32) => Console.writeLine("n=\(n)")
+
+func owning(s: ref/string) => Console.writeLine("s=\(s)")
+
+func line<T>(value: ref/T)
+    T is Utf8Format
+    Console.writeLine("v=\(value)")

@@ -61,7 +61,7 @@ fn format @9
       _12 = &uniq two-phase (*_4): uniq/Utf8Writer @121 s1
       StorageLive(_13) [clear f0] @27 s1
       StorageLive(_14) [clear f1] @27 s1
-      _14 = intrinsic FormatBuffer(const 2_isize, const type (i32), const false) -> bb4 [set f1] @27 s1
+      _14 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb4 [set f1] @27 s1
   bb4:
       StorageLive(_15) @27 s1
       StorageLive(_16) @27 s1
@@ -90,7 +90,7 @@ fn format @9
       _21 = discriminant(_20) @27 s1
       switch copy _21 [0: bb10, otherwise: bb8] @27 s1
   bb10:
-      _13 = intrinsic FormatFinish(move _15, const 2_isize, const type (i32), const false) -> bb11 [set f0] @27 s1
+      _13 = intrinsic FormatFinish(move _15) -> bb11 [set f0] @27 s1
   bb11:
       StorageLive(_25) @27 s1
       _25 = &_13: ref/string @27 s1
@@ -228,7 +228,7 @@ fn label @36
   _19: Never temp @41
   bb0:
       StorageLive(_3) @41
-    * _3 = intrinsic FormatBuffer(const 10_isize, const type (i32, string), const false) -> bb1 @41
+    * _3 = intrinsic FormatBuffer(const 10_isize, const type (i32, string)) -> bb1 @41
   bb1:
       StorageLive(_4) @41
       StorageLive(_5) @41
@@ -278,7 +278,7 @@ fn label @36
       _18 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatSegment(move _18, const "!", const 0_isize, const type ()) -> bb12 @41
   bb12:
-      _0 = intrinsic FormatFinish(move _4, const 10_isize, const type (i32, string), const false) -> bb13 @41
+      _0 = intrinsic FormatFinish(move _4) -> bb13 @41
   bb13:
       StorageDead(_18) @41
       StorageDead(_17) @41
@@ -320,7 +320,7 @@ fn show @47
   bb0:
       StorageLive(_2) @57 s1
       StorageLive(_3) @57 s1
-    * _3 = intrinsic FormatBuffer(const 2_isize, const type (T), const false) -> bb1 @57 s1
+    * _3 = intrinsic FormatBuffer(const 2_isize, const type (T)) -> bb1 @57 s1
   bb1:
       StorageLive(_4) @57 s1
       StorageLive(_5) @57 s1
@@ -351,7 +351,7 @@ fn show @47
       _12 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       _5 = intrinsic FormatSegment(move _12, const ">", const 0_isize, const type ()) -> bb8 @57 s1
   bb8:
-      _2 = intrinsic FormatFinish(move _4, const 2_isize, const type (T), const false) -> bb9 @57 s1
+      _2 = intrinsic FormatFinish(move _4) -> bb9 @57 s1
   bb9:
       goto bb15 check bb16 @56 s1
   bb10:
@@ -401,72 +401,82 @@ fn print @61
   _0: () return @61
   _1: i64 arg n @62
   _2: () temp @63
-  _3: string temp @67
-  _4: HeapBuffer temp @67
+  _3: [33 of u8] temp @67
+  _4: FixedBuffer temp @67
   _5: Utf8Writer temp @67
   _6: () temp @67
-  _7: uniq/HeapBuffer temp @67
-  _8: uniq/Utf8Writer temp @67
+  _7: uniq/[33 of u8] temp @67
+  _8: uniq/FixedBuffer temp @67
   _9: uniq/Utf8Writer temp @67
-  _10: Result<(), BufferFull> temp @67
-  _11: isize temp @67
-  _12: uniq/Utf8Writer temp @67
-  _13: ref/i64 temp @69
-  _14: Never temp @67
-  _15: ref/string temp @67
+  _10: uniq/Utf8Writer temp @67
+  _11: Result<(), BufferFull> temp @67
+  _12: isize temp @67
+  _13: uniq/Utf8Writer temp @67
+  _14: ref/i64 temp @69
+  _15: Result<Utf8Slice, InvalidUtf8> temp @63
+  _16: ref/FixedBuffer temp @63
+  _17: isize temp @63
+  _18: Never temp @67
   bb0:
       StorageLive(_2) @63
       StorageLive(_3) @67
+    * _3 = Fill(const 0_u8): [33 of u8] @67
       StorageLive(_4) @67
-    * _4 = intrinsic FormatBuffer(const 13_isize, const type (i64), const true) -> bb1 @67
-  bb1:
       StorageLive(_5) @67
       StorageLive(_6) @67
       StorageLive(_7) @67
-      _7 = &uniq two-phase _4: uniq/HeapBuffer @67
-      _5 = intrinsic ErasedWriter<HeapBuffer>(move _7) -> bb2 @67
-  bb2:
+      _7 = &uniq two-phase _3: uniq/[33 of u8] @67
+      _4 = fixed<_>(move _7) -> bb1 @67
+  bb1:
       StorageLive(_8) @67
-      _8 = &uniq two-phase _5: uniq/Utf8Writer @67
-      _6 = intrinsic FormatSegment(move _8, const "My number is ", const 0_isize, const type (i64)) -> bb3 @67
-  bb3:
+      _8 = &uniq two-phase _4: uniq/FixedBuffer @67
+      _5 = intrinsic ErasedWriter<FixedBuffer>(move _8) -> bb2 @67
+  bb2:
+      StorageDead(_8) @67
+      StorageDead(_7) @67
       StorageLive(_9) @67
       _9 = &uniq two-phase _5: uniq/Utf8Writer @67
-      _6 = intrinsic FormatSegment(move _9, const "", const 0_isize, const type ()) -> bb4 @67
-  bb4:
+      _6 = intrinsic FormatSegment(move _9, const "My number is ", const 0_isize, const type (i64)) -> bb3 @67
+  bb3:
       StorageLive(_10) @67
+      _10 = &uniq two-phase _5: uniq/Utf8Writer @67
+      _6 = intrinsic FormatSegment(move _10, const "", const 0_isize, const type ()) -> bb4 @67
+  bb4:
       StorageLive(_11) @67
       StorageLive(_12) @67
-      _12 = &uniq two-phase _5: uniq/Utf8Writer @67
-      StorageLive(_13) @69
-      _13 = &_1: ref/i64 @69
-      _10 = write<i64>(move _12, move _13) -> bb6 @67
+      StorageLive(_13) @67
+      _13 = &uniq two-phase _5: uniq/Utf8Writer @67
+      StorageLive(_14) @69
+      _14 = &_1: ref/i64 @69
+      _11 = write<i64>(move _13, move _14) -> bb6 @67
   bb5:
-      _14 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @67
+      _18 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @67
   bb6:
-      _11 = discriminant(_10) @67
-      switch copy _11 [0: bb7, otherwise: bb5] @67
+      _12 = discriminant(_11) @67
+      switch copy _12 [0: bb7, otherwise: bb5] @67
   bb7:
-      _3 = intrinsic FormatFinish(move _5, const 13_isize, const type (i64), const true) -> bb8 @67
+      StorageLive(_15) @63
+      StorageLive(_16) @63
+      _16 = &_4: ref/FixedBuffer @63
+      _15 = text(move _16) -> bb8 @63
   bb8:
-      StorageLive(_15) @67
-      _15 = &_3: ref/string @67
-      _2 = writeLine(move _15) -> bb9 @63
+      StorageLive(_17) @63
+      _17 = discriminant(_15) @63
+      switch copy _17 [0: bb9, otherwise: bb5] @63
   bb9:
-      StorageDead(_15) @67
-      drop _3 -> bb10 [keep] @67
+      _2 = writeLine(copy (_15 as case 0).0) -> bb10 @63
   bb10:
-      StorageDead(_13) @69
+      StorageDead(_17) @63
+      StorageDead(_16) @63
+      StorageDead(_15) @63
+      StorageDead(_14) @69
+      StorageDead(_13) @67
       StorageDead(_12) @67
       StorageDead(_11) @67
       StorageDead(_10) @67
       StorageDead(_9) @67
-      StorageDead(_8) @67
-      StorageDead(_7) @67
       StorageDead(_6) @67
       StorageDead(_5) @67
-      drop _4 -> bb11 [keep] @67
-  bb11:
       StorageDead(_4) @67
       StorageDead(_3) @67
       StorageDead(_2) @63
@@ -520,7 +530,7 @@ fn forms @79
   bb0:
       StorageLive(_2) @82 s1
       StorageLive(_3) @84 s1
-    * _3 = intrinsic FormatBuffer(const 2_isize, const type (i32), const false) -> bb1 @84 s1
+    * _3 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb1 @84 s1
   bb1:
       StorageLive(_4) @84 s1
       StorageLive(_5) @84 s1
@@ -553,7 +563,7 @@ fn forms @79
       _13 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       _5 = intrinsic FormatSegment(move _13, const "]", const 0_isize, const type ()) -> bb8 @84 s1
   bb8:
-      _2 = intrinsic FormatFinish(move _4, const 2_isize, const type (i32), const false) -> bb9 @84 s1
+      _2 = intrinsic FormatFinish(move _4) -> bb9 @84 s1
   bb9:
       StorageDead(_13) @84 s1
       StorageDead(_12) @86 s1
@@ -571,7 +581,7 @@ fn forms @79
       StorageLive(_15) @88 s1
       StorageLive(_16) @90 s1
       StorageLive(_17) @90 s1
-    * _17 = intrinsic FormatBuffer(const 2_isize, const type (i32), const false) -> bb11 @90 s1
+    * _17 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb11 @90 s1
   bb11:
       StorageLive(_18) @90 s1
       StorageLive(_19) @90 s1
@@ -604,7 +614,7 @@ fn forms @79
       _27 = &uniq two-phase _18: uniq/Utf8Writer @90 s1
       _19 = intrinsic FormatSegment(move _27, const ")", const 0_isize, const type ()) -> bb18 @90 s1
   bb18:
-      _16 = intrinsic FormatFinish(move _18, const 2_isize, const type (i32), const false) -> bb19 @90 s1
+      _16 = intrinsic FormatFinish(move _18) -> bb19 @90 s1
   bb19:
       StorageLive(_29) @90 s1
       _29 = &_16: ref/string @90 s1
@@ -661,7 +671,7 @@ fn early @97
   bb0:
       StorageLive(_1) @101 s1
       StorageLive(_2) @101 s1
-    * _2 = intrinsic FormatBuffer(const 12_isize, const type (()), const false) -> bb1 @101 s1
+    * _2 = intrinsic FormatBuffer(const 12_isize, const type (())) -> bb1 @101 s1
   bb1:
       StorageLive(_3) @101 s1
       StorageLive(_4) @101 s1
@@ -721,7 +731,7 @@ fn early @97
       _13 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       _4 = intrinsic FormatSegment(move _13, const "suffix", const 0_isize, const type ()) -> bb15 @101 s1
   bb15:
-      _1 = intrinsic FormatFinish(move _3, const 12_isize, const type (()), const false) -> bb16 @101 s1
+      _1 = intrinsic FormatFinish(move _3) -> bb16 @101 s1
   bb16:
       drop _1 -> bb17 @101 s1
   bb17:

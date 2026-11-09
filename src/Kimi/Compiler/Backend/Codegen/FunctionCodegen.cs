@@ -33,7 +33,7 @@
 // operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the legacy rows of compiler functions
 // (DECISIONS R5-M116); the formatting rows' Context words and
 // witness targets, a user formatter's write wrapper and Text.writer's words (.Formatting.cs; DECISIONS R5-M128, R5-M130); an owning
-// interpolation's buffer, hints and end, its estimate and its buffer's Region home (.Interpolation.cs; DECISIONS R5-M131); the Array rows
+// interpolation's buffer, hints and end and its estimate (.Interpolation.cs); the Array rows
 // written in place: an Array from none, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written
 // in place: a Dictionary from none and a Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124); a test build's phases, the
 // cleanup window and a terminator's completion (.Phases.cs; DECISIONS R5-M137).

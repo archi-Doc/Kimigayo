@@ -43,12 +43,6 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
         var bytes = Math.Max(0, amount);
         return new(this.Total < 0 || this.Total > long.MaxValue - bytes ? -1 : this.Total + bytes, this.Bounded && amount >= 0);
     }
-
-    /// <summary>Gets whether the buffer is placed on the stack: an interpolation passed directly to <c>Console.writeLine</c>, bounded and
-    /// within rule L's <see cref="FormattingTypes.StackLimit"/>.</summary>
-    /// <param name="direct">Whether the interpolation is the one argument of <c>Console.writeLine</c>.</param>
-    /// <returns>Whether it is formatted on the stack.</returns>
-    internal bool Stack(bool direct) => direct && this.Bounded && this.Total is >= 0 and <= FormattingTypes.StackLimit;
 }
 
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer, formatting and floating-point runtime and the wrappers over user
@@ -65,10 +59,6 @@ internal static partial class LegacyRuntimeHelpers
         "__kimi_format_finish",
         "void",
         [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
-
-    /// <summary>The end of an owning interpolation on the stack (<c>__kimi_format_stack_finish</c>): <see cref="FormatFinish"/>'s, the string
-    /// marked static, since its bytes are the frame's.</summary>
-    internal static readonly FunctionAbi FormatStackFinish = new("__kimi_format_stack_finish", "void", FormatFinish.Parameters);
 
     /// <summary>The runtime's test of an adapter (SPEC 22.10.1), true while it has recorded no failure, which a user formatter's write
     /// wrapper calls before and after the witness (MIR code generation; DECISIONS R5-M130).</summary>
@@ -95,9 +85,9 @@ internal static partial class LegacyRuntimeHelpers
             new("i32", "kind", AbiParameterKind.Context), RuntimeAbi.Location, RuntimeAbi.LocationLength,
         ]);
 
-    /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): an owning interpolation's buffer over its stack region
-    /// (FormatBuffer, FunctionCodegen.Interpolation) and the conversions' fixed buffer. Text.fixed is a body; this is a second statement of
-    /// its construction, temporary until W2 (FormatBuffer) and W1c-2 (the conversions).</summary>
+    /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): the conversions' fixed buffer (a direct line's region is
+    /// Text.fixed's body since R8-W2 a2). Text.fixed is a body; this is a second statement of its construction, temporary until W1c-2 (the
+    /// conversions).</summary>
     internal static readonly FunctionAbi FormatFixed = Slotted(
         "__kimi_text_fixed",
         [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "capacity", AbiParameterKind.Context, 0)]);

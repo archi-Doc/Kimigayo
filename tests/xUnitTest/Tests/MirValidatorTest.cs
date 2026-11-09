@@ -699,13 +699,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is not null, use.HasFinding);
     }
 
-    // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their constants, which code generation
-    // reads unchecked, each of its position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, the direct mark a
-    // Bool, a segment's text a string), and its FormatFinish the estimate operands of the FormatBuffer whose buffer its adapter is over,
-    // since code generation places the buffer by the one and ends it by the other: the built bodies are valid, a nested interpolation's
-    // included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for another kind), and a
-    // FormatFinish whose estimate differs from its FormatBuffer's, or whose adapter (here the argument) is over no FormatBuffer's buffer, an
-    // Arity finding at it.
+    // R3-10 (PLAN G157 (37)): an owning interpolation's steps carry their constants, which code generation reads unchecked, each of its
+    // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, a segment's text a string): the built bodies
+    // are valid, a nested interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step
+    // (fail-before: none for another kind). FormatFinish takes only its adapter since R8-W2 a2 (R5-M131's pairing went with the stack form).
     [Theory]
     [InlineData(null, false)]
     [InlineData(null, true)]
@@ -713,9 +710,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("later", false)]
     [InlineData("segment", false)]
     [InlineData("buffer", false)]
-    [InlineData("direct", false)]
-    [InlineData("bytes", false)]
-    [InlineData("lineage", false)]
     public void AnInterpolationsStepsCarryItsEstimate(string? broken, bool nested)
     {
         var c = MirBuildTest.Compile(nested ? "func f(n: i32) -> string => \"a\\(\"b\\(n)\")c\"\n" : Interpolation);
@@ -727,9 +721,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "text" => (IntrinsicId.FormatSegment, 1),
             "later" => (IntrinsicId.FormatSegment, 2),
             "segment" => (IntrinsicId.FormatSegment, 3),
-            "direct" => (IntrinsicId.FormatFinish, 3),
-            "bytes" => (IntrinsicId.FormatFinish, 1),
-            "lineage" => (IntrinsicId.FormatFinish, 0),
             _ => (IntrinsicId.FormatBuffer, 1),
         };
         MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
@@ -737,30 +728,44 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (steps, finishes) = (Steps(id), Steps(IntrinsicId.FormatFinish));
         Assert.Equal(nested ? 2 : 1, finishes.Length);
         Assert.Equal(id == IntrinsicId.FormatSegment ? 3 : finishes.Length, steps.Length);
-        var (step, finish) = (body.Subject(steps[0].Source), body.Subject(finishes[0].Source));
+        var step = body.Subject(steps[0].Source);
         if (broken is not null)
         {
-            MirConst? constant = broken switch
+            MirConst constant = broken switch
             {
-                "text" or "direct" or "bytes" => new(MirConstKind.Integer, BoundType.ISize, broken == "bytes" ? 99 : 0),
+                "text" => new(MirConstKind.Integer, BoundType.ISize, 0),
                 "later" => new(MirConstKind.Bool, BoundType.Boolean, 1),
-                "lineage" => null,
                 _ => new(MirConstKind.TypeToken, BoundType.I32),
             };
-            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = constant is { } value ? MirOperand.Const(body.Const(value)) : MirOperand.Move(new(1));
+            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = MirOperand.Const(body.Const(constant));
         }
 
-        (MirViolation, SourceRef)[] expected = broken switch
-        {
-            "text" or "later" or "segment" => [(MirViolation.Type, step)],
-            "buffer" => [(MirViolation.Type, step), (MirViolation.Arity, finish)],
-            "direct" => [(MirViolation.Type, finish), (MirViolation.Arity, finish)],
-            "bytes" or "lineage" => [(MirViolation.Arity, finish)],
-            _ => [],
-        };
+        (MirViolation, SourceRef)[] expected = broken is null ? [] : [(MirViolation.Type, step)];
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its
+    // instance decides; the body is valid, its Len a sequence's, and a Len of the region's writer (not a sequence) is a Len finding there.
+    [Fact]
+    public void ALenOverAnInterpolationBoundRegionIsASequences()
+    {
+        var c = MirBuildTest.Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var statements = body.Statements.ToArray();
+        var index = Assert.Single(Enumerable.Range(0, statements.Length), x => statements[x] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
+        var region = body.TypeOf(statements[index].Rvalue.Place)!;
+        Assert.Equal((BoundTypeKind.FixedArray, LengthOperation.InterpolationBound), (region.Kind, region.LengthExpression!.Operation));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Empty(findings);
+        var writer = Enumerable.Range(0, body.Locals.Length).First(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        Unsafe.AsRef(in body.Statements[index]) = statements[index] with { Rvalue = MirRvalue.Len(new(writer)) };
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal([(MirViolation.Len, body.Subject(statements[index].Source))], findings.Select(static x => (x.Rule, x.Subject)));
     }
 
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body

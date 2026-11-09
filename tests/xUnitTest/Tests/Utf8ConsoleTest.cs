@@ -36,7 +36,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleStack", Source, 0, 0, 0, "My number is 42\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is code generation's (R5-M12 class I).
+        Assert.Contains("alloca { [0 x i8], [33 x i8] }, align 1", outputIr); // The region, a [33 of u8] local; its name is code generation's (R5-M12 class I).
     }
 
     // Each side of the limit with a region partly empty (7 writes one of i8's four bytes), and the limit's region full (i8's widest value).
@@ -53,8 +53,8 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + name, source, allocations, allocations, allocations * bound, "once\n" + text + value + "\n");
     }
 
-    // SPEC 22.10.5 (G286): a direct interpolation of one value at its formatting kind's widest value fills its stack region exactly
-    // (DECISIONS R5-M131's premise: the HeapBuffer arm of the runtime's reserve never grows a region), so a bound one byte short fails.
+    // SPEC 22.10.5 (G286): a direct interpolation of one value at its formatting kind's widest value fills its stack region exactly (rule
+    // L: the region, Text.fixed's argument, holds every reservation of its FixedBuffer), so a bound one byte short fails.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("I8", "-128@i8", "-128")]
@@ -77,10 +77,29 @@ public class Utf8ConsoleTest
         var source = "let v = " + value + "\nConsole.writeLine(\"\\(v)\")";
         NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
         var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
-        var region = Assert.Single(
-            ir.Functions.SelectMany(static x => x.Instructions),
-            x => x.Callee == ir.Function("__kimi_text_fixed") && x.Operands[1].Opcode == "alloca").Operands[1];
-        Assert.Equal($"alloca [{Encoding.UTF8.GetByteCount(text)} x i8], align 1", region.Shape);
+        var instructions = ir.Functions.SelectMany(static x => x.Instructions).ToArray();
+        var region = Assert.Single(instructions, static x => x.Opcode == "alloca" && x.Shape.StartsWith("alloca { [0 x i8], [", StringComparison.Ordinal));
+        var borrow = Assert.Single(instructions, x => x.Opcode == "store" && x.Operands[0] == region).Operands[1]; // Text.fixed's argument.
+        Assert.Single(instructions, x => x.Opcode == "call" && x.Operands.Any(y => y.Opcode == "load" && y.Operands[0] == borrow));
+        Assert.Equal($"alloca {{ [0 x i8], [{Encoding.UTF8.GetByteCount(text)} x i8] }}, align 1", region.Shape);
+    }
+
+    // SPEC 22.10.3, 22.10.5, rule L (R8-W2 design §4b): a direct line's FixedBuffer adapter (kind 0) carries a literal deferred before a
+    // value, which the value's reservation prepends (the shared tail), for each bounded kind other than an integer, and in a generic body's
+    // fixed arm (T = bool): the exact text, so a dropped pending literal fails, and no allocation.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Bool", "let v = true", "b=", "true")]
+    [InlineData("Char", "let v = 'é'", "c=", "é")]
+    [InlineData("Unit", "let v = ()", "u=", "()")]
+    [InlineData("F32", "let v = 1.5@f32", "f=", "1.5")]
+    [InlineData("F64", "let v = 2.5", "d=", "2.5")]
+    [InlineData("Wrapping", "let v: Wrapping<u8> = 200", "w=", "200")]
+    [InlineData("Generic", "func show<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"b=\\(value)\")\nshow(true)", "", "b=true")]
+    public void AFixedRegionPrependsAPendingLiteralBeforeEachKind(string kind, string prefix, string literal, string text)
+    {
+        var source = literal.Length == 0 ? prefix : prefix + "\nConsole.writeLine(\"" + literal + "\\(v)\")";
+        NativeAllocationAudit.WriteFixture("Utf8ConsolePending" + kind, source, 0, 0, 0, literal + text + "\n");
     }
 
     [Trait("Purpose", "Allocation")]

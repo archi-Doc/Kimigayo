@@ -4,7 +4,7 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130, R5-M131): a call of
+// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130): a call of
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
