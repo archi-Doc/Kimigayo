@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -20,6 +21,7 @@ public class PrimitiveIntegerTest
         "func same<T>(a: T, b: T) -> bool\n    T is PrimitiveInteger\n    return a == b and not (a != b) and a <= b and a >= b\n" +
         "func largest<T>(a: T, b: T) -> T\n    T is Comparable and Copy\n    return if a < b => b else => a\n" +
         "func forward<T>(a: T, b: T) -> T\n    T is PrimitiveInteger\n    return largest(a, b)\n" +
+        "func pick<T>(value: T) -> i32\n    T is PrimitiveInteger\n    return match value\n        5 => 1\n        127 => 2\n        -0 => 3\n        _ => 4\n" +
         "let bytes: [3 of u8] = [1, 2, 3]\nlet wide: [3 of i64] = [100, 200, 300]\nlet big: [2 of i128] = [1, 2]\n" +
         "require sum(bytes[..]) == 6 and sum(wide[..]) == 600 and sum(big[..]) == 3 else => $abort(\"sum\")\n" +
         "require clamp(-5, 0, 10) == 0 and clamp(15@u16, 0, 10) == 10 and clamp(7@isize, 0, 10) == 7 else => $abort(\"clamp\")\n" +
@@ -27,6 +29,7 @@ public class PrimitiveIntegerTest
         "require mix(3@u8) == 10 and mix(3) == 10 and mix(3@u64) == 10 else => $abort(\"mix\")\n" +
         "require describe(7@u8) == \"value 7\" and describe(-2@i16) == \"value -2\" else => $abort(\"describe\")\n" +
         "require same(4@i128, 4) and not same(1@usize, 2) and forward(3@u32, 9) == 9 else => $abort(\"compare\")\n" +
+        "require pick(5@u8) == 1 and pick(127@i8) == 2 and pick(0@u128) == 3 and pick(-1@isize) == 4 and pick(133@u8) == 4 else => $abort(\"pick\")\n" +
         "Console.writeLine(\"ok\")";
 
     [Fact]
@@ -56,6 +59,27 @@ public class PrimitiveIntegerTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 14.8.1, 12.4.3, 8.7.4 (PLAN G661): an integer Literal Pattern or literal Dictionary key at a proven-PrimitiveInteger T, also
+    // below Wrapping<T> or ref/T, fits exactly the generic literals 0 through 127 (-0 is 0); equal fitted keys are duplicates.
+    [Theory]
+    [InlineData("func f<T>(x: T) -> i32\n    T is PrimitiveInteger\n    return match x\n        5 => 1\n        127 => 2\n        -0 => 3\n        _ => 0", "")]
+    [InlineData("func f<T>(x: Wrapping<T>) -> i32\n    T is PrimitiveInteger\n    return match x\n        5 => 1\n        _ => 0", "")]
+    [InlineData("func f<T>(x: ref/T) -> i32\n    T is PrimitiveInteger\n    return match x\n        5 => 1\n        _ => 0", "")]
+    [InlineData("func f<T>(x: T) -> Dictionary<T, i32>\n    T is PrimitiveInteger\n    return [5: 1, 6: 2]", "")]
+    [InlineData("func f<T>(x: T) -> i32\n    T is PrimitiveInteger\n    return match x\n        128 => 1\n        _ => 0", "InvalidPattern_Kd 128")]
+    [InlineData("func f<T>(x: T) -> i32\n    T is PrimitiveInteger\n    return match x\n        -1 => 1\n        _ => 0", "InvalidPattern_Kd -1")]
+    [InlineData("func f<T>(x: Wrapping<T>) -> i32\n    T is PrimitiveInteger\n    return match x\n        128 => 1\n        _ => 0", "InvalidPattern_Kd 128")]
+    [InlineData("func f<T>(x: ref/T) -> i32\n    T is PrimitiveInteger\n    return match x\n        -1 => 1\n        _ => 0", "InvalidPattern_Kd -1")]
+    [InlineData("func f<T>(x: T) -> Dictionary<T, i32>\n    T is PrimitiveInteger\n    return [5: 1, 5: 2]", "DuplicateDictionaryKey_Kd 5")]
+    [InlineData("func f<T>(x: T) -> Dictionary<T, i32>\n    T is PrimitiveInteger\n    return [5: 1, (5): 2]", "DuplicateDictionaryKey_Kd (5)")]
+    [InlineData("func f<T>(x: T) -> i32\n    T is PrimitiveInteger\n    return match x\n        5 => 1\n        127 => 2", "NonExhaustiveMatch_Kd match x\n        5 => 1\n        127 => 2")]
+    public void LiteralPatternsAndKeysFitTheGenericLiterals(string source, string errors)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(errors, string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}")));
     }
 
     // SPEC 10.2.2: a Type argument constrained to PrimitiveInteger is inferred as the referent, and the argument is read.

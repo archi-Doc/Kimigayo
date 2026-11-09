@@ -159,6 +159,7 @@ public sealed partial class Binding
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.impls.Reset();
+        this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
         this.projectionForms.Clear();
@@ -250,7 +251,7 @@ public sealed partial class Binding
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
         var head = AssociatedHead(declaration);
-        var name = head is OriginApplicationKoto application ? UnwrapAssociatedHead(application.Type) : head;
+        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head;
         if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
         {
             return; // A qualified specification refines an existing requirement.

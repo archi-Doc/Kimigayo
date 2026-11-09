@@ -84,29 +84,6 @@ public class InferenceSlotScalingTest
         Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
-    // The cold rows: from 32 to 512 calls a first Bind's inference work grows by one amount per call (272 lies halfway, so the two steps compare),
-    // and its allocation is linear as CallableRegionScalingTest's V16 rows define it: three sizes, each double the one before, within factor 3. That
-    // passes a mixed term, an added 4n^2 bytes on all five workloads, so a second series spans the plan's 32 to 512: its sizes each quadruple, so
-    // linear gives 4, and factor 6 keeps V16's headroom. An added bn^2 bytes then fails one series or the other from about b = 2.1 on `parts`, 2.7 on
-    // `waiting`, 2.9 on `calls`, 4.5 on `joins` and 5.1 on `references`, by arithmetic on dev's bytes; a term below its workload's limit passes both.
-    [Theory]
-    [InlineData("calls")]
-    [InlineData("waiting")]
-    [InlineData("joins")]
-    [InlineData("references")]
-    [InlineData("parts")]
-    [Trait("Purpose", "Allocation")]
-    public void AColdBindOfCallsIsLinear(string workload)
-    {
-        long[] work = [.. new[] { 32, 272, 512 }.Select(calls => Work(Bound(CallWorkload(workload, calls))))];
-        Assert.True(work[0] < work[1], $"work {string.Join(", ", work)}");
-        Assert.Equal(work[2] - work[1], work[1] - work[0]);
-        var doubling = ColdBytes(workload, [128, 256, 512]);
-        Assert.True(doubling[0] < doubling[1] && MirBorrowsTest.Grows(doubling, 3), $"bytes {string.Join(", ", doubling)}");
-        var span = ColdBytes(workload, [32, 128, 512]);
-        Assert.True(span[0] < span[1] && MirBorrowsTest.Grows(span, 6), $"bytes {string.Join(", ", span)}");
-    }
-
     // The n = 40 rows (SPEC 10.5.1: inner calls are never resolved once per outer candidate; 10.3): a nested call that waits is checked at the
     // Type its position gives, once, so the count of candidate evaluations at depth 10, 20 and 40 is linear: nested generic calls, an overloaded
     // call at every level, and a join in every nested call. No public counter reads the join walks (PLAN G335), so jn pins the calls
@@ -202,5 +179,32 @@ public class InferenceSlotScalingTest
         var values = string.Join(", ", Enumerable.Repeat("n", count - (unbound ? 1 : 0)));
         return (constructor ? $"struct Wide<{slots}>\n    public init({parameters}) => ()\n" : $"func wide<{slots}>({parameters}) => ()\n") +
             "let n: i32 = 42\n" + (constructor ? "let result = Wide.init" : "wide") + $"({values})";
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // The cold rows: from 32 to 512 calls a first Bind's inference work grows by one amount per call (272 lies halfway, so the two steps compare),
+        // and its allocation is linear as CallableRegionScalingTest's V16 rows define it: three sizes, each double the one before, within factor 3. That
+        // passes a mixed term, an added 4n^2 bytes on all five workloads, so a second series spans the plan's 32 to 512: its sizes each quadruple, so
+        // linear gives 4, and factor 6 keeps V16's headroom. An added bn^2 bytes then fails one series or the other from about b = 2.1 on `parts`, 2.7 on
+        // `waiting`, 2.9 on `calls`, 4.5 on `joins` and 5.1 on `references`, by arithmetic on dev's bytes; a term below its workload's limit passes both.
+        [Theory]
+        [InlineData("calls")]
+        [InlineData("waiting")]
+        [InlineData("joins")]
+        [InlineData("references")]
+        [InlineData("parts")]
+        public void AColdBindOfCallsIsLinear(string workload)
+        {
+            long[] work = [.. new[] { 32, 272, 512 }.Select(calls => Work(Bound(CallWorkload(workload, calls))))];
+            Assert.True(work[0] < work[1], $"work {string.Join(", ", work)}");
+            Assert.Equal(work[2] - work[1], work[1] - work[0]);
+            var doubling = ColdBytes(workload, [128, 256, 512]);
+            Assert.True(doubling[0] < doubling[1] && MirBorrowsTest.Grows(doubling, 3), $"bytes {string.Join(", ", doubling)}");
+            var span = ColdBytes(workload, [32, 128, 512]);
+            Assert.True(span[0] < span[1] && MirBorrowsTest.Grows(span, 6), $"bytes {string.Join(", ", span)}");
+        }
     }
 }

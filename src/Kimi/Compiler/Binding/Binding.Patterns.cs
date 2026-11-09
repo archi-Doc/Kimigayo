@@ -475,7 +475,7 @@ public sealed partial class Binding
 
                 break;
             default:
-                if (this.TryPatternLiteral(syntax, type, out var literal))
+                if (this.TryPatternLiteral(syntax, type, outer, out var literal))
                 {
                     position = position with { Kind = BoundPatternKind.Literal, Literal = literal };
                 }
@@ -552,14 +552,14 @@ public sealed partial class Binding
         return symbol.EnumCase;
     }
 
-    private bool TryPatternLiteral(Koto syntax, BoundType type, out PatternLiteral literal)
+    private bool TryPatternLiteral(Koto syntax, BoundType type, BindingScope scope, out PatternLiteral literal)
     {
         literal = default;
         // A number or a negated number; TryDictionaryLiteralKey unwraps a key's unary + before this.
         var negative = syntax.Akind == KotoKind.PrefixMinus;
         if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !ScalarTypes.TryLiteral(type, magnitude, negative, out var bits))
+            if (!this.TryIntegerLiteral(number, negative, type, scope, out var bits))
             {
                 return false;
             }

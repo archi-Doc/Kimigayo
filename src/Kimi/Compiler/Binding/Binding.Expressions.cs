@@ -145,6 +145,27 @@ public sealed partial class Binding
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
+    // SPEC 12.3.2, 8.7.4: whether a direct integer literal (its number and sign) fits an integer or wrapping integer Type, concrete or
+    // generic, and its constant (DECISIONS BU-133): a Type with a width holds its N-bit sign-extended payload; a Type whose literals are
+    // the generic 0 through 127 holds the value, which is every instance's payload. Literal Patterns and literal keys (SPEC 14.8.1,
+    // 12.4.3) and input fitting read this one rule.
+    private bool TryIntegerLiteral(NumberLiteralKoto number, bool negative, BoundType type, BindingScope scope, out Int128 bits)
+    {
+        bits = 0;
+        if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude))
+        {
+            return false;
+        }
+
+        if (this.TakesGenericLiterals(type, scope))
+        {
+            bits = (Int128)magnitude;
+            return FitsGenericInteger(number, negative);
+        }
+
+        return ScalarTypes.TryLiteral(type, magnitude, negative, out bits);
+    }
+
     // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
     private BoundType? LiteralDefault(Koto node)
     {
@@ -163,9 +184,9 @@ public sealed partial class Binding
         }
 
         var number = KotoHelper.SignedNumber(node, out var negative);
-        if (number is not null && this.TakesGenericLiterals(type, scope))
+        if (number is { IsInteger: true })
         {
-            return FitsGenericInteger(number, negative);
+            return this.TryIntegerLiteral(number, negative, type, scope, out _);
         }
 
         if (number is null && IsLiteralOnlyOperation(node))
