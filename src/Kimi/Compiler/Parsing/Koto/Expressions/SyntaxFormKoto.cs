@@ -40,6 +40,12 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
     /// <inheritdoc/>
     public override KotoKind Akind => this.kind;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => this.kind == KotoKind.RootName && this.children.Length == 1 ? 1 : 0;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.children[0];
+
     /// <summary>Gets the ordered operands without allocating an iterator.</summary>
     public ReadOnlySpan<Koto> Operands => this.children;
 

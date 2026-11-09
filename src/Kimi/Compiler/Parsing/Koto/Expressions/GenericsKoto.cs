@@ -18,6 +18,12 @@ public sealed class GenericsKoto : ApplicationKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Generics;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => (this.Identifier is null ? 0 : 1) + this.TypeArguments.Count;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Identifier is { } head ? (index == 0 ? head : this.TypeArguments[index - 1]) : this.TypeArguments[index];
+
     /// <summary>Gets the generic identifier.</summary>
     public Koto? Identifier => this.Target;
 

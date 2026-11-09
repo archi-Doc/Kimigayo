@@ -53,7 +53,7 @@ public sealed partial class Binding
         for (var i = 0; i < literal.Entries.Count; i++)
         {
             var syntax = literal.Entries[i].Key;
-            if (syntax.BoundType is { } actual && this.TryDictionaryLiteralKey(syntax, actual, out var constant) && !this.dictionaryLiteralKeys.Add(constant))
+            if (syntax.BoundType is { } actual && this.TryDictionaryLiteralKey(syntax, actual, scope, out var constant) && !this.dictionaryLiteralKeys.Add(constant))
             {
                 this.Fail(syntax, BindingFailure.DuplicateDictionaryKey);
                 complete = false;
@@ -117,7 +117,7 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.Dictionary, dictionary, SemanticsKind.Owner, [inferredKey, inferredValue]);
     }
 
-    private bool TryDictionaryLiteralKey(Koto syntax, BoundType type, out PatternLiteral literal)
+    private bool TryDictionaryLiteralKey(Koto syntax, BoundType type, BindingScope scope, out PatternLiteral literal)
     {
         syntax = KotoHelper.UnwrapParentheses(syntax);
         if (ReferenceEquals(type, BoundType.Unit) && syntax is UnitLiteralKoto or TupleLiteralKoto { Elements.Count: 0 })
@@ -131,6 +131,6 @@ public sealed partial class Binding
             syntax = number;
         }
 
-        return this.TryPatternLiteral(syntax, type, out literal);
+        return this.TryPatternLiteral(syntax, type, scope, out literal);
     }
 }
