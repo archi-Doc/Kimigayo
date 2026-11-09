@@ -3203,6 +3203,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   amended by Q11; superseded in part by R7-M2: the session names)
   - R4 runs implementers one per lane, at most two, their files disjoint and at most one unit changing a shared representation at a
     time; designers and reviewers at most two (two designs in parallel, or a review beside the next design).
+  - Amended (the owner, 2026-11-09, verbatim 「設計とレビューの上限 aでお願いします」; plan revision 45): designers and reviewers at most three
+    together per session; implementers stay at two and heavy runs at three. Binds every area session (R5-M113, R7-M2).
   - Heavy runs (full Sessions (default, mir or sel); full Functional runs, ledger runs included; native fixture and milestone sweeps) are
     at most three at once across R4, BU and R5, registered in `artifacts/heavy-runs/` (a file per running run); a session whose run
     would exceed three announces it and waits. Design and review probes run selected classes and reuse full-suite bases (diagnostic
