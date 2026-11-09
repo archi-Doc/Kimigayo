@@ -145,6 +145,12 @@ public class BinaryKoto : ExpressionKoto
 /// <summary>Represents a member-access expression.</summary>
 public sealed class MemberAccessKoto : BinaryKoto
 {
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Left;
+
     /// <summary>Initializes a new instance of the <see cref="MemberAccessKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

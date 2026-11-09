@@ -845,8 +845,7 @@ public sealed partial class Binding
 
     private Koto? FindMissingConformanceName(IsKoto clause)
     {
-        if (clause.Parent is not (StructKoto or EnumKoto) || !IsSelfConstraint(clause) ||
-            clause.BoundConstraint is null)
+        if (!DeclaresConformance(clause) || clause.BoundConstraint is null)
         {
             return null;
         }
@@ -900,7 +899,8 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node.BoundSymbol is null && node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
+            // A name the requirement could not resolve: missing, or a projection before registration (G621's limit, Unsupported).
+            if (node.BoundSymbol is null && node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
             {
                 this.Cause = node;
                 return;

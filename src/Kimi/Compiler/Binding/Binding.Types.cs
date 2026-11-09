@@ -23,6 +23,18 @@ public sealed partial class Binding
         return node;
     }
 
+    // A transparent wrapper (a TypeSemanticsKoto the parser adds around a written Type, IsTransparentWrapper) is the Type it wraps: the one
+    // unwrap of it, for an associated head, a qualifier and the node a requirement's failure rests on.
+    private static Koto? UnwrapTransparentType(Koto? syntax)
+    {
+        while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            syntax = inner;
+        }
+
+        return syntax;
+    }
+
     private static string? TypeSpelling(Koto syntax) => syntax switch
     {
         IdentifierNameKoto identifier => identifier.IdentifierName,

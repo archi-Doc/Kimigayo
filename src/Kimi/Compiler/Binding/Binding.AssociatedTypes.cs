@@ -38,7 +38,7 @@ public sealed partial class Binding
     private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
     {
         var head = AssociatedHead(clause);
-        head = head is OriginApplicationKoto applied ? UnwrapAssociatedHead(applied.Type) : head;
+        head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
         if (head is not MemberAccessKoto { Left.BoundSymbol: { } reference } || !IsBoundContractReference(reference))
         {
             return true;
@@ -223,6 +223,13 @@ public sealed partial class Binding
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
         if (associated is null)
         {
+            // G621: before the conformance declarations register, a declared Type's conformances are not known yet; the read is judged
+            // again once they are (VerifyEarlyProjections).
+            if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
+            {
+                this.earlyProjections.Add((syntax, type, scope, name, qualifier));
+            }
+
             return null;
         }
 
@@ -303,7 +310,7 @@ public sealed partial class Binding
             referenceSyntax = groupedReference.Type;
         }
 
-        if (symbol?.Declaration is ContractKoto && UnwrapAssociatedHead(referenceSyntax) is GenericsKoto)
+        if (symbol?.Declaration is ContractKoto && UnwrapTransparentType(referenceSyntax) is GenericsKoto)
         {
             symbol = this.BindContractReference(referenceSyntax, symbol, scope);
         }
@@ -345,14 +352,14 @@ public sealed partial class Binding
         var self = this.SelfType(owner ?? scope.Owner.BoundSymbol!);
         var head = AssociatedHead(clause);
         var applied = head as OriginApplicationKoto;
-        head = applied is null ? head : UnwrapAssociatedHead(applied.Type);
+        head = applied is null ? head : UnwrapTransparentType(applied.Type);
         var name = head;
         BindingSymbol? qualifier = null;
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
             qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-            if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+            if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
             {
                 // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
                 qualifier = this.BindContractReference(member.Left, qualifier, scope);

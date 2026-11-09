@@ -571,6 +571,61 @@ public class ConstraintBindingTest
         Assert.Equal("UnprovenConstraint_Kd", error.Code);
     }
 
+    // SPEC 8.5, 8.6.1, F.5 (G621): a requirement waits for the conformances by what its Types contain, except a conformance declaration,
+    // which binds before they register. So a premise's Contract argument that names a declared Type's projection is resolved (k1-t7),
+    // under every operator, and a qualified projection resolves in a conformance declaration too (q9: the qualifier's Contract is
+    // searched). An unqualified projection over a declared Type in a conformance declaration takes its candidates from the conformance
+    // table, which fills only at registration: an analysis limit, one located Unsupported_Kd (k9, u1), never a missing member. Each
+    // invalid twin keeps dev's records (k2-u1n).
+    [Theory]
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Item>\n    return 0\n", "")] // k1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Item>\n    return 0\n", "")] // k3
+    [InlineData("struct Holder<T, V> {h}\n    origin s.at == h\n    T is Sink<(Cursor{s}).Item>\n    public let w: ref/i32 during s.at\n", "")] // k5
+    [InlineData("struct Holder<T> {h}\n    T is Sink<(Cursor during h).Item>\n    public let w: ref/i32 during h\n", "")] // p2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Item>\n    return 0\n", "")] // t1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Item> or Marker\n    return 0\n", "")] // t2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Item> or Zbox<i32>\n    return 0\n", "")] // t3
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Source and Sink<(Cursor during y).Item>\n    return 0\n", "")] // t7
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).(Source).Item>\n    public let p: ref/i32 during w\n", "")] // q9
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\n", "Unsupported_Kd@(Cursor during w).Item")] // k9
+    [InlineData("struct W\n    Self is Sink<Src.Item>\n", "Unsupported_Kd@Src.Item")] // u1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<Nosuch>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@Nosuch")] // t6
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2
+    [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Nope>\n    public let p: ref/i32 during w\n", "UnresolvedBinding_Kd@(Cursor during w).Nope")] // k9n
+    [InlineData("struct W\n    Self is Sink<Src.Nope>\n", "UnresolvedBinding_Kd@Src.Nope")] // u1n
+    public void AProjectionInARequirementWaitsUnlessItsClauseDeclaresConformance(string declaration, string expected)
+    {
+        const string Prelude = "contract Source\n    associate Item\ncontract Marker\ncontract Sink<E>\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\nstruct Zbox<T>\nstruct Src\n    Self is Source\n    associate Item is i32\n";
+        var records = ContextualCaptureTest.PublishedRecords(Prelude + declaration + "public func main() => ()\n");
+        Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Text is { } text && !text.Contains('\n') ? x.Code + "@" + text : x.Code)));
+    }
+
+    // G621: the limit's early reads belong to one pass (Binding.ResetPass clears them, as it clears the other early reads), so every Bind
+    // of k9, a Provisional one between, reports what a fresh Compilation reports.
+    [Fact]
+    public void EveryBindOfTheProjectionLimitReportsWhatAFreshBindReports()
+    {
+        const string Source = "contract Source\n    associate Item\ncontract Sink<E>\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\nstruct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\npublic func main() => ()\n";
+        var fresh = Records(MinimalEmissionTest.Analyze(Source));
+        Assert.Contains("Unsupported_Kd", fresh);
+        var c = MinimalEmissionTest.Analyze(Source);
+        for (var i = 0; i < 4; i++)
+        {
+            if (i == 2)
+            {
+                c.Binding.Bind(BindingMode.Provisional);
+            }
+
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(fresh, Records(c));
+        }
+
+        static string Records(Compilation c) => string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code}@{x.Node.Akind}").Order());
+    }
+
     private static Compilation Parse(string source, bool allowParserErrors = false)
         => allowParserErrors ? CompilationTestHelper.Parse(source) : CompilationTestHelper.ParseSuccess(source);
 
