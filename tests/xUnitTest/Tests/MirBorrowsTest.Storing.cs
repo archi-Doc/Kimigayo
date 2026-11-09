@@ -7,7 +7,8 @@ namespace XunitTest;
 
 /// <summary>A5's storing rule (PLAN G581-1; SPEC 5.2.1 Retained dependencies, 15.6.4 rule A; the owner's O-56 (a), O-62 (a), O-72 (a),
 /// O-110 (a)): a safe body's direct store of an input's own part where its own contract refuses it is UnretainedRawStore_Kd; a self-link,
-/// another input's part, a redirected landing and every named silence are not.</summary>
+/// another input's part, a stated layer, a redirected landing and every named silence are not; the record lies at the store, with
+/// no fact (DECISIONS Q13).</summary>
 public sealed partial class MirBorrowsTest
 {
     private static readonly Dictionary<string, string> StoringForms = new()
@@ -74,25 +75,43 @@ public sealed partial class MirBorrowsTest
         ["objPayload"] = "struct PR\n    public var p: raw/u8\n    public init() => self.p = null\nfunc st(t: uniq/(obj/PR))\n" +
             "    t@follow.p = t@follow@raw@raw/u8",
         ["unsafeScope"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    unsafe => t@follow@follow = t@follow@raw@raw/u8",
+        ["unsafeFn"] = "unsafe func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["statedPast"] = "func st(t: uniq/(uniq/(raw/u8 during a) during a) during a)\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["statedTupleElem"] = "func st(t: uniq/(uniq/((raw/u8 during a, raw/u8)) during a) during a)\n    t@follow@follow.0 = t@follow@raw@raw/u8",
+        ["statedSibling"] = "func st(t: uniq/((uniq/(raw/u8 during a) during a, uniq/(raw/u8) during a)) during a)\n" +
+            "    t@follow.0@follow = t@follow@raw@raw/u8",
+        ["statedOwnByValue"] = "struct SS {s}\n    public var c: uniq/(raw/u8 during s) during s\n    public var d: uniq/(raw/u8) during s\n" +
+            "    public init(c: uniq/(raw/u8 during s) during s, d: uniq/(raw/u8) during s)\n        self.c = c\n        self.d = d\n" +
+            "func st(p: SS during a)\n    p.c@follow = p.d@follow@raw@raw/u8",
+        ["selfLinkField"] = "func st(p: (uniq/((raw/u8, u8)) during a, i32))\n    p.0@follow.0 = p.0@follow.1@raw@raw/u8",
+        ["callStore"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = u@follow@raw@raw/u8\n" +
+            "    let old = Kimi.Intrinsics.exchange(v@uniq, with: t@follow@raw@raw/u8)\n    t@follow@follow = v",
+        ["partStore"] = "func st(t: uniq/(uniq/((raw/u8, i32)) during a))\n    var q: (raw/u8, i32) = (t@follow@raw@raw/u8, 0)\n    q.1 = 5\n" +
+            "    t@follow@follow = q",
+        ["closureBody"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@follow@uniq\n" +
+            "    let f = func [r@move, v] () => r@follow = v\n    f@move()",
+        ["aggregatePart"] = "func st(p: (uniq/((raw/u8, i32)) during a, (raw/u8, i32)))\n    p.0@follow = p.1",
+        ["dropReceiver"] = "struct DR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
+            "    drop\n        self.r@follow = self@raw@raw/u8",
     };
 
     [Theory]
-    [InlineData("direct", "st")]
-    [InlineData("field", "st")]
-    [InlineData("method", "st")]
-    [InlineData("tuple", "st")]
-    [InlineData("array", "st")]
-    [InlineData("cast", "st")]
-    [InlineData("displaced", "st")]
-    [InlineData("localRoot", "st")]
-    [InlineData("loop", "st")]
-    [InlineData("replaced", "st")]
-    [InlineData("structField", "st")]
-    [InlineData("generic", "st")]
-    [InlineData("threeLayers", "st")]
-    [InlineData("scalarCall", "st")]
-    [InlineData("twoLayers", "st")]
-    [InlineData("rawPart", "st")]
+    [InlineData("direct", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("field", "st: h@follow.r@follow = h@follow@raw@raw/u8")]
+    [InlineData("method", "st: self.r@follow = self@follow@raw@raw/u8")]
+    [InlineData("tuple", "st: t@follow@follow = (t@follow@raw@raw/u8, 0)")]
+    [InlineData("array", "st: t@follow@follow = [t@follow@raw@raw/u8, null]")]
+    [InlineData("cast", "st: t@follow@follow = t@follow@raw@raw/(raw/u16)@raw/u8")]
+    [InlineData("displaced", "st: t@follow@follow = v")]
+    [InlineData("localRoot", "st: r@follow = v")]
+    [InlineData("loop", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("replaced", "st: t@follow@follow = v")]
+    [InlineData("structField", "st: t@follow@follow.a = t@follow@raw@raw/u8")]
+    [InlineData("generic", "st: t@follow@follow = t@follow@raw@raw/T")]
+    [InlineData("threeLayers", "st: t@follow@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("scalarCall", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("twoLayers", "st: p.0@follow = p.1@follow@raw@raw/u8")]
+    [InlineData("rawPart", "st: p.0@follow = p.1")]
     [InlineData("other", "")]
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
@@ -114,13 +133,28 @@ public sealed partial class MirBorrowsTest
     [InlineData("joinedRecord", "")]
     [InlineData("objPayload", "")]
     [InlineData("unsafeScope", "")]
+    [InlineData("unsafeFn", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("statedPast", "")]
+    [InlineData("statedTupleElem", "")]
+    [InlineData("statedSibling", "")]
+    [InlineData("statedOwnByValue", "")]
+    [InlineData("selfLinkField", "")]
+    [InlineData("callStore", "")]
+    [InlineData("partStore", "")]
+    [InlineData("closureBody", "")]
+    [InlineData("aggregatePart", "")]
+    [InlineData("dropReceiver", "")]
     public void ABodyStoresAnInputsOwnPartOnlyWhereItsContractRetainsIt(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StoringForms[form]);
         var program = Analyze(c);
         var found = program.Problems.All.ToArray()
             .Where(static x => !x.IsRecord && x.Subject.Module == 0 && (x.Code == DiagnosticCode.UnretainedRawStore_Kd || LoanCodes.Contains(x.Code)))
-            .Select(x => x.Code == DiagnosticCode.UnretainedRawStore_Kd ? Function(c.SyntaxOf(x.Subject)) : $"{x.Code}");
+            .Select(x => x.Code == DiagnosticCode.UnretainedRawStore_Kd ? $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}" : $"{x.Code}");
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", found)}]");
+        var all = program.Problems.All.ToArray();
+        Assert.All(
+            Enumerable.Range(0, all.Length).Where(i => all[i].Code == DiagnosticCode.UnretainedRawStore_Kd),
+            i => Assert.Equal(0, program.Problems.Facts(i).Length));
     }
 }

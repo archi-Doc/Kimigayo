@@ -76,10 +76,8 @@ internal sealed partial class MirBorrows
         (this.limit, this.deep) = (false, false);
         if (this.overstored > 0)
         {
-            // The storing rule (MirBorrows.Storing): at the store, the stored own value's formation as the Anchor fact (DECISIONS Q13).
-            var anchor = this.formed >= 0 ? this.Source(this.formed) : this.body.Locals[this.overstored].Source;
-            this.facts[0] = new(ProblemFactKind.Anchor, this.body.Subject(anchor));
-            this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), this.facts.AsSpan(0, 1));
+            // The storing rule (MirBorrows.Storing): at the store, with no fact (an Anchor reads as a Loan's; DECISIONS Q13).
+            this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), []);
             this.overstored = 0;
         }
 

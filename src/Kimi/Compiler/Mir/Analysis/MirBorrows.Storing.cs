@@ -26,8 +26,8 @@ namespace Kimi.Compiler.Mir;
 // or at depth 1 in the storage of another layer of i than the value's own part, whose value's M holds Own(i, ·), where i's record for
 // that storage (past: the Reached entry of its erased case Type, else All; depth 1: Own) is untied (Binding: a raw layer stepping
 // Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair: UnretainedRawStore_Kd at the
-// store, the value's formation (or i's parameter for its own entry value) the Anchor fact (MirBorrows.Locations). Never where the
-// value's own part is the destination's layer (a self-link, O-56 (a)).
+// store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part formed by `@raw` has none).
+// Never where the value's own part is the destination's layer (a self-link, O-56 (a)).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
 // exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
@@ -36,8 +36,8 @@ namespace Kimi.Compiler.Mir;
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
-    private readonly List<(int Input, int Part, int Site)> ownKeys = []; // Own(i, part) by formation site (-1: entry); key k: element 2 (locals + k).
-    private readonly Dictionary<(int Input, int Part, int Site), int> ownIndex = [];
+    private readonly List<(int Input, int Part)> ownKeys = []; // Own(i, part)'s keys: key k is element 2 (locals + k).
+    private readonly Dictionary<(int Input, int Part), int> ownIndex = [];
     private int[] must = []; // By slot: M(h), in the checks replay (chain-local).
     private int[] redirected = []; // By local: the least depth at which the body may write a pointer layer of the input's region.
     private MirStep[] mustSteps = []; // Landing's and Redirects' step walk.
@@ -45,7 +45,6 @@ internal sealed partial class MirBorrows
     private int mustValue; // M of the value the location's Assign stores (Plan), read by the rule.
     private int mustKept; // What that store gives its whole destination: mustValue, or ∅ for an exposed one (Commit).
     private int overstored; // The input local whose own value the location's store puts where the contract refuses it, or 0 (Check).
-    private int formed; // Where that own value was formed (a location), or -1 for the input's own entry value (Check's Anchor).
     private bool replaying; // Whether Carry runs the checks replay.
     private bool owning; // Whether the body forms an input's own part without a Loan (a raw address, a by-value pointer part): Run's producer.
 
@@ -88,13 +87,13 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Own(i, part)'s element, formed at a location (-1: the input's own entry value).
-    private int Own(int input, int part, int site)
+    // Own(i, part)'s element.
+    private int Own(int input, int part)
     {
-        if (!this.ownIndex.TryGetValue((input, part, site), out var key))
+        if (!this.ownIndex.TryGetValue((input, part), out var key))
         {
-            (key, this.ownIndex[(input, part, site)]) = (this.ownKeys.Count, this.ownKeys.Count);
-            this.ownKeys.Add((input, part, site));
+            (key, this.ownIndex[(input, part)]) = (this.ownKeys.Count, this.ownKeys.Count);
+            this.ownKeys.Add((input, part));
         }
 
         return 2 * (this.body.Locals.Length + key);
@@ -162,14 +161,14 @@ internal sealed partial class MirBorrows
                 }
 
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
-                all |= this.Redirect(statement.Place, 0, this.PointerType(this.body.TypeOf(statement.Place)));
+                all |= this.PointerType(this.body.TypeOf(statement.Place)) ? this.Redirect(statement.Place, 0) : this.ThroughRaw(statement.Place);
                 if (this.Reborrowing(statement) is var mode and not MirRefKind.Raw)
                 {
-                    all |= mode != MirRefKind.Shared && this.Redirect(this.body.Operands[rvalue.Start].Place, 1, true);
+                    all |= mode != MirRefKind.Shared && this.Redirect(this.body.Operands[rvalue.Start].Place, 1);
                 }
                 else if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op is not (MirRefKind.Shared or MirRefKind.Raw))
                 {
-                    all |= this.Redirect(rvalue.Place, 0, true);
+                    all |= this.Redirect(rvalue.Place, 0);
                 }
                 else if (rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage)
                 {
@@ -182,7 +181,7 @@ internal sealed partial class MirBorrows
                         this.PointerType(this.body.TypeOf(read)))
                     {
                         this.owning |= read.Projection != 0 && this.StoringInput(read.Root) && this.Depth(read) == 0; // A by-value input's pointer part.
-                        all |= this.body.Operands[o].Kind == MirOperandKind.Move && this.Redirect(read, 1, true); // It may write where it points.
+                        all |= this.body.Operands[o].Kind == MirOperandKind.Move && this.Redirect(read, 1); // It may write where it points.
                     }
                 }
             }
@@ -190,7 +189,7 @@ internal sealed partial class MirBorrows
             var terminator = data.Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
-                all |= this.Redirect(terminator.Place, 0, this.PointerType(this.body.TypeOf(terminator.Place)));
+                all |= this.PointerType(this.body.TypeOf(terminator.Place)) ? this.Redirect(terminator.Place, 0) : this.ThroughRaw(terminator.Place);
                 all |= terminator.Callee.Kind == MirCalleeKind.Value && terminator.Operand.Kind != MirOperandKind.Const;
                 for (var o = terminator.Start; !all && o < terminator.Start + terminator.Count; o++)
                 {
@@ -209,29 +208,33 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // One write a pointer layer may take: a Place of an input's region `extra` Derefs short of where it writes, when `writes`; true where it
-    // goes through a raw Place, where no input's region can be told apart.
-    private bool Redirect(MirPlace place, int extra, bool writes)
+    // A write that may redirect a pointer layer of an input's region, at a Place `extra` Derefs short of the depth it writes: the input's
+    // least depth; true where it goes through a raw Place (ThroughRaw).
+    private bool Redirect(MirPlace place, int extra)
     {
-        if (place.Root < 0)
+        if (this.ThroughRaw(place))
         {
-            return false;
+            return true;
         }
 
-        var (count, layers) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps), extra);
+        if (this.IsInput(place.Root))
+        {
+            this.redirected[place.Root] = Math.Min(this.redirected[place.Root], this.Depth(place) + extra);
+        }
+
+        return false;
+    }
+
+    // Whether a Place goes through a raw Place, where a pun may write any pointer's bytes (SPEC 5.2), so no input's region is told apart.
+    private bool ThroughRaw(MirPlace place)
+    {
+        var count = place.Root < 0 ? 0 : this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
         for (var i = 0; i < count; i++)
         {
             if (this.mustSteps[i].Class == MirStepClass.Raw)
             {
-                return true; // A raw Place: a pun may write any pointer's bytes (SPEC 5.2), so no region is told apart.
+                return true;
             }
-
-            layers += Layer(this.mustSteps[i]) ? 1 : 0;
-        }
-
-        if (writes && this.IsInput(place.Root))
-        {
-            this.redirected[place.Root] = Math.Min(this.redirected[place.Root], layers);
         }
 
         return false;
@@ -249,7 +252,7 @@ internal sealed partial class MirBorrows
         {
             if (this.slots[i] >= 0 && this.StoringInput(i))
             {
-                this.must[this.slots[i]] = this.sets.Add(0, this.Own(i, 0, -1));
+                this.must[this.slots[i]] = this.sets.Add(0, this.Own(i, 0));
             }
         }
     }
@@ -267,7 +270,7 @@ internal sealed partial class MirBorrows
         {
             case MirRvalueKind.Ref or MirRvalueKind.Storage:
                 var (input, part, depth) = this.Landing(rvalue.Place);
-                return input == 0 ? 0 : this.sets.Add(0, depth == 1 ? this.Own(input, part, this.planLocation) : Past(input));
+                return input == 0 ? 0 : this.sets.Add(0, depth == 1 ? this.Own(input, part) : Past(input));
             case MirRvalueKind.Aggregate:
                 var value = 0;
                 for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
@@ -298,7 +301,7 @@ internal sealed partial class MirBorrows
         if (this.StoringInput(place.Root) && this.TypeOf(index) is var type &&
             (MirTypes.IsReference(type) || type?.Semantics == Parsing.SemanticsKind.Raw) && this.Depth(place) == 0)
         {
-            return this.sets.Add(0, this.Own(place.Root, place.Projection, this.planLocation));
+            return this.sets.Add(0, this.Own(place.Root, place.Projection));
         }
 
         var (input, _, depth) = this.Landing(place);
@@ -349,7 +352,7 @@ internal sealed partial class MirBorrows
             return (element >> 1, -1, int.MaxValue); // Past at an unknown depth: no read through it is certain (MustOperand).
         }
 
-        var (input, part, _) = this.ownKeys[(element >> 1) - this.body.Locals.Length];
+        var (input, part) = this.ownKeys[(element >> 1) - this.body.Locals.Length];
         return (input, part, 1);
     }
 
@@ -362,14 +365,14 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var site = int.MinValue;
+        var own = false;
         foreach (var element in this.sets.Elements(this.mustValue))
         {
-            var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0, Site: 0);
-            site = site == int.MinValue && key.Input == input && (depth > 1 || key.Part != part) ? key.Site : site;
+            var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
+            own |= key.Input == input && (depth > 1 || key.Part != part);
         }
 
-        if (site == int.MinValue || this.Unsafe())
+        if (!own || this.Unsafe())
         {
             return;
         }
@@ -388,7 +391,7 @@ internal sealed partial class MirBorrows
         {
             if (written.Output == slot && Refuses(depth > 1 ? this.ReachedEntry(written, type) ?? written.All : written.Own, slot))
             {
-                (this.overstored, this.formed) = (input, site);
+                this.overstored = input;
             }
         }
     }
