@@ -221,7 +221,8 @@ public sealed partial class TyCtxtTest
     }
 
     private static string Describe(List<OwnLayer> into)
-        => string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step} {(x.Past.Type is null ? "-" : Binding.DiagnosticTypeName(x.Past.Type))}"));
+        => string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step} "
+            + $"{(x.Past.Type is null ? "-" : Binding.DiagnosticTypeName(x.Past.Type))}"));
 
     private static (Compilation C, Dictionary<(string Body, string Local), BoundType> Locals, Dictionary<string, BoundType> Parameters) PunForms()
     {
