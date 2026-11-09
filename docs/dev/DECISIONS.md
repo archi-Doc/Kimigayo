@@ -5979,6 +5979,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the quadratic bound 5); none without a part address.
   - Rejected: per-part holder states (SPEC 15.6 Holders: a value read from a part carries every Loan and address the holder carries;
     and every transfer would read projections); keeping the root key (the address breaks Revision 8's rule that Loans follow).
+
+- **R4-M192 One owner of an integer Type's signedness** (2026-11-09; PLAN G669; under R5-M148 and BU-130; commit e4ac4573f) An
+  integer Type's signedness is its BoundType's numeric category, decided once at construction from the Core (`Categorize`; a
+  wrapping integer Type has its argument's, SPEC 3.1.1), and published as `BoundType.IsSigned`, false for every other Type. The
+  canonical reader moves from the root `ScalarTypes` to Binding's Type model: `ScalarTypes.Signed`, a second derivation of the same
+  fact from the name's first letter (G659, ARCH's MIR builder row), is deleted, and every reader in Binding, the MIR builder, the
+  Backend and Testing reads `IsSigned`. `IsUnsignedInteger` stays SPEC 13.3.1's unary-minus rule (false for every wrapping Type),
+  read by Binding only; the Backend's operator column and conversion class and the builder's Proven no longer read it for a
+  representation. `ScalarTypes` keeps SPEC 3.1's Scalar predicate, `Width` (the profile's `SizeWidth`, BU-130), `TryLiteral` and
+  `Normalize`. Behavior-preserving: both answers agreed on every Type that reached a reader (each is guarded to the 12 integer and
+  12 wrapping Types).
+  - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
+    second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
+    the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

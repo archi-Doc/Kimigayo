@@ -41,7 +41,7 @@ internal static class TestRuntime
     {
         _ when ReferenceEquals(type, BoundType.Boolean) => 1,
         { IsFloatingPoint: true } => 4,
-        _ when ScalarTypes.Signed(type) => 2,
+        { IsSigned: true } => 2,
         _ => 3,
     };
 
