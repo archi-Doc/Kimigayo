@@ -264,6 +264,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     `PublishInheritedOptOuts`;
   - G600's, removed at R7-D2 d3 with R7-N2d's (DECISIONS BU-137): `earlyObjectForms` and `VerifyEarlyObjectForms`, object forms formed
     before the opt-outs are published, judged again after them;
+  - G621's, removed at R7-D2 d3 when conformance declarations are read by demand (DECISIONS BU-140): `conformancesRegistered`,
+    `earlyProjections` and `VerifyEarlyProjections` (`Binding.Contracts.Registration`; `BindAssociatedProjection` notes a read), an
+    unqualified projection over a declared Type read before the conformance declarations register, read again after they do;
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).

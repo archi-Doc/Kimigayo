@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class InspectionLoanTest(ITestOutputHelper output)
+public class InspectionLoanTest
 {
     [Theory]
     [InlineData(32)]
@@ -34,19 +34,6 @@ public class InspectionLoanTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 
-    // R6-check H8c D8 (H8a OQ2): on the inspection extent's N locals and temporaries at N = 32, 64, 128, A5's work grows within A3 6.3's
-    // dense terms (factor 5), its Loan-set bytes and the cold analysis's allocation linearly (CallableRegionScalingTest's bounds).
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    [Trait("Purpose", "Allocation")]
-    public void InspectionLoansScaleWithinTheirBound(bool stored)
-    {
-        string[] sources = [.. new[] { 32, 64, 128 }.Select(n => VerificationWorkloads.InspectionLoans(n, stored))];
-        CallableRegionScalingTest.WorkScales(output, sources, 5);
-        CallableRegionScalingTest.ColdAnalysisScales(output, sources, 3);
-    }
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -71,6 +58,23 @@ public class InspectionLoanTest(ITestOutputHelper output)
         if (!accepted)
         {
             Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        }
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // R6-check H8c D8 (H8a OQ2): on the inspection extent's N locals and temporaries at N = 32, 64, 128, A5's work grows within A3 6.3's
+        // dense terms (factor 5), its Loan-set bytes and the cold analysis's allocation linearly (CallableRegionScalingTest's bounds).
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void InspectionLoansScaleWithinTheirBound(bool stored)
+        {
+            string[] sources = [.. new[] { 32, 64, 128 }.Select(n => VerificationWorkloads.InspectionLoans(n, stored))];
+            CallableRegionScalingTest.WorkScales(output, sources, 5);
+            CallableRegionScalingTest.ColdAnalysisScales(output, sources, 3);
         }
     }
 }

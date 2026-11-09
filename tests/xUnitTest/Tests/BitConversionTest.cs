@@ -106,6 +106,7 @@ public class BitConversionTest
     [InlineData("func f<T>(x: T) -> f32\n    T is PrimitiveInteger\n    return x@bits<f32>", "GenericBitConversion_Kd")]
     [InlineData("func f<T>(x: f32) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x@bits<Wrapping<T>>", "GenericBitConversion_Kd")]
     [InlineData("func f<T>(x: f32) -> T\n    T is PrimitiveInteger\n    return 1@bits<T>", "GenericBitConversion_Kd")]
+    [InlineData("func f<T>(x: T) -> T\n    T is u64\n    return 1.5@f32@bits<T>", "InvalidBitConversion_Kd")] // SPEC 8.2.3: T is u64, a width mismatch.
     public void InvalidFormsAreRejectedWithTheirExplanation(string source, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -120,5 +121,17 @@ public class BitConversionTest
     {
         var c = MinimalEmissionTest.Analyze("func f<T>(x: T, f: f32) -> u32\n    T is PrimitiveInteger\n    return f@bits<u32>\nlet r = f(1@u8, 1.5)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.2.3 (G658, PLAN G542's target position): under T is u32 the target is u32, one Type in the premise's scope, so a
+    // floating-point value or literal converts to it (fail-before: GenericBitConversion_Kd).
+    [Theory]
+    [InlineData("    return 1.5@f32@bits<T>")]
+    [InlineData("    return 1.5@bits<T>")]
+    public void IdentityPremiseTargetsAreTheirType(string body)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f<T>(x: T) -> T\n    T is u32\n{body}\nlet r = f(1@u32)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

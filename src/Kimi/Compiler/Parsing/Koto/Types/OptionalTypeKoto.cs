@@ -18,6 +18,12 @@ public sealed class OptionalTypeKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.OptionalType;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Type;
+
     /// <summary>Gets the complete payload Type syntax.</summary>
     public Koto Type { get; private set; }
 

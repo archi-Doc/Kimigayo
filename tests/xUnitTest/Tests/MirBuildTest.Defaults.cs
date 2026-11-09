@@ -240,42 +240,6 @@ public sealed partial class MirBuildTest
         }));
     }
 
-    // V11, plan 5.6.2: N calls that omit a generic default whose template holds a copy of another grow the body by two Inlined scopes each,
-    // the MIR and the cold build's allocation linearly with N, and a warm rebuild allocates nothing.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void DefaultCopiesScaleLinearly()
-    {
-        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder("func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc scale<T>(x: T, factor: i32 = next(2)) -> i32\n    T is Copy\n    return factor\n");
-            text.Append("func work() -> i32\n    var total = 0\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                text.Append("    total += scale(").Append(n).Append(")\n");
-            }
-
-            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
-            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
-            Assert.Equal(sizes[i] * 2, bodies[i].Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
-        var last = compilations[^1];
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            last.Binding.Bind(BindingMode.Final);
-            last.BuildMir();
-        }));
-    }
-
     // Each caller's Inlined scopes and callees, then each Opaque site's syntax and the roles of the locals it reads; then the records.
     private static string[] Callers(Compilation c, params string[] names)
     {
@@ -299,4 +263,42 @@ public sealed partial class MirBuildTest
 
     // A generic Type nested n times around i32.
     private static string Nested(string type, int n) => string.Concat(Enumerable.Repeat(type + "<", n)) + "i32" + new string('>', n);
+
+    public partial class AllocationTests
+    {
+        // V11, plan 5.6.2: N calls that omit a generic default whose template holds a copy of another grow the body by two Inlined scopes each,
+        // the MIR and the cold build's allocation linearly with N, and a warm rebuild allocates nothing.
+        [Fact]
+        public void DefaultCopiesScaleLinearly()
+        {
+            var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder("func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc scale<T>(x: T, factor: i32 = next(2)) -> i32\n    T is Copy\n    return factor\n");
+                text.Append("func work() -> i32\n    var total = 0\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    text.Append("    total += scale(").Append(n).Append(")\n");
+                }
+
+                var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+                return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+                Assert.Equal(sizes[i] * 2, bodies[i].Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
+            Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+            var last = compilations[^1];
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                last.Binding.Bind(BindingMode.Final);
+                last.BuildMir();
+            }));
+        }
+    }
 }
