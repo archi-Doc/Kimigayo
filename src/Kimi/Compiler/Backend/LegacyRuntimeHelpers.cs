@@ -12,7 +12,7 @@
 // compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI, whose capacity Context names by its logical index the parameter receiving the fixed array
 // it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
-// formatting witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
+// formatting witness TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
 // 4.9.6), which the collector reads there; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
 // and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is the runtime's bound at its kind (FormatBound),
 // which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormatStackLimit; R3-10).

@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 /// <summary>The row of one formatting compiler function, readable by kind before any representation exists (X4): the ABI of its
 /// routine in the formatting runtime, whose fixed symbol every call names, and its declared needs, which are what its text needs:
 /// the formatting runtime. No formatting row declares a library callee, since the formatting runtime calls none; the formatting
-/// witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (SPEC 4.9.6).</summary>
+/// witness TextToString and TextTryFormat run is the need their published library rows state (SPEC 4.9.6).</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAbi Abi, HelperNeeds Needs);
 
@@ -88,6 +88,18 @@ internal static partial class LegacyRuntimeHelpers
     internal static readonly FunctionAbi WriterFail =
         Slotted("__kimi_writer_fail", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0)]);
 
+    /// <summary>The runtime's built-in write (<c>__kimi_writer_write_builtin</c>, SPEC 22.10.1): the adapter's frame around the built-in
+    /// formatting of a value of a kind (FormatKind), which an owning interpolation's literal text (SegmentText) and the conversions'
+    /// built-in routines call; a conversion over a Body target runs the write wrapper of this ABI (ModuleCodegen.Formatting), and
+    /// Utf8Writer.write is a library body. Temporary (DECISIONS R8-M18): removed when the conversions become bodies (R8-W1c) and
+    /// SegmentText and FormatLiteral leave the runtime (R8-W2).</summary>
+    internal static readonly FunctionAbi WriteBuiltin = Slotted(
+        "__kimi_writer_write_builtin",
+        [
+            new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1),
+            new("i32", "kind", AbiParameterKind.Context), RuntimeAbi.Location, RuntimeAbi.LocationLength,
+        ]);
+
     // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 
@@ -96,10 +108,10 @@ internal static partial class LegacyRuntimeHelpers
     // view (16, 17) is unbounded.
     private static readonly int[] FormatBounds = [0, 4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 17, 24, 4, 5, 2];
 
-    /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): WriterWrite's
-    /// row ABI under its own name; the text's size is checked at once and its static bytes kept at the adapter until its next reservation
-    /// or its end. Initialized after the rows it reads.</summary>
-    internal static FunctionAbi FormatLiteral { get; } = FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi.Named("__kimi_format_literal");
+    /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): the built-in
+    /// write's ABI (WriteBuiltin) under its own name; the text's size is checked at once and its static bytes kept at the adapter until its
+    /// next reservation or its end. Initialized after WriteBuiltin.</summary>
+    internal static FunctionAbi FormatLiteral { get; } = WriteBuiltin.Named("__kimi_format_literal");
 
     /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
     /// <param name="kind">The compiler function.</param>
@@ -233,10 +245,6 @@ internal static partial class LegacyRuntimeHelpers
             Slotted("__kimi_text_writer", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)]),
             Runtime);
         Add(
-            CompilerFunctionKind.WriterWrite,
-            Slotted("__kimi_writer_write_builtin", [ret, reference, new("ptr", "value", LogicalIndex: 1), builtin, location, length]),
-            Runtime);
-        Add(
             CompilerFunctionKind.BuiltinFormat,
             Slotted("__kimi_format_builtin", [ret, value, new("ptr", "self", LogicalIndex: 1), builtin, location, length]),
             Runtime);
@@ -269,9 +277,14 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        // A routine the erased writer's kept runtime defines (Text.writer's) is not this text's.
-        var symbols = new HashSet<string>(StringComparer.Ordinal) { LlvmModuleText.ErasedWriterDefinitions[0].Name };
-        var definitions = new List<FunctionAbi>(FormattingRows.Length);
+        // A routine the erased writer's kept runtime defines is not this text's; the row-less built-in write is.
+        var symbols = new HashSet<string>(StringComparer.Ordinal) { WriteBuiltin.Name };
+        foreach (var kept in LlvmModuleText.ErasedWriterDefinitions)
+        {
+            symbols.Add(kept.Name);
+        }
+
+        var definitions = new List<FunctionAbi>(FormattingRows.Length + 1) { WriteBuiltin };
         foreach (var row in FormattingRows)
         {
             if (symbols.Add(row.Abi.Name))

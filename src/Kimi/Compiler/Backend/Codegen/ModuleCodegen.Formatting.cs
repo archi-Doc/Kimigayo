@@ -4,9 +4,10 @@ using System.Globalization;
 
 namespace Kimi.Compiler.Backend;
 
-// The formatting wrappers of ModuleCodegen (R5 plan C9b; SPEC 22.9.2, 22.10.1; DECISIONS R5-M30, R5-M130): a user or library formatter, the
-// Body target of a kind-bearing formatting row's call (WriterWrite, TextToString, TextTryFormat; K package 4.5 row 2), runs through the
-// row's wrapper over that target (FunctionCodegen.Formatting), one per target and row, named after the target item (__kimi_write<item>,
+// The formatting wrappers of ModuleCodegen (R5 plan C9b; SPEC 22.9.2, 22.10.1; DECISIONS R5-M30, R5-M130, R8-M18): a user or library
+// formatter, the Body target of a conversion row's call (TextToString, TextTryFormat; K package 4.5 row 2), runs through the row's wrapper
+// over that target and the target's write wrapper (Temporary until R8-W1c, when the conversions become bodies over Utf8Writer.write; a
+// direct write is that body's instance), one per target and row, named after the target item (__kimi_write<item>,
 // __kimi_tostring<item>, __kimi_tryformat<item>), kept across Writes and defined once in each Write that requests it, after the items,
 // with the formatting runtime its row declares. The write wrapper takes the call's result slot, adapter and value (the old planner's ABI;
 // no format witness takes a location, since none is caller-location) and is written by FunctionCodegen (WriteWrapper: SPEC 22.10.1's frame
@@ -15,12 +16,13 @@ namespace Kimi.Compiler.Backend;
 // conversion's request also requests.
 internal sealed partial class ModuleCodegen
 {
-    // The kind-bearing formatting rows in wrapper order, the write first (a conversion calls it), each with its wrappers' name prefix.
-    private static readonly (FormattingHelperRow Row, string Prefix)[] Wrapped =
+    // The wrapped routines in wrapper order, the write first (a conversion calls it), each with its wrappers' name prefix and whether a
+    // conversion writes into the caller's fixed buffer (tryFormat) instead of a new heap buffer (toString).
+    private static readonly (FunctionAbi Abi, string Prefix, bool FixedBuffer)[] Wrapped =
     [
-        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.WriterWrite)!, "__kimi_write"),
-        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextToString)!, "__kimi_tostring"),
-        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextTryFormat)!, "__kimi_tryformat"),
+        (LegacyRuntimeHelpers.WriteBuiltin, "__kimi_write", false),
+        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextToString)!.Abi, "__kimi_tostring", false),
+        (LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextTryFormat)!.Abi, "__kimi_tryformat", true),
     ];
 
     // The write wrapper's parameters: the result slot, the adapter and the value at their logical inputs.
@@ -40,7 +42,7 @@ internal sealed partial class ModuleCodegen
     {
         this.Requested(target);
         var row = 0;
-        while (row < Wrapped.Length && !ReferenceEquals(Wrapped[row].Row.Abi, routine))
+        while (row < Wrapped.Length && !ReferenceEquals(Wrapped[row].Abi, routine))
         {
             row++;
         }
@@ -57,11 +59,11 @@ internal sealed partial class ModuleCodegen
         {
             this.wrappedIn[index] = this.writes;
             this.wrappers[index] ??= WrapperSignature(target, row, routine);
-            this.Request(Wrapped[row].Row.Needs);
+            this.Request(HelperNeeds.FormattingRuntime);
             this.wrapped.Add(index);
             if (row > 0)
             {
-                _ = this.Wrapper(target, Wrapped[0].Row.Abi);
+                _ = this.Wrapper(target, Wrapped[0].Abi);
             }
         }
 
@@ -105,7 +107,7 @@ internal sealed partial class ModuleCodegen
             else
             {
                 var write = this.wrappers[Wrapped.Length * target]!;
-                LegacyRuntimeHelpers.WriteFormattingConversion(this.functions, wrapper, write, Wrapped[row].Row.Kind == CompilerFunctionKind.TextTryFormat);
+                LegacyRuntimeHelpers.WriteFormattingConversion(this.functions, wrapper, write, Wrapped[row].FixedBuffer);
             }
         }
     }

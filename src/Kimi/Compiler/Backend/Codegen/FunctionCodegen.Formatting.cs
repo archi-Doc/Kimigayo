@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 //   target Function Type's (Forward) (Measure);
 // - a kind Context, which names none, is the formatting runtime's kind of the call's witness target's Self (LegacyRuntimeHelpers.FormatKind),
 //   the Type K6 resolved below the published Formats row's parameter (DECISIONS R5-M30), given here (WitnessKind).
-// A row whose call carries a witness target (WriterWrite, TextToString, TextTryFormat; K package 4.5 row 2) is decided by the target's kind:
+// A row whose call carries a witness target (TextToString, TextTryFormat; K package 4.5 row 2) is decided by the target's kind:
 // a Builtin item (BuiltinFormat on a built-in formattable Type) runs through the row's built-in routine, which is SPEC 22.10.1's frame around
 // the runtime's built-in formatting of that kind, toString reserving its exact length once (SPEC 22.10.5); a Body item, a user or library
 // formatter, through the row's wrapper over it (ModuleCodegen.Wrapper): the write wrapper, SPEC 22.10.1's frame around the witness's call

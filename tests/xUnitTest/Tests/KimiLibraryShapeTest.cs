@@ -57,7 +57,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format"),
         (KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.TextRelease, "private func release(data: raw/u8)"),
-        (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
@@ -429,6 +428,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.WriteWindow, "append", "public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>")]
     [InlineData(KimiDeclarationId.WriteWindow, "limit", "public func limit(self: owner/Self, maximum: isize) -> Self{r}\norigin r.source == self.source")]
     [InlineData(KimiDeclarationId.WriteWindow, "commit", "public func commit(self: owner/Self) -> isize")]
+    [InlineData(KimiDeclarationId.Utf8Writer, "write", "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.Utf8Writer, "status", "public func status(self: ref/Self) -> Result<(), BufferFull>")]
     public void BufferOperationsKeepTheirHeaders(KimiDeclarationId buffer, string name, string header)
     {

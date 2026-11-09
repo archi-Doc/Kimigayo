@@ -1466,20 +1466,26 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,
-    // Text.tryFormat, Utf8Writer.write) is the item of its Type's Utf8Format witness in the instance: a user Type's format body, a built-in
-    // Type's BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness.
+    // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: a call of a function without a body whose published row formats a value (Text.toString,
+    // Text.tryFormat) is the item of its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
+    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Utf8Writer.write is a body (R8-W1b-4):
+    // one instance per value Type, shared by its callers, whose requirement call is that witness.
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
         var (program, set) = Collect(FormatSource);
         Assert.Empty(program.Records(MirRecordClass.Collection));
+        const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
+        const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
+        const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
         Assert.Equal(["Fn format"], Calls(program, set, "Fn show [Box]"));
         Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn show [i32]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn format"));
+        Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
+        Assert.Equal(["Builtin i32 BuiltinFormat", Failure, Failure], Calls(program, set, WriteI32));
         Assert.Equal(["Fn format"], Calls(program, set, "Fn fill [Box]"));
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn emit [Box]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn emit [i32]"));
+        Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
+        Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
+        Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 

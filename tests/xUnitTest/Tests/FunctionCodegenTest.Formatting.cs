@@ -231,23 +231,29 @@ public sealed partial class FunctionCodegenTest
             StringComparison.Ordinal));
     }
 
-    // SPEC 22.10.1-22.10.2, 22.10.5 (DECISIONS R5-M128): a write, a conversion and a formatting into an array of a built-in value call their
-    // row's built-in routine given the Self's kind (and the array's capacity), at a direct call and an Item's Value call; the module is
+    // SPEC 22.10.1-22.10.2, 22.10.5 (DECISIONS R5-M128): a conversion and a formatting into an array of a built-in value call their row's
+    // built-in routine given the Self's kind (and the array's capacity), at a direct call and an Item's Value call; a write calls
+    // Utf8Writer.write's instance at the value's Type (R8-W1b-4), whose BuiltinFormat shim gives the routine that kind. The module is
     // written (each BuiltinFormat item defined, R5-M130), and the definitions are read directly.
     [Fact]
     public void FormattingRowsGiveTheirTargetsKind()
     {
         var c = Analyze(Formats, OutputKind.Library);
-        _ = Generate(c);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var (writes, shims) = (FunctionsOf(ir, c, "write"), ShimsOf(ir, text));
+        foreach (var (name, kind) in new[]
+        {
+            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteText", 16), ("ctWriteView", 17), ("ctWriteBool", 14), ("ctWriteChar", 13), ("ctWriteF64", 12),
+        })
+        {
+            var write = Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writes.Contains);
+            var shim = Assert.Single(CalleesOf(write), shims.Contains);
+            Assert.Contains($", i32 {kind}, ptr %", Assert.Single(CallsOf(shim)).Shape, StringComparison.Ordinal);
+        }
+
         foreach (var (name, kind, words) in new[]
         {
-            ("ctWriteI64", CompilerFunctionKind.WriterWrite, "i32 7"),
-            ("ctWriteU8", CompilerFunctionKind.WriterWrite, "i32 2"),
-            ("ctWriteText", CompilerFunctionKind.WriterWrite, "i32 16"),
-            ("ctWriteView", CompilerFunctionKind.WriterWrite, "i32 17"),
-            ("ctWriteBool", CompilerFunctionKind.WriterWrite, "i32 14"),
-            ("ctWriteChar", CompilerFunctionKind.WriterWrite, "i32 13"),
-            ("ctWriteF64", CompilerFunctionKind.WriterWrite, "i32 12"),
             ("ctText", CompilerFunctionKind.TextToString, "i32 4"),
             ("ctTry", CompilerFunctionKind.TextTryFormat, "i64 4, i32 5"),
             ("itText", CompilerFunctionKind.TextToString, "i32 5"),
@@ -299,8 +305,29 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("call void @(ptr %, ptr %, ptr %, i32 5, ptr %, i64 %)", Assert.Single(CallsOf(shim)).Shape);
     }
 
-    // SPEC 22.10.1, 22.9.2, 7.7.4 (DECISIONS R5-M130): a user formatter's write, toString and tryFormat run through its wrappers, one per row,
-    // whatever calls them: the write wrapper is SPEC 22.10.1's frame (the runtime's failure test before and after, its failure record)
+    // SPEC 22.5.1, 22.10.1 (R8-W1b-4; DECISIONS R8-M18): Utf8Writer.write has a CallerLocation row, so a direct write and an interpolated
+    // value's write pass the user's location, and the instance forwards the location it received, its last two parameters, to its value's
+    // format witness, whose built-in formatting reserves and Aborts there (fail-before: a Formatting.kimi location).
+    [Fact]
+    public void ABuiltinWriteReportsItsCallersLocation()
+    {
+        const string Source = "func wlDirect(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
+            "func wlValue(n: i64) -> string => \"n=\\(n)\"\n";
+        var c = Analyze(Source, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var write = Assert.Single(FunctionsOf(ir, c, "write"));
+        var shim = Assert.Single(ShimsOf(ir, text));
+        Assert.Equal(write.Parameters.TakeLast(2), Assert.Single(CallsOf(write), x => x.Callee == shim).Operands.TakeLast(2));
+        foreach (var (name, site) in new[] { ("wlDirect", "writer.write(n)"), ("wlValue", "\"n=") })
+        {
+            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == write);
+            Assert.EndsWith($", ptr @, i64 {Located(Source, site)})", call.Shape, StringComparison.Ordinal);
+        }
+    }
+
+    // SPEC 22.10.1, 22.9.2, 7.7.4 (DECISIONS R5-M130): a user formatter's toString and tryFormat run through its wrappers, one per row,
+    // whatever calls them: the write wrapper (the conversions' alone since R8-W1b-4) is SPEC 22.10.1's frame (the runtime's failure test before and after, its failure record)
     // around one call of the witness with the value and the adapter; a conversion is the old generator's text over that write wrapper; the
     // calls pass their operands, tryFormat's measured capacity and their location, and toString's Item called and erased runs its wrapper
     // (SPEC 7.7.4, DECISIONS R5-M108: toString is not its row's witness, so its Item runs its row), which alone calls the witness.
@@ -315,6 +342,17 @@ public sealed partial class FunctionCodegenTest
         var (healthy, fail) = (ir.Function(LegacyRuntimeHelpers.FormatHealthy.Name), ir.Function(LegacyRuntimeHelpers.WriterFail.Name));
         Assert.Equal([healthy, witness, healthy, fail], CalleesOf(write));
         Assert.Equal([write.Parameters[0], write.Parameters[2], write.Parameters[1]], CallsOf(write)[1].Operands);
+
+        // A direct write is Utf8Writer.write's instance (R8-W1b-4), given the user's location (a CallerLocation row), which calls the witness
+        // once with its result slot, the value and the adapter (no location: no format witness is caller-location); the write wrapper is
+        // the conversions' alone.
+        var direct = Assert.Single(FunctionsOf(ir, c, "write"));
+        Assert.Equal("call void @(ptr %, ptr %, ptr %)", Assert.Single(CallsOf(direct), x => x.Callee == witness).Shape);
+        Assert.Equal(
+            $"call void @(ptr %, ptr %, ptr %, ptr @, i64 {Located(UserFormats, "writer.write(s)")})",
+            Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "usWrite"))), x => x.Callee == direct).Shape);
+        var callers = ir.Functions.Where(x => CalleesOf(x).Contains(witness)).ToArray();
+        Assert.True(callers.Length == 2 && callers.Contains(write) && callers.Contains(direct));
         Assert.Equal(
             [ir.Function(Routines(CompilerFunctionKind.TextHeap)[0]), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
                 ir.Function("__kimi_format_take_string"), ir.Function("__kimi_abort")],
@@ -325,7 +363,6 @@ public sealed partial class FunctionCodegenTest
             CalleesOf(attempt));
         foreach (var (name, wrapper, shape) in new[]
         {
-            ("usWrite", write, "call void @(ptr %, ptr %, ptr %)"),
             ("usText", show, $"call void @(ptr %, ptr %, ptr @, i64 {Located(UserFormats, "Text.toString(s)")})"),
             ("usTry", attempt, $"call void @(ptr %, ptr %, ptr %, i64 8, ptr @, i64 {Located(UserFormats, "Text.tryFormat(s, bytes)")})"),
             ("usItem", show, $"call void @(ptr %, ptr %, ptr @, i64 {Located(UserFormats, "show(s)")})"),
@@ -335,7 +372,6 @@ public sealed partial class FunctionCodegenTest
         }
 
         Assert.Contains(show, CalleesOf(ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "usErased"))).Entry)));
-        Assert.Same(write, Assert.Single(ir.Functions, x => CalleesOf(x).Contains(witness)));
     }
 
     // SPEC 22.9.2, 22.9.4, 7.7.4 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer calls its routine with its destination's writer kind and

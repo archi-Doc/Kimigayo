@@ -145,7 +145,7 @@ public partial class EffectBoundImplementationTest
             {
                 CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
                 CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Unclassified,
+                CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Unclassified,
                 _ => CompilerFunctionEffect.Inputs,
             };
             Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());

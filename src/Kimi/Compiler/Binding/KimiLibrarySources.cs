@@ -35,7 +35,6 @@ public sealed partial class KimiLibrary
             Read("Raw.kimi"),
             Read("Formatting.kimi"),
             Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
-            Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
             Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
             Read("RawOperations.kimi", KimiLibraryContainer.Raw, signatures: true),
@@ -169,9 +168,7 @@ public sealed partial class KimiLibrary
     private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
         => kind == KimiLibraryContainer.Text ? this.Text :
             kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
-                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto :
-            kind is KimiLibraryContainer.WriteWindow or KimiLibraryContainer.Utf8Writer
-                ? FindDeclaration(this.Kotonoha.RootKoto, kind.ToString(), false) as DeclarationContainerKoto : null;
+                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto : null;
 
     private void LoadSources()
     {
