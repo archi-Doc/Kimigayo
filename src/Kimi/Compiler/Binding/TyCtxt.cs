@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
-// of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
+// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
+// judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
@@ -229,6 +229,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             type.LengthArguments);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
+
+    // SPEC 22.10.5 and rule L (FormattingTypes.StackLimit): the interpolation-bound term of a direct interpolation with these value Types
+    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term over the erased
+    // value Types (so Erase keeps it, keyed by them), which a substitution folds again (Binding.SubstituteLength). R8-W2 a2's builder forms it.
+    internal BoundLength InterpolationBound(BoundType values, long literal)
+        => FormattingTypes.StackBound(values, literal) is var bound and >= 0 ? binding.InternLength(LengthOperation.Constant, bound)
+            : binding.InternLength(LengthOperation.InterpolationBound, literal, values: this.Erase(values));
 
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
     // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).

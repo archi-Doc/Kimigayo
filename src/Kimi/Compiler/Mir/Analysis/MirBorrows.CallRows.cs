@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 // Output: Plan, in reused scratch: the result's kinds by operand position (resultKinds) and whether it is untied, the contract's
 // retention whose Writes the Call stores through (planned), its slots' operand positions (slotPositions) and the outputs the call writes only
 // where their receiver refers to (its referent stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a
-// callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a raw parameter's covering inputs
+// callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a written input's covering inputs
 // by position (covering); and PD13's view hold (held, R4-M148),
 // which MirBorrows.Reports applies.
 // - A callee's contract: its records, slots to positions (Position: a Closure callee's input 0, its call receiver, at the callee operand,
@@ -26,8 +26,9 @@ namespace Kimi.Compiler.Mir;
 //   reachable Call before the checks replay records any problem; Run resets it per view. Removal: per-case callee acquisition (PLAN G13).
 // - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Plan maps no record of it and
 //   the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
-// - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a raw parameter's own stated layer addresses,
-//   Binding's reading of its members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). Only an
+// - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a written input's stated raw layers address,
+//   those at its own address (TyCtxt.OwnLayers: the parts it holds by value, at any holder; PLAN G598, G583), Binding's reading of
+//   their members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). Only an
 //   argument A5 proves null (its value the empty set; PLAN G598, MirBorrows.Calls' Keep) drops its own first step, E; a null it cannot
 //   prove at the store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183).
 // - P9 (SPEC 7.2.3, R4-M93): a default template's call keeps each input's Content in its untied result: its inputs are the prologue's
@@ -41,6 +42,7 @@ internal sealed partial class MirBorrows
 {
     private readonly List<int> covering = []; // By operand position: the inputs whose storage the store being kept also writes (Cover).
     private readonly List<BoundType> coverInputs = []; // Cover's scratch: the callee's instantiated inputs.
+    private readonly List<OwnLayer> ownLayers = []; // Cover's scratch: the parts at the written input's own address (TyCtxt.OwnLayers).
     private RetentionKind[] resultKinds = []; // A Call's result kinds by operand position (Plan).
     private int[] slotPositions = []; // A Call's contract slots' operand positions (Plan).
     private int[] referentStores = []; // A Call's referent stores by operand position (Plan; CallRetention.ReferentStores).
@@ -116,19 +118,28 @@ internal sealed partial class MirBorrows
     }
 
     // G338 (SPEC 5.2.1 "storage a pointer addresses `during o` is covered by the Loans of `o`", 5.7's table): into `covering`, the operand
-    // positions of the borrows a raw parameter's own stated layer belongs to among the call's inputs (TyCtxt.LayerMembers), whose holders
-    // the store through that layer writes (Referents, Writes) beside its argument's. None unless each member is an exclusive input's outer
-    // borrow: a slot keeper's or a shared member's storage has no first step here, so W stays its argument's. A Value callee's declaration
-    // is that of the Function Item it calls (TyCtxt.CalledItem), under its Item substitution (TyCtxt.SubstOfItem; SPEC 7.7.4, 15.6.4
-    // "for direct and indirect calls alike"; PLAN G584). None for another Value callee: a Closure's or an erased value's written Origin
-    // names an enclosing one, whose storage the call's inputs need not cover. A keeper only the declaring Type holds is no input of the call.
+    // positions of the borrows the stated raw layers at a written input's own address belong to among the call's inputs, whose holders the
+    // store through those layers writes (Referents, Writes) beside its argument's. Binding publishes the layers (TyCtxt.OwnLayers: the
+    // parts the input holds by value, at any holder; PLAN G598, G583) and each one's members (TyCtxt.LayerMembers). None unless the input
+    // holds a layer and every part it lists is a layer stepping Exclusive whose members are all exclusive inputs' outer borrows: an
+    // unstated, `static` or `during self` layer, a borrow, a slot keeper's or a shared member's storage has no first step here, so W stays
+    // its argument's. A Value callee's declaration is that of the Function Item it calls (TyCtxt.CalledItem), under its Item
+    // substitution (TyCtxt.SubstOfItem; SPEC 7.7.4, 15.6.4 "for direct and indirect calls alike"; PLAN G584). None for another Value
+    // callee: a Closure's or an erased value's written Origin names an enclosing one, whose storage the call's inputs need not cover. A
+    // keeper only the declaring Type holds is no input of the call.
     private void Cover(in MirTerminator call, int output, int count)
     {
         this.covering.Clear();
+        this.ownLayers.Clear();
         var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
         var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
             : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
-        if (symbol is null || TyCtxt.Signature(symbol, null, output, out _) is not { Semantics: SemanticsKind.Raw })
+        if (symbol is null || this.CoverInput(symbol, subst, output) is not { } written || !types.OwnLayers(PlaceKey.Root(written), this.ownLayers))
+        {
+            return;
+        }
+
+        if (this.ownLayers.Count == 0 || this.ownLayers.Exists(static x => x is not { Layer: not null, Step: HoldStep.Exclusive }))
         {
             return;
         }
@@ -136,8 +147,7 @@ internal sealed partial class MirBorrows
         this.coverInputs.Clear();
         for (var slot = 0; slot < count; slot++)
         {
-            var declared = TyCtxt.Signature(symbol, null, slot, out _);
-            if ((declared is null || subst is null ? declared : types.ReadableInstance(declared, subst)) is not { } input)
+            if ((slot == output ? written : this.CoverInput(symbol, subst, slot)) is not { } input)
             {
                 return;
             }
@@ -145,18 +155,33 @@ internal sealed partial class MirBorrows
             this.coverInputs.Add(input);
         }
 
-        var complete = types.LayerMembers(this.coverInputs[output], CollectionsMarshal.AsSpan(this.coverInputs), this.members);
-        foreach (var (input, referent, exclusive) in this.members)
+        var complete = true;
+        foreach (var (layer, _, _) in this.ownLayers)
         {
-            complete &= exclusive && this.coverInputs[input] is { Semantics: SemanticsKind.Uniq, Components: [var to] } && ReferenceEquals(to, referent);
-            this.covering.Add(this.slotPositions[input]);
+            complete &= types.LayerMembers(layer!, CollectionsMarshal.AsSpan(this.coverInputs), this.members) && this.members.Count > 0;
+            foreach (var (input, referent, exclusive) in this.members)
+            {
+                complete &= exclusive && this.coverInputs[input] is { Semantics: SemanticsKind.Uniq, Components: [var to] } && ReferenceEquals(to, referent);
+                if (!this.covering.Contains(this.slotPositions[input]))
+                {
+                    this.covering.Add(this.slotPositions[input]);
+                }
+            }
+
+            this.members.Clear();
         }
 
-        this.members.Clear();
         if (!complete)
         {
             this.covering.Clear();
         }
+    }
+
+    // A contract slot's declared Type under the call's substitution (Cover); null where it does not substitute.
+    private BoundType? CoverInput(BindingSymbol symbol, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(symbol, null, slot, out _);
+        return declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
     }
 
     // G136 (R4-M148): whether a Value call's declared signature numbers inputs other than its operands, a broken contract.

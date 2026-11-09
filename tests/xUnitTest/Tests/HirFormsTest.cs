@@ -938,6 +938,31 @@ public sealed partial class HirFormsTest
         Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
     }
 
+    // SPEC 14.2.4, 5.2.3, 15.1.5 (PLAN G670): an explicit discard destroys in place (its plan row Flag, HirTables.DestroysInPlace) exactly
+    // when Binding allowed its operand `P@move`, parenthesized or not, as a raw Place's Take: the raw Place, its Field or element, `p[n]`.
+    // A local's Take does not, nor does a raw Take Binding rejected: a Slice element inside a raw Place (SharedPathAccess_Kd) and a
+    // referent past a pair layer (ExclusivePathTake_Kd). The Flag states the Take's judgment alone: a raw Place formed outside an unsafe
+    // context is its own error (UnsafeBlockRequired_Kd), and the Take Binding allowed still marks the discard. Each row: the operand, its
+    // discard's Flag.
+    [Fact]
+    public void AnExplicitDiscardDestroysInPlaceWhereBindingAllowedARawTake()
+    {
+        const string Source = "struct Res\n    drop => ()\nfunc f(q: raw/Res, p: raw/(i64, Res), s: raw/Slice<Res>, r: Res)\n    unsafe\n" +
+            "        _ = (*q)@move\n        _ = ((*p).1)@move\n        _ = (q[0]@move)\n        _ = r@move\n        _ = (*s)[0]@move\n" +
+            "func g<s/T>(p: raw/(s/T))\n    s is owner\n    unsafe => _ = (*p)@follow@move\nfunc h(q: raw/Res)\n    _ = (*q)@move\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        Assert.Equal(
+            ["(*q)@move True", "((*p).1)@move True", "(q[0]@move) True", "r@move False", "(*s)[0]@move False", "(*p)@follow@move False",
+                "(*q)@move True"],
+            Reachable(c.Kotonoha).OfType<DiscardKoto>()
+                .Select(x => $"{Source.Substring(x.Operand.Span.Start, x.Operand.Span.Length)} {HirTables.DestroysInPlace(x)}"));
+        Assert.Equal(
+            ["SharedPathAccess_Kd", "ExclusivePathTake_Kd", "UnsafeBlockRequired_Kd"],
+            CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
+    }
+
     // SPEC 4.7.1, 13.7.2, 14.6.2, 15.1.6 (R7-Y1c, superseding BU-8's and R4-M142's accumulation): a user index's selection as ExpansionPlan
     // gives it, which equal IR does not show where index and indexUniq have equal bodies. A take a later take replaces is no use of the
     // element: a for's Subject is read by its shared entry call (a stored uniq over ref, a pair of ref or uniq, the weakest mode) and a

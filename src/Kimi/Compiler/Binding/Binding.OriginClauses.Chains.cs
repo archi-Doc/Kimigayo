@@ -1,120 +1,117 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Numerics;
+
 namespace Kimi.Compiler;
 
-// R4-M118's chain rule for a declaration's rows (SPEC 15.6.5, 23.1.2; DECISIONS R4-M118, BU-62). Those rows reach no slice (R4-M101;
-// Binding.OriginRows.cs), so the declaration judge is their only judge. The rule has two holders until R7's PLAN G318, one contract: A5's chain
-// judgment (MirOrigins.Chains) for a body's rows and this Transitional copy for a declaration's, each judging only the relations Binding
-// does not prove (2a0-D D1), each chain under its rows' minimal conditions; PLAN's unit that moves A5's core below both phases makes it
-// one component and deletes this file.
+// The declaration judge's adapter of R4-M118's chain judgment (TyCtxt.OriginChains; SPEC 15.6.5, 23.1.2; DECISIONS R4-M118, BU-62; PLAN
+// G318) for a declaration's rows, which reach no slice (R4-M101; Binding.OriginRows.cs), so the declaration judge is their only judge. A5's
+// Origin stratum (MirOrigins) reads the same component for a body's rows.
 // - Responsibility: every declaration row of the pass whose ends hold an Unbound atom (unboundRows; JudgeDeclarationRows judges a row
-//   with two Fixed ends at once, the rule's Fixed -> Fixed edge, and hands every other to this rule unjudged). An Unbound atom, or a meet
-//   with one, is a Dependent node; any other end a declaration row can have, fixed in the declaration judge's frame (static, a parameter,
-//   an input, an enclosing body's Origin the declaration names, a meet of them; DeclarationAtom, DECISIONS BU-89), is Fixed. Nodes are the view's canonical Origins. Each row is an edge Longer -> Shorter, and back for an equality, a meet expanded by
-//   MeetNode's rule (A5's Relate): at the longer end an edge from each operand and, unless Fixed, the meet's own; a Dependent meet at the
-//   shorter end is reached from each operand.
-// - Outputs: an edge between two Fixed nodes is judged at once by the position judge. Every edge from a Dependent node into a Fixed node X
-//   is a last edge: each Fixed source S that reaches its tail through Dependent nodes is judged S >= X at that edge's use, once per edge
-//   and source (A5's Unknown), under each minimal condition that reaches it until one records. The records are the pass's call relations
-//   (PublishCallRelations).
+//   with two Fixed ends at once and hands every other to this adapter unjudged, the input rule, 2a0-D D1). An Unbound atom, or a meet
+//   with one, is a Dependent Origin; any other end a declaration row can have, fixed in the declaration judge's frame (static, a parameter,
+//   an input, an enclosing body's Origin the declaration names, a meet of them; DeclarationAtom, DECISIONS BU-89), is Fixed. Origins are
+//   the view's canonical ones; each row is a relation Longer -> Shorter, and back for an equality, whose edges MeetNode's rule gives
+//   (TyCtxt.OriginChains.Relate) for each row alone, so a shorter meet's operand edges are each row's.
 // - Condition (SPEC 15.6.5): a row's Condition is the set of pair binders that must all be borrows for the row to be required, as bits of
 //   PairBinders' order at its use (BindingObligation, PairSlotCondition), and a premise serves a request only when its binders are among
-//   the request's (OriginPremiseClosure.Close). A chain is required exactly where each of its rows is, so its condition is the OR of its rows'
-//   Conditions, the conjunction of their cases; a Dependent node adds none. Outer scopes' binders come first, so a row at an inner use only
-//   adds bits an outer use does not have.
-// - Invariants: a Dependent node is never a source or a judged target: a row with a Dependent end is never judged itself, a chain that
-//   starts or ends at one records nothing, and such rows rest on their atom's cause (UnboundCause). A source's search visits each
-//   (node, condition) once and keeps each (edge, condition) once, by per-node and per-edge stamps: O(visited + edges scanned + the ends'
-//   conditions per edge, squared) per source.
-// - Prohibitions: no proof of its own (the position judge proves, with JudgeDeclarationRows' premises); no body row (A5's).
+//   the request's (OriginPremiseClosure.Close). A chain is required exactly where each of its rows is, so its condition is the OR of its
+//   rows' Conditions. The graph's nodes are the chains' states (chainStates): each Fixed Origin, and each Dependent Origin under each
+//   condition a path from a Fixed Origin reaches it with, formed forward from the Fixed Origins' edges; a row's edge from a state under P
+//   goes to its Dependent head's state under P with the row's Condition, or to its Fixed head. One graph per pass, of the states the
+//   chains reach, the copy's (Origin, condition) search states merged over its sources.
+// - Outputs: an edge between two Fixed Origins is judged at once by the position judge under its row's Condition, in row order. At every
+//   edge from a Dependent state into a Fixed Origin X, each Fixed source S its tail carries reaches X under the tail's condition with the
+//   row's: each (row, last edge, source) is judged S >= X at the row's use under each of its minimal conditions (none of its others
+//   narrower) until one records. The records are the pass's call relations (PublishCallRelations).
+// - Cost: the states and their edges, the core's components x sources / 64 words, and per (row, last edge, source) its conditions
+//   squared; the copy's per-source searches visited the same states and kept the same conditions.
+// - Invariants: a Dependent Origin is never a source or a judged target (TyCtxt.OriginChains): a row with a Dependent end is never judged
+//   itself, a chain that starts or ends at one records nothing, and such rows rest on their atom's cause (UnboundCause). Storage is pooled
+//   per pass.
+// - Prohibitions: no proof of its own (the position judge proves, with JudgeDeclarationRows' premises, the premise contract); no body row
+//   (A5's); no source propagation of its own (TyCtxt.OriginChains').
 public sealed partial class Binding
 {
+    private const int ChainRecorded = -2; // A (row, last edge, source) that recorded: none of its other conditions is judged.
+
     private readonly List<(BindingObligation Obligation, BoundOrigin Longer, BoundOrigin Shorter, BoundOrigin Atom)> unboundRows = new();
-    private readonly List<BoundOrigin> chainNodes = new();
+    private readonly TyCtxt.OriginChains chains = new();
+    private readonly List<BoundOrigin> chainNodes = new(); // The rows' canonical Origins, with their classes and last-formed out-edges.
+    private readonly List<OriginAtomKind> chainKinds = new();
+    private readonly List<int> chainFirst = new();
     private readonly Dictionary<BoundOrigin, int> chainIndex = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(int Tail, int Head, int Row)> chainEdges = new();
-    private readonly List<(int Edge, ulong Condition, int Next)> chainEnds = new(); // One source's last edges and conditions, linked per edge.
-    private readonly List<(ulong Condition, int Next)> chainSeen = new(); // The conditions a source's search met at a node, by chainSeenHead.
-    private readonly Stack<(int Node, ulong Condition)> chainPending = new();
-    private int[] chainStart = [];
-    private int[] chainOut = [];
-    private int[] chainStamp = []; // Per node: the source search that last met it, and the first condition it met there.
-    private int[] chainSeenHead = [];
-    private int[] chainEndStamp = []; // Per edge: the source search that last ended a chain there, and its first end.
-    private int[] chainEndHead = [];
-    private int[] chainRecorded = []; // Per edge: the source search that recorded at it.
-    private int chainSearch;
+    private readonly List<(int Tail, int Head, int Row, int Next)> chainEdges = new(); // The rows' edges, linked per tail.
+    private readonly List<(int Node, ulong Condition)> chainStates = new(); // The graph's nodes (a Fixed Origin's condition is 0).
+    private readonly Dictionary<(int Node, ulong Condition), int> chainStateIndex = new();
+    private readonly List<((int Row, int Tail, int Head, int Source) Key, ulong Condition, int Next)> chainEnds = new(); // Linked per key.
+    private readonly Dictionary<(int Row, int Tail, int Head, int Source), int> chainEndHead = new(); // A key's last end, or ChainRecorded.
 
     // A node of a declaration row's graph is Dependent when an Unbound atom is in it.
     private static bool Dependent(BoundOrigin origin) => UnboundAtom(origin) is not null;
 
-    [Transitional("R7", Reason = "PLAN's R4-M118 component (A5's chain core below both phases) replaces this copy (DECISIONS BU-62).")]
     private void JudgeChains()
     {
+        if (this.unboundRows.Count == 0)
+        {
+            return;
+        }
+
+        this.chains.Work = 0;
         for (var r = 0; r < this.unboundRows.Count; r++)
         {
             var (row, longer, shorter, _) = this.unboundRows[r];
-            (longer, shorter) = (this.CanonicalOrigin(longer), this.CanonicalOrigin(shorter));
-            this.RelateChain(longer, shorter, r);
+            var relation = new DeclarationRelation(this, r);
+            var from = this.ChainNode(this.CanonicalOrigin(longer));
+            var to = this.ChainNode(this.CanonicalOrigin(shorter));
+            this.chains.Begin();
+            this.chains.Relate(ref relation, from, to);
             if (row.Equality)
             {
-                this.RelateChain(shorter, longer, r);
+                this.chains.Relate(ref relation, to, from);
             }
         }
 
-        this.IndexChainEdges();
-        for (var source = 0; source < this.chainNodes.Count; source++)
+        this.chains.Begin();
+        for (var e = 0; e < this.chainEdges.Count; e++)
         {
-            if (!Dependent(this.chainNodes[source]))
+            if (this.chainKinds[this.chainEdges[e].Tail] == OriginAtomKind.Fixed)
             {
-                this.ReachFrom(source);
+                this.ChainStep(this.ChainState(this.chainEdges[e].Tail, 0), e);
             }
         }
 
+        for (var s = 0; s < this.chainStates.Count; s++)
+        {
+            var node = this.chainStates[s].Node;
+            if (this.chainKinds[node] != OriginAtomKind.Dependent)
+            {
+                continue;
+            }
+
+            for (var e = this.chainFirst[node]; e >= 0; e = this.chainEdges[e].Next)
+            {
+                this.ChainStep(s, e);
+            }
+        }
+
+        var graph = new DeclarationGraph(this);
+        _ = this.chains.Chains(ref graph, this.chainStates.Count);
+        for (var end = 0; end < this.chainEnds.Count; end++)
+        {
+            this.JudgeChainEnd(end);
+        }
+
+        this.OriginProofMetrics?.Chained(this.chains.Work);
         this.chainNodes.Clear();
+        this.chainKinds.Clear();
+        this.chainFirst.Clear();
         this.chainIndex.Clear();
         this.chainEdges.Clear();
-    }
-
-    // MeetNode's rule (2a0-D D15, A5's Relate) for the row's edge `longer -> shorter`.
-    private void RelateChain(BoundOrigin longer, BoundOrigin shorter, int row)
-    {
-        if (longer.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < longer.Operands.Count; i++)
-            {
-                this.ChainEdge(longer.Operands[i], shorter, row);
-            }
-        }
-
-        if (longer.Kind != OriginKind.Intersection || Dependent(longer))
-        {
-            this.ChainEdge(longer, shorter, row);
-        }
-
-        for (var i = 0; shorter.Kind == OriginKind.Intersection && Dependent(shorter) && i < shorter.Operands.Count; i++)
-        {
-            this.ChainEdge(shorter.Operands[i], shorter, row);
-        }
-    }
-
-    // An edge between two Fixed nodes passes nothing on, so it is judged at once; any other joins the graph.
-    private void ChainEdge(BoundOrigin tail, BoundOrigin head, int row)
-    {
-        if (ReferenceEquals(tail, head))
-        {
-            return;
-        }
-
-        if (!Dependent(tail) && !Dependent(head))
-        {
-            var obligation = this.unboundRows[row].Obligation;
-            this.JudgeCallPosition(
-                obligation.Use, tail, head, equality: false, null, null, wellFormed: obligation.WellFormed, condition: obligation.Condition);
-            return;
-        }
-
-        this.chainEdges.Add((this.ChainNode(tail), this.ChainNode(head), row));
+        this.chainStates.Clear();
+        this.chainStateIndex.Clear();
+        this.chainEnds.Clear();
+        this.chainEndHead.Clear();
     }
 
     private int ChainNode(BoundOrigin origin)
@@ -123,116 +120,92 @@ public sealed partial class Binding
         {
             this.chainIndex.Add(origin, node = this.chainNodes.Count);
             this.chainNodes.Add(origin);
+            this.chainKinds.Add(Dependent(origin) ? OriginAtomKind.Dependent : OriginAtomKind.Fixed);
+            this.chainFirst.Add(-1);
         }
 
         return node;
     }
 
-    // The edges by tail, a counting sort: node v's are chainOut[chainStart[v]..chainStart[v + 1]); and the search's per-node and per-edge
-    // stamps, sized.
-    private void IndexChainEdges()
+    // A relation's edge of row r, linked first among its tail's; an edge from an Origin to itself relates nothing.
+    private void ChainEdge(int tail, int head, int r)
     {
-        var (nodes, edges) = (this.chainNodes.Count, this.chainEdges.Count);
-        Grow(ref this.chainStart, nodes + 2);
-        Grow(ref this.chainOut, edges);
-        Grow(ref this.chainStamp, nodes);
-        Grow(ref this.chainSeenHead, nodes);
-        Grow(ref this.chainEndStamp, edges);
-        Grow(ref this.chainEndHead, edges);
-        Grow(ref this.chainRecorded, edges);
-        this.chainStart.AsSpan(0, nodes + 2).Clear();
-        foreach (var edge in this.chainEdges)
+        if (tail != head)
         {
-            this.chainStart[edge.Tail + 2]++;
-        }
-
-        for (var v = 0; v < nodes; v++)
-        {
-            this.chainStart[v + 2] += this.chainStart[v + 1];
-        }
-
-        for (var e = 0; e < edges; e++)
-        {
-            this.chainOut[this.chainStart[this.chainEdges[e].Tail + 1]++] = e;
-        }
-
-        static void Grow(ref int[] array, int length)
-        {
-            if (array.Length < length)
-            {
-                Array.Resize(ref array, Math.Max(length, 2 * array.Length));
-            }
+            this.chainEdges.Add((tail, head, r, this.chainFirst[tail]));
+            this.chainFirst[tail] = this.chainEdges.Count - 1;
         }
     }
 
-    // A Fixed source's chains: a search through Dependent nodes, each (node, condition) once, the condition the OR of the rows passed; every
-    // edge from a Dependent node into a Fixed one is a last edge, judged when the search ends.
-    private void ReachFrom(int source)
+    // A chain's state: a Fixed Origin's, or a Dependent Origin's under a path condition, formed once.
+    private int ChainState(int node, ulong condition)
     {
-        if (++this.chainSearch == int.MaxValue)
+        if (!this.chainStateIndex.TryGetValue((node, condition), out var state))
         {
-            this.chainStamp.AsSpan().Clear();
-            this.chainEndStamp.AsSpan().Clear();
-            this.chainRecorded.AsSpan().Clear();
-            this.chainSearch = 1;
+            this.chainStateIndex.Add((node, condition), state = this.chainStates.Count);
+            this.chainStates.Add((node, condition));
         }
 
-        this.chainSeen.Clear();
-        this.chainEnds.Clear();
-        this.chainPending.Push((source, 0));
-        while (this.chainPending.TryPop(out var state))
+        return state;
+    }
+
+    // A chain's step from state s along edge e, into its head's state under s's condition with the row's (a Fixed head's own state); an
+    // edge between two Fixed Origins is judged at once under its row's Condition.
+    private void ChainStep(int s, int e)
+    {
+        var (tail, head, row, _) = this.chainEdges[e];
+        var condition = this.chainStates[s].Condition | this.unboundRows[row].Obligation.Condition;
+        var to = this.ChainState(head, this.chainKinds[head] == OriginAtomKind.Fixed ? 0 : condition);
+        if (!this.chains.Joins(s, this.chainKinds[tail], to, this.chainKinds[head], e))
         {
-            for (var i = this.chainStart[state.Node]; i < this.chainStart[state.Node + 1]; i++)
+            _ = this.JudgeChainPair(row, tail, head, condition);
+        }
+    }
+
+    // S >= X by the position judge at row r's use under a condition; true when it recorded.
+    private bool JudgeChainPair(int r, int longer, int shorter, ulong condition)
+    {
+        var obligation = this.unboundRows[r].Obligation;
+        var from = this.chainNodes[longer];
+        var to = this.chainNodes[shorter];
+        var records = this.callRelationScratch.Count;
+        this.JudgeCallPosition(obligation.Use, from, to, equality: false, null, null, wellFormed: obligation.WellFormed, condition: condition);
+        return this.callRelationScratch.Count != records;
+    }
+
+    // A Fixed target's last edges, each with the fixed sources its tail carries under the tail's condition with the row's.
+    private void ChainEnds(int target)
+    {
+        foreach (var x in this.chains.InEdges(target))
+        {
+            var (tail, head, row, _) = this.chainEdges[this.chains.Label(x)];
+            var condition = this.chainStates[this.chains.Tail(x)].Condition | this.unboundRows[row].Obligation.Condition;
+            var carried = this.chains.Carried(x);
+            for (var w = 0; w < carried.Length; w++)
             {
-                var (_, head, row) = this.chainEdges[this.chainOut[i]];
-                var condition = state.Condition | this.unboundRows[row].Obligation.Condition;
-                if (!Dependent(this.chainNodes[head]))
+                for (var word = carried[w]; word != 0; word &= word - 1)
                 {
-                    this.AddChainEnd(this.chainOut[i], condition);
-                }
-                else if (this.FirstVisit(head, condition))
-                {
-                    this.chainPending.Push((head, condition));
+                    var source = this.chainStates[this.chains.FixedNode((w << 6) + BitOperations.TrailingZeroCount(word))].Node;
+                    this.ChainEnd((row, tail, head, source), condition);
                 }
             }
         }
-
-        for (var end = 0; end < this.chainEnds.Count; end++)
-        {
-            this.JudgeChainEnd(source, end);
-        }
     }
 
-    // Whether this source's search meets the node under this condition for the first time.
-    private bool FirstVisit(int node, ulong condition)
+    // A source at a last edge under a path condition, kept once per condition and linked with its key's others; S >= S holds.
+    private void ChainEnd((int Row, int Tail, int Head, int Source) key, ulong condition)
     {
-        if (this.chainStamp[node] != this.chainSearch)
+        if (key.Source == key.Head)
         {
-            (this.chainStamp[node], this.chainSeenHead[node]) = (this.chainSearch, -1);
+            return;
         }
 
-        for (var at = this.chainSeenHead[node]; at >= 0; at = this.chainSeen[at].Next)
+        if (!this.chainEndHead.TryGetValue(key, out var first))
         {
-            if (this.chainSeen[at].Condition == condition)
-            {
-                return false;
-            }
+            first = -1;
         }
 
-        this.chainSeen.Add((condition, this.chainSeenHead[node]));
-        this.chainSeenHead[node] = this.chainSeen.Count - 1;
-        return true;
-    }
-
-    // A last edge reached under a condition, kept once per edge and condition, linked with the edge's other conditions.
-    private void AddChainEnd(int edge, ulong condition)
-    {
-        if (this.chainEndStamp[edge] != this.chainSearch)
-        {
-            (this.chainEndStamp[edge], this.chainEndHead[edge]) = (this.chainSearch, -1);
-        }
-
-        for (var at = this.chainEndHead[edge]; at >= 0; at = this.chainEnds[at].Next)
+        for (var at = first; at >= 0; at = this.chainEnds[at].Next)
         {
             if (this.chainEnds[at].Condition == condition)
             {
@@ -240,42 +213,51 @@ public sealed partial class Binding
             }
         }
 
-        this.chainEnds.Add((edge, condition, this.chainEndHead[edge]));
-        this.chainEndHead[edge] = this.chainEnds.Count - 1;
+        this.chainEnds.Add((key, condition, first));
+        this.chainEndHead[key] = this.chainEnds.Count - 1;
     }
 
-    // S >= X at a last edge's use, once per edge and source (A5's Unknown): under a minimal condition (no other of the edge narrower), until
-    // one records.
-    private void JudgeChainEnd(int source, int end)
+    // S >= X at a last edge's use under one of its key's minimal conditions (none of the key's others narrower), until one records.
+    private void JudgeChainEnd(int end)
     {
-        var (edge, condition, _) = this.chainEnds[end];
-        var (_, target, row) = this.chainEdges[edge];
-        if (source == target || this.chainRecorded[edge] == this.chainSearch || this.Narrowed(end))
-        {
-            return;
-        }
-
-        var (obligation, records) = (this.unboundRows[row].Obligation, this.callRelationScratch.Count);
-        var (longer, shorter) = (this.chainNodes[source], this.chainNodes[target]);
-        this.JudgeCallPosition(obligation.Use, longer, shorter, equality: false, null, null, wellFormed: obligation.WellFormed, condition: condition);
-        if (this.callRelationScratch.Count != records)
-        {
-            this.chainRecorded[edge] = this.chainSearch;
-        }
-    }
-
-    // Whether another condition that reached the same edge has a strict subset of this one's binders.
-    private bool Narrowed(int end)
-    {
-        var (edge, condition, _) = this.chainEnds[end];
-        for (var at = this.chainEndHead[edge]; at >= 0; at = this.chainEnds[at].Next)
+        var (key, condition, _) = this.chainEnds[end];
+        var first = this.chainEndHead[key];
+        for (var at = first; at >= 0; at = this.chainEnds[at].Next)
         {
             if (this.chainEnds[at].Condition != condition && (this.chainEnds[at].Condition & ~condition) == 0)
             {
-                return true;
+                return;
             }
         }
 
-        return false;
+        if (first != ChainRecorded && this.JudgeChainPair(key.Row, key.Source, key.Head, condition))
+        {
+            this.chainEndHead[key] = ChainRecorded;
+        }
+    }
+
+    // A row's relation (TyCtxt.OriginChains.Relate): the canonical Origins as nodes, and the row's edges.
+    private readonly struct DeclarationRelation(Binding owner, int row) : TyCtxt.IOriginChainRelation
+    {
+        public OriginAtomKind Kind(int node) => owner.chainKinds[node];
+
+        public int Operands(int node) => owner.chainNodes[node] is { Kind: OriginKind.Intersection } meet ? meet.Operands.Count : 0;
+
+        public int Operand(int node, int index) => owner.ChainNode(owner.chainNodes[node].Operands[index]);
+
+        public void Related(int tail, int head) => owner.ChainEdge(tail, head, row);
+    }
+
+    // The pass's graph (TyCtxt.OriginChains.Chains): the chains' states as nodes, and the chains' verdicts.
+    private readonly struct DeclarationGraph(Binding owner) : TyCtxt.IOriginChainJudge
+    {
+        public OriginAtomKind Kind(int node) => owner.chainKinds[owner.chainStates[node].Node];
+
+        public bool Admits(long words) => true;
+
+        // A declaration's graph has no Finite node (DeclarationAtom).
+        public void Refuted(int edge, ReadOnlySpan<ulong> sources) => throw new InvalidOperationException("A declaration row has no finite Origin.");
+
+        public void Unknown(int target) => owner.ChainEnds(target);
     }
 }
