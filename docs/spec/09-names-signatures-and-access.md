@@ -64,7 +64,7 @@ A **Lookup Role**, chosen by the syntactic use, filters the candidates of a name
 | Lookup Role | Namespace | Eligible declarations |
 | --- | --- | --- |
 | Core | Type | Structures, enums, associated Types, `Self`, Type parameters and pair targets |
-| Object View Target | Type | Cores and runtime Contracts |
+| Object View Target | Type | Cores and Contracts ([§8.12](08-generics-constraints-and-contracts.md#812-runtime-contracts)) |
 | Type Semantics | Type | Pair binders and language-defined Semantics |
 | Qualifier | Type | Groups, Kotonoha references and Types that can qualify members |
 | Requirement | Type | What requirement syntax admits |
@@ -85,7 +85,7 @@ func f<s/T>(x: s/T, y: T) -> () => ()
 
 ## 9.3. Local scopes and contextual names
 
-A local is visible after its declaration; its initializer sees the outer scope. An inner block may shadow an outer local; one block cannot declare a Name twice, and parameters share the immediate body's space. Local functions are visible from block entry, may overload, and cannot collide with a local or parameter. Container members may be used before their declaration, never to read an uninitialized value.
+A local is visible after its declaration; its initializer sees the outer scope. An inner block may shadow an outer local; one block cannot declare a Name twice, and parameters share the immediate body's space. Local functions are visible from block entry, may overload, and cannot collide with a local or parameter. A local function takes no access modifier; writing one is an error, as for a root function ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)). Container members may be used before their declaration, never to read an uninitialized value.
 
 A nested function may use outer Type parameters, but a named nested function captures no runtime local; only anonymous functions capture ([§7.7.2](07-functions-and-callable-values.md#772-captures)). Naming an outer Origin in a signature is not a capture ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)). The SourceDocument execution scope is defined in [§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers); Pattern scopes in [§14.8.2](14-control-flow.md#1482-binding-scopes).
 
