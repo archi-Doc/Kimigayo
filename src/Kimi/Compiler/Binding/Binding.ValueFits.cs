@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 //   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
-// - Outputs: the verdict and, for FitsType, FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
+// - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
 //   holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
@@ -23,16 +23,7 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected) => FitsType(actual, expected, out _);
-
-    // FitsType with the walk's first failure.
-    internal static bool FitsType(BoundType actual, BoundType expected, out ComparisonFailure failure)
-    {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
-        var fits = NeverFits(actual) || walk.Fits(actual, expected);
-        failure = walk.Failure;
-        return fits;
-    }
+    public static bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || IsSubtype(actual, expected);
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
