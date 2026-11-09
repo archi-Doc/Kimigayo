@@ -32,7 +32,7 @@ internal enum MirViolation : byte
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
-    Const, // A constant id out of range, or an Integer constant Holds rejects: not its Type's canonical payload, or of another Type (G620).
+    Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no

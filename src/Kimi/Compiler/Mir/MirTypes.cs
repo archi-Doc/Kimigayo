@@ -121,11 +121,14 @@ internal static partial class MirTypes
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
     /// <summary>Gets whether a Type has the integer operators (SPEC 13.3.1: an integer or wrapping integer Type), or one whose instance
-    /// decides it, a Type with an abstract part. An Integer, wrapping, numeric, bit or integer-to-pointer Cast converts such a Type
-    /// (MirValidator.Casts).</summary>
+    /// decides it: an abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one, which stays constructed until substitution
+    /// (SPEC 3.1.1; TyCtxt.Intern). Binding proves the instance (its IsArithmeticInteger); MIR reads the shape, so no other Type with an
+    /// abstract part, such as Option&lt;T&gt; or ref/T, is one. An Integer, wrapping, numeric, bit or integer-to-pointer Cast converts such a
+    /// Type (MirValidator.Casts).</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether it has the integer operators, concrete or generic.</returns>
-    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
+    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || type.IsAbstract ||
+        (type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping);
 
     /// <summary>Gets whether an Integer constant (MirConstKind.Integer) has a Type: one with the integer operators, concrete or generic
     /// (IsArithmeticInteger), char or a raw pointer, whose one constant is null (SPEC 3.1, 5.1). The one family MirValidator checks a
