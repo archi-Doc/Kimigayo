@@ -33,6 +33,39 @@ public class ForeignEmissionTest
         Assert.Equal(2, module.Startup.Instructions.Count(x => x.Callee == module.Function("GetLastError")));
     }
 
+    // SPEC 22.6, 8.6.4, 7.7.4 (DECISIONS R8-M19): a requirement call and a requirement Item's call whose witness is an import call the
+    // import by its C signature, as its direct call does, through the one declaration of its symbol.
+    [Fact]
+    public void AnImportWitnessCallsTheImport()
+    {
+        const string source = """
+            contract Clock
+                func now() -> u32
+            struct Win
+                Self is Clock
+                #LibraryImport("kernel32", "GetLastError")
+                public func now() -> u32
+            func tick<C>() -> u32
+                C is Clock
+                return C.now()
+            func item<C>() -> u32
+                C is Clock
+                let now = C.now
+                return now()
+            public func main()
+                let direct = Win.now()
+                require tick<Win>() == direct else => $abort("call")
+                require item<Win>() == direct else => $abort("item")
+                Console.writeLine("same")
+            """;
+        var ir = ScalarEmissionTest.EmitFixture("ForeignImportWitness", source, "same\n");
+        Assert.Single(Regex.Matches(ir, @"declare [^\n]*@GetLastError\("));
+        var module = GeneratedIr.Parse(ir);
+        Assert.Single(module.Startup.Instructions, x => x.Callee == module.Function("GetLastError"));
+        var witnesses = module.Functions.Where(static f => f.Signature == "internal i32 ()"); // tick<Win> and item<Win>.
+        Assert.Equal([1, 1], witnesses.Select(f => f.Instructions.Count(x => x.Callee == module.Function("GetLastError"))));
+    }
+
     [Theory]
     [InlineData("static", "declare double @mix(i8, i16, i32, i64, float, double)\n")]
     [InlineData("import", "declare dllimport double @mix(i8, i16, i32, i64, float, double)\n")]

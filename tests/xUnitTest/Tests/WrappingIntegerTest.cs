@@ -48,7 +48,7 @@ public class WrappingIntegerTest
         Assert.False(wrapping.IsUnsignedInteger);
         Assert.Same(primitive, wrapping.Underlying);
         Assert.Equal(ScalarTypes.Width(primitive), ScalarTypes.Width(wrapping));
-        Assert.Equal(ScalarTypes.Signed(primitive), ScalarTypes.Signed(wrapping));
+        Assert.Equal(primitive.IsSigned, wrapping.IsSigned);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(wrapping, a));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProvePrimitiveInteger(wrapping, a));
         Assert.Same(wrapping, variables["b"].NameKoto.TypeOf());
@@ -62,6 +62,27 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
         Assert.Same(Layout.Row(primitive), Layout.Row(wrapping));
+    }
+
+    // SPEC 3.1, 3.1.1: IsSigned is the representation's signedness, Wrapping<T>'s that of T; no other Type is signed, whatever its name.
+    [Fact]
+    public void OnlySignedIntegersAndTheirWrappingTypesAreSigned()
+    {
+        foreach (var integer in new[] { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize" })
+        {
+            var signed = integer[0] == 'i';
+            Assert.Equal(signed, BoundType.Primitives[integer].IsSigned);
+            Assert.Equal(signed, BoundType.WrappingOf(BoundType.Primitives[integer]).IsSigned);
+        }
+
+        var c = MinimalEmissionTest.Analyze("struct item\n    let id: i32\n\n    public init(id: i32)\n        self.id = id\n\nlet s = item.init(1)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var user = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "s").NameKoto.TypeOf();
+        Assert.Equal("item", user!.Name);
+        foreach (var type in new[] { BoundType.Char, BoundType.Boolean, BoundType.F32, BoundType.F64, user })
+        {
+            Assert.False(type.IsSigned, type.Name);
+        }
     }
 
     [Theory]
