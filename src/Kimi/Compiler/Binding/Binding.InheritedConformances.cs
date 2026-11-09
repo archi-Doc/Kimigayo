@@ -4,103 +4,143 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// InheritedConformances (PLAN G602; DeclQueryKind.InheritedConformances): a struct's inherited conformance paths (SPEC 8.6.2).
+// - Responsibility: registering a struct's inherited paths, its base's under the base clause, once its base's are; the one by-type
+//   read of ImplTable (ConformancesOf, ConformanceOf); verifying an inherited path and its conformance scope.
+// - Inputs: the struct's base clause read through DirectBase, the base's paths in ImplTable. Outputs: the paths in ImplTable.
+// - Invariants: once clauses are bindable every by-type read demands the query first, so no reader sees a table this query has not
+//   filled; before, a read sees what pass 0's sweep registered. A clause in progress is never final here.
+// - Prohibitions: no record (ValidateBaseDeclaration and the verifications' callers own them); no read of a query state.
+// - Removal: the accessors' clausesBindable condition and the pass-0 sweep go at R7-D2 d3 with R7-M9's temporaries.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BindingSymbol, byte> inheritedConformanceStates = new(ReferenceEqualityComparer.Instance);
-
-    // Nominal bases supply early associated names; projected bases wait for associated specifications.
-    // Each definition path is registered once, never rediscovered at a call site.
-    private void RegisterInheritedConformances(bool complete = false)
+    // SPEC 8.6.2: every struct's inherited paths, demanded in node order. Pass 0's demand (BindConstraints) registers the paths through
+    // bases named by a struct; this one, once clauses are bindable, the rest.
+    private void RegisterInheritedConformances()
     {
-        if (!complete)
-        {
-            this.inheritedConformanceStates.Clear();
-        }
-
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is StructKoto { BoundSymbol: { } symbol })
             {
-                Register(symbol);
+                _ = this.InheritedConformances(symbol);
             }
         }
+    }
 
-        void Register(BindingSymbol type)
+    // A Type's conformances in this pass: every by-type read of ImplTable. Once clauses are bindable a read demands the Type's inherited
+    // paths first (DeclQueryKind.InheritedConformances); before, it reads what pass 0's demand registered.
+    private List<BoundConformance>? ConformancesOf(BindingSymbol type)
+    {
+        if (this.clausesBindable)
         {
-            if (this.inheritedConformanceStates.GetValueOrDefault(type) != 0)
-            {
-                return;
-            }
-
-            this.inheritedConformanceStates[type] = 1;
-
-            if (type.Declaration is not StructKoto { BaseClause: { } syntax } declaration)
-            {
-                this.inheritedConformanceStates[type] = 2;
-                return;
-            }
-
-            if (!complete && (this.knownBases?.ContainsKey(declaration) == true || this.DirectBase(declaration)?.Declaration is not StructKoto))
-            {
-                this.inheritedConformanceStates[type] = 0;
-                return;
-            }
-
-            var written = syntax.BoundType ?? this.BindType(syntax, this.scopes[declaration]);
-            if (written is null || this.StoredType(written, this.SelfType(type)) is not { Symbol: { } parent } baseType)
-            {
-                return;
-            }
-
-            Register(parent);
-            if (this.inheritedConformanceStates.GetValueOrDefault(parent) != 2)
-            {
-                this.inheritedConformanceStates[type] = 0;
-                return;
-            }
-
-            if (this.impls.OfType(parent) is not { } identities)
-            {
-                this.inheritedConformanceStates[type] = 2;
-                return;
-            }
-
-            for (var i = 0; i < identities.Count; i++)
-            {
-                var identity = identities[i];
-                if (identity.Contract.Intrinsic != IntrinsicKind.None)
-                {
-                    continue; // Copy, Owned and other intrinsic capabilities retain their own derivation rules.
-                }
-
-                var contract = Substitute(identity.Contract);
-                for (var j = 0; j < identity.Paths.Count; j++)
-                {
-                    var source = identity.Paths[j];
-                    var path = this.impls.Register(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
-                    path.Use = syntax;
-                    if (path.InheritedFrom is null)
-                    {
-                        path.InheritedFrom = source;
-                    }
-                    else if (!ReferenceEquals(path.InheritedFrom, source))
-                    {
-                        var sources = path.AdditionalInheritedSources ??= new();
-                        if (!sources.Contains(source))
-                        {
-                            sources.Add(source);
-                        }
-                    }
-
-                    path.InheritedBase = baseType;
-                }
-            }
-
-            this.inheritedConformanceStates[type] = 2;
-
-            BindingSymbol Substitute(BindingSymbol contract)
-                => IsBoundContractReference(contract) ? this.BoundContractReference(this.StoredType(contract.Type!, baseType)!) : contract;
+            _ = this.InheritedConformances(type);
         }
+
+        return this.impls.OfType(type);
+    }
+
+    private BoundConformance? ConformanceOf(BindingSymbol type, BindingSymbol contract)
+    {
+        if (this.clausesBindable)
+        {
+            _ = this.InheritedConformances(type);
+        }
+
+        return this.impls.Find(type, contract);
+    }
+
+    // DeclQueryKind.InheritedConformances (SPEC 8.6.2): a struct's inherited paths, its base's paths under the base clause, registered
+    // once its base's are. Not ready: a base clause that names no struct before clausesBindable, or a base whose own query is not Done;
+    // abandoned. Re-entry (a base cycle): the base reads as not Done. Done with none: no base clause, or one that names no Type.
+    private bool InheritedConformances(BindingSymbol type)
+    {
+        if (type.Declaration is not StructKoto declaration)
+        {
+            return true;
+        }
+
+        if (this.BeginQuery(type, DeclQueryKind.InheritedConformances) is not DeclState.NotStarted and var state)
+        {
+            return state == DeclState.Done;
+        }
+
+        if (declaration.BaseClause is not { } syntax)
+        {
+            this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+            return true;
+        }
+
+        // The clause is read by DirectBase, the one reading (R7-M9): a clause in progress or not ready reads as no struct and waits; once
+        // clauses are bindable, a bound or failed clause that names no struct is final. A clause in progress is not final even when a
+        // re-entry has failed it (SPEC 9.5: a clause whose evidence reaches its own struct through another base is a cycle), so no heir
+        // registers paths through it.
+        if (this.DirectBase(declaration)?.Declaration is not StructKoto || (!this.clausesBindable && this.knownBases?.ContainsKey(declaration) == true))
+        {
+            if (this.clausesBindable && (syntax.BoundType is not null || (syntax.BindingFailure != BindingFailure.None && !this.resolvingTypes.Contains(syntax))))
+            {
+                this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+                return true;
+            }
+
+            this.AbandonQuery(type, DeclQueryKind.InheritedConformances);
+            return false;
+        }
+
+        var written = syntax.BoundType ?? this.BindType(syntax, this.scopes[declaration]);
+        if (written is null || this.StoredType(written, this.SelfType(type)) is not { Symbol: { } parent } baseType)
+        {
+            this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+            return true;
+        }
+
+        if (!this.InheritedConformances(parent))
+        {
+            this.AbandonQuery(type, DeclQueryKind.InheritedConformances);
+            return false;
+        }
+
+        if (this.impls.OfType(parent) is not { } identities)
+        {
+            this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+            return true;
+        }
+
+        for (var i = 0; i < identities.Count; i++)
+        {
+            var identity = identities[i];
+            if (identity.Contract.Intrinsic != IntrinsicKind.None)
+            {
+                continue; // Copy, Owned and other intrinsic capabilities retain their own derivation rules.
+            }
+
+            var contract = Substitute(identity.Contract);
+            for (var j = 0; j < identity.Paths.Count; j++)
+            {
+                var source = identity.Paths[j];
+                var path = this.impls.Register(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
+                path.Use = syntax;
+                if (path.InheritedFrom is null)
+                {
+                    path.InheritedFrom = source;
+                }
+                else if (!ReferenceEquals(path.InheritedFrom, source))
+                {
+                    var sources = path.AdditionalInheritedSources ??= new();
+                    if (!sources.Contains(source))
+                    {
+                        sources.Add(source);
+                    }
+                }
+
+                path.InheritedBase = baseType;
+            }
+        }
+
+        this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+        return true;
+
+        BindingSymbol Substitute(BindingSymbol contract)
+            => IsBoundContractReference(contract) ? this.BoundContractReference(this.StoredType(contract.Type!, baseType)!) : contract;
     }
 
     private ConstraintProof VerifyInheritedConformance(BoundConformancePath path)
@@ -331,7 +371,7 @@ public sealed partial class Binding
             return this.InheritedSelfMismatchNote(constraint.Left!) ?? this.InheritedSelfMismatchNote(constraint.Right!);
         }
 
-        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.impls.OfType(owner) is not { } identities)
+        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }

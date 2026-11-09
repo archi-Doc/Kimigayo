@@ -23,7 +23,11 @@ namespace Kimi.Compiler;
 //   query, and no reader runs inside verification, so the answer is the declaration's own. A Proven stays read after a later failure.
 //   DirectBase (Binding.BaseLayers): output AdtDef.DirectBase, a clean read's name or a failed clause's; a bound clause's Type answers
 //   first. Re-entry: the chain ends there, counted (SPEC 9.5). Not ready: abandoned and counted; a read that moved the count stores
-//   nothing (interim until R7-D2 d3).
+//   nothing (interim until R7-D2 d3). InheritedConformances (Binding.InheritedConformances, SPEC 8.6.2): output the struct's inherited
+//   paths in ImplTable, its answer whether it is Done; demanded by every by-type read of ImplTable once clauses are bindable. Re-entry:
+//   not Done, so the heir is abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's
+//   and formation's, none here. Not ready: its clause, read by DirectBase, in progress (even failed by its own re-entry, a cycle: SPEC
+//   9.5) or not ready, or its base not Done.
 // - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
 //   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
 //   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
@@ -43,6 +47,9 @@ internal enum DeclQueryKind : byte
 
     /// <summary>A struct's base clause read as the declaration it names (Binding.BaseLayers).</summary>
     DirectBase,
+
+    /// <summary>A struct's inherited conformance paths registered in ImplTable (Binding.InheritedConformances).</summary>
+    InheritedConformances,
 
     /// <summary>The number of kinds; BindingSymbol packs two bits per kind, so a ninth kind fails its compile-time check.</summary>
     Count,
