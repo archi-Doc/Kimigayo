@@ -30,7 +30,7 @@ public sealed partial class Binding
         }
 
         var width = ScalarTypes.Width(node.BoundType);
-        var signed = ScalarTypes.Signed(node.BoundType!);
+        var signed = node.BoundType!.IsSigned;
         // Resolution only admits [0, isize.MaxValue]. Saturate outside that interval before forming inequalities,
         // so even a u128 maximum or a negated i128 minimum cannot overflow their arithmetic.
         var limit = (Int128)1 << (ScalarTypes.SizeWidth - 1);
@@ -48,7 +48,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var signed = ScalarTypes.Signed(type);
+        var signed = type.IsSigned;
         var mask = UInt128.MaxValue >> (128 - width);
         var sign = (UInt128)1 << (width - 1);
         switch (node)

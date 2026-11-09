@@ -31,7 +31,7 @@ internal enum LayoutNeed : byte
     /// <summary>The stride of a Type the form steps over: an Index's or a ConstIndex's element, a raw pointer displacement's pointee.</summary>
     Element,
 
-    /// <summary>The layouts of the call's Type arguments: an intrinsic's, a whole-value update's.</summary>
+    /// <summary>The layouts of the call's Type arguments: an intrinsic's.</summary>
     TypeArguments,
 }
 
@@ -87,7 +87,7 @@ internal static class LayoutNeeds
         return pointer.Components[0];
     }
 
-    /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (a whole-value update's T, an intrinsic's
+    /// <summary>Gets the Types a call's TypeArguments need names: every Type of its substitution (an intrinsic's
     /// one argument).</summary>
     /// <param name="subst">The call's, or its Item's, substitution.</param>
     /// <returns>The Types.</returns>

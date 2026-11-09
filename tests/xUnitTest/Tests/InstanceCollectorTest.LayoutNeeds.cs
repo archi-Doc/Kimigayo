@@ -91,7 +91,6 @@ public sealed partial class InstanceCollectorTest
             [LayoutNeed.Parts, LayoutNeed.Parts, LayoutNeed.Element, LayoutNeed.Element, LayoutNeed.None, LayoutNeed.None, LayoutNeed.None],
             kinds.Select(LayoutNeeds.Of));
         Assert.Equal(LayoutNeed.TypeArguments, IntrinsicRows.Of(IntrinsicId.RawAllocate).Need);
-        Assert.Equal(LayoutNeed.TypeArguments, LegacyRuntimeHelpers.Row(CompilerFunctionKind.Swap)!.Value.Need);
     }
 
     // K 4.10 (DECISIONS R5-M149, the owner's Q1 (a)): a root constructor whose Type has no layout, an unavailable C layout or a size over the

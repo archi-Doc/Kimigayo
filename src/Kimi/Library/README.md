@@ -45,9 +45,9 @@ embedded and implemented.
   are emitted. The private `counterFrequency` is initialized by the ordinary first-access static
   protocol; it has no compiler-recognized name or special startup hook.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
-- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi`, `StorageOperations.kimi` and `RawOperations.kimi` contain signatures without source bodies.
+- `IntrinsicOperations.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi`, `StorageOperations.kimi` and `RawOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
-  internal `Storage` group of `Storage.kimi` for the standard storage boundary, or the public `Raw` group of `Raw.kimi` for raw storage; a struct also admits bodiless `init` signatures).
+  internal `Storage` group of `Storage.kimi` for the standard storage boundary, the public `Raw` group of `Raw.kimi` for raw storage, or the public `Intrinsics` group of `Intrinsics.kimi`, which also declares the three whole-value updates with bodies; a struct also admits bodiless `init` signatures).
   Within these signature resources, only catalog-registered compiler implementations may omit bodies
   without an ordinary `#LibraryImport` declaration. A catalog link may instead name an internal source function of the same
   struct as a bodiless constructor's definition (`Array.init(! capacity:)` → `Array.initCapacity` and

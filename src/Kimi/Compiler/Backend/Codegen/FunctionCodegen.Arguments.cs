@@ -68,7 +68,7 @@ internal sealed partial class FunctionCodegen
     // reached Call passes to an OwnedSlot parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in
     // memory by pointer, so every in-memory operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine
     // (Raw.release, $abort) or a creation's factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none;
-    // a compiler function of the Body disposition, called directly or as an Item's Value call, by its legacy row (RowSlots; DECISIONS
+    // a compiler function of the Body disposition, called directly or as an Item's Value call, by its legacy row's routine (DECISIONS
     // R5-M116); and the payload of a creating adaptation, a statement whose factory call passes it as a creation call does (CreationSlot;
     // DECISIONS R5-M111). A Value call's callee operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a
     // Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy),
@@ -122,7 +122,7 @@ internal sealed partial class FunctionCodegen
     {
         if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
         {
-            this.RowSlots(call, legacy);
+            this.RoutineSlots(call, legacy.Routine); // A fixed-symbol routine's OwnedSlot parameters (DECISIONS R5-M128).
             return;
         }
 
@@ -182,26 +182,6 @@ internal sealed partial class FunctionCodegen
         if (call.Callee.Kind == MirCalleeKind.Value)
         {
             this.CopySlot(call.Operand, this.body.Operands.Length + block);
-        }
-    }
-
-    // A legacy row's slots (DECISIONS R5-M116, R5-M128): a fixed-symbol routine's OwnedSlot parameters (LegacyRow.Fixed: writeLine's, a
-    // formatting routine's), as an intrinsic routine's; a swap of a value in memory the one slot holding its first value
-    // (FunctionCodegen.Updates), numbered at its first operand, a reference, which has no copy slot of its own; none for the others, which
-    // read their operands in place, no callee seeing them.
-    private void RowSlots(in MirTerminator call, LegacyRow row)
-    {
-        if (row.Fixed)
-        {
-            this.RoutineSlots(call, row.Routine);
-            return;
-        }
-
-        var first = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
-        if (row.Writer == LegacyWriter.Swap && this.ReferencedType(this.InstanceType(this.body.Operands[first])) is { } type &&
-            this.module.Layout.Of(type).Value is { Layout.Size: > 0 } lowering && InMemory(type, lowering))
-        {
-            this.AddSlot(first, lowering.Layout);
         }
     }
 
