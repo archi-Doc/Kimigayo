@@ -222,8 +222,9 @@ public sealed partial class Binding
                 else
                 {
                     // A valid definition's header holds no name to bind: its declaration is declared and judged like any function's
-                    // (duplicates, virtual eligibility, protected placement); access keeps it from every product candidate set.
-                    test.BoundSymbol = this.DeclareFunction(test);
+                    // (kind conflicts, signatures, inherited Names, virtual eligibility, protected placement); access keeps it from every
+                    // product candidate set.
+                    this.DeclareFunction(test);
                     binding.GetScope(test, this.Scope);
                     binding.nodes.Add(test);
                     for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
@@ -533,7 +534,7 @@ public sealed partial class Binding
         }
 
         // A named function's symbol in its member scope, an excluded test's included (G660): the declaration is judged in every build.
-        private BindingSymbol DeclareFunction(FunctionKoto function)
+        private void DeclareFunction(FunctionKoto function)
         {
             var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
             var conditional = this.Scope.Owner as SyntaxFormKoto;
@@ -561,8 +562,6 @@ public sealed partial class Binding
                     }
                 }
             }
-
-            return symbol;
         }
     }
 }

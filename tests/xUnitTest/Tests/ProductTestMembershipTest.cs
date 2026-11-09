@@ -91,7 +91,7 @@ public class ProductTestMembershipTest
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }
 
-    // SPEC 6.7.2, 18.6: a Product build excludes a test's body, not its declaration (PLAN G660: dev's Product build accepted the five
+    // SPEC 6.7.2, 18.6: a Product build excludes a test's body, not its declaration (PLAN G660: dev's Product build accepted the eight
     // Binding rows). Each marked declaration has the same records in either build mode, and its unmarked twin has its own.
     [Theory]
     [InlineData("group G\n    #Test\n    virtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
@@ -99,6 +99,9 @@ public class ProductTestMembershipTest
     [InlineData("#Test\nvirtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
     [InlineData("group G\n    func t() => ()\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    protected func t() => ()", "ProtectedPlacement_Kd", "ProtectedPlacement_Kd")]
+    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("enum E\n    T\n    #Test\n    func T() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("struct S\n    var t: i32\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    static func t() => ()", "MisplacedSyntax_Kd", "MisplacedSyntax_Kd")]
     [InlineData("group G\n    #Test\n    override func t() => ()", "InvalidVirtualDeclaration_Kd MisplacedSyntax_Kd", "InvalidVirtualDeclaration_Kd")]
     public void ATestDeclarationIsJudgedInEitherBuildMode(string source, string codes, string twinCodes)
