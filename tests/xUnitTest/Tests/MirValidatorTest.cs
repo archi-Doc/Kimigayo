@@ -1177,13 +1177,24 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void AnIntegerConstantHoldsItsValueInItsTypesRange(string type, string bits, bool holds)
         => AssertIntegerConstant(BoundType.Primitives[type], Int128.Parse(bits, CultureInfo.InvariantCulture), holds);
 
-    // G620: an Integer constant of a Type without a width is one of the closed family code generation also lowers (FunctionCodegen.Values):
-    // a char's code point, a raw pointer's null and a Type parameter's generic literal hold, not ranged (F4's rows); one of any other Type,
-    // bool's or a struct's, is a Const finding at its use (before: no Type row, every widthless Type held).
+    // G620, G644: an Integer constant of a Type without a width is one of the closed family code generation also lowers
+    // (MirTypes.HoldsIntegerConstant), with a value of it: a char's Unicode scalar value (SPEC 3.1: U+0000-U+D7FF and U+E000-U+10FFFF), a
+    // raw pointer's null, 0 (SPEC 5.1), and a Type parameter's generic literal, 0 through 127 (SPEC 8.7.4); a value outside them is a Const
+    // finding (before: not ranged, F4's rows held), and so is a constant of any other Type, bool's or a struct's (before G620: no Type row).
     [Theory]
     [InlineData("char", 0x10FFFF, true)]
+    [InlineData("char", 0xD7FF, true)]
+    [InlineData("char", 0xE000, true)]
+    [InlineData("char", 0xD800, false)]
+    [InlineData("char", 0xDFFF, false)]
+    [InlineData("char", 0x110000, false)]
+    [InlineData("char", -1, false)]
     [InlineData("pointer", 0, true)]
+    [InlineData("pointer", 1, false)]
     [InlineData("parameter", 0, true)]
+    [InlineData("parameter", 127, true)]
+    [InlineData("parameter", 128, false)]
+    [InlineData("parameter", -1, false)]
     [InlineData("bool", 1, false)]
     [InlineData("struct", 0, false)]
     public void AnIntegerConstantOfAWidthlessTypeIsOneCodeGenerationLowers(string type, int bits, bool holds)
@@ -1199,6 +1210,89 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         };
         Assert.True(type != "parameter" || held.Kind == BoundTypeKind.Parameter);
         AssertIntegerConstant(held, bits, holds);
+    }
+
+    // G643: a Type with the integer operators, concrete or generic (MirTypes.IsArithmeticInteger, SPEC 13.3.1), has integer arithmetic or
+    // an instance that decides it: a PrimitiveInteger T or projection, or Wrapping over one, which hold their generic literals (SPEC 8.7.4,
+    // 12.3.3); no abstract Type of another kind, Option<T>, ref/T or Wrapping<Option<T>>, whose instance is never one: its constant is a
+    // Const finding (before: any Type with an abstract part held).
+    [Theory]
+    [InlineData(0, 127, true)]
+    [InlineData(0, 128, false)]
+    [InlineData(3, 127, true)]
+    [InlineData(3, 128, false)]
+    [InlineData(4, 100, true)]
+    [InlineData(4, 128, false)]
+    [InlineData(5, 7, true)]
+    [InlineData(5, 128, false)]
+    [InlineData(1, 0, false)]
+    [InlineData(2, 0, false)]
+    [InlineData(6, 0, false)]
+    public void AGenericIntegerConstantHasAnArithmeticIntegerType(int parameter, int bits, bool holds)
+    {
+        var (c, types) = GenericIntegers();
+        AssertIntegerConstant(types[parameter], bits, holds, c.Types);
+    }
+
+    // G644: the builder's generic literals are Binding's fitted ones, 0 through 127 (SPEC 8.7.4, 12.3.3): a literal that fits no instance,
+    // 200 or -1 at T or 128 at Wrapping<T>, is Binding's error and never a Const finding; 127 is valid and holds.
+    [Theory]
+    [InlineData("    return x + 200\n", false)]
+    [InlineData("    return x + -1\n", false)]
+    [InlineData("    let w: Wrapping<T> = 128\n    return x\n", false)]
+    [InlineData("    let w: Wrapping<T> = 127\n    return x + 127\n", true)]
+    public void AGenericLiteralOutsideItsRangeIsBindingsError(string body, bool valid)
+    {
+        var c = MirBuildTest.Compile("func f<T>(x: T) -> T\n    T is PrimitiveInteger\n" + body);
+        var findings = c.BuildMir().Findings;
+        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(findings, static x => x.Rule == MirViolation.Const);
+    }
+
+    // G644 (BU-72, SPEC 8.2.3, 12.3.1, 14.8.1): Binding types a literal it fits through an identity premise at the complete Type, while
+    // MIR keeps the premised parameter: `T is i32`'s 200 and -1, as values and as Literal Patterns, are i32 constants, and `T is u128`'s
+    // maximum a u128 one, which hold by their width, not as generic literals (0 through 127), so the bodies validate.
+    [Theory]
+    [InlineData("func f<T>(x: T) -> T\n    T is i32\n    let y: T = 200\n    let z: T = -1\n    return y + z + x\n", "i32", 200)]
+    [InlineData("func f<T>(x: T) -> i32\n    T is i32\n    return match x\n        200 => 1\n        -1 => 2\n        _ => 0\n", "i32", -1)]
+    [InlineData("func f<T>(x: T) -> T\n    T is u128\n    let y: T = 340282366920938463463374607431768211455\n    return y\n", "u128", -1)]
+    public void ALiteralFittedThroughAnIdentityPremiseHasTheCompleteType(string source, string type, int bits)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type.Kind);
+        Assert.Contains(f.Consts.ToArray(), x => x.Kind == MirConstKind.Integer && ReferenceEquals(x.Type, BoundType.Primitives[type]) && x.Bits == bits);
+    }
+
+    // G643: an Integer, wrapping, numeric, bit or integer-to-pointer Cast converts Types with the integer operators, concrete or generic
+    // (MirTypes.IsArithmeticInteger): T to and from Wrapping<T> and to usize, a projection to T, usize to raw/T (SPEC 8.7.4, 13.5.4, 5.4);
+    // from Option<T> or ref/T it is an Operation finding (before: held).
+    [Theory]
+    [InlineData("Integer", 0, 3, true)]
+    [InlineData("Integer", 3, 0, true)]
+    [InlineData("Integer", 0, -1, true)]
+    [InlineData("Integer", 1, 0, false)]
+    [InlineData("Integer", 2, -1, false)]
+    [InlineData("Wrap", 4, 0, true)]
+    [InlineData("Wrap", 1, 0, false)]
+    [InlineData("IntToPointer", -1, 7, true)]
+    [InlineData("IntToPointer", 2, 7, false)]
+    public void AGenericIntegerCastConvertsArithmeticIntegerTypes(string kind, int source, int target, bool holds)
+    {
+        var (c, types) = GenericIntegers();
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (from, to) = (source < 0 ? BoundType.USize : types[source], target < 0 ? BoundType.USize : types[target]);
+        var (read, held, block) = (MirModelTest.Local(body, from), MirModelTest.Local(body, to), body.AddBlock());
+        var cast = MirRvalue.Cast(Enum.Parse<MirCastKind>(kind), AddOperands(body, [MirOperand.Move(read)]), to);
+        body.Push(block, MirStatement.Assign(held, cast, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        MirViolation[] expected = holds ? [] : [MirViolation.Operation];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // The Call positions of the same rule, by the facts A5 reads and not by the result's Type: `put` returns a scalar and keeps its input through
@@ -1848,8 +1942,28 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
+    // A PrimitiveInteger T's compilation and the Types T, Option<T>, ref/T and Wrapping<T> of its parameters.
+    // Its parameters' Types (0-5), then Wrapping over Option<T>, a non-abstract Type with an abstract part (6), and raw/T (7).
+    private static (Compilation Compilation, BoundType[] Types) GenericIntegers()
+    {
+        var c = MirBuildTest.Compile("contract HasItem\n    associate Item\n" +
+            "func w<T, U>(a: T, b: Option<T>, c: ref/T, d: Wrapping<T>, e: U.(HasItem).Item, f: Wrapping<U.(HasItem).Item>) -> ()\n" +
+            "    T is PrimitiveInteger\n    U is HasItem\n    U.(HasItem).Item is PrimitiveInteger\n    return ()\n");
+        Assert.True(c.Binding.Result.IsComplete);
+        var w = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "w");
+        var types = w.Parameters.Select(static x => x.Type.TypeOf()!).ToList();
+        Assert.Equal(
+            [BoundTypeKind.Parameter, BoundTypeKind.Constructed, BoundTypeKind.Semantics, BoundTypeKind.Constructed, BoundTypeKind.AssociatedProjection,
+                BoundTypeKind.Constructed],
+            types.Select(static x => x.Kind));
+        types.Add(c.Types.Intern(BoundTypeKind.Constructed, types[3].Symbol, SemanticsKind.Owner, [types[1]]));
+        types.Add(c.Types.Pointer(types[0]));
+        Assert.Equal(BoundTypeKind.Constructed, types[6].Kind);
+        return (c, [.. types]);
+    }
+
     // A body assigning one Integer constant of a Type to a local of it: no finding when it holds, else one Const finding at the Assign.
-    private static void AssertIntegerConstant(BoundType type, Int128 bits, bool holds)
+    private static void AssertIntegerConstant(BoundType type, Int128 bits, bool holds, TyCtxt? types = null)
     {
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1859,7 +1973,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Push(block, MirStatement.Assign(held, MirRvalue.Use(AddOperands(body, [constant])), Broken));
         body.Terminate(block, MirTerminator.Return(At));
         MirViolation[] expected = holds ? [] : [MirViolation.Const];
-        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // A compiled body is validated with its own compilation's Type context, whose Binding the Copy rule reads (DECISIONS BU-88).
