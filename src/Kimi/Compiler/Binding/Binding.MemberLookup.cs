@@ -86,6 +86,32 @@ public sealed partial class Binding
         return available;
     }
 
+    // SPEC 9.5 (PLAN G602): a projection T.(C).X in a struct's base clause is an unresolvable dependency cycle when T is the struct or
+    // derives from it, with any Type arguments, since T's paths to C through the struct's base must agree with its others (8.6.2, 8.9.2).
+    // Decided at the projection from its subject's declaration chain, which stops at the struct, so never from the clause's progress.
+    private bool ProjectsThroughItsOwnClause(Koto projection, BoundType subject, BindingScope scope)
+    {
+        if (scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } own } || !IsWithin(projection, clause) || subject.Symbol is not { } start)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(start, own))
+        {
+            return true;
+        }
+
+        foreach (var layer in new BaseChain(this, start))
+        {
+            if (ReferenceEquals(layer, own))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool ValidateInheritedNames(StructKoto structure, BoundType baseType, BindingScope scope)
     {
         foreach (var nested in structure.NestedContainers)
