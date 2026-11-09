@@ -98,11 +98,14 @@ internal sealed partial class TyCtxt
     // Holder gate: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (Option's included), a Closure's
     // environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`, Array, Dictionary, `string`) and a
     // `Loan<T>`'s argument; any other Type argument has no address and adds nothing. Each part is read once per (Type, Written, Holder)
-    // through Holdings, so a stored layer steps by DeclaredStep under its holding instance. Output, appended to `into` in walk order:
+    // through Holdings as the contract's body sees it, as the storage walk reads it (a Closure part by its environment, ClosureEnvironment,
+    // DECISIONS R4-M148), so a stored layer steps by DeclaredStep under its holding instance. Output, appended to `into` in walk order:
     // (layer, step) for each raw layer met there (Holdings' entries carry Raw and it is no pair layer), not gone past; (null, step) for
     // each other part there that reaches storage (a borrow or pair case, an rc or arc view, an abstract, erased, unsupported or unbound
     // part); nothing for a part with no entry (a scalar, a Function Item, a Range, a struct with no Fields). The step is Holdings', not the
-    // walked signature's cap (RawStepAt); each layer's members are LayerMembers'. False at Binding's Limit (Holdings false). Total over what
+    // walked signature's cap (RawStepAt), which a covering needs not: the cap is Shared only where every statement of the Origin is shared,
+    // and then each of its members (LayerMembers') is shared, which a covering of exclusive members refuses. False at Binding's Limit
+    // (Holdings false, or a Closure part whose environment does not substitute, the storage walk's Limit too). Total over what
     // Binding accepts, a function of the Type alone, allocating nothing warm. Must not decide a covering (A5's), read a call's arguments or
     // solved Origins, or test a Type's Kind or Semantics to restrict a form.
     internal bool OwnLayers(BoundType input, List<OwnLayer> into) => binding.OwnLayers(input, into);

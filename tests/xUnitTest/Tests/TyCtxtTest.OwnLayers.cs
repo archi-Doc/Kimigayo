@@ -14,14 +14,20 @@ public sealed partial class TyCtxtTest
         "struct Outer<T>\n    internal let inner: Wrap<T>\n" +
         "struct SelfHeld\n    internal let data: raw/i64 during self\n" +
         "struct Empty<T>\n" +
-        "func probe(x: uniq/u8 during a, tuple: (raw/u8 during a, i32), option: Option<raw/u8 during a>, field: Wrap<raw/u8 during a>,\n" +
+        "enum Slot<T>\n    Full(T, i32)\n    Vacant\n" +
+        "open struct Base0\n    internal let at: raw/u8 during static\n" +
+        "struct Derived: Base0\n    internal let n: i32\n" +
+        "func probe<T>(x: uniq/u8 during a, tuple: (raw/u8 during a, i32), option: Option<raw/u8 during a>, field: Wrap<raw/u8 during a>,\n" +
         "    nested: Option<Outer<raw/u8 during a>>, array: Array<raw/u8 during a>, selfHeld: SelfHeld, borrow: (uniq/u8 during a, raw/u8 during static),\n" +
-        "    loan: Loan<uniq/u8 during a>, empty: Empty<raw/u8 during a>, scalar: i32, bare: raw/u8) -> ()\n    return ()\n" +
+        "    loan: Loan<uniq/u8 during a>, empty: Empty<raw/u8 during a>, scalar: i32, bare: raw/u8, rc: rc/Wrap<raw/u8 during a>,\n" +
+        "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>) -> ()\n    return ()\n" +
+        "func pairs<b/B>(x: uniq/u8 during a, pair: b/(raw/u8 during a)) -> ()\n    b is owner or uniq\n    return ()\n" +
         "public func main() => ()\n";
 
     // SPEC 5.2.1, 5.7 Calls, 15.6.4: a stated layer at any holder by the storage walk's by-value relation (a Tuple, an Option payload, a Field
-    // of T, a nested holder, an Array's elements), a `during self` layer by its own step, a borrow element and a Loan<T>'s argument as a part
-    // with no layer, a Type argument and a scalar as nothing (a layer shown without its Origin, by its step).
+    // of T, a nested holder, an Array's elements, an enum's payload, a struct's base, an `obj/T` payload, a pair layer's owner case), a
+    // `during self` layer by its own step, a borrow element, a pair layer's borrow case, an rc view, an abstract part and a Loan<T>'s
+    // argument as a part with no layer, a Type argument and a scalar as nothing (a layer shown without its Origin, by its step).
     [Theory]
     [InlineData("x", "- Exclusive")]
     [InlineData("tuple", "raw/u8 Exclusive")]
@@ -35,12 +41,41 @@ public sealed partial class TyCtxtTest
     [InlineData("empty", "")]
     [InlineData("scalar", "")]
     [InlineData("bare", "raw/u8 Address")]
+    [InlineData("rc", "- Own")]
+    [InlineData("abstract", "- Abstract; raw/u8 Exclusive")]
+    [InlineData("slot", "raw/u8 Exclusive")]
+    [InlineData("derived", "raw/u8 Static")]
+    [InlineData("object", "raw/u8 Exclusive")]
+    [InlineData("pair", "raw/u8 Exclusive; - Exclusive")]
     public void EachFormListsTheLayersItHoldsAtItsOwnAddress(string parameter, string expected)
     {
         var (c, p) = OwnLayersForms();
         var into = new List<OwnLayer>();
         Assert.True(c.Types.OwnLayers(p[parameter], into));
         Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}")));
+    }
+
+    // A Closure part as the contract's body sees it (DECISIONS R4-M148, the storage walk's BodyRun): its environment's bindings, a raw layer
+    // captured by value with the Origin its definition names (`p`'s), not a local region its inferred Type names; a binding past Binding's
+    // Limit makes the answer false.
+    [Fact]
+    public void AClosureListsItsEnvironmentAsItsBodySeesIt()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "struct N<X>\n    internal var next: raw/N<(X, X)>\n" +
+            "func probe(x: uniq/u8 during a, p: raw/u8 during a, n: N<i32>) -> ()\n    let k = func [p] () => p\n    _ = k()\n" +
+            "    let m = func [n@move] () => ()\n    m()\n    return ()\npublic func main() => ()\n");
+        var closures = LocalTypes(c).Where(static x => x is { Kind: BoundTypeKind.Closure }).Distinct().ToArray();
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[1].Type.TypeOf()!;
+        var (into, answers) = (new List<OwnLayer>(), new List<string>());
+        foreach (var closure in closures)
+        {
+            into.Clear();
+            var complete = c.Types.OwnLayers(closure!, into);
+            answers.Add($"{complete}: {string.Join("; ", into.Select(x => $"{x.Step} {(x.Layer is null ? "-" : ReferenceEquals(x.Layer.RawOrigin, p.RawOrigin) ? "p's Origin" : x.Layer.RawOrigin?.Kind.ToString())}"))}");
+        }
+
+        Assert.Equal(["True: Exclusive p's Origin", "False: "], answers.Order(StringComparer.Ordinal).Reverse());
     }
 
     // Binding's Limit: a growing Type answers false.
@@ -78,7 +113,7 @@ public sealed partial class TyCtxtTest
     {
         var c = MinimalEmissionTest.Analyze(OwnLayersSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
-        return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
+        var probes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "probe" or "pairs");
+        return (c, probes.SelectMany(static x => x.Parameters).DistinctBy(static x => x.InternalName).ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }
 }

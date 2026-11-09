@@ -62,9 +62,9 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder)> ownSeen = new(); // OwnLayers' walked keys, reused.
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598; contract in TyCtxt.Raw.cs): the parts a value of `input` holds
-    // at its own address, by ByValue from the input (no Written, no Holder) at any holder: a raw layer met there with the step Holdings
-    // gives it, not gone past; any other part that reaches storage with no layer; nothing for a part with no entry or a Type argument.
-    // False at Binding's Limit.
+    // at its own address, by ByValue from the input (no Written, no Holder) at any holder, each part as the body sees it (BodySees, as
+    // the storage walk's BodyRun): a raw layer met there with the step Holdings gives it, not gone past; any other part that reaches
+    // storage with no layer; nothing for a part with no entry or a Type argument. False at Binding's Limit, the storage walk's.
     internal bool OwnLayers(BoundType input, List<OwnLayer> into)
     {
         this.ownSeen.Clear();
@@ -647,9 +647,17 @@ public sealed partial class Binding
         return new(start, this.retentionHeld.Count);
     }
 
-    // HeldRun of a value a contract reads, a Closure's as its body sees it (ClosureEnvironment).
+    // HeldRun of a value a contract reads as its body sees it (BodySees); a Closure whose environment does not substitute is the Limit.
     private HeldRange BodyRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
-        => this.HeldRun(type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type, written, holder, out complete);
+    {
+        var sees = this.BodySees(type);
+        this.retentionLimit |= sees is null;
+        return this.HeldRun(sees ?? type, written, holder, out complete);
+    }
+
+    // A part of a contract input as the contract's body sees it (DECISIONS R4-M148, one rule): a Closure's environment
+    // (TyCtxt.ClosureEnvironment), null where it does not substitute; any other Type itself. The storage walk (BodyRun) and OwnLayers read it.
+    private BoundType? BodySees(BoundType type) => type.Kind == BoundTypeKind.Closure ? this.types.ClosureEnvironment(type) : type;
 
     // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part.
     // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10). The one by-value criterion, at any holder:
@@ -670,8 +678,8 @@ public sealed partial class Binding
             return true;
         }
 
-        var start = this.retentionHeld.Count;
-        var complete = this.Holdings(type, written, holder, this.retentionHeld);
+        var (start, sees) = (this.retentionHeld.Count, this.BodySees(type));
+        var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
         var raw = start < this.retentionHeld.Count && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
         if (raw && complete)
         {
