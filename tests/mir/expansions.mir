@@ -488,88 +488,66 @@ fn table @163
   _1: Dictionary<i32, bool> temp @169
   _2: i32 temp @170
   _3: bool temp @171
-  _4: isize temp @170
-  _5: bool temp @170
-  _6: ref/Dictionary<i32, bool> temp @170
-  _7: ref/i32 temp @170
-  _8: Never temp @170
-  _9: uniq/Dictionary<i32, bool> temp @170
-  _10: () temp @170
-  _11: i32 temp @172
-  _12: bool temp @173
-  _13: isize temp @172
-  _14: bool temp @172
-  _15: ref/Dictionary<i32, bool> temp @172
-  _16: ref/i32 temp @172
-  _17: Never temp @172
-  _18: uniq/Dictionary<i32, bool> temp @172
-  _19: () temp @172
+  _4: uniq/Dictionary<i32, bool> temp @170
+  _5: () temp @170
+  _6: i32 temp @172
+  _7: bool temp @173
+  _8: isize temp @172
+  _9: bool temp @172
+  _10: ref/Dictionary<i32, bool> temp @172
+  _11: ref/i32 temp @172
+  _12: Never temp @172
+  _13: uniq/Dictionary<i32, bool> temp @172
+  _14: () temp @172
   bb0:
       StorageLive(_1) @169
     * _1 = FixedArray(): Dictionary<i32, bool> @169
       StorageLive(_2) @170
       StorageLive(_3) @171
-      StorageLive(_4) @170
-      StorageLive(_5) @170
       _2 = const 1_i32 @170
-      StorageLive(_6) @170
-      _6 = &_1: ref/Dictionary<i32, bool> @170
-      StorageLive(_7) @170
-      _7 = &_2: ref/i32 @170
-      _4 = findEntry<i32, bool>(move _6, move _7) -> bb2 @170
-  bb1:
-      _8 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @170
-  bb2:
-      _5 = Eq(copy _4, const 0_isize) proven @170
-      switch copy _5 [1: bb3, otherwise: bb1] @170
-  bb3:
       _3 = const true @171
-      StorageLive(_9) @170
-      _9 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @170
-      StorageLive(_10) @170
-      _10 = placeEntry<i32, bool>(move _9, move _2, move _3) -> bb4 @170
-  bb4:
+      StorageLive(_4) @170
+      _4 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @170
+      StorageLive(_5) @170
+      _5 = placeEntry<i32, bool>(move _4, move _2, move _3) -> bb1 @170
+  bb1:
+      StorageLive(_6) @172
+      StorageLive(_7) @173
+      _6 = const 2_i32 @172
+      StorageLive(_8) @172
+      StorageLive(_9) @172
+      StorageLive(_10) @172
+      _10 = &_1: ref/Dictionary<i32, bool> @172
       StorageLive(_11) @172
-      StorageLive(_12) @173
+      _11 = &_6: ref/i32 @172
+      _8 = findEntry<i32, bool>(move _10, move _11) -> bb3 @172
+  bb2:
+      _12 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @172
+  bb3:
+      _9 = Eq(copy _8, const 0_isize) proven @172
+      switch copy _9 [1: bb4, otherwise: bb2] @172
+  bb4:
+      _7 = const false @173
       StorageLive(_13) @172
+      _13 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @172
       StorageLive(_14) @172
-      _11 = const 2_i32 @172
-      StorageLive(_15) @172
-      _15 = &_1: ref/Dictionary<i32, bool> @172
-      StorageLive(_16) @172
-      _16 = &_11: ref/i32 @172
-      _13 = findEntry<i32, bool>(move _15, move _16) -> bb6 @172
+      _14 = placeEntry<i32, bool>(move _13, move _6, move _7) -> bb5 @172
   bb5:
-      _17 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @172
-  bb6:
-      _14 = Eq(copy _13, const 0_isize) proven @172
-      switch copy _14 [1: bb7, otherwise: bb5] @172
-  bb7:
-      _12 = const false @173
-      StorageLive(_18) @172
-      _18 = &uniq two-phase _1: uniq/Dictionary<i32, bool> @172
-      StorageLive(_19) @172
-      _19 = placeEntry<i32, bool>(move _18, move _11, move _12) -> bb8 @172
-  bb8:
       _0 = move _1 @169
-      StorageDead(_19) @172
-      StorageDead(_18) @172
-      StorageDead(_16) @172
-      StorageDead(_15) @172
       StorageDead(_14) @172
       StorageDead(_13) @172
-      StorageDead(_12) @173
       StorageDead(_11) @172
-      StorageDead(_10) @170
-      StorageDead(_9) @170
-      StorageDead(_7) @170
-      StorageDead(_6) @170
+      StorageDead(_10) @172
+      StorageDead(_9) @172
+      StorageDead(_8) @172
+      StorageDead(_7) @173
+      StorageDead(_6) @172
       StorageDead(_5) @170
       StorageDead(_4) @170
       StorageDead(_3) @171
       StorageDead(_2) @170
-      drop _1 -> bb9 [elide] @169
-  bb9:
+      drop _1 -> bb6 [elide] @169
+  bb6:
       StorageDead(_1) @169
       return @169
 fn room @174

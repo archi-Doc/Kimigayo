@@ -55,15 +55,15 @@ public sealed partial class MirBuildTest
     public void ReservedCallInputsAreTwoPhase()
     {
         var source = "func take(a: uniq/i32, b: i32) => ()\nfunc f()\n    var p: i32 = 1\n    take(p@uniq, p + 1)\n    take((p@uniq), 2)\n" +
-            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2]\n" +
+            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2, 3: 4]\n" +
             "struct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
             "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
             "    take(if p > 0 => p@uniq else => p@uniq, 4)\nstruct Bag\n    public var items: Array<i32>\n    public var count: i32\n" +
             "    public init()\n        self.items = []\n        self.count = 0\nfunc fill()\n    var bag = Bag.init()\n    bag@uniq.items.append(bag.count)\n";
         Assert.Equal(
-            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared, MirRefKind.Shared,
-                MirRefKind.TwoPhaseUniq],
+            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared,
+                MirRefKind.Shared, MirRefKind.TwoPhaseUniq],
             Refs(Body(source, "f")).Select(static x => x.Kind));
         var g = Body(source, "g");
         var lent = Refs(g).ToArray();
@@ -412,8 +412,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
-    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
-    // located at its key (fail-before: the handle and the placement at its value).
+    // reports the entry's key expression, as its duplicate key does: each later entry's lookup (the first has none, SPEC 12.4.3, PLAN G442
+    // U1), its literal's storage handle and its placement are located at its key (fail-before: the handle and the placement at its value).
     [Fact]
     public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
     {
@@ -425,7 +425,7 @@ public sealed partial class MirBuildTest
             .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "placeEntry")
             .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
         Assert.Equal(
-            ["findEntry key()", "placeEntry key()", "findEntry 2", "placeEntry 2"],
+            ["placeEntry key()", "findEntry 2", "placeEntry 2"],
             steps);
     }
 
