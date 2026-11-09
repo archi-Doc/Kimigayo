@@ -10954,6 +10954,38 @@ resumed by R4-M86 (2026-10-20).
     complement arm refusing every other Take below a raw Deref (false Notes against BU-16 and G181 (1); from-end positions refused);
     S2, MIR keeping its Raw class below every raw Deref and trusting Binding (A1 admits a Move there: fails open); a builder-carried
     raw-Take flag on the Move (a new MIR form for a fact of the Place's Types); MIR's own narrowed rule (a second copy).
+
+- **BU-147 A struct's inherited conformances are a declaration query; SPEC 9.5's projection cycle in a base clause (PLAN G602)**
+  (2026-11-10; Front, Binding; Major, an acceptance mover; design review ACCEPT, implementation review REVISE (B1, B2) fixed,
+  re-check ACCEPT) SPEC 8.6.2, 8.5.2, 9.5, 9.6. Extends BU-105 with a row; R7-M9's Ready rule is unchanged, and `DirectBase` is now
+  also demanded from a conformance read through this query.
+  - Rule: a struct's inherited paths are `DeclQueryKind.InheritedConformances` (`Binding.InheritedConformances`), registered once
+    its base's are; every by-type read of `ImplTable` in Binding (`ConformancesOf`, `ConformanceOf`) demands it once clauses are
+    bindable, and two sweeps in node order demand every struct (after pass 0, after `clausesBindable`). The clause is read through
+    `DirectBase`, and whether that reading is final is BaseLayers' answer, its not-ready count (as for TypeName): a reading that
+    moved the count (a clause in progress, even one its own re-entry has failed, or not ready) stores nothing and the query is
+    abandoned, so no heir registers a path through a clause in progress; a reading naming no struct without moving it is final. The
+    query answers Done; no reader reads its state. Its clause readings count in `InheritedConformanceWork` (scaling tests).
+  - SPEC 9.5 decider (the owner's O-120 (a), D-212): `ProjectsThroughItsOwnClause` (`Binding.MemberLookup`), called once a
+    projection's subject binds (`BindAssociatedProjection`): in a struct's base clause, a subject that is the struct or has it on
+    its declaration chain (any Type arguments) fails the projection with `BindingFailure.Cycle`, recorded as `CyclicBinding_Kd`. The
+    chain walk stops at the struct, so it never reads the clause in progress.
+  - Removes `inheritedConformanceStates` and its per-pass `Clear`, and `RegisterInheritedConformances`' `complete` parameter.
+  - Moves: rx2, rx2b, two projected levels (both orders), a generic heir, a generic use and a specification hop are accepted; rx2c
+    gains its `NotObjectPayload_Kd`; rx2i keeps `TypeMismatch_Kd` alone; rx2z's records equal its nominal twin's. Newly rejected, an
+    unsound acceptance on dev: B with its own HasBase, `A: A.(HasBase).Parent`, a projection inside a Type argument of the clause
+    (`A: Box<B.(HasBase).Parent>`), `A<T>: A<i32>.(HasBase).Parent` and `A: Self.(HasBase).Parent`, both declaration orders. rx2m,
+    `B<T>: A<i32>` and t1 (A's own Parent B) stay rejected in both orders, now with `CyclicBinding_Kd` at the projection. The plain
+    base cycle keeps dev's records.
+  - Known record-selection defect (DECISIONS Q13): each projection cycle also has a second `CyclicBinding_Kd` at the same span,
+    recorded first on the clause node by `LookupTypeMember`'s walk re-entering the clause during `BindTypeStructure`'s TypeName
+    attempt; it goes with R7-N1e2-2b, which removes the unparenthesized `T.C.X` projection reading (the owner's O-122 (a) keeps it
+    until then); G602b closed without a change (an early decider rejects the valid nested path p5d, SPEC 9.7.3).
+  - Temporary: the accessors' `clausesBindable` condition and the pass-0 sweep go at R7-D2 d3 with R7-M9's temporaries.
+  - Rejected: demand at the projection readers only; moving the second sweep earlier; an early read of the projection; waiting for
+    d3; the query deciding a reading's finality from the clause's own state (a second copy of BaseLayers' rule; the prototype read a
+    failed clause in progress as final and accepted rx2m: B inherited A's declared HasBase); `InvalidTypeFormation_Kd` at the
+    projection (SPEC 9.5 calls the case a cycle).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
