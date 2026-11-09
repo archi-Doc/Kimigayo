@@ -180,16 +180,14 @@ public sealed partial class Binding
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
-        var arguments = this.typeScratch.Rent(slots);
+        var frame = this.infer.Rent(slots);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
-        var lengths = this.lengthScratch.Rent(slots);
         var settled = this.RentSlotSet(count);
         var adapted = this.typeScratch.Rent(count);
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
-        Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
         {
@@ -197,7 +195,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < Math.Min(slots, owner.Components.Count); i++)
                 {
-                    arguments[i] = owner.Components[i];
+                    frame.SetType(i, owner.Components[i]);
                 }
             }
 
@@ -218,7 +216,10 @@ public sealed partial class Binding
                         return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
-                    arguments[i] ??= expected.Components[i];
+                    if (frame.Types[i] is null)
+                    {
+                        frame.SetType(i, expected.Components[i]);
+                    }
                 }
 
                 for (var i = 0; i < Math.Min(originCount, supplied.Count); i++)
@@ -227,7 +228,7 @@ public sealed partial class Binding
                 }
             }
 
-            var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
+            var solution = this.Solution(call, declaration, scope, frame, origins);
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
@@ -237,7 +238,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < slots; i++)
             {
-                if (arguments[i] is null)
+                if (frame.Types[i] is null)
                 {
                     // SPEC 10.8, 23.1.2: the unbound slot is the construction's own record; its waiting payloads depend on it.
                     if (call is not null)
@@ -266,7 +267,7 @@ public sealed partial class Binding
                 }
             }
 
-            var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
+            var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, frame.Types[..slots]!, originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
                 // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
@@ -315,7 +316,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
+            var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, frame.Types[..slots], scope);
             if (proof != ConstraintProof.Proven)
             {
                 return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
@@ -351,10 +352,9 @@ public sealed partial class Binding
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.typeScratch.Return(adapted, clearArray: true);
             this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.lengthScratch.Return(lengths, clearArray: true);
             this.ReturnSlotSet(settled);
             this.originScratch.Return(origins, clearArray: true);
-            this.typeScratch.Return(arguments, clearArray: true);
+            this.infer.Return(frame);
         }
     }
 
