@@ -182,8 +182,8 @@ public group Text
             return self.value
 
     /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a
-    /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. Bounds
-    /// precede each sequence.
+    /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. A bound
+    /// precedes each read, and the index only steps by one under it, so no step can overflow.
     ///
     /// - safety: `length >= 0`, and the `length` bytes at `data` lie within its provenance and are readable.
     internal unsafe func validUtf8(data: raw/u8, length: isize) -> bool
@@ -191,29 +191,28 @@ public group Text
             var index: isize = 0
             while index < length
                 let lead = *(data + index)
-                if lead < 128
-                    index += 1
-                else
+                index += 1
+                if lead >= 128
                     if lead < 194 or lead > 244 => return false
-                    var count: isize = 4
-                    var scalar = (lead & 7)@u32
+                    var rest: isize = 3
+                    var mask: u8 = 7
                     var minimum: u32 = 65536
-                    if lead < 224
-                        count = 2
-                        scalar = (lead & 31)@u32
-                        minimum = 128
-                    if lead >= 224 and lead < 240
-                        count = 3
-                        scalar = (lead & 15)@u32
+                    if lead < 240
+                        rest = 2
+                        mask = 15
                         minimum = 2048
-                    if length - index < count => return false
-                    var cursor = index + 1
-                    index += count
-                    while cursor < index
-                        let byte = *(data + cursor)
+                    if lead < 224
+                        rest = 1
+                        mask = 31
+                        minimum = 128
+                    var scalar = (lead & mask)@u32
+                    while rest > 0
+                        if index >= length => return false
+                        let byte = *(data + index)
                         if (byte & 192) != 128 => return false
                         scalar = (scalar << 6) | (byte & 63)@u32
-                        cursor += 1
+                        index += 1
+                        rest -= 1
                     if scalar < minimum or scalar > 1114111 => return false
                     if scalar >= 55296 and scalar < 57344 => return false
             return true
