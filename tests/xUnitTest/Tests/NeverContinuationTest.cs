@@ -26,6 +26,9 @@ public class NeverContinuationTest
         "func f() -> i32\n    var a: [1 of string] = [\"old\"]\n    var b: [1 of S] = [S.init()]\n    var other = \"other\"\n    let n: [1 of [1 of i32]] = [[1]]\n" +
         "    let t: [1 of (i32, bool)] = [(1, true)]\n    var u: [1 of Counter] = [Counter.init(1)]\n    ";
 
+    // A construct's value with a Never part on one path (PLAN G442's X).
+    private const string Joined = "(if c => (a, (return 1)) else => (a, a))";
+
     // The program of JoinedLiteralsRunAtTheirJoinsType.
     private const string JoinedLiterals =
         "struct P\n    public var x: i64 = 5\n" +
@@ -598,10 +601,54 @@ public class NeverContinuationTest
     [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "UninitializedPlace_Kd t[1].1")]
     [InlineData("return 9\n    let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
     [InlineData("return 9\n    let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "UninitializedPlace_Kd t.1.1")]
-    [InlineData("return 9\n    let t = (if c => (a, (return 1)) else => (a, a)).1\n    return t", "UninitializedPlace_Kd t")]
+    [InlineData("return 9\n    let t = (if c => (a, (return 1)) else => (a, a)).1\n    return t", "UninitializedPlace_Kd ( | UninitializedPlace_Kd t")]
     public void AConstructionHoldingANeverPartPlacesItsOtherParts(string body, string records)
     {
         var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\nfunc f(c: bool, a: i64) -> i64\n    " + body + "\n", output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // PLAN G442 (SPEC 14.10.3, 15.1.2, 15.1.3, 3.4; DECISIONS R4-M175): A1 checks a temp's use as a program Place's but for its own bit,
+    // so a construct's value whose Never part no path placed is reported where a call, a comparison or a read of the part consumes it; a
+    // placing location takes a whole temp without a use: an aggregate (an Array or tuple literal) and a Dictionary literal's insertion, a
+    // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1). The reachable twins and the Never value consumed directly
+    // (M's Q2) stay valid; a part read of a temp absent on one assumed path is rejected as its Var twin is (SPEC 14.10.3's
+    // `let y: i32 = fail()`); a Dictionary literal received whole keeps no component path (the Array literal's stated limit).
+    [Theory]
+    [InlineData("return 9\n    g(" + Joined + ")", "UninitializedPlace_Kd g((")]
+    [InlineData("g(" + Joined + ")", "")]
+    [InlineData("return 9\n    let b = " + Joined + " == (a, a)", "UninitializedPlace_Kd (")]
+    [InlineData("let b = " + Joined + " == (a, a)", "")]
+    [InlineData("g((a, (return 1)))", "UninitializedPlace_Kd g((a, (return 1)))")]
+    [InlineData("return 9\n    h(" + Joined + ".0)", "")]
+    [InlineData("return 9\n    h(" + Joined + ".1)", "UninitializedPlace_Kd h((")]
+    [InlineData("h(" + Joined + ".1)", "")]
+    [InlineData("return 9\n    return " + Joined + ".1", "UninitializedPlace_Kd (")]
+    [InlineData("return 9\n    h((return 1))", "")]
+    [InlineData("return 9\n    h(if c => a else => (return 1))", "")]
+    [InlineData("return 9\n    h((if c => (a, a) else => fail()).0)", "UninitializedPlace_Kd h((")]
+    [InlineData("h((if c => (a, a) else => fail()).0)", "")]
+    [InlineData("return 9\n    _ = d.tryInsert(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.tryInsert(\"j\", (")]
+    [InlineData("return 9\n    _ = d.insertOrReplace(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.insertOrReplace(\"j\", (")]
+    [InlineData("return 9\n    d[\"j\"] = " + Joined, "")]
+    [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, (return 4)): 1]", "")]
+    [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, a): 1, (a, (return 4)): 2]", "UninitializedPlace_Kd (a, (return 4))")]
+    [InlineData("let x = [\"j\": (a, (return 4)), \"k\": (a, a)]", "")]
+    [InlineData("let x: Dictionary<string, Dictionary<string, (i64, i64)>> = [\"j\": [\"k\": (a, (return 4))], \"m\": [\"n\": (a, a)]]", "")]
+    [InlineData("return 9\n    let x = if c => [\"j\": " + Joined + "] else => [\"j\": (a, a)]", "")]
+    [InlineData("return 9\n    let x = [\"j\": g2(" + Joined + ")]", "UninitializedPlace_Kd g2((")]
+    [InlineData("return 9\n    let x = [\"j\": " + Joined + ".1]", "UninitializedPlace_Kd (")]
+    [InlineData("return 9\n    take([\"j\": (a, (return 4))])", "")]
+    [InlineData("return 9\n    let x = [" + Joined + "]", "")]
+    [InlineData("return 9\n    let t = (" + Joined + ", a)", "")]
+    public void ATempsUnplacedPartIsReportedWhereItIsConsumed(string body, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "func fail() -> Never => fail()\nfunc g(x: (i64, i64)) => ()\nfunc g2(x: (i64, i64)) -> i64 => 0\nfunc h(x: i64) => ()\n" +
+            "func take(d: Dictionary<string, (i64, i64)>) => ()\n" +
+            "func f(c: bool, a: i64, d: uniq/Dictionary<string, (i64, i64)>) -> i64\n    " + body + "\n    return 0\n",
+            output: OutputKind.Library);
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(records, MinimalEmissionTest.Problems(c));
     }

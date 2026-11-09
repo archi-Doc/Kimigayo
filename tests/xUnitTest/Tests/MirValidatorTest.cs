@@ -1338,6 +1338,40 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
+    // PLAN G442 (the owner's O-97 (a)): Places marks a Dictionary literal entry's placeEntry Call, the construction's insertion: a Fn callee
+    // each of whose operands is a Move of a whole Temp. The builder's is valid; a copied operand, an operand moving a Var, and the attribute
+    // on a Goto are Operation findings.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("copy")]
+    [InlineData("var")]
+    [InlineData("goto")]
+    public void APlacesCallMovesWholeTemps(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(a: i32) -> Dictionary<i32, i32>\n    var v = a\n    v = 2\n    return [1: a, 2: v]\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var blocks = body.Blocks.ToArray();
+        var call = Array.FindIndex(blocks, static x => x.Terminator.Places);
+        Assert.True(call >= 0);
+        var value = blocks[call].Terminator.Start + 2;
+        switch (broken)
+        {
+            case "copy":
+                Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Kind = MirOperandKind.Copy };
+                break;
+            case "var":
+                var local = Array.FindIndex(body.Locals.ToArray(), static x => x.Kind == MirLocalKind.Var);
+                Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Place = new(local) };
+                break;
+            case "goto":
+                var other = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.Goto);
+                body.Terminate(other, blocks[other].Terminator with { Places = true });
+                break;
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Operation], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
     // DECISIONS BU-48 (amended by G283, SPEC 16.3.1): MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver, and
     // a destructor's _1, its destruction receiver: the builder's are valid; the role dropped from either, set on another local of the
     // constructor or on a destructor's _0, set on _0 of a body that is neither, or set on _1 of a by-value Self method (`consume`, `take`)
