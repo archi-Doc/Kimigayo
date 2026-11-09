@@ -266,6 +266,7 @@ public class InheritedConformanceTest
     private const string CycleHead = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\n";
     private const string CycleA = "open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n";
     private const string CycleB = "open struct B: A\n    public init(): base() => ()\n";
+    private const string IdentityBase = "contract C\n    associate E\n    E is Copy\n    func get(self: ref/Self) -> i32\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nopen struct T0<X>\n    Self is C when X is Option<i32>\n        associate C.E is X\n    public func get(self: ref/Self) -> i32 => 1\n";
     private const string GenericHeir = "contract HasBase\n    associate Parent\nopen struct Root<T>\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle<T>\n    Self is HasBase\n    associate HasBase.Parent is Root<T>\n    public init() => ()\nstruct S0<T>\n    Self is HasBase\n    associate HasBase.Parent is Middle<T>\nopen struct Source<T>: S0<T>.HasBase.Parent\n    public init(): base() => ()\n";
 
     // PLAN G375: a failed signature is computed at each read, so the channel's cause (SPEC 23.1.1) reaches every reader, a call or a reference.
@@ -431,6 +432,36 @@ public class InheritedConformanceTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nopen struct Base\n    Self is C\n    associate E is i32\nstruct Derived: Base\n    Self is C\n    associate E is " + associated);
         Assert.Equal(valid, c.Bind().IsComplete);
+    }
+
+    // SPEC 8.2.3, 8.6.2, 8.8.2 (PLAN G695): an inherited path whose condition is an identity premise is verified with its Self normalized
+    // in its conformance scope, as a declared path is: it is available at an heir, two heirs down, and through a base clause's Type
+    // argument; where the condition is refuted the use has no conformance, and no record names a Self mismatch.
+    [Theory]
+    [InlineData("", "T1<Option<i32>>", "clean")]
+    [InlineData("open struct T2<Z> : T1<Z>\n", "T2<Option<i32>>", "clean")]
+    [InlineData("open struct T2<Z> : T1<Option<Z>>\n", "T2<i32>", "clean")]
+    [InlineData("", "T1<i64>", "1*NoApplicableOverload_Kd")]
+    [InlineData("open struct T2<Z> : T1<Z>\n", "T2<i64>", "1*NoApplicableOverload_Kd")]
+    public void AnInheritedPathUnderAnIdentityConditionIsAvailable(string heir, string use, string records)
+    {
+        var source = IdentityBase + "open struct T1<Y> : T0<Y>\n" + heir + "func t(v: ref/" + use + ") => use(v)\n";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        Assert.DoesNotContain(DiagnosticCorpus.Check(source, "Library").Diagnostics, static x => x.Note?.Contains("as Self", StringComparison.Ordinal) == true);
+    }
+
+    // SPEC 8.9.2 (PLAN G695): the heir's own path meets the inherited identity path at Y = Option<i32>, so their bindings of E must
+    // agree: Option<i64> is rejected at both declarations whatever the use, Option<i32> agrees.
+    [Theory]
+    [InlineData("Option<i64>", "T1<i64>", 2)]
+    [InlineData("Option<i64>", "T1<Option<i32>>", 2)]
+    [InlineData("Option<i32>", "T1<i64>", 0)]
+    [InlineData("Option<i32>", "T1<Option<i32>>", 0)]
+    public void AnInheritedIdentityPathMustAgreeWithTheHeirsOwnPath(string associated, string use, int disagreements)
+    {
+        var records = Records(IdentityBase + "open struct T1<Y> : T0<Y>\n    Self is C when Y is Copy\n        associate C.E is " + associated + "\nfunc t(v: ref/" + use + ") => use(v)\n").Split('|');
+        Assert.Equal(disagreements, records.Count(static x => x == "IncompatibleContractImplementation_Kd Self is C"));
+        Assert.True(disagreements != 0 || records is [""], string.Join('|', records));
     }
 
     // SPEC 8.6.2 (PLAN G602): a base clause reads a conformance inherited across a projected base, its source declared before or after it,
