@@ -62,7 +62,8 @@ public sealed partial class Binding
             else
             {
                 return grouped && syntax is TypeSemanticsKoto { Type: null } bare &&
-                    !(CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+                    !(SemanticsMaskHelper.TryParse(bare.Identifier, out SemanticsKind semantics) &&
+                    semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
                     ? conversion.Right : syntax;
             }
         }
@@ -355,7 +356,8 @@ public sealed partial class Binding
             return Complete(conversion, copied);
         }
 
-        if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
+        if (syntax is TypeSemanticsKoto { Type: null, HasOrigin: false } shorthand &&
+            SemanticsMaskHelper.TryParse(shorthand.Identifier, out SemanticsKind semantics))
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.

@@ -25,5 +25,5 @@ public sealed class BaseReferenceKoto : IdentifierNameKoto
     }
 
     /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder) => builder.Append("base");
+    public override void WriteTo(ref IndentedStringBuilder builder) => builder.Append(TokenKind.Base.ToText());
 }

@@ -1,14 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Writes syntax as source text: a Container's qualified Name, an attribute chain and declaration modifiers.
+// Writes syntax as source text: a Container's qualified Name, an attribute chain, declaration modifiers and the directive heads that
+// stand for a selected body. Every keyword spelling is the token table's.
 // Input: published nodes and ModifierKind values. Output: text, in the caller's IndentedStringBuilder or as a string.
 // Invariants: it reads no tokens, reports nothing and changes no node.
 public static partial class Parser
 {
+    // The directive heads unparse writes for a selected or emptied body and for a Case Group without source text (SPEC F.11:
+    // "#" "if" CompileCondition, "#" "switch"), spelled from the token table.
+    internal static readonly string IfTrueDirectiveText = TokenKind.Sharp.ToText() + TokenKind.If.ToText() + " " + TokenKind.True.ToText();
+    internal static readonly string IfFalseDirectiveText = TokenKind.Sharp.ToText() + TokenKind.If.ToText() + " " + TokenKind.False.ToText();
+    internal static readonly string SwitchDirectiveText = TokenKind.Sharp.ToText() + TokenKind.Switch.ToText();
+
+    // The compound access specifications (SPEC 2.5), two keyword spellings each.
+    private static readonly string ProtectedInternalText = TokenKind.Protected.ToText() + " " + TokenKind.Internal.ToText();
+    private static readonly string PrivateProtectedText = TokenKind.Private.ToText() + " " + TokenKind.Protected.ToText();
+
     /// <summary>Writes the qualified name of a declaration container.</summary>
     /// <param name="koto">The innermost declaration container.</param>
     /// <param name="builder">The destination builder.</param>
@@ -129,13 +141,13 @@ public static partial class Parser
         if (kind.HasFlag(ModifierKind.Static))
         {
             builder.EnsureTrailingSpace();
-            builder.Append(Constants.StaticKeyword);
+            builder.Append(TokenKind.Static.ToText());
         }
 
         if (kind.HasFlag(ModifierKind.Open))
         {
             builder.EnsureTrailingSpace();
-            builder.Append(Constants.OpenKeyword);
+            builder.Append(TokenKind.Open.ToText());
         }
 
         if (kind.HasFlag(ModifierKind.Unsafe))
@@ -167,12 +179,12 @@ public static partial class Parser
     {
         var accText = kind.ExtractAccessibilityModifiers() switch
         {
-            ModifierKind.Public => Constants.PublicKeyword,
-            ModifierKind.Protected => Constants.ProtectedKeyword,
-            ModifierKind.Private => Constants.PrivateKeyword,
-            ModifierKind.Internal => Constants.InternalKeyword,
-            ModifierKind.ProtectedOrInternal => "protected internal",
-            ModifierKind.ProtectedAndInternal => "private protected",
+            ModifierKind.Public => TokenKind.Public.ToText(),
+            ModifierKind.Protected => TokenKind.Protected.ToText(),
+            ModifierKind.Private => TokenKind.Private.ToText(),
+            ModifierKind.Internal => TokenKind.Internal.ToText(),
+            ModifierKind.ProtectedOrInternal => ProtectedInternalText,
+            ModifierKind.ProtectedAndInternal => PrivateProtectedText,
             _ => string.Empty,
         };
 

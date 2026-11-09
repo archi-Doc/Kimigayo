@@ -103,9 +103,10 @@ internal sealed partial class FunctionCodegen
     // SPEC 22.9.2, 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer's call, its Item's Value call and its adapter's entry:
     // P1d's TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs
-    // itself (a body-less compiler function, so the call carries no target), else the function of W's reserve witness, the call's Body target,
-    // whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract: Binding admits no virtual reserve
-    // witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves Unsupported there). Null after a record.
+    // itself (the collector takes no target for them until WriterKind goes, InstanceCollector.Edges), else the function of W's reserve
+    // witness, the call's Body target, whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract:
+    // Binding admits no virtual reserve witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves
+    // Unsupported there). Null after a record.
     private FunctionAbi? Writer(IntrinsicRow row, BoundType? destination, int target, out ReadOnlySpan<Value> given)
     {
         given = default;

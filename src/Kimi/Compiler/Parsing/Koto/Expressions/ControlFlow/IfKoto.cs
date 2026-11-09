@@ -65,14 +65,14 @@ public sealed class IfKoto : ExpressionKoto
         {
             if (i == 0)
             {
-                builder.Append(Constants.IfKeyword);
+                builder.Append(TokenKind.If.ToText());
             }
             else
             {
                 builder.AppendLine();
-                builder.Append(Constants.ElseKeyword);
+                builder.Append(TokenKind.Else.ToText());
                 builder.AppendSpace();
-                builder.Append(Constants.IfKeyword);
+                builder.Append(TokenKind.If.ToText());
             }
 
             builder.AppendSpace();
@@ -83,7 +83,7 @@ public sealed class IfKoto : ExpressionKoto
         if (this.ElseBody is not null)
         {
             builder.AppendLine();
-            builder.Append(Constants.ElseKeyword);
+            builder.Append(TokenKind.Else.ToText());
             this.ElseBody.WriteBranchTo(ref builder);
         }
     }

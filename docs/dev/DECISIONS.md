@@ -385,6 +385,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     it opens.
   - Rejected: recording without a closing lane (the growth above); a cap that drops findings (a pre-existing defect dropped from PLAN is
     lost); one cleanup stage at R7's exit (the rows outgrow PLAN's limit first).
+- **Q18 R7's work is spread over the three sessions** (2026-11-09, owner; [WORKFLOW](WORKFLOW.md) "Windows"; plan revision 50; the
+  Coordinator's proposal).
+  - The owner (verbatim): 「Adopt all three」, to the Coordinator's three measures.
+  - Reason: R7's remaining rows (phases C and D) sit on the Front's Binding files, so the Front's two implementer seats and its one
+    acceptance mover per window serialized R7 while R8 and R9 were nearly done (W-120 to W-123 each landed one Front unit).
+  - Rule 1 (lending): an R7 unit the Front designed and design-reviewed may be implemented by a Middle or Back implementer in Binding's
+    files; the Front keeps the files, reviews the implementation and gives its consent on a C row.
+  - Rule 2 (windows): a window may take two acceptance movers of one area when they share no file and each names its expected moves.
+  - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
+  - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
+    and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
 
 ## Code rules (2026-10-12)
 
@@ -10521,6 +10532,14 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
     have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
   - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
+  - G658: a Type without a width is, for this encoding, an integer or wrapping integer Type whose instance decides it (a
+    proven-`PrimitiveInteger` parameter or projection, `Wrapping<T>` over one; SPEC 8.7.4): it keeps the 128-bit payload, the widest
+    instance's, and each instance's payload is its low N bits (`ScalarTypes.Normalize`'s width-0 row). A generic literal (0 through 127)
+    is the case whose payload is its value at every width. A direct integer literal wrapped to such a Type (SPEC 13.5.4, `value@wrap<U>`)
+    is folded to its exact value modulo 2^128, which the MIR builder states as a Proven Wrap Cast of that i128 constant (the Middle's
+    choice, C-177), so no widthless constant leaves 0..127. `Binding.Hir.Payload`, a second copy of the row, is deleted. The target of
+    `@wrap<U>` and `@bits<U>` substitutes the identity premises like `@Type`'s (BU-72's per-site substitution, PLAN G542's position), so
+    the fold's width is the published Type's.
 - **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
   (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
   owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
@@ -14378,6 +14397,8 @@ structure is recorded here by the unit that first implements it.
     (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves); deciding it from `Bodyless`'s result (a
     refused edge has already recorded); writing the body-less witnesses now (a new K edge form); deleting the seven `IntrinsicId` members
     (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
+  - Superseded in part by R8-M16: the buffer half of `BodylessWitness` (FixedBuffer's and HeapBuffer's `reserve`) ended; the import half
+    stays until G2.
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -15506,7 +15527,7 @@ structure is recorded here by the unit that first implements it.
     given: two names equal after folding only through different normalization (a precomposed and a decomposed letter) are distinct here,
     and U9a-3b's NFC check, which `CheckNames` runs first, rejects the non-NFC one.
   - U9a-3b: `CheckNames` first rejects a name not in NFC (or ill-formed UTF-16), then folds. NFC has one check,
-    `UnicodeIdentifierHelper.IsNormalized` (identifiers' too), whose canonical combining classes now come from the complete table
+    `IdentifierHelper.IsNormalized` (identifiers' too; R9-M5), whose canonical combining classes now come from the complete table
     `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73) instead of the identifier properties, which held them
     for identifier scalars only; identifiers' results are unchanged (their classes are equal). Tests: a decomposed letter, U+037E (a
     non-identifier singleton) and marks out of canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before).
@@ -16340,8 +16361,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     - an allowlist of the validator's own, which would be a second rule;
     - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
     - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
-  - **Open limits** (N5, N6/F4 and the family's second copy closed by G643-G645):
-    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
+  - G658 kept the row: a folded wrap to a Type whose instance decides its width is a Wrap Cast of its i128 payload (`MirBuilder.Convert`),
+    so the generic row stays 0..127. No open limit remains (N5, N6/F4 and the family's second copy closed by G643-G645; the generic row's
+    question by G658).
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
@@ -16679,6 +16701,40 @@ R8-M* and R9-M* by the stage of the recording unit.
     B1); the validator reading `TyCtxt.OperandTerminal` (a validator reading its producer checks nothing) or
     `SubstituteIdentityPremises` (a second premising); two premising functions with an invariant between them (refuted, C-159); the
     whitelist now (`OperatorTableRuns` and `Column` disagree on Unit).
+- **R8-M16 FixedBuffer's and HeapBuffer's operations are Kimigayo bodies; `BodylessWitness`'s buffer half ends** (Back, 2026-11-09;
+  R8-W1a; plan RP20, RQ9; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation review ACCEPT; on R8-M1, R8-M2,
+  R8-M4, R8-M6; supersedes R5-M146 in part) SPEC 5.7, 22.5.1, 22.9.1, 22.9.3, 22.9.4; IMPL 21.4.3.
+  - Adopted: `bytes`, `text`, `validate`, `clear`, `reserve` and `intoText`/`intoString` are members of their structs in
+    `Formatting.kimi`; `FixedBuffer.kimi` and `HeapBuffer.kimi`, parsed in signature-only mode, go. `Text.validUtf8(data, length)`,
+    internal and unsafe, is the one UTF-8 rule (W1c's `validateUtf8` reuses it). The written Fields are `var` with a `private set`
+    (`length`; HeapBuffer's `capacity`; private `validated` and HeapBuffer's `data`), so user code still only reads them. HeapBuffer's
+    growth stores its new block with a claim `memory@(raw/u8 during self)` (SPEC 5.7, Writing a Field). `reserve` and `intoString` keep
+    `CallerLocation` catalog rows (SPEC 22.5.1); `intoString` holds the buffer in `InlineStorage` and, on failure, releases through
+    `Raw.release` at the caller's location. New internal inits: `WriteWindow.init`, `Text.Utf8Slice.init` (bytes the caller guarantees are
+    valid UTF-8; S2a adds the same), and `Storage.StringRepr.init`.
+  - Option A: `Text.writer` and the owning interpolation over a standard buffer keep the runtime's kind 0/1 arms; the collector takes no
+    reserve target for them, so `Dispatch`'s pairing check (kind 0/1 iff no target) stays a contract check.
+  - **Temporary**, each removed by an event:
+    - the collector clause `IntrinsicTarget.Witness when WriterKind(argument) is 0 or 1 => -1`: removed with
+      `LegacyRuntimeHelpers.WriterKind`, at W2 (only the owning adapter's kind 0/1 arms carry `amount + pending` and the heap hint; W1b's
+      adapter cannot, per W1b's design and `Utf8InterpolationTest.NestedReservationsRetainTheOuterHint`), together with `Dispatch`'s kind
+      0/1 arm;
+    - the second statement of HeapBuffer growth, `__kimi_buffer_reserve` beside `HeapBuffer.reserve`: removed with the adapter's kind 0/1
+      arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`);
+    - `__kimi_buffer_bytes` as a plain define: removed with its last caller (`{{text_try_format}}` and `WriteFormattingConversion` at W1c,
+      `format_take_string` at W2);
+    - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c).
+  - Moves: acceptance, the buffer half of `BodylessWitness` (a `BufferWriter` requirement call or requirement Item at either buffer is
+    accepted; no corpus program uses it, R5-M146; diagnostic snapshot 0 differences); `.ll`: 546 of 6,139 fixtures move, 84 in the
+    formatting runtime text only, 404 in the runtime text plus one library location constant (HeapBuffer's `drop` calls `Text.release`
+    from a moved line of `Formatting.kimi`), 58 also in body instances of direct and generic callers; allocation counts unchanged (natives
+    equal; new audit row `Utf8BufferCostFailedTransfer`).
+  - Counts (RQ9): `CompilerFunctionKind` 55 to 43; `KimiDeclarationId` 193 to 184 (the three `CallerLocation` rows' ids stay until G1);
+    catalog entries 189 to 180, on W1a's base (with R1b's `DictionaryStorageHandle`, R8-M14, 181 when it lands). `IntrinsicId` unchanged.
+  - Rejected: A1 (the collector admits the reserve body and `Dispatch` ignores it: a weakened check and a dead `reserve` instance with its
+    callees in every `ErasedWriter` over a standard buffer); B (delete `WriterKind` now: a `CallerLocation` reserve does not fit the
+    dispatch ABI, and the adapter's arms carry `pending` and the hint; W1b's); C (the runtime calling the body directly: it cannot name an
+    instance); D (a `BufferRepr` pun for the buffers' own operations: their Fields are already ordinary Places).
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -16750,3 +16806,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     in excluded syntax, or before an override at the root or in a group).
   - **A SPEC gap, reported (no SPEC change):** F.6.1's `Declaration := AttributePrefix? UnattributedDeclaration` admits a prefix where
     6.7, 6.4.1 and 16.3 reject one; the implementation follows the body rules.
+- **R9-M5 One keyword spelling table** (2026-11-09; R9-F4; Major, behavior-preserving; the Front's review, RP17; the owner's O-98 and
+  O-99, verbatim 「どちらも (a)」, O-100, verbatim 「すべて推奨のaでお願いします」, and O-106, verbatim 「(a)」) SPEC F.3.
+  - **Cause.** SPEC F.3's keywords were written in `TokenHelper` twice (the kind-to-spelling rows and `GetKeywordOrIdentifierKind`'s hand
+    switch), in `Constants`' 59 `*Keyword` strings, and as literals in Lexing and Parsing (unparse, `SyntaxFormKoto` prefixes, a repair
+    text, the lexer's `else` look-ahead).
+  - **Decision.** `TokenHelper.TokenTexts` is the one spelling table; every F.3 spelling in Lexing and Parsing reads it
+    (`TokenKind.X.ToText()` or the classifier); the classifier reads a keyword index derived from it at type initialization
+    (`KeywordEntry`: each spelling as the integers that hold its characters, grouped by length and first character; a keyword it cannot
+    hold fails initialization). `CompilerHelper` is gone (the access part of a `ModifierKind` beside `Judged` in `Parser.ItemPrefixes`;
+    the semantics kind names in `SemanticsMaskHelper`); `UnicodeIdentifierHelper` is merged into `IdentifierHelper` (U9a-3b's NFC check is
+    `IdentifierHelper.IsNormalized`).
+  - **Rejected.** A per-candidate `SequenceEqual` against the table's strings (T-68: `ReadAllTokens` warm min 1.073, Test1 1.025); a hand
+    switch checked against the table by a test (a second statement); a hash (it hashes every identifier); `Constants` as the table.
+  - **Candidates.** `SemanticsMask.ToText`'s single-kind rows, the Name check in `Compilation`/`DependencyConfiguration`, `HoverBuilder`'s
+    `& 7` access mask.
