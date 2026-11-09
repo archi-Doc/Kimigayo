@@ -78,18 +78,6 @@ public enum CompilerFunctionKind : byte
     TextToString,
     TextTryFormat,
     TextRelease,
-    FixedBufferBytes,
-    FixedBufferText,
-    FixedBufferValidate,
-    FixedBufferClear,
-    FixedBufferReserve,
-    FixedBufferIntoText,
-    HeapBufferBytes,
-    HeapBufferText,
-    HeapBufferValidate,
-    HeapBufferClear,
-    HeapBufferReserve,
-    HeapBufferIntoString,
     WindowPush,
     WindowAppend,
     WindowLimit,
@@ -192,10 +180,8 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
             CompilerFunctionKind.Swap or
             CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
-            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.FixedBufferBytes or CompilerFunctionKind.FixedBufferText or
-            CompilerFunctionKind.FixedBufferValidate or CompilerFunctionKind.FixedBufferClear or CompilerFunctionKind.FixedBufferReserve or CompilerFunctionKind.FixedBufferIntoText or
-            CompilerFunctionKind.HeapBufferBytes or CompilerFunctionKind.HeapBufferText or CompilerFunctionKind.HeapBufferValidate or CompilerFunctionKind.HeapBufferClear or
-            CompilerFunctionKind.HeapBufferReserve or CompilerFunctionKind.HeapBufferIntoString or CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
+            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or
+            CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
             CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),

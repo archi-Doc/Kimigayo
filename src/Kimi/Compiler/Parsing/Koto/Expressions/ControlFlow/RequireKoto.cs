@@ -29,9 +29,11 @@ public sealed class RequireKoto : Koto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("require ");
+        builder.Append(TokenKind.Require.ToText());
+        builder.Append(' ');
         this.Condition.WriteTo(ref builder);
-        builder.Append(" else");
+        builder.Append(' ');
+        builder.Append(TokenKind.Else.ToText());
         if (this.ElseBody is CodeBlockKoto block)
         {
             block.WriteBranchTo(ref builder);

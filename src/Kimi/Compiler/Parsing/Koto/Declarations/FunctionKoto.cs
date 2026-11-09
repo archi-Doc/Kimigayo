@@ -533,7 +533,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (!this.IsDestructor && !this.IsConstructor)
         {
-            builder.Append(Constants.FuncKeyword);
+            builder.Append(TokenKind.Func.ToText());
             builder.AppendSpace();
         }
 
@@ -551,7 +551,8 @@ public sealed class FunctionKoto : DeclarationKoto
 
                 if (captures[i].IsMutable)
                 {
-                    builder.Append("var ");
+                    builder.Append(TokenKind.Var.ToText());
+                    builder.Append(' ');
                 }
 
                 builder.Append(captures[i].Name);

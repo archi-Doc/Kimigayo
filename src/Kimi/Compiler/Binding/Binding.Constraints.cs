@@ -522,7 +522,7 @@ public sealed partial class Binding
                 else if (semantics)
                 {
                     var name = node is IdentifierNameKoto identifier ? identifier.IdentifierName : node is TypeSemanticsKoto { Type: null } typeName ? typeName.Identifier : string.Empty;
-                    result = SemanticsMaskHelper.TryParse(name, out var mask)
+                    result = SemanticsMaskHelper.TryParse(name, out SemanticsMask mask)
                         ? this.InternConstraint(new(ConstraintKind.Semantics, subject, mask: mask))
                         : this.InternConstraint(new(ConstraintKind.Error));
                 }

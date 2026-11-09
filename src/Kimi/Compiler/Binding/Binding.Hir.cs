@@ -176,14 +176,16 @@ public sealed partial class Binding
         }
 
         // The constant Binding decided that a node's own plan row keeps (Folded): a number literal's value as Binding fits it (SPEC 3.1,
-        // 13.5.4), its floating-point Type's bits, else its integer value as Payload encodes it; a fixed-array element's literal position,
-        // beside its PlaceShape (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
+        // 13.5.4), its floating-point Type's bits, else its integer value as its Type's payload (ScalarTypes.Normalize, DECISIONS BU-133;
+        // a literal its Type does not hold, the operand of a folded wrap conversion or the number under a direct literal's sign, keeps
+        // its value modulo 2^N, and a generic literal its value); a fixed-array element's literal position, beside its PlaceShape
+        // (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
         private static void Fold(Koto node, HirOp op)
         {
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
             {
                 var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
-                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)Payload(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), ScalarTypes.Width(node.BoundType))
+                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)ScalarTypes.Normalize(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), ScalarTypes.Width(node.BoundType))
                     : null;
                 HirTables.PlanFor(node, value is not null).Folded = value;
             }
@@ -196,12 +198,6 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, written: true).Folded = unchecked((Int128)position);
             }
         }
-
-        // The one encoding of an Integer constant (G620): its value as its Type's N-bit sign-extended payload, which TryLiteral's bits,
-        // Literal Patterns and folded conversions hold too. A literal that its Type does not hold (the operand of a folded wrap conversion,
-        // the number under a direct literal's sign) keeps its value modulo 2^N. A generic literal (0 through 127, SPEC 8.7.4) is its value
-        // in every instance, so a Type whose instance decides its width keeps the value.
-        private static Int128 Payload(Int128 value, int width) => width > 0 ? ScalarTypes.Normalize(value, width) : value;
 
         // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-98): a discarded Place's plan row. A Place in Discard Context is acquired by bare
         // acquisition, its row's Adjust (Discarded), a take that claims as a consumer's does (Claimed; PLAN G426), so a user index whose

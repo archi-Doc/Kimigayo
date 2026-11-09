@@ -95,7 +95,7 @@ public class FuncDeclarationParseTest
     [InlineData("raw", SemanticsKind.Raw)]
     public void ClassifiesBuiltInSemantics(string text, SemanticsKind expected)
     {
-        Assert.True(CompilerHelper.TryParse(text, out var actual));
+        Assert.True(SemanticsMaskHelper.TryParse(text, out SemanticsKind actual));
         Assert.Equal(expected, actual);
         Assert.Equal(text, actual.ToText());
     }
@@ -103,7 +103,7 @@ public class FuncDeclarationParseTest
     [Fact]
     public void ClassifiesSemanticsParameter()
     {
-        Assert.False(CompilerHelper.TryParse("s", out var actual));
+        Assert.False(SemanticsMaskHelper.TryParse("s", out SemanticsKind actual));
         Assert.Equal(SemanticsKind.Parameter, actual);
     }
 

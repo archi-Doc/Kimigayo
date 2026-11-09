@@ -71,7 +71,7 @@ public sealed partial class Binding
         }
         else
         {
-            if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 ||
+            if (function.Modifier != ModifierKind.Override || function.NameBoundaryIndex >= 0 ||
                 function.TypeConstraints.Count != 0)
             {
                 return VirtualDeclarationCause.RedeclaredHeader;
