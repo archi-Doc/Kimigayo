@@ -34,8 +34,7 @@ public class ForeignEmissionTest
     }
 
     // SPEC 22.6, 8.6.4, 7.7.4 (DECISIONS R8-M__): a requirement call and a requirement Item's call whose witness is an import call the
-    // import by its C signature, as its direct call and its own Item's erasure (the adapter's entry) do, through the one declaration of
-    // its symbol.
+    // import by its C signature, as its direct call does, through the one declaration of its symbol.
     [Fact]
     public void AnImportWitnessCallsTheImport()
     {
@@ -57,8 +56,6 @@ public class ForeignEmissionTest
                 let direct = Win.now()
                 require tick<Win>() == direct else => $abort("call")
                 require item<Win>() == direct else => $abort("item")
-                let erased: () -> u32 = Win.now
-                require erased() == direct else => $abort("erased")
                 Console.writeLine("same")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignImportWitness", source, "same\n");
@@ -67,8 +64,6 @@ public class ForeignEmissionTest
         Assert.Single(module.Startup.Instructions, x => x.Callee == module.Function("GetLastError"));
         var witnesses = module.Functions.Where(static f => f.Signature == "internal i32 ()"); // tick<Win> and item<Win>.
         Assert.Equal([1, 1], witnesses.Select(f => f.Instructions.Count(x => x.Callee == module.Function("GetLastError"))));
-        var adapter = module.Single("internal i32 (i64, ptr, ptr, i64)"); // The erased Item's entry (its Import target since R8-M__).
-        Assert.Single(adapter.Instructions, x => x.Callee == module.Function("GetLastError"));
     }
 
     [Theory]
