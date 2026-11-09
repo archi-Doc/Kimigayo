@@ -4,7 +4,7 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
-部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。[§8.2.1](#s-8-2-1)の制約節の対象と付録Fの`ConstraintSubject`は、R7-N7（DECISIONS BU-119）に合わせた。[§4.8.5](#s-4-8-5)の例は、原文`bcda98a35`に合わせた。[§15.7](#s-15-7)の値全体の更新は、原文`a80430952`（R8-SP3）に合わせた。
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。[§8.2.1](#s-8-2-1)の制約節の対象と付録Fの`ConstraintSubject`は、R7-N7（DECISIONS BU-119）に合わせた。[§4.8.5](#s-4-8-5)の例は、原文`bcda98a35`に合わせた。[§15.7](#s-15-7)の値全体の更新は、原文`a80430952`（R8-SP3）に合わせた。[§6.3.1](#s-6-3-1)・[§6.7](#s-6-7)・[§14.2.1](#s-14-2-1)・[§22.1](#s-22-1)の定義を持たないKimi宣言と実装の属性、付録Fの`BodilessFunctionDeclaration`と`ConstructorDeclaration`は、原文`6079c8ee7`（R8-SP2）に合わせた。
 
 ## 目次
 
@@ -2058,7 +2058,7 @@ public struct Invalid : Leaf     // Error: Leaf is sealed.
 
 ### 6.3.1. 宣言
 
-任意のアクセス指定、`init`、パラメーター列、任意の`: base(arguments)`、本体（[§14.2](#s-14-2)）で宣言する。名前、明示レシーバ、タスクスロット、独自ジェネリックパラメーター、結果注釈は持たない。修飾子は[§F.3](#s-F-3)、型パラメーター・Origin・制約は構造体のものを使う。借用注釈は呼出しごとのOriginを導入でき（[§15.3.4](#s-15-3-4)）、入力の省略は[§15.4](#s-15-4)に従う。ラベル、既定値、型検査は通常パラメーターと同じで、Origin関係は実行項目より前に書く。アクセスの既定値は`private`。自身の構造体断片だけが宣言できる。
+任意のアクセス指定、`init`、パラメーター列、任意の`: base(arguments)`、本体（[§14.2](#s-14-2)）で宣言する。定義を実装が与えるKimiのコンストラクターは本体を省ける（[§22.1](#s-22-1)）。名前、明示レシーバ、タスクスロット、独自ジェネリックパラメーター、結果注釈は持たない。修飾子は[§F.3](#s-F-3)、型パラメーター・Origin・制約は構造体のものを使う。借用注釈は呼出しごとのOriginを導入でき（[§15.3.4](#s-15-3-4)）、入力の省略は[§15.4](#s-15-4)に従う。ラベル、既定値、型検査は通常パラメーターと同じで、Origin関係は実行項目より前に書く。アクセスの既定値は`private`。自身の構造体断片だけが宣言できる。
 
 ```kimi
 public open struct Named
@@ -2338,7 +2338,7 @@ later = limit
 
 属性は`#Name`と任意の引数からなり（[§F.6.1](#s-F-6-1)）、同じ字下げの次の宣言に付く。空行・コメントを挟める。単一宣言を対象とする`#if`の前ならその選択を共有する。指令ブロック・`#switch`の前、無関係な項目や字下げの終了の前にある属性は宙に浮き、エラーとなる。
 
-コンテナー、関数、フィールド、計算宣言、パラメーターに付けられるが、明示的特殊化とContract要件には付けられない。除外構文では構文だけを検査する（[§19.4](#s-19-4)）。認識するのは`#Layout`、`#LibraryImport`（[§22.6](#s-22-6)）、`#Test`だけで、他の選択済み属性はエラー。属性名は大文字Luで始めるため`#test`は無効。
+コンテナー、関数、フィールド、計算宣言、パラメーターに付けられるが、明示的特殊化とContract要件には付けられない。Kimi Kotonoha自身のソースでは、実装の属性をコンストラクターにも付けられる（[§22.1](#s-22-1)）。除外構文では構文だけを検査する（[§19.4](#s-19-4)）。認識するのは`#Layout`、`#LibraryImport`（[§22.6](#s-22-6)）、`#Test`と、Kimi Kotonoha自身のソースでの実装の属性だけで、他の選択済み属性はエラー。属性名は大文字Luで始めるため`#test`は無効。
 
 ```kimi
 #Test
@@ -6087,7 +6087,7 @@ func clamp(value: i32) -> i32
 - **単項本体**`=> item`はヘッダーと同じ行で始まる一つの式・文を持つ。通常の式継続・matchアーム列で後へ続けられる。
 - **字下げ本体**は宣言・式・文・許可された指令を順に実行する。完全なソース項目が1個以上必要で、空行・コメントは数えない。何もしないなら`()`。本体欠落はエラーで、次項目を吸収しない。
 
-選択の節・アーム、反復、do、unsafe、defer、require失敗本体、関数、匿名関数、クロージャー、特殊化、アクセサー、init、dropがBodyを持つ。コンテナー本体とmatchアーム列はレイアウト本体（[§F.4.2](#s-F-4-2)）だがBodyではない。Bodyごとに独自スコープを持つ。宣言・指令には字下げ形が必要で、各位置の宣言制限を保つ（[§7.5](#s-7-5)）。空でないことは指令選択前に検査し、何も選ばない完全指令も項目と数える。選択後は通常の型・転送・結果検査を行う。
+選択の節・アーム、反復、do、unsafe、defer、require失敗本体、関数、匿名関数、クロージャー、特殊化、アクセサー、init、dropがBodyを持つ。ただしimport（[§22.6](#s-22-6)）と、Kimigayoの定義を持たないKimiの関数・コンストラクター（[§22.1](#s-22-1)）はBodyを省ける。コンテナー本体とmatchアーム列はレイアウト本体（[§F.4.2](#s-F-4-2)）だがBodyではない。Bodyごとに独自スコープを持つ。宣言・指令には字下げ形が必要で、各位置の宣言制限を保つ（[§7.5](#s-7-5)）。空でないことは指令選択前に検査し、何も選ばない完全指令も項目と数える。選択後は通常の型・転送・結果検査を行う。
 
 ```kimi
 defer => ()               // Explicit no-op.
@@ -8394,6 +8394,8 @@ func process<T>(value: T) -> ()
 
 特殊な振る舞いは宣言同一性で識別し、同名ユーザー宣言・別名置換・ユーザー適合では得られない。互換Kimiは下表の全宣言を所定の形で持ち、追加は可能。コンパイラー自身以外のKimiを受け入れるかは実装定義。Windows・Timeを含む全Kimi宣言は全targetに存在する。
 
+Kimiのimport（[§22.6](#s-22-6)）のほかにも、Kimigayoの定義を持たないKimi宣言がある。関数・コンストラクターの定義を実装が与えるか、宣言の全使用を実装がUnsupportedと報告する（[§23.1.1](#s-23-1-1)）。そうした関数・コンストラクターは本体を省くか、本体の先頭領域（[§7.5](#s-7-5)）だけを書く。契約は宣言の契約で、実装が与える定義はその契約と振る舞いを定める各節を満たす。Kimi Kotonoha自身のソースには、[§6.7](#s-6-7)が認める位置に実装の属性を書ける。実装の属性は、宣言がどの行・操作か、実装が与える定義、呼出しが呼出し側の位置を運ぶこと（[§22.5.1](#s-22-5-1)）、使用がUnsupportedであることなど、宣言を実装に識別させる。実装の属性は規則も形式も加えず、どの使用でも宣言の型・契約・効果・アクセス・適否を変えない。実装は自身の属性を文書化する（IMPL [§21.3.4](IMPL.md)）。
+
 以下が必須宣言の唯一の一覧。名前はKimi相対。「反復入口」はIterable・UniqIterable・IntoIterableと[§14.6.2](#s-14-6-2)の項目を指す。
 
 | 宣言 | 必須の形 |
@@ -10004,7 +10006,7 @@ SourceItem           := AliasDeclaration | Declaration | ExecutableItem | Direct
 Declaration          := AttributePrefix? UnattributedDeclaration
 UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration | StructureDeclaration
                       | EnumDeclaration | ContractDeclaration | FunctionDefinition
-                      | ForeignFunctionDeclaration | SpecializationDeclaration
+                      | BodilessFunctionDeclaration | SpecializationDeclaration
                       | StoredPropertyDeclaration | ComputedDeclaration
                       | ConstructorDeclaration | DropDeclaration
 Attribute            := "#" AttributeName ("(" TrailingList<Argument>? ")")?
@@ -10115,7 +10117,7 @@ func apply<F>(f: ref/F, x: i32) -> i32
 
 関数本体先頭領域は制約（効果リスト込み）、Origin関係、元virtualの効果節を順不同で持てる。文法は項目として認め、位置違反・アクセサー・破棄制限は[§7.5](#s-7-5)が定める。ReceiverShorthandは[§7.3](#s-7-3)でレシーバを許す位置だけ。!境界は[§7.2.1](#s-7-2-1)、taskリストは[§24.2.1](#s-24-2-1)。
 
-外部宣言は本体なしで[§22.6](#s-22-6)の位置だけ。特殊化は[§8.13](#s-8-13)、構築は[§6.3](#s-6-3)、dropは[§16.3](#s-16-3)。func後のNameは関数定義、(・[は関数式を開始する。
+BodilessFunctionDeclarationは本体なしで、[§22.6](#s-22-6)（import）か[§22.1](#s-22-1)（定義を持たないKimi宣言）の許す位置だけ。先頭領域だけの本体はFunctionBody。特殊化は[§8.13](#s-8-13)、構築は[§6.3](#s-6-3)、dropは[§16.3](#s-16-3)。func後のNameは関数定義、(・[は関数式を開始する。
 
 ```ebnf
 FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
@@ -10123,7 +10125,7 @@ FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
 FunctionModifier     := "unsafe" | "virtual" | "override"
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
-ForeignFunctionDeclaration := FunctionHeader   // with #LibraryImport, [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports)
+BodilessFunctionDeclaration := FunctionHeader   // an import, [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports), or a Kimi declaration without a definition, [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)
 FunctionBody         := Body<FunctionItem>
 FunctionItem         := Expression | LocalBinding | AttributedFunctionDefinition | Statement
                       | ConstraintClause | OriginRelation | EffectClause
@@ -10132,7 +10134,7 @@ SpecializationDeclaration := "specialize" "func" Name TypeArguments
                              "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
                              ("->" Type)? ExecutableBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
-ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody
+ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody?   // no Body only where [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) allows
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
 DropDeclaration      := "drop" ExecutableBody
 ParameterList<P>     := "(" TaskSlot? (TrailingList<P> | List<P>? "!" TrailingList<P>)? ")"

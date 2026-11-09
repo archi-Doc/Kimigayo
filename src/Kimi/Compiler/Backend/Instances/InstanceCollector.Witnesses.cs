@@ -75,12 +75,12 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
-    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146): the target of a requirement call or of a requirement Item, where it is formed, called or
-    // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
-    // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function or a #LibraryImport function is the
-    // BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding rejected is that error's dependent
-    // (no record); any other is a broken contract (Report). The other edges a requirement runs on (a compiler function's published row,
-    // Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the function itself.
+    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146, R8-M19): the target of a requirement call or of a requirement Item, where it is formed,
+    // called or erased, which code generation runs as a body, shim or import item (FunctionCodegen.Calls' Witness). A Body witness without a
+    // MIR body is an import's item (Imported, SPEC 22.6), whose own rule also covers a witness Binding rejected and a broken contract; a
+    // compiler function is no requirement's witness (the library's bodyless functions implement no Contract), so its row, which its direct
+    // call runs, is never taken here. The other edges a requirement runs on (a compiler function's published row, Text.writer's reserve
+    // witness) take Requirement's row: their requirements take a receiver, which an import never has.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         if (target.Kind != RequirementTargetKind.Body)
@@ -88,24 +88,8 @@ internal sealed partial class InstanceCollector
             return this.Requirement(program, item, subject, requirement, target);
         }
 
-        if (this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body)
-        {
-            return this.Admit(item, subject, body, target.Subst);
-        }
-
-        DiagnosticCode? record = TyCtxt.Bodyless(implementation) switch
-        {
-            CompilerFunctionEffect.Dependent => null,
-            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => DiagnosticCode.InternalInvariant_Kd,
-            _ => Capability.Code(CapabilityGap.BodylessWitness),
-        };
-
-        if (record is { } code)
-        {
-            this.Report(code, subject);
-        }
-
-        return -1;
+        return this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body
+            ? this.Admit(item, subject, body, target.Subst) : this.Imported(item, subject, implementation);
     }
 
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own

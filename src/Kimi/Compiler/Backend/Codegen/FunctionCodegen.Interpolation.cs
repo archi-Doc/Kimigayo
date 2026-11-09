@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Backend;
 // the temporary intrinsics FormatBuffer, FormatSegment and FormatFinish (MirBuilder.Format), each a routine of the formatting runtime (P1d's,
 // one text, PD2) given the words its estimate gives. A step's estimate (Estimate) is computed in the item's instance from the step's own
 // constants (R3-10): its literal bytes plus the bound of each value Type of its Types token (LegacyRuntimeHelpers.FormatEstimate over
-// FormatBound), each Type through TypeOf (a write's Type argument, which the collector made).
+// FormattingTypes.Bound), each Type through TypeOf (a write's Type argument, which the collector made).
 // - FormatBuffer: when its estimate places the buffer on the stack (FormatEstimate.Stack: passed directly to Console.writeLine, bounded and
 //   within the windows-x64 limit), the frame's walk gives its destination a Region home of the estimate's total (Region,
 //   FunctionCodegen.Frame), and the buffer is __kimi_text_fixed over that region; else __kimi_text_heap of the estimate's capacity at the
@@ -165,7 +165,7 @@ internal sealed partial class FunctionCodegen
                 return null;
             }
 
-            estimate = estimate.Add(LegacyRuntimeHelpers.FormatBound(type));
+            estimate = estimate.Add(FormattingTypes.Bound(type));
         }
 
         return estimate;

@@ -1450,8 +1450,8 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness has no MIR body is
-    // the collector's BodylessWitness gap at check, InstanceCollectorTest). A string's Move into another local is written since C2b
+    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness is an import calls
+    // it through its Import item since R8-G2, ForeignEmissionTest). A string's Move into another local is written since C2b
     // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop
     // included (R5-M78, R5-M89), a requirement's since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since
     // C3c (R5-M141); a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included,

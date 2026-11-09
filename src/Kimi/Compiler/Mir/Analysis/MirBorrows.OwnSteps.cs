@@ -13,8 +13,8 @@ namespace Kimi.Compiler.Mir;
 // of a reservation across any steps. A departure whose operation and formation lie in one inline default copy is its template's (Covered).
 // One record per location: every record at a location has its subject, which MirReport merges. The location's departures are joined
 // (MirOutcome): one a counted pass gives is decided, the location's, else one only the drop tier gives is Deep, which rests on that Drop:
-// the Warning, its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain), and
-// the depth limit at the holder's declaration (DroppedDeparture).
+// the Warning and the depth limit at the holder's declaration (DroppedDeparture). The Warning names no entry: an entry is an address, which
+// creates no Loan, so the record carries no Loan fact (G673).
 // Before the holders, a view whose only producer input is its own-step entries is a producer only where a use may depart one by the same
 // test with no liveness (MayDepart, D5, R4-M141): its other records, a retention Limit's and a storage limit's, then leave it as any view no
 // conflict can depend on.
@@ -29,7 +29,7 @@ internal sealed partial class MirBorrows
     private (int Stamp, int Via, int Next, int Dropped)[] ownTags = [];
     private (int Stamp, int First)[] ownRoots = []; // By root key: the first own-step entry found on it at that check (or listed).
     private int ownEntries; // The own-step entries of the view.
-    private (int Entry, int Holder) dropDeparture; // The location's first departure only the drop tier gives (Deep), and its drop-live holder.
+    private int dropHolder; // The drop-live holder of the location's first departure only the drop tier gives (Deep).
 
     // Restarts the tags for the view, where it has own-step entries.
     private void RestampOwnSteps(int keys)
@@ -111,14 +111,14 @@ internal sealed partial class MirBorrows
 
         if (met.IsDeep)
         {
-            this.DroppedDeparture(this.dropDeparture.Entry, this.dropDeparture.Holder, at);
+            this.DroppedDeparture(this.dropHolder, at);
         }
     }
 
     // The location's departures met so far joined with an access's on a root: the first own-step entry found there that the access departs
     // and whose departure is not its template's, found by a pass that counts for the access (a holder's or transit value's, or for an
     // activation also an operand's), is decided and recorded; the location's first entry only the drop tier found that it departs is Deep,
-    // kept for Departures.
+    // its drop-live holder kept for Departures.
     private MirOutcome Depart(MirLocation at, int root, ReadOnlySpan<MirStep> steps, AccessKind kind, MirOutcome met)
     {
         var scope = this.Source(at).Scope;
@@ -133,11 +133,11 @@ internal sealed partial class MirBorrows
                 met = met.Join(outcome);
                 if (met.IsDecided)
                 {
-                    this.Departure(entry, tag.Via, at);
+                    this.Departure(at);
                     return met;
                 }
 
-                this.dropDeparture = (entry, tag.Dropped);
+                this.dropHolder = tag.Dropped;
             }
         }
 
