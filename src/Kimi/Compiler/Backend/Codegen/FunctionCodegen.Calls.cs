@@ -11,8 +11,8 @@ namespace Kimi.Compiler.Backend;
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
 // signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
-// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141). A requirement whose witness has
-// no MIR body is the collector's BodylessWitness gap at check, so no generated program has one (DECISIONS R5-M146).
+// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import target, a
+// #LibraryImport function's direct call or a requirement's whose witness it is, the import by its C signature (DECISIONS R8-M__).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -58,22 +58,14 @@ internal sealed partial class FunctionCodegen
     // whose signature is the call's, since compatibility inserts no conversion): what the target runs (Witness), a body item by its
     // signature (ModuleCodegen.Signature) with its operands in its body's order, a caller-location one given the call's location (Invoke); a
     // Fn callee calls the function it names whatever it implements (a direct base call, SPEC 6.4.4), a Requirement callee through the
-    // virtual slot its witness runs. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), and any other
-    // callee is a broken contract: a requirement whose witness has no MIR body is the collector's BodylessWitness gap at check (R5-M146).
+    // virtual slot its witness runs. A call without a target is a broken contract: the collector gives every accepted call one, a
+    // #LibraryImport function's its Import item (SPEC 22.6; DECISIONS R8-M__).
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0)
         {
-            if (this.module.Import(call.Callee.Symbol!) is { } import)
-            {
-                this.Invoke(call, import, new(call.Callee.Symbol, MirBodyKind.Fn));
-            }
-            else
-            {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
-            }
-
+            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
             return;
         }
 
@@ -87,8 +79,9 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 8.6.3-8.6.4, 6.4.6 (K package 4.5 rows 1, 3 and 5): what a call of a function's or a requirement's target item runs, the one rule
     // of a Requirement call and of a function Item's call and adapter (FunctionCodegen.Closures' Runs): a body item its body (BodyRun); a
-    // shim item, Builtin or PropertyWitness, its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); any other
-    // item a broken contract. Null after a record at the source.
+    // shim item, Builtin or PropertyWitness, its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import
+    // item its import by its C signature (ModuleCodegen.Import; SPEC 22.6, DECISIONS R8-M__); any other item a broken contract. Null after a
+    // record at the source.
     private Run? Witness(int target, in SourceInfo source)
     {
         switch (this.collector.Set.Items[target].Key.Kind)
@@ -97,6 +90,8 @@ internal sealed partial class FunctionCodegen
                 return this.BodyRun(target); // Null after a record.
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 return this.module.Shim(target) is { } shim ? new Run(shim, null) : null; // Null after a record.
+            case MonoKind.Import when this.module.Import(this.collector.Set.Items[target].Key.Symbol!) is { } import:
+                return new Run(import, null); // Every import of a complete compilation is validated (Binding.LibraryImports).
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A call targets a body, a shim or a witness (K package 4.5).
                 return null;
