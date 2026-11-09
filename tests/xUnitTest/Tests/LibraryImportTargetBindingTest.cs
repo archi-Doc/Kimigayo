@@ -144,7 +144,6 @@ public class LibraryImportTargetBindingTest
     [Theory]
     [InlineData("struct S\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", false)]
     [InlineData("struct S\n    var value: i32\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func read(self: S) -> i32", true)]
-    [InlineData("contract C\n    #LibraryImport(\"codec\", \"symbol\")\n    unsafe func required() -> i32", true)]
     [InlineData("group Native\n    func outer()\n        #LibraryImport(\"codec\", \"symbol\")\n        unsafe func local() -> i32", true)]
     [InlineData("struct S<T>\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func make(value: i32) -> i32", true)]
     [InlineData("struct S<T>\n    public group Native\n        #LibraryImport(\"codec\", \"symbol\")\n        public unsafe func make(value: i32) -> i32", true)]

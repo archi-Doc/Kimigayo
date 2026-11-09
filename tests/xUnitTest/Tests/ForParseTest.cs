@@ -50,10 +50,10 @@ public class ForParseTest
     public void RecognizesForKeywordAndContextualIn()
     {
         Assert.True(TokenKind.For.IsKeyword());
-        Assert.Equal(Constants.ForKeyword, TokenKind.For.ToText());
+        Assert.Equal("for", TokenKind.For.ToText());
         Assert.False(TokenKind.In.IsKeyword());
         Assert.True(TokenKind.In.IsIdentifierOrContextualKeyword());
-        Assert.Equal(Constants.InKeyword, TokenKind.In.ToText());
+        Assert.Equal("in", TokenKind.In.ToText());
 
         var function = ParseSingleFunction(
             """

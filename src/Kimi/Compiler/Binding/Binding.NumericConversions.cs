@@ -43,10 +43,10 @@ public sealed partial class Binding
     }
 
     // SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
-    // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.
+    // or generic, without a check. A direct integer literal is wrapped at compile time from its exact value; it never fails.
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
-        var target = this.BindType(argument, scope);
+        var target = this.BindType(argument, scope) is { } bound ? this.SubstituteIdentityPremises(bound, scope) : null; // SPEC 8.2.3, as @Type's.
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var number = KotoHelper.SignedNumber(operand, out var negative);
         if (operation != Constants.WrapOperation)
@@ -56,24 +56,16 @@ public sealed partial class Binding
 
         if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
         {
-            var width = ScalarTypes.Width(target);
-            if (width == 0)
-            {
-                // A generic U: the literal must fit every instance, so it is an ordinary generic literal and no wrapping happens.
-                conversion.ConversionBinding = ConversionBinding.Literal;
-                Complete(conversion.Right, target);
-                return Complete(conversion, this.BindNode(conversion.Left, scope, target) is null ? null : target);
-            }
-
             if (!number.TryGetIntegerMagnitude(out var magnitude))
             {
                 return this.Fail(conversion, BindingFailure.InvalidLiteral);
             }
 
-            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
+            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant; a U whose instance decides
+            // N (SPEC 8.7.4) keeps it modulo 2^128, whose low N bits are each instance's (ScalarTypes.Normalize).
             var payload = negative ? (UInt128)0 - magnitude : magnitude;
             Complete(conversion.Right, target);
-            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), width), ConversionBinding.Wrap);
+            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), ScalarTypes.Width(target)), ConversionBinding.Wrap);
         }
 
         var source = this.BindNode(conversion.Left, scope);

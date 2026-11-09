@@ -48,8 +48,9 @@ public static partial class Parser
         Reported,
     }
 
-    /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.7), such as a Constraint, an Origin relation
-    /// or an enum Case; each attaches to nothing, as a misplaced attribute does.</summary>
+    /// <summary>Reports the pending attributes before an item whose production takes none (SPEC 6.7, Appendix F), such as a Contract
+    /// item, a <c>drop</c>, an override or a Constraint; each attaches to nothing, as a misplaced attribute does, so no node holds an
+    /// attribute its production does not take.</summary>
     /// <param name="reader">The token reader.</param>
     internal static void ReportPendingAttributes(ref TokenReader reader)
     {
@@ -78,6 +79,13 @@ public static partial class Parser
     /// <returns>The modifiers other than static and open.</returns>
     internal static ModifierKind Judged(this ModifierKind kind)
         => kind & ~(ModifierKind.Static | ModifierKind.Open);
+
+    /// <summary>Gets the access part of a modifier set, its low four bits (public through private protected).</summary>
+    /// <param name="kind">The modifier set.</param>
+    /// <returns>The access modifiers.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ModifierKind ExtractAccessibilityModifiers(this ModifierKind kind)
+        => kind & (ModifierKind)15;
 
     /// <summary>Consumes attributes, modifiers, and optional compile-time directives before a declaration.</summary>
     /// <param name="reader">The token reader.</param>
@@ -127,7 +135,7 @@ public static partial class Parser
                 {
                     "virtual" => ModifierKind.Virtual,
                     "override" => ModifierKind.Override,
-                    "unsafe" => ModifierKind.Unsafe,
+                    Constants.UnsafeKeyword => ModifierKind.Unsafe,
                     _ => ModifierKind.NoModifier,
                 };
                 if (flag != ModifierKind.NoModifier)
@@ -321,7 +329,7 @@ public static partial class Parser
         }
         else if ((acc == ModifierKind.Protected && kind == ModifierKind.Internal) || (acc == ModifierKind.Private && kind == ModifierKind.Protected))
         {
-            reader.ModifierKind = (reader.ModifierKind & ~(ModifierKind)CompilerHelper.AccessibilityModifierMask) |
+            reader.ModifierKind = (reader.ModifierKind ^ acc) |
                 (acc == ModifierKind.Protected ? ModifierKind.ProtectedOrInternal : ModifierKind.ProtectedAndInternal);
         }
         else if (acc == kind)
@@ -381,7 +389,7 @@ public static partial class Parser
                 }
 
                 // A specialization's `specialize` precedes `func`, which no accessor list admits.
-                if (text is "unsafe" || (text is "specialize" && reader.PeekKind(offset + 1) == TokenKind.Func))
+                if (text is Constants.UnsafeKeyword || (text is "specialize" && reader.PeekKind(offset + 1) == TokenKind.Func))
                 {
                     continue;
                 }
@@ -435,7 +443,7 @@ public static partial class Parser
         reader.TryRead(out var attributeToken);
 
         var nameToken = reader.CurrentToken;
-        var wellFormed = nameToken.Kind.IsIdentifierOrContextualKeyword() && UnicodeIdentifierHelper.IsUppercase(reader.GetSpan(nameToken));
+        var wellFormed = nameToken.Kind.IsIdentifierOrContextualKeyword() && IdentifierHelper.IsUppercase(reader.GetSpan(nameToken));
         if (!wellFormed && nameToken.Kind.IsKeyword())
         {
             if (nameToken.Kind is TokenKind.If or TokenKind.Switch or TokenKind.Case)
