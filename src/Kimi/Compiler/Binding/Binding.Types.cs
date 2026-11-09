@@ -42,9 +42,11 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // A qualified Type Name selects the declarations of the qualifier's scope, never its generic parameters (SPEC 9.1).
-    private static BindingSymbol? QualifiedTypeMember(BindingSymbol? head)
+    // A Container's direct Type members named `name`, as a path (SPEC 9.6) or an opening alias (18.2.1) reaches them: never its formal
+    // parameters, which only the scope walk finds at their declaring position (9.5).
+    private static BindingSymbol? MemberTypes(BindingScope container, string name)
     {
+        var head = container.Types.GetValueOrDefault(name);
         while (head is not null && IsGenericParameter(head))
         {
             head = head.Next;

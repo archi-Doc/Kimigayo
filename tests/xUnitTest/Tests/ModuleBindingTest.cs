@@ -138,6 +138,17 @@ public partial class ModuleBindingTest
     }
 
     [Fact]
+    public void ADefaultAliasOpensNoFormalParameter()
+    {
+        // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters.
+        var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\npublic func f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
+        Assert.False(compilation.Bind().IsComplete);
+        var issue = Assert.Single(compilation.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal("T", issue.Node.ToString());
+    }
+
+    [Fact]
     public void LibraryDefaultsDoNotLeakToTheCaller()
     {
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => helper()\nprivate group Implementation\n    public func helper() => ()", configure: (_, library) => library.Alias = ["Implementation"]);

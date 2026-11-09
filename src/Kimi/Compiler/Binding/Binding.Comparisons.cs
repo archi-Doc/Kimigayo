@@ -17,12 +17,15 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 3.4.3, 8.2.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, in the operand's scope: its
-    // Type as the identity premises make it, below its ref and uniq layers and each qualifying pair layer: the one statement of it, which
-    // TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a premised parameter (DECISIONS BU-72).
+    // SPEC 3.4.3, 8.2.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, in the operand's scope, in
+    // one order: its Type as the scope's premises make it (CallableContractType: its associated projections normalized, then its identity
+    // premises substituted, the premising MirTypes.Premised reads through TyCtxt.Premised), then below each qualifying pair layer, then
+    // below its ref and uniq layers: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a
+    // premised parameter or projection (DECISIONS BU-72). Premises change only abstract parts, so a Type without one is its own image; the
+    // Contract environment's rewrite of a closed Type's Origins alone is not applied, as no premise is in it (MirTypes.Agree ignores Origins).
     internal BoundType OperandTerminal(Koto operand, BoundType type)
     {
-        var premised = type.ContainsParameter ? this.SubstituteIdentityPremises(type, this.ConstraintScope(operand)) : type;
+        var premised = type.HasAbstractPart ? this.CallableContractType(type, this.ConstraintScope(operand)) : type;
         return ComparisonReferent(this.ComparisonThroughPairs(operand, premised));
     }
 

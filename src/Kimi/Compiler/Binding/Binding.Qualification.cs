@@ -279,7 +279,7 @@ public sealed partial class Binding
             if (fact.Type)
             {
                 var candidates = default(TypeCandidates);
-                this.AddTypeCandidates(ref candidates, member.Scope.Types.GetValueOrDefault(fact.Name), fact.Scope, fact.Role, fact.Arity);
+                this.AddTypeCandidates(ref candidates, MemberTypes(member.Scope, fact.Name), fact.Scope, fact.Role, fact.Arity);
                 selected = !candidates.Ambiguous && candidates.Match is not null;
                 if (!selected)
                 {
