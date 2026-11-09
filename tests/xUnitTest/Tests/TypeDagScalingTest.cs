@@ -318,6 +318,24 @@ public partial class TypeDagScalingTest
         Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 6.2, 8.6.2 (PLAN G631): every inherited path's binding is a node of the inline-layout judge, one per heir, so a cold Bind of a
+    // deep inheritance chain allocates linearly in its depth: three depths, each double the one before, within factor 3, as
+    // InferenceSlotScalingTest's rows define it.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AColdBindOfAnInheritanceChainIsLinear()
+    {
+        int[] depths = [64, 128, 256];
+        var compilations = new Compilation[depths.Length];
+        var bytes = AllocationMeasurement.MeasureSeries(depths.Length, i =>
+        {
+            var c = compilations[i] = CompilationTestHelper.Parse(HeirChain(depths[i]));
+            return () => c.Bind();
+        });
+        Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+        Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+    }
+
     // The source of a shape: structs storing the previous struct twice (PLAN G140), with constructions, a path read, a move and a drop;
     // enums whose two Cases carry the previous enum (storage linear in the size); a chain of generic functions, each calling the next with
     // the Tuple of two of its argument (PLAN G153 (2)), passing a value or nothing; a body whose locals pair the previous local, over i32,
@@ -385,6 +403,19 @@ public partial class TypeDagScalingTest
 
                 return text.Append(shape == "originLets" ? "    return\npublic func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n" : "    return\npublic func main() -> ()\n    f(1)\n    return\n").ToString();
         }
+    }
+
+    // A deep-heir chain (valid, SPEC 8.6.2: every level inherits C with Item = Option<i32>): L0 conforms, L(k) : L(k-1), D : L(depth-1),
+    // and a use of D.(C).Item.
+    private static string HeirChain(int depth)
+    {
+        var text = new System.Text.StringBuilder("contract C\n    associate Item\nopen struct L0<X>\n    Self is C\n    associate C.Item is X\n");
+        for (var i = 1; i < depth; i++)
+        {
+            text.Append($"open struct L{i}<X> : L{i - 1}<X>\n");
+        }
+
+        return text.Append($"struct D : L{depth - 1}<Option<i32>>\nfunc use(x: D.(C).Item) -> i32 => 1\n").ToString();
     }
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];

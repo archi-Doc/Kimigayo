@@ -1327,6 +1327,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   between quiet slots. Nothing frozen.
 - Revision 45 (2026-11-09, plan §14; the owner's answer to the Coordinator's review of the caps): §3.3, designers and reviewers at
   most three together per session; watchers wake only on rows that need an answer. Nothing frozen.
+- Revision 46 (2026-11-09, plan §14; the Front's D-168): §5.0's N1 row, e split into e1, e2 and e3. Nothing frozen.
+- Revision 48 (2026-11-09, plan §14; the Back's message): W2t lands before W1's remaining units. Nothing frozen.
+- Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

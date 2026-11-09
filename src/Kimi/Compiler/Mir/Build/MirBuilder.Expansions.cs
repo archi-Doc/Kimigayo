@@ -262,51 +262,62 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(test), 1, fail, node);
     }
 
-    // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
-    // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
-    // then the value evaluated and the pair placed (one call of the placeEntry body over the literal's exclusive borrow), every step of the entry's
-    // insertion located at its key, where a failure inside it reports (SPEC 22.5.1; DECISIONS R5-M144). The empty Dictionary is a
-    // part made before the entries, in a temp of its own that an interrupted entry's exit destroys, and moved to the destination after the
-    // last entry, where the literal's value is created (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
+    // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, from
+    // the second entry on looked up among the entries inserted (Absent; before the first no key is inserted, so it has no lookup and makes
+    // no equality call), then the value evaluated and the pair placed (one call of the placeEntry body over the literal's exclusive borrow,
+    // marked Places: the literal's insertion, not a call of the program; PLAN G442, the owner's O-97 (a)),
+    // every step of the entry's insertion located at its key, where a failure inside it reports (SPEC 22.5.1; DECISIONS R5-M144). The
+    // empty Dictionary is a part made before the entries, in a temp of its own that an interrupted entry's exit destroys, and moved to the
+    // destination after the last entry, where the literal's value is created (SPEC 3.6, 16.2.1; DECISIONS R4-M129).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
-        var find = CallPlan.Of(dictionary)!;
         var type = TypeOf(dictionary);
         var place = compilation.Library.GetSymbol(KimiDeclarationId.DictionaryStoragePlaceEntry)!;
         var subst = compilation.Types.Synthesized(place, null, [type.Components[0], type.Components[1]]);
         var built = this.Temp(type, dictionary);
         this.Set(built, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
-        foreach (var entry in dictionary.Entries)
+        for (var i = 0; i < dictionary.Entries.Count; i++)
         {
+            var entry = dictionary.Entries[i];
             var key = this.Hold(type.Components[0], entry.Key);
             var value = this.Hold(type.Components[1], entry.Value);
-            var link = this.Hold(BoundType.ISize, entry.Key);
-            var test = this.Hold(BoundType.Boolean, entry.Key);
-            var fail = this.body.AddBlock();
-            var start = this.arguments.Count;
             this.Assign(key, entry.Key);
             this.Made(key);
-            this.arguments.Add(this.Borrow(SemanticsKind.Ref, built, entry.Key));
-            this.arguments.Add(this.Borrow(SemanticsKind.Ref, key, entry.Key));
-            this.Invoke(link, new(MirCalleeKind.Fn, find.Target, compilation.Types.SubstOf(find)), start, entry.Key);
-            this.Made(link);
-            this.Compare(
-                test,
-                MirBinaryOp.Eq,
-                MirOperand.Copy(link),
-                MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))),
-                fail,
-                entry.Key);
-            this.Made(test);
-            this.Fail(fail, "KIMI_E_DUPLICATE_KEY", entry.Key);
+            if (i > 0)
+            {
+                this.Absent(dictionary, built, key, entry.Key);
+            }
+
             this.Assign(value, entry.Value);
             this.Made(value);
+            var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.Uniq, built, entry.Key));
             this.arguments.Add(MirOperand.Move(key));
             this.arguments.Add(MirOperand.Move(value));
+            var call = this.current;
             this.Invoke(this.Temp(BoundType.Unit, entry.Key), new(MirCalleeKind.Fn, place, subst), start, entry.Key);
+            this.body.Terminate(call, this.body.Blocks[call].Terminator with { Places = true }); // The literal's insertion (PLAN G442).
         }
 
         this.Use(destination, MirOperand.Move(built), dictionary);
+    }
+
+    // SPEC 12.4.3: a dictionary literal entry's key looked up among the entries inserted (the literal's plan's findEntry call), a duplicate
+    // failing with KIMI_E_DUPLICATE_KEY before the value is evaluated, located at the key.
+    private void Absent(DictionaryLiteralKoto dictionary, MirPlace built, MirPlace key, Koto node)
+    {
+        var find = CallPlan.Of(dictionary)!;
+        var link = this.Hold(BoundType.ISize, node);
+        var test = this.Hold(BoundType.Boolean, node);
+        var fail = this.body.AddBlock();
+        var start = this.arguments.Count;
+        this.arguments.Add(this.Borrow(SemanticsKind.Ref, built, node));
+        this.arguments.Add(this.Borrow(SemanticsKind.Ref, key, node));
+        this.Invoke(link, new(MirCalleeKind.Fn, find.Target, compilation.Types.SubstOf(find)), start, node);
+        this.Made(link);
+        var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
+        this.Compare(test, MirBinaryOp.Eq, MirOperand.Copy(link), zero, fail, node);
+        this.Made(test);
+        this.Fail(fail, "KIMI_E_DUPLICATE_KEY", node);
     }
 }

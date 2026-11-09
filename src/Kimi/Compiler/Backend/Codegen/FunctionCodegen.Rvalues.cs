@@ -56,11 +56,30 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var record = type.Kind == BoundTypeKind.FixedArray ? null : this.LoweringOf(place); // A fixed array's length is its Type's.
-        if (this.Address(place, out var address) && (record is not null || type.Kind == BoundTypeKind.FixedArray))
+        if (this.Sequence(place, type, out var record, out var address))
         {
             this.Store(statement, this.Length(type, record, address));
         }
+    }
+
+    // A Storage (SPEC 4.8.1; IMPL 21.1.3; O-92 (a)): a sequence Place's first element's address, which reads no layout of the element: a
+    // fixed array's own address, an Array's or Slice's buffer word (Buffer, which an Index's element address starts from too).
+    private void Storage(in MirStatement statement)
+    {
+        var place = statement.Rvalue.Place;
+        var type = this.InstanceType(place)!;
+        if (this.Sequence(place, type, out var record, out var address))
+        {
+            this.Store(statement, this.Buffer(type, record, address));
+        }
+    }
+
+    // A Len's or Storage's sequence Place: its address and its handle's record, or null for a fixed array, whose length and first element
+    // are its Type's and its own address; false after a record.
+    private bool Sequence(MirPlace place, BoundType type, out ValueLowering? record, out Value address)
+    {
+        record = type.Kind == BoundTypeKind.FixedArray ? null : this.LoweringOf(place);
+        return this.Address(place, out address) && (record is not null || type.Kind == BoundTypeKind.FixedArray);
     }
 
     // An Adapt (SPEC 8.14, 13.5.3): the ordinary rvalue of the operation the item's view selects (MirCases.Adapt), written by that rvalue's

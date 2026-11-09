@@ -1794,7 +1794,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
-    // after acceptance as Project discovers it.
+    // after acceptance as `Compilation.Check` discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();

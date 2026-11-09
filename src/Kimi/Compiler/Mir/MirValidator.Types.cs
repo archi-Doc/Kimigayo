@@ -7,8 +7,9 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, by MirTypes.Agrees: MirTypes.Agree, modulo Origins, or as the body's
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
-//   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
+//   Adapts; a comparison BinaryOp compares no string, OperandsCompare); every Semantics case view resolves each Adapt and PairAcquire
+//   (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose Type the tier reads
+//   as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
 //   and their Places; the body's case views (MirCases).
 // - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
@@ -115,17 +116,16 @@ internal sealed partial class MirValidator
             }
         }
 
-        // An integer Type, or one whose instance decides it (SPEC 8.7.4: a PrimitiveInteger T, Wrapping<T>).
-        private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
-
-        // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
+        // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type; an integer one converts Types
+        // with the integer operators, concrete or generic (MirTypes.IsArithmeticInteger).
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch
         {
-            MirCastKind.Integer or MirCastKind.Wrap => Integral(source) && Integral(target),
+            MirCastKind.Integer or MirCastKind.Wrap => MirTypes.IsArithmeticInteger(source) && MirTypes.IsArithmeticInteger(target),
             MirCastKind.Floating => source.IsFloatingPoint && target.IsFloatingPoint,
-            MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint ? Integral(target) : Integral(source) && target.IsFloatingPoint,
+            MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint
+                ? MirTypes.IsArithmeticInteger(target) : MirTypes.IsArithmeticInteger(source) && target.IsFloatingPoint,
             MirCastKind.Pointer => source.Semantics == SemanticsKind.Raw && (target.Semantics == SemanticsKind.Raw || ReferenceEquals(target, BoundType.USize)),
-            MirCastKind.IntToPointer => Integral(source) && target.Semantics == SemanticsKind.Raw,
+            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.Semantics == SemanticsKind.Raw,
             MirCastKind.Upcast => source.Semantics == target.Semantics && (source.HandleMode is not null || source.IsObjectBorrow),
             MirCastKind.Erasure => source.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && target.Kind == BoundTypeKind.Function,
             _ => false,
@@ -134,6 +134,21 @@ internal sealed partial class MirValidator
         // A Type below its reference and pair layers (TyCtxt.Layer), which a comparison compares (SPEC 13.4).
         private static BoundType? Terminal(BoundType? type)
             => TyCtxt.Layer(type, out var below, out _) is var _ && !ReferenceEquals(below, type) ? Terminal(below) : type;
+
+        // SPEC 13.4, 8.2.3: what a comparison BinaryOp's operand compares: its Type as the body's premises make it (MirTypes.Premised, the
+        // premising Binding.OperandTerminal applies too), before the walk, so a layer a premise gives is walked too, down to a raw layer,
+        // which stops the walk; unknown (null) for the Never value. A check over Binding's decision, never a reader of it.
+        private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(body, type));
+
+        // SPEC 13.4: a comparison BinaryOp's operands agree at what they compare (PremisedTerminal, one statement per operand), which is no
+        // string, since a library witness compares a string (R8-S1d2, R8-S1e-b). It covers only the string row of the open family "a
+        // comparison BinaryOp at a Type the operator table does not lower"; the family's closed form, a whitelist over that table's domain,
+        // is PLAN's (the Middle's open issue).
+        private readonly bool OperandsCompare(BoundType? first, BoundType? second)
+        {
+            var (left, right) = (this.PremisedTerminal(first), this.PremisedTerminal(second));
+            return MirTypes.Agree(left, right) && !ReferenceEquals(left ?? right, BoundType.String);
+        }
 
         // An operand's Type, unknown (null) for a Place out of range or a local an Opaque value defines, and for the Never value, which
         // fits any operand position (SPEC 3.8; DECISIONS R4-M62).
@@ -170,27 +185,32 @@ internal sealed partial class MirValidator
 
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
         // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator's operands agree (a
-        // comparison's below their layers) but for a shift count, any integer, and a raw pointer's displacement, an isize (SPEC 5.3); a Cast
-        // converts what its kind admits; a Ref's Type is its kind's reference to its Place; an aggregate's operands are its components; an
-        // Adapt gives its target Type.
+        // comparison's at their premised terminals, at no string: OperandsCompare) but for a shift count, any integer, and a raw pointer's
+        // displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's reference to its Place; an
+        // aggregate's operands are its components; an Adapt gives its target Type.
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
             var operands = body.Operands.Slice(rvalue.Start, rvalue.Count);
             var op = (MirBinaryOp)rvalue.Op;
             var first = operands.Length > 0 ? this.TypeOf(operands[0]) : null;
             var second = operands.Length > 1 ? this.TypeOf(operands[1]) : null;
-            var place = rvalue.Kind == MirRvalueKind.Ref && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
+            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
             var (type, admitted) = rvalue.Kind switch
             {
                 MirRvalueKind.Use or MirRvalueKind.UnaryOp => (first, true),
                 MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, op switch
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
-                    >= MirBinaryOp.Eq => MirTypes.Agrees(body, Terminal(first), Terminal(second)),
+                    >= MirBinaryOp.Eq => this.OperandsCompare(first, second),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
                     _ => MirTypes.Agrees(body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
+                // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
+                MirRvalueKind.Storage => (rvalue.Type, place is null ||
+                    (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
+                    rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
+                    MirTypes.Agrees(body, element, place.Components[0]))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||

@@ -32,7 +32,7 @@ internal enum MirViolation : byte
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
-    Const, // A constant id out of range, or an Integer constant Holds rejects: not its Type's canonical payload, or of another Type (G620).
+    Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no
@@ -49,7 +49,8 @@ internal enum MirViolation : byte
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), a
     // constant record other than an input of a Fn call that keeps nothing of it (ConstantRecords), or a Copy, other than a case site's
-    // operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
+    // operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88); a Places attribute other than on a Fn
+    // Call each of whose operands is a Move of a whole Temp (PLAN G442).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
     Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names, or, where a

@@ -199,4 +199,5 @@ public enum KimiDeclarationId : byte
     StorageDestroyDictionary,
     StorageReleaseDictionary,
     DictionaryStorageInitialize,
+    DictionaryStorageHandle,
 }
