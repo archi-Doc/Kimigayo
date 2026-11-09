@@ -38,7 +38,7 @@ internal sealed partial class MirBorrows
             ref readonly var data = ref this.body.Blocks[block];
             this.receivers[block] = data.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 } place } &&
                 this.Dropping(block, place) == AccessKind.Observe
-                ? this.Address(place.Root, -1, direct: true, this.Location(block, data.Count), []) : -1;
+                ? this.Address(new(place.Root), -1, this.Location(block, data.Count)) : -1;
         }
 
         this.Work += this.body.Blocks.Length;
