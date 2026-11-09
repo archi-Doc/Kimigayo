@@ -13,7 +13,7 @@ namespace XunitTest;
 /// <summary>Initialization and moves on MIR (A1, SPEC 15.1, 14.10.3; docs/dev/DECISIONS.md R4-M20, R4-M21): each rule with a valid
 /// program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code, the first
 /// line of its subject and its views; and the move paths a body forms, through <see cref="MirMoveData"/> itself.</summary>
-public sealed class MirInitTest(ITestOutputHelper output)
+public sealed class MirInitTest
 {
     private const string Resource = "struct Resource\n    public var name: string = \"r\"\nfunc make() -> Resource => Resource.init()\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
@@ -475,62 +475,6 @@ public sealed class MirInitTest(ITestOutputHelper output)
         => Assert.Empty(Problems("func noinit() -> i32\n    unsafe\n        var values: [4 of i32] = noinit\n        values[1] = 2\n" +
             "        return values[0]\nfunc keep(values: Array<i32>) => ()\nfunc empty()\n    let values: Array<i32> = []\n    keep(values@move)\n"));
 
-    // V16 (plan "New V-checks"): A1 is linear in the body: N 16/32/64 groups of a straight move, a branch that moves on both arms and a loop
-    // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps with A2,
-    // which A1's checks replay feeds; a fresh driver's pools would hold the widest library body) linearly, with no problem; the output gives
-    // the dense arena's words (R4-M20).
-    // MirBuildTest.WarmRebuildAllocatesNothing covers the warm re-analysis, which BuildMir runs.
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData("    let v{0} = text({0})\n    keep(v{0}@move)\n")]
-    [InlineData("    let v{0} = text({0})\n    if flag => keep(v{0}@move) else => other(v{0}@move)\n")]
-    [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
-    public void InitializationScalesLinearly(string group)
-    {
-        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
-            text.Append("func work(flag: bool)\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, group, n);
-            }
-
-            var c = MirBuildTest.Compile(text.ToString());
-            var program = c.BuildMir();
-            Assert.Empty(program.Problems.All.ToArray());
-            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
-            var drops = new MirDrops(moves, cases);
-            var init = new MirInit(flow, moves, cases, drops);
-            analyses[i] = (body, flow, moves, sink);
-            return () =>
-            {
-                flow.Begin(body);
-                moves.Build(body, flow);
-                drops.Begin(body, sink);
-                cases.Select(body, 0);
-                Assert.True(init.Run(body, 0, sink.Problems));
-                drops.Judge(0);
-                drops.End();
-            };
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (body, flow, moves, sink) = analyses[i];
-            Assert.Equal(0, sink.Problems.All.Length);
-            arena[i] = ArenaWords(body, flow, moves);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold analysis allocation {string.Join(", ", allocated)}, " +
-            $"arena words {string.Join(", ", arena)}");
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
-    }
-
     // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
     // body is built wherever its creation stands (discarded, bound by a let, inside a let Binding rejects for its own reason, its Type
     // annotation, or a failed Index's kept operand; a result over the call's
@@ -670,6 +614,66 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
         public void Effect(MirEffect effects, int site)
         {
+        }
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16 (plan "New V-checks"): A1 is linear in the body: N 16/32/64 groups of a straight move, a branch that moves on both arms and a loop
+        // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps with A2,
+        // which A1's checks replay feeds; a fresh driver's pools would hold the widest library body) linearly, with no problem; the output gives
+        // the dense arena's words (R4-M20).
+        // MirBuildTest.WarmRebuildAllocatesNothing covers the warm re-analysis, which BuildMir runs.
+        [Theory]
+        [InlineData("    let v{0} = text({0})\n    keep(v{0}@move)\n")]
+        [InlineData("    let v{0} = text({0})\n    if flag => keep(v{0}@move) else => other(v{0}@move)\n")]
+        [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
+        public void InitializationScalesLinearly(string group)
+        {
+            var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+            var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
+                text.Append("func work(flag: bool)\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, group, n);
+                }
+
+                var c = MirBuildTest.Compile(text.ToString());
+                var program = c.BuildMir();
+                Assert.Empty(program.Problems.All.ToArray());
+                var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+                work[i] = body.Blocks.Length + body.Statements.Length;
+                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
+                var drops = new MirDrops(moves, cases);
+                var init = new MirInit(flow, moves, cases, drops);
+                analyses[i] = (body, flow, moves, sink);
+                return () =>
+                {
+                    flow.Begin(body);
+                    moves.Build(body, flow);
+                    drops.Begin(body, sink);
+                    cases.Select(body, 0);
+                    Assert.True(init.Run(body, 0, sink.Problems));
+                    drops.Judge(0);
+                    drops.End();
+                };
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (body, flow, moves, sink) = analyses[i];
+                Assert.Equal(0, sink.Problems.All.Length);
+                arena[i] = ArenaWords(body, flow, moves);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold analysis allocation {string.Join(", ", allocated)}, " +
+                $"arena words {string.Join(", ", arena)}");
+            Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
         }
     }
 }
