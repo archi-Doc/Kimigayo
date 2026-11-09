@@ -1498,7 +1498,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
         var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
         Assert.Equal("struct Sink", $"{program.Bodies[reserve.BodyOrdinal].Key.Decl!.Scope.Owner}");
-        Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
     }
 
     // K 4.3, F package 4.6, DECISIONS R5-M166: a built-in comparison of a composite Self, a generic instance's comparison over its Type

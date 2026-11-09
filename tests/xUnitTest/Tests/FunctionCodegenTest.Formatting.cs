@@ -149,31 +149,39 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Analyze(Buffers, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        Assert.Equal(
-            Routines(
-            [
-                CompilerFunctionKind.TextFixed,
-            ]),
-            FormattingCalls(ir, c, "fxRun"));
-        Assert.Equal(
-            Routines(
-            [
-                CompilerFunctionKind.TextHeap,
-            ]),
-            FormattingCalls(ir, c, "hpRun"));
-        foreach (var (name, kind, shape) in new[]
+        Assert.Empty(FormattingCalls(ir, c, "fxRun"));
+        Assert.Empty(FormattingCalls(ir, c, "hpRun"));
+        var show = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwShow"))), x => x.Callee == ir.Function(Routines(CompilerFunctionKind.WriteLineUtf8)[0]));
+        Assert.Equal($"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})", show.Shape);
+
+        // SPEC 22.5.1, 22.9.2 (R8-W1c): the Text operations are bodies; heap has a CallerLocation row, so the user's call passes its own
+        // location, and the other three take none. A fixed buffer's capacity N is its instance's: [8 of u8] and [4 of u8] call two.
+        var called = new Dictionary<string, IrFunction>();
+        foreach (var (name, callee, shape) in new[]
         {
-            ("fxRun", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 8)"),
-            ("hpRun", CompilerFunctionKind.TextHeap, $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
-            ("vwLength", CompilerFunctionKind.TextUtf8, "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
-            ("vwCheck", CompilerFunctionKind.TextValidateUtf8, "call void @(ptr %, ptr %)"),
-            ("vwShow", CompilerFunctionKind.WriteLineUtf8, $"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})"),
-            ("itFixed", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 4)"),
+            ("fxRun", "fixed", "call void @(ptr %, ptr %)"),
+            ("itFixed", "fixed", "call void @(ptr %, ptr %)"),
+            ("hpRun", "heap", $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
+            ("vwLength", "utf8", "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
+            ("vwCheck", "validateUtf8", "call void @(ptr %, ptr %)"),
         })
         {
-            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == ir.Function(Routines(kind)[0]));
+            var bodies = FunctionsOf(ir, c, callee).ToArray();
+            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => bodies.Contains(x.Callee!));
             Assert.Equal(shape, call.Shape);
+            called[name] = call.Callee!;
         }
+
+        Assert.NotSame(called["fxRun"], called["itFixed"]);
+
+        // SPEC 22.5.1, 22.9.2 (R8-W1c): heap's body Aborts at the location it received, its last two parameters: its precondition's
+        // KIMI_E_ARG_RANGE and its reserve, whose allocation Aborts there.
+        var heap = called["hpRun"];
+        var range = Assert.Single(CallsOf(heap), x => x.Callee == ir.Function("__kimi_abort"));
+        Assert.Equal($"call void @(i32 {AbortReasons.ArgumentRange}, ptr %, i64 %, i64 -2)", range.Shape);
+        Assert.Equal(heap.Parameters.TakeLast(2), range.Operands);
+        var grow = Assert.Single(CallsOf(heap), x => FunctionsOf(ir, c, "reserve").Contains(x.Callee!));
+        Assert.Equal(heap.Parameters.TakeLast(2), grow.Operands.TakeLast(2));
 
         // SPEC 22.5.1 (R8-W1a): each buffer's reserve is a body with a CallerLocation row, so the user's call passes its own location.
         var reserves = FunctionsOf(ir, c, "reserve").ToArray();
@@ -189,14 +197,10 @@ public sealed partial class FunctionCodegenTest
         var cut = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "fxRun"))), x => x.Callee == limit);
         Assert.Equal($"call void @(ptr %, ptr %, i64 4, ptr @, i64 {Located(Buffers, "(window@move).limit(4)")})", cut.Shape);
         Assert.Single(FunctionsOf(ir, c, "status"));
-
-        var validate = ir.Function(Routines(CompilerFunctionKind.TextValidateUtf8)[0]);
-        var check = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwCheck"))), x => x.Callee == validate);
-        Assert.Equal("alloca", check.Operands[1].Opcode); // The Copy Slice's own slot, which the routine owns from the call on (R5-M89).
     }
 
-    // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128): an erased Text.fixed Item's adapter measures its capacity from its entry's own input Type, the
-    // target Function Type's, and calls the routine with its own parameters.
+    // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128, R8-W1c): an erased Text.fixed Item's adapter measures its capacity from its entry's own input
+    // Type, the target Function Type's: it calls that Type's body instance, [4 of u8]'s as itFixed's direct call, with its own parameters.
     [Fact]
     public void AnErasedFixedItemMeasuresItsInput()
     {
@@ -205,8 +209,9 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "itErasedFixed"))).Entry);
         var call = Assert.Single(CallsOf(entry));
-        Assert.Same(ir.Function(Routines(CompilerFunctionKind.TextFixed)[0]), call.Callee);
-        Assert.Equal("call void @(ptr %, ptr %, i64 4)", call.Shape);
+        var bodies = FunctionsOf(ir, c, "fixed");
+        Assert.Same(Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "itFixed"))), x => bodies.Contains(x.Callee!)).Callee, call.Callee);
+        Assert.Equal("call void @(ptr %, ptr %)", call.Shape);
         Assert.Equal([entry.Parameters[1], entry.Parameters[2]], call.Operands); // Its result slot and its input, after the environment word.
     }
 
@@ -354,11 +359,11 @@ public sealed partial class FunctionCodegenTest
         var callers = ir.Functions.Where(x => CalleesOf(x).Contains(witness)).ToArray();
         Assert.True(callers.Length == 2 && callers.Contains(write) && callers.Contains(direct));
         Assert.Equal(
-            [ir.Function(Routines(CompilerFunctionKind.TextHeap)[0]), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
+            [ir.Function(LegacyRuntimeHelpers.FormatHeap.Name), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
                 ir.Function("__kimi_format_take_string"), ir.Function("__kimi_abort")],
             CalleesOf(show));
         Assert.Equal(
-            [ir.Function(Routines(CompilerFunctionKind.TextFixed)[0]), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
+            [ir.Function(LegacyRuntimeHelpers.FormatFixed.Name), ir.Function(Routines(CompilerFunctionKind.TextWriter)[0]), write,
                 ir.Function("__kimi_buffer_bytes")],
             CalleesOf(attempt));
         foreach (var (name, wrapper, shape) in new[]
@@ -416,7 +421,7 @@ public sealed partial class FunctionCodegenTest
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
-        Assert.DoesNotContain("@" + Routines(CompilerFunctionKind.TextFixed)[0] + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+        Assert.DoesNotContain("@" + LegacyRuntimeHelpers.FormatFixed.Name + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
     }
 
     // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
@@ -510,7 +515,7 @@ public sealed partial class FunctionCodegenTest
     // A function's calls of the formatting runtime's routines, their symbols in order.
     private static string[] FormattingCalls(GeneratedIr ir, Compilation c, string name)
     {
-        var routines = Enumerable.Range((int)CompilerFunctionKind.TextFixed, CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextFixed + 1)
+        var routines = Enumerable.Range((int)CompilerFunctionKind.TextWriter, CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextWriter + 1)
             .Select(static x => LegacyRuntimeHelpers.FormattingRow((CompilerFunctionKind)x)!.Abi.Name).Distinct().ToDictionary(ir.Function);
         return [.. CalleesOf(Assert.Single(FunctionsOf(ir, c, name))).Where(routines.ContainsKey).Select(x => routines[x])];
     }

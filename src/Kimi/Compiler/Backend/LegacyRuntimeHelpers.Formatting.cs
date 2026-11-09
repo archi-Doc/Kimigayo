@@ -100,7 +100,21 @@ internal static partial class LegacyRuntimeHelpers
             new("i32", "kind", AbiParameterKind.Context), RuntimeAbi.Location, RuntimeAbi.LocationLength,
         ]);
 
-    // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
+    /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): an owning interpolation's buffer over its stack region
+    /// (FormatBuffer, FunctionCodegen.Interpolation) and the conversions' fixed buffer. Text.fixed is a body; this is a second statement of
+    /// its construction, temporary until W2 (FormatBuffer) and W1c-2 (the conversions).</summary>
+    internal static readonly FunctionAbi FormatFixed = Slotted(
+        "__kimi_text_fixed",
+        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "capacity", AbiParameterKind.Context, 0)]);
+
+    /// <summary>The runtime's HeapBuffer of a capacity (<c>__kimi_text_heap</c>): an owning interpolation's heap buffer (FormatBuffer's
+    /// routine) and the conversions'. Text.heap is a body; this is a second statement of its construction and allocation, temporary
+    /// until W2 (FormatBuffer) and W1c-2 (the conversions).</summary>
+    internal static readonly FunctionAbi FormatHeap = Slotted(
+        "__kimi_text_heap",
+        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("i64", "capacity", LogicalIndex: 0), RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+
+    // One row per formatting compiler function, indexed from TextWriter; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 
     // The maximum encoded bytes of a value by its formatting kind (FormatKind's numbering), the runtime's own __kimi_format_bounds, which
@@ -115,10 +129,10 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
     /// <param name="kind">The compiler function.</param>
-    /// <returns>The kind's row, or null when the kind is outside the formatting family (TextFixed through BuiltinFormat).</returns>
+    /// <returns>The kind's row, or null when the kind is outside the formatting family (TextWriter through BuiltinFormat).</returns>
     internal static FormattingHelperRow? FormattingRow(CompilerFunctionKind kind)
     {
-        var index = (uint)(kind - CompilerFunctionKind.TextFixed);
+        var index = (uint)(kind - CompilerFunctionKind.TextWriter);
         if (index >= (uint)FormattingRows.Length)
         {
             return null;
@@ -227,7 +241,7 @@ internal static partial class LegacyRuntimeHelpers
     private static FormattingHelperRow[] CreateFormattingRows()
     {
         const HelperNeeds Runtime = HelperNeeds.FormattingRuntime;
-        var rows = new FormattingHelperRow[CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextFixed + 1];
+        var rows = new FormattingHelperRow[CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextWriter + 1];
         var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
         var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
         var owned = new AbiParameter("ptr", "self", AbiParameterKind.OwnedSlot, 0);
@@ -238,8 +252,6 @@ internal static partial class LegacyRuntimeHelpers
         var amount = new AbiParameter("i64", "amount", LogicalIndex: 1);
         // A capacity Context is the length of the fixed array its logical index's pointer parameter receives (SPEC 22.9.2's N).
         var capacity = new AbiParameter("i64", "capacity", AbiParameterKind.Context, 0);
-        Add(CompilerFunctionKind.TextFixed, Slotted("__kimi_text_fixed", [ret, reference, capacity]), Runtime);
-        Add(CompilerFunctionKind.TextHeap, Slotted("__kimi_text_heap", [ret, new("i64", "capacity", LogicalIndex: 0), location, length]), Runtime);
         Add(
             CompilerFunctionKind.TextWriter,
             Slotted("__kimi_text_writer", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)]),
@@ -255,13 +267,10 @@ internal static partial class LegacyRuntimeHelpers
                 "__kimi_text_try_format",
                 [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity with { LogicalIndex = 1 }, builtin, location, length]),
             Runtime);
-        Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
-        Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
-        Add(CompilerFunctionKind.TextValidateUtf8, Slotted("__kimi_text_validate_utf8", [ret, owned]), Runtime);
         Add(CompilerFunctionKind.WriteLineUtf8, new("__kimi_write_line_utf8", "void", [owned, location, length]), Runtime);
         return rows;
 
-        void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextFixed] = new(kind, abi, needs);
+        void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextWriter] = new(kind, abi, needs);
     }
 
     // The buffer and formatting runtimes, then the floating-point formatting and Ryu, joined once and expanded by LlvmModuleText's
@@ -277,14 +286,14 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        // A routine the erased writer's kept runtime defines is not this text's; the row-less built-in write is.
-        var symbols = new HashSet<string>(StringComparer.Ordinal) { WriteBuiltin.Name };
+        // A routine the erased writer's kept runtime defines is not this text's; the row-less built-in write, fixed and heap buffers are.
+        var symbols = new HashSet<string>(StringComparer.Ordinal) { WriteBuiltin.Name, FormatFixed.Name, FormatHeap.Name };
         foreach (var kept in LlvmModuleText.ErasedWriterDefinitions)
         {
             symbols.Add(kept.Name);
         }
 
-        var definitions = new List<FunctionAbi>(FormattingRows.Length + 1) { WriteBuiltin };
+        var definitions = new List<FunctionAbi>(FormattingRows.Length + 3) { WriteBuiltin, FormatFixed, FormatHeap };
         foreach (var row in FormattingRows)
         {
             if (symbols.Add(row.Abi.Name))

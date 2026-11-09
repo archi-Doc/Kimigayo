@@ -122,7 +122,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.None,
             LayoutNeed.None,
             IntrinsicWriter.Buffer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextHeap)!.Abi),
+            LegacyRuntimeHelpers.FormatHeap),
         new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
         new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);

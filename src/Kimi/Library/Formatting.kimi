@@ -1,5 +1,5 @@
-// UTF-8 formatting declarations; physical operations are compiler implementations. The compiler constructs these
-// records (Text.fixed, Text.heap, reserve, limit, Text.writer) with each raw Field's storage where its Origin states
+// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation; the
+// buffers, windows and the other Text operations are bodies here, each raw Field's storage where its Origin states
 // (SPEC 5.7).
 public struct BufferFull
     Self is Copy
@@ -187,6 +187,16 @@ public group Text
         var validated: isize
         let loan: Loan<uniq/u8 during source>
 
+        /// An empty buffer of capacity `capacity` over the bytes at `data`. The caller's obligations, which the signature
+        /// cannot state: `data` addresses `capacity` initialized bytes in what `source` covers, with write authority
+        /// (SPEC 5.2.1, 22.9.2).
+        internal init(data: raw/u8 during source, capacity: isize)
+            self.data = data
+            self.capacity = capacity
+            self.length = 0
+            self.validated = 0
+            self.loan = Loan<uniq/u8 during source>.init()
+
         /// The committed bytes.
         public func bytes(self: ref/Self) -> Slice<u8>
             unsafe => return Raw.slice(self.data, self.length)
@@ -232,7 +242,15 @@ public group Text
         public var length: isize
             private set
         var validated: isize
-        drop => Text.release(self.data)
+        drop
+            unsafe => Raw.release(self.data)
+
+        /// An empty buffer without an allocation (SPEC 22.9.2).
+        internal init()
+            self.data = null
+            self.capacity = 0
+            self.length = 0
+            self.validated = 0
 
         /// The committed bytes.
         public func bytes(self: ref/Self) -> Slice<u8>
@@ -308,6 +326,31 @@ public group Text
             get() -> isize => self.value.length
         public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value
+
+    /// A buffer over the initialized array: length zero, capacity `N` (SPEC 22.9.2).
+    public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
+        return Text.FixedBuffer.init(destination@follow@raw@raw/u8, destination.length)
+
+    /// A buffer of length zero and capacity `capacity`; zero allocates nothing (SPEC 22.9.2).
+    ///
+    /// - abort: `capacity` is negative, or the allocation fails.
+    public func heap(capacity: isize) -> HeapBuffer
+        if capacity < 0 => Storage.argumentOutOfRange()
+        var buffer = Text.HeapBuffer.init()
+        // An empty buffer grows to exactly `capacity` (SPEC 22.9.4), its one allocation.
+        if capacity != 0 => _ = (buffer@uniq).reserve(capacity)
+        return buffer@move
+
+    /// Views the string's bytes, which are valid UTF-8 (SPEC 3.1.2, 22.9.2).
+    public func utf8(text: ref/string) -> Utf8Slice
+        let repr = text@follow@raw@raw/Storage.StringRepr
+        unsafe => return Text.Utf8Slice.init(Raw.slice((*repr).data, (*repr).length))
+
+    /// Validates `bytes` once and views them (SPEC 22.9.2, 22.9.3).
+    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>
+        unsafe
+            if not Text.validUtf8((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
+        return .Ok(Text.Utf8Slice.init(bytes))
 
     /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a
     /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. A bound

@@ -62,8 +62,7 @@ internal sealed partial class FunctionCodegen
         this.module.Request(HelperNeeds.FormattingRuntime);
         if (call.Place is { Root: >= 0, Projection: 0 } && this.slots[call.Place.Root] is { Home: Home.Region, Bytes: var size })
         {
-            var region = LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextFixed)!.Abi;
-            _ = this.WriteCall(region, [buffer, new('r', call.Place.Root), new('\0', size)]);
+            _ = this.WriteCall(LegacyRuntimeHelpers.FormatFixed, [buffer, new('r', call.Place.Root), new('\0', size)]);
         }
         else if (this.Location(call.Source, out var site))
         {
