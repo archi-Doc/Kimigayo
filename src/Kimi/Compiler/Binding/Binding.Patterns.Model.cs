@@ -52,7 +52,8 @@ public enum PatternLiteralKind : byte
 }
 
 /// <summary>A Literal Pattern's constant (SPEC 14.8.1). Bits is an Integer's value in its Type's N-bit sign-extended form, the one
-/// encoding of an Integer constant (ScalarTypes.TryLiteral, as Folded), a Boolean's 0 or 1, or a Character's scalar value.</summary>
+/// encoding of an Integer constant (Binding.TryIntegerLiteral, as Folded; a generic literal's value, every instance's payload), a
+/// Boolean's 0 or 1, or a Character's scalar value.</summary>
 public readonly record struct PatternLiteral(PatternLiteralKind Kind, Int128 Bits = default, string? Text = null);
 
 /// <summary>A preorder position; direct children are walked by advancing to each child's End. A position selects the referent of
