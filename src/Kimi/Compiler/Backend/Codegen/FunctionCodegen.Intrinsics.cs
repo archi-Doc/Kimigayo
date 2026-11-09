@@ -93,16 +93,11 @@ internal sealed partial class FunctionCodegen
 
     // A legacy row's routine (DECISIONS R5-M116, R5-M128), the one path its direct call, its Item's Value call and its
     // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
-    // (FunctionCodegen.Formatting); null for any other row, and after a record at the source.
+    // (FunctionCodegen.Formatting); null after a record at the source.
     private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
-        return row.Writer switch
-        {
-            LegacyWriter.Routine => row.Routine,
-            LegacyWriter.Formatting => this.Formatting(row, target, source, out given),
-            _ => null,
-        };
+        return row.Writer == LegacyWriter.Formatting ? this.Formatting(row, target, source, out given) : row.Routine;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
