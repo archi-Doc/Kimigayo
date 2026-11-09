@@ -57,7 +57,7 @@ public sealed partial class MirEffectsTest
         }
 
         Assert.Equal([AppendAllDropsItsEmptiedSource], outside);
-        Assert.Equal(30, bodies);
+        Assert.Equal(33, bodies);
 
         void Check(string name, BindingSymbol operation, MirBody body)
         {

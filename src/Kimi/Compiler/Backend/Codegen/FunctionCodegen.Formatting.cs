@@ -103,9 +103,10 @@ internal sealed partial class FunctionCodegen
     // SPEC 22.9.2, 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer's call, its Item's Value call and its adapter's entry:
     // P1d's TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs
-    // itself (a body-less compiler function, so the call carries no target), else the function of W's reserve witness, the call's Body target,
-    // whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract: Binding admits no virtual reserve
-    // witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves Unsupported there). Null after a record.
+    // itself (the collector takes no target for them until WriterKind goes, InstanceCollector.Edges), else the function of W's reserve
+    // witness, the call's Body target, whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract:
+    // Binding admits no virtual reserve witness (a virtual function's receiver is objref/Self or objuniq/Self, which Binding rejects or leaves
+    // Unsupported there). Null after a record.
     private FunctionAbi? Writer(IntrinsicRow row, BoundType? destination, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -146,6 +147,19 @@ internal sealed partial class FunctionCodegen
         }
 
         this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a user Writer's reserve witness (K 4.5 row 6).
+        return null;
+    }
+
+    // The Type below the reference layer of a Type in the item's instance (TyCtxt.Layer, as the collector reads it); null, with
+    // InternalInvariant_Kd at the body, for a Type with no reference layer.
+    private BoundType? ReferencedType(BoundType? reference)
+    {
+        if (TyCtxt.Layer(reference, out var referent, out _) == HirPlaceKind.Deref)
+        {
+            return referent;
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The validator checked the input against the declaration.
         return null;
     }
 

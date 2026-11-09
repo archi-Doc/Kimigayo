@@ -177,6 +177,58 @@ public class Utf8BufferTest
     public void AllocationAndReleaseCosts(string name, string source, int allocations, int bytes)
         => NativeAllocationAudit.WriteFixture("Utf8BufferCost" + name, source, allocations, allocations, bytes);
 
+    // SPEC 22.9.3, LIBRARY 4.5 (R8-W1a): a failed intoString destroys the consumed buffer: its one allocation is released once, by the
+    // body's Raw.release at the caller's location, and the Err is observed.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void FailedIntoStringReleasesTheBufferOnce()
+    {
+        const string Source = """
+            func fill(buffer: uniq/Text.HeapBuffer) -> Result<(), BufferFull>
+                var window = try buffer.reserve(1)
+                try (window@uniq).push(0xFF)
+                _ = (window@move).commit()
+                return .Ok(())
+            var buffer = Text.heap(16)
+            match fill(buffer@uniq)@move
+                .Ok(_) => ()
+                .Err(_) => $abort("full")
+            match (buffer@move).intoString()@move
+                .Ok(_) => Console.writeLine("valid")
+                .Err(_) => Console.writeLine("invalid")
+            """;
+        NativeAllocationAudit.WriteFixture("Utf8BufferCostFailedTransfer", Source, 1, 1, 16, stdout: "invalid\n");
+    }
+
+    // SPEC 22.9.4 (R8-W1a, ending R5-M146's buffer half): a generic BufferWriter's reserve, called and taken as an Item, runs FixedBuffer's
+    // body (BufferFull exactly when the unused capacity is too small) and HeapBuffer's (growth to max(length + minimum, 2 * capacity)).
+    [Fact]
+    public void GenericReserveRunsTheBufferBodies()
+    {
+        const string Source = """
+            func room<W>(w: uniq/W, minimum: isize) -> bool
+                W is BufferWriter
+                match w.reserve(minimum)
+                    .Ok(_) => return true
+                    .Err(_) => return false
+            func roomByItem<W>(w: uniq/W, minimum: isize) -> bool
+                W is BufferWriter
+                let reserve = W.reserve
+                match reserve(w, minimum)
+                    .Ok(_) => return true
+                    .Err(_) => return false
+            var storage = [4 of 0@u8]
+            var fixed = Text.fixed(storage@uniq)
+            require room(fixed@uniq, 4) and not room(fixed@uniq, 5) else => $abort("fixed call")
+            require roomByItem(fixed@uniq, 4) and not roomByItem(fixed@uniq, 5) else => $abort("fixed item")
+            var heap = Text.heap(2)
+            require room(heap@uniq, 3) and heap.capacity == 4 else => $abort("heap call")
+            require roomByItem(heap@uniq, 9) and heap.capacity == 9 else => $abort("heap item")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("Utf8BufferGenericReserve", Source, "ok\n");
+    }
+
     [Theory]
     [InlineData("Heap", "Text.heap(-1)", "Hello.kimi:1:1")]
     [InlineData("Reserve", "var buffer = Text.heap(0)\n(buffer@uniq).reserve(-1)", "Hello.kimi:2:1")]

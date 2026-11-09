@@ -8,6 +8,11 @@
          64 MB gen0 budget per heap instead of the 200 MB default, under which the heap balloons and every test slows. -->
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
+    <!-- One code tier for every measurement (G650): a cold Bind allocates 75-85 KB more in tier-0 code than in optimized code, and a
+         tier-up between two runs of a cold series moved the series across its bound. Without quick JIT, code without ReadyToRun
+         images (the compiler's and the tests') is compiled optimized at its first call and never recompiled; the framework's
+         precompiled code still tiers up, which tiering off prevented at the cost of suite time. -->
+    <TieredCompilationQuickJit>false</TieredCompilationQuickJit>
   </PropertyGroup>
 
   <ItemGroup>

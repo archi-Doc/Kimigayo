@@ -21,7 +21,8 @@
 // signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
 // operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
 // anchor, witness and Evaluated facts (SPEC 5.2.1 condition 3); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
-// their problems as Cause facts; and Work, the steps it took (A3 6.2).
+// their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
+// (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
 // - a raw pointer's addresses and own-step entries, the untracked rule and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
 // - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
@@ -32,6 +33,7 @@
 // - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
+// - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
 // (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader

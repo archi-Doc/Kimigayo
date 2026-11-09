@@ -392,6 +392,11 @@ internal group Storage
         internal var length: isize
         internal var releaseKind: u8
 
+        internal init(data: raw/u8, length: isize, releaseKind: u8)
+            self.data = data
+            self.length = length
+            self.releaseKind = releaseKind
+
     /// Grows the storage to at least `minimum` elements of `stride` bytes (SPEC 4.9.5, 4.9.8), one routine for every
     /// element Type, whose `data` accesses through `ArrayRepr<u8>` are punned ones (IMPL 21.1.3). A failure Aborts at
     /// the standard operation's caller location.

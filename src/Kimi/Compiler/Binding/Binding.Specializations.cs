@@ -207,7 +207,7 @@ public sealed partial class Binding
             // Do not accept their syntax by merely erasing the generic header. Written binder names
             // are inherited by CompleteImplementationOrigins (SPEC 8.13.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.13.1).
-            if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
+            if (function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;

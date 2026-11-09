@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 //   requirements (ContractWitness), which PrepareContracts fills.
 // - Outputs: a row (LibraryWitnessGroup); the witness, the group's one function named as the requirement, explicit specializations aside;
 //   the receiver a group's functions state (WitnessReceiver); the requirement call at the witness (InstantiateLibraryWitness); the
-//   arguments TyCtxt.LibraryWitness interns.
+//   arguments TyCtxt.LibraryInstance interns.
 // - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row proves its conformance
 //   (ResolveConformance) and selects its requirements (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
 // - Prohibitions: no second statement of which Contract a built-in Type conforms to through a group; a receiver's Type (WitnessReceiver) and
@@ -32,15 +32,7 @@ public sealed partial class Binding
 {
     // A row: the group, and the generic arguments its functions take at the Self: TypeArgument for the parameter TypeParameter and, when
     // LengthParameter names a parameter, the Self's length; a row of neither has count 0.
-    internal readonly record struct LibraryWitnessGroup(WitnessMembers Members, string? TypeParameter, BoundType? TypeArgument, string? LengthParameter)
-    {
-        // Whether Witnesses answers false for the row, A4's Limit: the group's functions are generic, and that answer, a target and a declaring
-        // Type, has no place for their arguments, so A4 would read the body at abstract `E`, `N` or `I` and decide an effect of a valid program.
-        // The Limit is a located Unsupported_Kd where a default's copy calls the requirement on a closed Self under a confined obligation
-        // (MirEffectsTest). A row of no parameter has its body read.
-        [Transitional("R7", Reason = "R7-P5: Witnesses answers a witness's instance with its Types (A-12's read of the view, else R7), and this goes.")]
-        internal bool EffectsLimit => this.TypeParameter is not null;
-    }
+    internal readonly record struct LibraryWitnessGroup(WitnessMembers Members, string? TypeParameter, BoundType? TypeArgument, string? LengthParameter);
 
     // SPEC 22.1, 4.6.1, 8.7, 13.4.1: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's
     // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position and string's two
@@ -57,7 +49,7 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // Rents a group function's generic arguments at the Self, at their slots and null elsewhere (the materializer, TyCtxt.LibraryWitness
+    // Rents a group function's generic arguments at the Self, at their slots and null elsewhere (the materializer, TyCtxt.LibraryInstance
     // and FixedArrayIteratorType).
     internal bool RentWitnessArguments(
         in LibraryWitnessGroup group, BindingSymbol witness, BoundType self, out BoundType?[] types, out BoundLength?[] lengths, out int count)

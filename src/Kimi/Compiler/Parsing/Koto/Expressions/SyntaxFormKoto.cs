@@ -31,7 +31,7 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
         : base(constructor.CodeContext, constructor.SignatureSpan)
     {
         this.kind = KotoKind.ConstructorReference;
-        this.prefix = "base";
+        this.prefix = TokenKind.Base.ToText();
         this.separator = ", ";
         this.suffix = string.Empty;
         this.children = [];
@@ -40,10 +40,16 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
     /// <inheritdoc/>
     public override KotoKind Akind => this.kind;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => this.kind == KotoKind.RootName && this.children.Length == 1 ? 1 : 0;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.children[0];
+
     /// <summary>Gets the ordered operands without allocating an iterator.</summary>
     public ReadOnlySpan<Koto> Operands => this.children;
 
-    internal bool IsMutablePattern => this.kind == KotoKind.BindingPattern && this.prefix == "var ";
+    internal bool IsMutablePattern => this.kind == KotoKind.BindingPattern && this.prefix == TokenKind.Var.ToText();
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -57,12 +63,20 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
             return;
         }
 
+        // A keyword prefix (let, var, associate, base, init, _) or separator (for) is a table spelling, set off by spaces.
+        var space = TokenHelper.GetKeywordOrIdentifierKind(this.separator) != TokenKind.Identifier ? " " : string.Empty;
         builder.Append(this.prefix);
         for (var i = 0; i < this.children.Length; i++)
         {
             if (i > 0)
             {
+                builder.Append(space);
                 builder.Append(this.separator);
+                builder.Append(space);
+            }
+            else if (TokenHelper.GetKeywordOrIdentifierKind(this.prefix) != TokenKind.Identifier)
+            {
+                builder.Append(' ');
             }
 
             this.children[i].WriteTo(ref builder);

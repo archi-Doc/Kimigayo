@@ -19,6 +19,7 @@ namespace Kimi.Compiler.Parsing;
 public class BinaryKoto : ExpressionKoto
 {
     private static readonly string[] InfixTexts = new string[MaxKind];
+    private static readonly string NegatedIsText = " " + TokenKind.Is.ToText() + " " + TokenKind.Not.ToText() + " ";
 
     private readonly KotoKind kind;
 
@@ -37,15 +38,15 @@ public class BinaryKoto : ExpressionKoto
         Set(KotoKind.LessThanEquals, " <= ");
         Set(KotoKind.GreaterThan, " > ");
         Set(KotoKind.GreaterThanEquals, " >= ");
-        Set(KotoKind.As, " " + Constants.AsKeyword + " ");
-        Set(KotoKind.Is, " " + Constants.IsKeyword + " ");
+        Set(KotoKind.As, " " + TokenKind.As.ToText() + " ");
+        Set(KotoKind.Is, " " + TokenKind.Is.ToText() + " ");
         Set(KotoKind.EqualsEquals, " == ");
         Set(KotoKind.ExclamationEquals, " != ");
         Set(KotoKind.Ampersand, " & ");
         Set(KotoKind.Caret, " ^ ");
         Set(KotoKind.Bar, " | ");
-        Set(KotoKind.And, " " + Constants.AndKeyword + " ");
-        Set(KotoKind.Or, " " + Constants.OrKeyword + " ");
+        Set(KotoKind.And, " " + TokenKind.And.ToText() + " ");
+        Set(KotoKind.Or, " " + TokenKind.Or.ToText() + " ");
         Set(KotoKind.Equals, " = ");
         Set(KotoKind.PlusEquals, " += ");
         Set(KotoKind.MinusEquals, " -= ");
@@ -97,7 +98,7 @@ public class BinaryKoto : ExpressionKoto
     public Koto Right { get; private set; }
 
     /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
-    public string InfixText => this is IsKoto { IsNegated: true } ? " is not " : InfixTexts[(int)this.Akind] ?? string.Empty;
+    public string InfixText => this is IsKoto { IsNegated: true } ? NegatedIsText : InfixTexts[(int)this.Akind] ?? string.Empty;
 
     [Transitional("R7", Reason = "Semantic forwarding into HIR plan rows; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundArithmetic? ArithmeticStorage
@@ -145,6 +146,12 @@ public class BinaryKoto : ExpressionKoto
 /// <summary>Represents a member-access expression.</summary>
 public sealed class MemberAccessKoto : BinaryKoto
 {
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Left;
+
     /// <summary>Initializes a new instance of the <see cref="MemberAccessKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
@@ -332,13 +339,16 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     {
         if (this.IsAssociatedConstraint)
         {
-            builder.Append("associate ");
+            builder.Append(TokenKind.Associate.ToText());
+            builder.Append(' ');
         }
 
         base.WriteTo(ref builder);
         if (this.FormationType is { } formation)
         {
-            builder.Append(" for ");
+            builder.Append(' ');
+            builder.Append(TokenKind.For.ToText());
+            builder.Append(' ');
             formation.WriteTo(ref builder);
         }
 
