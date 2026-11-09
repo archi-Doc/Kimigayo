@@ -16,6 +16,12 @@ public sealed class OriginApplicationKoto : ApplicationKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.OriginApplication;
 
+    /// <inheritdoc/>
+    internal override int TypeComponentCount => 1;
+
+    /// <inheritdoc/>
+    internal override Koto TypeComponent(int index) => this.Type;
+
     /// <summary>Gets the associated-Type name or projection.</summary>
     public Koto Type => this.Target;
 

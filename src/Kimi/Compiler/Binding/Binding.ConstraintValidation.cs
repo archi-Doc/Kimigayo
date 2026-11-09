@@ -380,7 +380,7 @@ public sealed partial class Binding
                 changed |= previous != owner.BindingState;
             }
 
-            if (this.nodes[i] is IsKoto { BindingState: BindingState.Invalid, BoundConstraint: { } failedConstraint, Parent: DeclarationContainerKoto implementation } failed && implementation is StructKoto or EnumKoto && IsSelfConstraint(failed) && this.InvalidConstraintRequirement(failedConstraint))
+            if (this.nodes[i] is IsKoto { BindingState: BindingState.Invalid, BoundConstraint: { } failedConstraint, Parent: DeclarationContainerKoto implementation } failed && DeclaresConformance(failed) && this.InvalidConstraintRequirement(failedConstraint))
             {
                 // An invalid required declaration invalidates the implementing Type.
                 // A path-local witness failure must preserve independent conformances.
