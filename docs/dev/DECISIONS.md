@@ -385,6 +385,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     it opens.
   - Rejected: recording without a closing lane (the growth above); a cap that drops findings (a pre-existing defect dropped from PLAN is
     lost); one cleanup stage at R7's exit (the rows outgrow PLAN's limit first).
+- **Q18 R7's work is spread over the three sessions** (2026-11-09, owner; [WORKFLOW](WORKFLOW.md) "Windows"; plan revision 50; the
+  Coordinator's proposal).
+  - The owner (verbatim): 「Adopt all three」, to the Coordinator's three measures.
+  - Reason: R7's remaining rows (phases C and D) sit on the Front's Binding files, so the Front's two implementer seats and its one
+    acceptance mover per window serialized R7 while R8 and R9 were nearly done (W-120 to W-123 each landed one Front unit).
+  - Rule 1 (lending): an R7 unit the Front designed and design-reviewed may be implemented by a Middle or Back implementer in Binding's
+    files; the Front keeps the files, reviews the implementation and gives its consent on a C row.
+  - Rule 2 (windows): a window may take two acceptance movers of one area when they share no file and each names its expected moves.
+  - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
+  - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
+    and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
 
 ## Code rules (2026-10-12)
 
