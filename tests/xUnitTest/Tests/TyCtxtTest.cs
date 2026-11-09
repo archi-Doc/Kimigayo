@@ -1553,6 +1553,28 @@ public sealed partial class TyCtxtTest
         }
     }
 
+    // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
+    // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
+    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target).
+    [Theory]
+    [InlineData("i32", true)]
+    [InlineData("isize", true)]
+    [InlineData("u8", false)]
+    public void AWitnessOfTheTableIsGivenItsInstance(string name, bool specialized)
+    {
+        var c = MinimalEmissionTest.Analyze("let x = 1\n");
+        var self = BoundType.Primitives[name];
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Position)!;
+        var targets = new List<(BindingSymbol Target, Subst Instance)>();
+        Assert.True(c.Types.Witnesses(contract.Contract!.OwnRequirement()!, self, contract, null, null, targets));
+        var (target, instance) = Assert.Single(targets);
+        Assert.Equal([self], instance.Types);
+        var selected = c.Types.Implementation(target, instance, 0)!;
+        Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
+        Assert.Equal(specialized, !ReferenceEquals(selected, target));
+        Assert.Null(c.Types.Implementation(target, instance, 1));
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).

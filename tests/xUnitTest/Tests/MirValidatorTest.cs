@@ -1942,8 +1942,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
-    // A PrimitiveInteger T's compilation and the Types T, Option<T>, ref/T and Wrapping<T> of its parameters.
-    // Its parameters' Types (0-5), then Wrapping over Option<T>, a non-abstract Type with an abstract part (6), and raw/T (7).
+    // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,
+    // Option<T>, ref/T, Wrapping<T>, U.(HasItem).Item and Wrapping<U.(HasItem).Item> (0-5), then Wrapping over Option<T>, a non-abstract
+    // Type with an abstract part (6), and raw/T (7).
     private static (Compilation Compilation, BoundType[] Types) GenericIntegers()
     {
         var c = MirBuildTest.Compile("contract HasItem\n    associate Item\n" +

@@ -35,13 +35,13 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit, a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a
-    // Location, a verification site's number in the test catalog (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery
-    // gives every verification of the accepted test build, so an unnumbered site is a broken contract; and a string constant at ref/string,
-    // its record's address (LlvmConstantPool.InternRecord). Any other constant read as a value, a String or TypeToken one (its writer reads
-    // it) or an Integer one of a Type without integer arithmetic, char or raw pointer (Binding fits literals), is a broken contract too,
-    // recorded at the body's subject; false after it (DECISIONS R5-M146).
+    // A constant of a covered kind: Bool (stored 0 or 1), Integer of a Type of MIR's family in the instance (MirTypes.HoldsIntegerConstant:
+    // an integer or char Type, or a raw pointer's null, SPEC 5.1), Float (its IEEE bits), Unit, a function item (zero-sized: a Function Item
+    // stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102) and a Location, a verification site's number in the test catalog
+    // (TestCatalog.SiteOf, SPEC 20.6.2; DECISIONS R5-M136), which discovery gives every verification of the accepted test build, so an
+    // unnumbered site is a broken contract; and a string constant at ref/string, its record's address (LlvmConstantPool.InternRecord). Any
+    // other constant read as a value, a String or TypeToken one (its writer reads it) or an Integer one of a Type outside the family in the
+    // instance (Binding fits literals), is a broken contract too, recorded at the body's subject; false after it (DECISIONS R5-M146).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
@@ -88,7 +88,7 @@ internal sealed partial class FunctionCodegen
             return true;
         }
 
-        if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
+        if (constant.Kind == MirConstKind.Integer && !MirTypes.HoldsIntegerConstant(type))
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default);
             return false;
