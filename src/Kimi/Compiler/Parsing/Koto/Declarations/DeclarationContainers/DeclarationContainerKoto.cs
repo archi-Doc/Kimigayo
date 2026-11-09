@@ -700,69 +700,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (token.Kind == TokenKind.Associate)
         {
-            // An associate declaration takes no attributes (SPEC 6.7).
-            Parser.ReportPendingAttributes(ref reader);
-            reader.Advance();
-            if (Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
-            {
-                var associated = Parser.ParseAssociatedConstraint(ref reader);
-                if (associated is not null)
-                {
-                    associated.IsAssociatedConstraint = true;
-                    Parser.ValidateAssociatedParameters(ref reader, associated.Left);
-                    if (reader.TryConsume(TokenKind.For))
-                    {
-                        associated.FormationType = Parser.ParseType(ref reader, Parser.TypeContext.Type);
-                        associated.FormationType.Parent = associated;
-                        associated.Span = SourceSpan.FromBounds(associated.Span.Start, associated.FormationType.Span.End);
-                    }
-
-                    Parser.ParseAttachedOriginBlock(ref reader, associated);
-                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
-                    if (this is ContractKoto)
-                    {
-                        this.AddTypeConstraint(associated);
-                    }
-                    else
-                    {
-                        this.AddLast(associated);
-                    }
-                }
-            }
-            else
-            {
-                if (this is not ContractKoto)
-                {
-                    // Only a Contract declares an associated Type requirement; the declaration is skipped with its line.
-                    reader.Unexpected(SyntaxForm.AssociatedTypeDeclaration, token.Span);
-                    Parser.SkipDeclarationLine(ref reader);
-                    return true;
-                }
-
-                var name = reader.CurrentToken;
-                if (!name.Kind.IsIdentifierOrContextualKeyword())
-                {
-                    Parser.OmitDeclaration(ref reader, reader.Expect(SyntaxForm.Name));
-                    return true;
-                }
-
-                reader.Advance();
-                if (!IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
-                {
-                    Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError); // The invalid identifier is reported once.
-                }
-                else
-                {
-                    Koto head = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? Parser.ParseOriginApplication(ref reader, identifier) : identifier;
-                    Parser.ValidateAssociatedParameters(ref reader, head);
-                    var formation = reader.TryConsume(TokenKind.For) ? Parser.ParseType(ref reader, Parser.TypeContext.Type) : null;
-                    var associated = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, (formation ?? head).Span.End), KotoKind.AssociatedType, "associate ", formation is null ? [head] : [head, formation], separator: " for ");
-                    Parser.ParseAttachedOriginBlock(ref reader, associated);
-                    reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
-                    this.AddLast(associated);
-                }
-            }
-
+            Parser.ParseAssociatedTypeItem(ref reader, this, token);
             return true;
         }
 
