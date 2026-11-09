@@ -14,8 +14,8 @@ group DictionaryStorage
         public var free: isize
 
     // Slot invariant (SPEC 5.2): a live slot holds its placed Links, key and value; a free slot below `used` holds only
-    // its Links; the slots from `used` up to the capacity hold no value. Growth and compaction relocate whole slots,
-    // and a release needs no destruction of Links, whose Fields are Copy (SPEC 5.6).
+    // its Links; the slots from `used` up to the capacity hold no value. Growth and compaction relocate whole slots;
+    // a release needs no destruction of Links, which declare no `drop` and whose Fields are Copy (SPEC 5.6, 16.3.2).
     #Layout("C")
     struct Links
         public var previous: isize
@@ -176,12 +176,6 @@ group DictionaryStorage
             let slot = append(dictionary@follow@raw@raw/Handle, slotStride<K, V>())
             Raw.initialize(keyAt<K, V>(slot), key@move)
             Raw.initialize(valueAt<K, V>(slot), value@move)
-
-    // Literal construction checks before evaluating the corresponding value.
-    // The backend supplies the failure callback solely to retain the key's source location.
-    func requireAbsent(link: isize, duplicate: () -> ())
-        if link != 0
-            duplicate()
 
     unsafe func shrinkToFit(handle: raw/Handle, stride: isize)
         unsafe

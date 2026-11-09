@@ -272,7 +272,7 @@ internal sealed partial class InstanceCollector
             {
                 MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
                 _ when closed.Kind == BoundTypeKind.Dictionary =>
-                    this.Declared(program, item, subject, this.types.DictionaryStorage(LegacyRuntimeHelpers.Construction), null),
+                    this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.DictionaryStorageInitialize)!, null),
                 MirAggregateKind.Array when rvalue.Count > 0 =>
                     this.Declared(program, item, subject, this.types.Declaration(KimiDeclarationId.StorageGrowArray)!, null),
                 _ => -1,

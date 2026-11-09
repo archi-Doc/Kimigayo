@@ -1,23 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): the per-element helper records of the Dictionary and formatting runtime text, the element descriptor
-// of a stored collection value and the Dictionary helper (LegacyRuntimeHelpers.Dictionaries.cs),
-// the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs)
-// and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
+// DECISIONS R5-M16): the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses
+// (LegacyRuntimeHelpers.Formatting.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
 // the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
-// Input: helper records built from FunctionAbi, ValueLowering and StoredValue (drop routine name); the compiled ABIs of the
-// DictionaryStorage functions a Dictionary helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// Input: the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable
-// by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
-// collector (X4). The rows land in P1c-P2b: the Dictionary Drop row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the
-// element's drop glue) and its callee as a DictionaryCallee value: the generic function its helper calls over the entry Types
-// (clearEntries). DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding
-// declares for it; Construction (initialize) is the callee a Dictionary's construction runs.
-// Each formatting compiler function's row
+// by kind before any representation exists, which declares the kind's runtime needs for the instance collector (X4). Each formatting
+// compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI, whose capacity Context names by its logical index the parameter receiving the fixed array
 // it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
 // formatting witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
@@ -34,22 +27,18 @@
 // Must not hold module state, take syntax or MIR types, or a BoundType but a built-in formattable Type or a writer's
 // destination for its kind or bound (FormatKind, FormatBound, WriterKind), or use LINQ.
 
-#pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.
+#pragma warning disable SA1402 // The helper records are this component's request vocabulary.
 
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>The needs a legacy helper row declares (X4): runtime text its module must hold and items its helpers call.</summary>
+/// <summary>The needs a legacy helper row declares (X4): runtime text its module must hold.</summary>
 [Flags]
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum HelperNeeds : byte
 {
     None = 0,
-
-    /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it
-    /// then calls only when an entry needs destruction (SPEC 4.9.7, 16.3.2).</summary>
-    ElementGlue = 2,
 
     /// <summary>The formatting runtime: the UTF-8 buffer, writer, formatting and floating-point routines and the memory
     /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
@@ -100,10 +89,6 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     internal HelperNeeds Needs => this.Writer == LegacyWriter.Formatting ? HelperNeeds.FormattingRuntime : HelperNeeds.None;
 }
 
-/// <summary>The element descriptor of a stored collection value (SPEC 4.5, 21.3.1): its representation.</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct StoredValue(ValueLowering Value);
-
 /// <summary>The legacy runtime helpers' rows and writers, and the routines its helpers share.</summary>
 [Transitional("R8", Reason = Removal)]
 internal static partial class LegacyRuntimeHelpers
@@ -145,7 +130,7 @@ internal static partial class LegacyRuntimeHelpers
 
     // Code generation's expanded runtime texts (G350), one part beside each text's rows: the CLR initializes this class when a writer
     // (WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
-    // collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows) but no text; no other member reads them.
+    // collector reads the rows and ABIs (Row, IntrinsicRows) but no text; no other member reads them.
     private static partial class Texts
     {
         internal static readonly string StringComparisons = ExpandRuntime(

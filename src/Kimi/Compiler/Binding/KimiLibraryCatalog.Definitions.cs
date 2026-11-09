@@ -176,8 +176,11 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyDictionary, "destroyDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageReleaseDictionary, "releaseDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageArrayCapacity, "arrayCapacity", KimiLibraryContainer.Storage, SourceFunction: true, Row: None),
         new(KimiDeclarationId.DictionaryStorageCapacity, "capacity", SourceFunction: true, Owner: "DictionaryStorage", Row: None),
+        new(KimiDeclarationId.DictionaryStorageInitialize, "initialize", SourceFunction: true, Owner: "DictionaryStorage"), // SPEC 4.3: `[:]`'s target.
         // SPEC 22.5.1: the Kimigayo capacity decisions carry the standard operation's caller context to their failures.
         new(KimiDeclarationId.DictionaryStorageReserveEntries, "reserveEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),

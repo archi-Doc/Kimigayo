@@ -66,8 +66,7 @@ internal sealed partial class ModuleCodegen
     internal void Request(Needs need) => this.needs |= need;
 
     /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the formatting runtime with the memory declarations. The other needs name no part: the
-    /// element glue is an item, the collector's target.</summary>
+    /// row's needs to the frame's parts: the formatting runtime with the memory declarations.</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {

@@ -11151,6 +11151,8 @@ structure is recorded here by the unit that first implements it.
   clearLinks (no legacy text calls them).
   - Amended by R5-M164 (G9a): `Binding.DictionaryStorageCall(key, value)` builds only a dictionary literal's findEntry call; its
     callee parameter and the fail-closed arm for other callees went with their last caller, the old emitter (G7).
+  - Superseded in part by R8-M12 (R8-K1c): the F2c DictionaryStorage view (`KimiLibrary.DictionaryStorage`,
+    `TyCtxt.DictionaryStorage`) is deleted, its removal condition met; the catalog names those functions.
 - **R5-M29 `Layout.Of` placement and its result** (2026-10-18; plan P7b; under R5-M18 and R5-M19; its outcomes, record table and
   staged gap superseded by R5-M37) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
   with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither,
@@ -13434,7 +13436,9 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R8-M8 (2026-11-08, R8-K1a): the `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows; the Dictionary remainders are Kimigayo bodies in `Storage.kimi`.
   - Superseded in part by R8-M11 (2026-11-09, R8-K1b-2 and R8-K1b-3): placeEntry's `LegacyRow` item and its Place helper (placeEntry
     is a `DictionaryStorage` body), `dictionaryStorage`'s kernel and the P2a kernel table, and `DictionaryEntryLayout`; the Drop helper
-    stays until R8-K1c.
+    went at R8-K1c (R8-M12).
+  - Superseded in part by R8-M12 (R8-K1c): the Dictionary Drop row and `DictionaryCallee`; a Dictionary's glue targets
+    `destroyDictionary` or `releaseDictionary`.
 - **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, after C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの
   corpus O2 A/B を C8e・C8f・C9c のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する clearEntries とすること）を承認します。」) The
   departures R5-M124 records are confirmed: (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
@@ -16285,7 +16289,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: the glue writing the loop in the Backend (it keeps reading handle words); a `drop` declared in `Array.kimi` (changes the
     representation of glue); a Kimigayo element loop (O(n) over a cleanup-free `T` at O0, against SPEC 4.9.8); a MIR Field read in the builder
     (the builder would learn both representation structs); a library Property for `capacity` (a Binding change for no acceptance gain).
-  - Temporary: `{{__kimi_array_free}}` serves the Dictionary Drop helper alone until K1c; `__kimi_array_grow` and `{{__kimi_array_init}}` the
+  - Temporary: `{{__kimi_array_free}}` serves the Dictionary Drop helper alone until K1c, discharged at R8-K1c (R8-M12); `__kimi_array_grow` and `{{__kimi_array_init}}` the
     literal until A1d.
 - **R8-M6 The Array and fixed-array storage boundary are Kimigayo bodies; `Loan.init()`; a literal targets `growArray`** (2026-11-08; R8-A1d and R8-R1c, one unit; plan RP18, RP20, RQ9; on R8-M1, R8-M5)
   SPEC 4.8.4, 4.8.5, 4.9.6, 4.9.7, 5.2.1, 5.2.3, 5.7, 8.15.3, 15.3.5, 15.6.3, 22.2; IMPL 21.1.3.
@@ -16354,10 +16358,40 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Removed at R8-K1b-3** (behavior-preserving): the Place helper, `DictionaryEntryLayout.Of`, the Dictionary kernel and its table
     (`StorageKernelKind` and its row, input and writer), the `LegacyRow` item kind (`AdmitRow`) and `HelperNeeds.Memory`, which only
     the Place row declared (PLAN G640 closed). `MonoKind` 9 → 8, `LegacyWriter` 7 → 5, `DictionaryHelperKind` 2 → 1,
-    `[Transitional("R8")]` 23 → 17. Staged to R8-K1c with the Drop helper's one-row table: its `Storage` column and `Shape`'s key and
-    value (no reader), `StoredValue` (a one-field wrapper) and `DictionaryHelper.Key`/`.Value` (read only by the kept-helper match),
-    and `DictionaryCallee.Append` (no Backend reader; two tests read it through `KimiLibrary.DictionaryStorage`).
+    `[Transitional("R8")]` 23 → 17. Removed at R8-K1c (R8-M12) with the Drop helper's one-row table: its `Storage`
+    column, `Shape`'s key and value, `StoredValue`, `DictionaryHelper.Key`/`.Value` and `DictionaryCallee.Append`.
   - **Counts:** `CompilerFunctionKind` 57 → 55, `KimiDeclarationId` 191 → 190, catalog 187 → 186.
+- **R8-M12 The Dictionary glue is a Kimigayo body; the DictionaryCallee view and the Dictionary Drop helper go** (Back, 2026-11-09;
+  R8-K1c; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation reviews 1 and 2 ACCEPT; on R8-M5 and R8-M11; supersedes in
+  part R5-M28 and R5-M124) SPEC 4.9.7, 5.6, 8.15.3, 16.3.2; IMPL 21.1.3.
+  - **Owner.** A collection's glue has one target, called with the glue's own parameters (R8-M5's form): an Array's
+    `Storage.destroyArray<E>`; a Dictionary's `Storage.destroyDictionary<K, V>` (the entries in reverse insertion order, each value
+    before its key, through `destroyDictionaryEntries`, then the release) when K or V may need a drop, else
+    `Storage.releaseDictionary`, which visits no entry. `InstanceCollector.Collection` is the one statement of a collection glue's
+    target, by `MirTypes.MayNeedDrop`, the rule the collector targets parts by. `DropGlueRow.Array` and `.Dictionary` are one row,
+    `Collection` (`FunctionCodegen.Glue`'s `CollectionGlue`).
+  - **SPEC 5.6 (the planning session's ruling).** `releaseDictionary` is no general release: it is reached only as the glue of a
+    Dictionary whose K and V need no drop. Destroying such an entry does nothing, so the entries' destruction (SPEC 4.9.7, 16.3) is
+    elided as if it ran before the release, and 5.6's condition for `Raw.release` holds: the reading R8-M5 gave `destroyValues<T>`
+    for a cleanup-free `T`. It covers Non-Copy leaves without cleanup (`uniq/T`, `UniqSlice`). The slots' Links meet 5.6 without
+    destruction, since their Fields are Copy (`DictionaryStorage.kimi`'s slot invariant); both bodies' safety lines state it.
+  - **One statement.** `DictionaryOwnedRemainder.drop` calls `destroyDictionary<K, V>(self.handle@raw)` (design review 1, B1;
+    `FixedOwnedRemainder.drop`'s form).
+  - **Names.** `[:]` targets `DictionaryStorage.initialize` and a literal's search calls `findEntry`, both by catalog id. The
+    `DictionaryCallee` view (`KimiLibrary.DictionaryStorage`, `TyCtxt.DictionaryStorage`; R5-M28's F2c view) is deleted, its removal
+    condition met; the catalog is the one name table for library functions the compiler names. The dead `requireAbsent` goes.
+  - **Deleted.** The Dictionary Drop helper (`LegacyRuntimeHelpers.Dictionaries.cs`, `ModuleCodegen.Dictionaries.cs`;
+    `DictionaryHelperKind`, `DictionaryHelperRow`, `DictionaryHelper`), `StoredValue`, `HelperNeeds.ElementGlue`,
+    `RuntimeAbi.ArrayFree` and the `{{__kimi_array_free}}` runtime text.
+  - **Moves.** None: no acceptance or record move (snapshot 0). IR: `__kimi_array_free` leaves every module's runtime text; a
+    Dictionary's glue calls a library instance; the remainder's drop gains one call level. MIR unchanged; native frees unchanged
+    (`DictionaryCostEmptyDestruction`: 0/0/0 through both bodies).
+  - **Counts:** `[Transitional("R8")]` 17 → 11; `DropGlueRow` 6 → 5; `KimiDeclarationId` 190 → 193 (+`StorageDestroyDictionary`,
+    `StorageReleaseDictionary`, `DictionaryStorageInitialize`), catalog 186 → 189; `HelperNeeds` 3 → 2; `IntrinsicId` and
+    `CompilerFunctionKind` unchanged.
+  - **Rejected:** one body always (an O(n) link walk at O0 and per-Type instances for cleanup-free entries); `clearEntries` as the
+    callee (a link reset before the release); a `needsDrop<T>()` intrinsic; a Backend helper reading the buffer word; a name table
+    beside the catalog.
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
   - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the identity premises of that scope make it comes first (`SubstituteIdentityPremises`, as Binding substitutes node Types), so the compared Type has one owner. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same identity premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
