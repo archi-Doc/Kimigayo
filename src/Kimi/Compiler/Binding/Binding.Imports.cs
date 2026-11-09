@@ -148,6 +148,7 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.5 stages 5 and 6 in the Type namespace: an opened target's direct members, never its formal parameters (18.2.1).
     private ResolvedPath ResolveImportedType(string name, BindingScope scope, Koto use, LookupRole role, int arity, int step)
     {
         var candidates = default(TypeCandidates);
@@ -162,9 +163,9 @@ public sealed partial class Binding
         {
             var alias = documentAliases[i];
             var target = this.AliasTarget(alias.Declaration!);
-            if (target is not null && target.Types.TryGetValue(name, out var candidate))
+            if (target is not null)
             {
-                this.AddTypeCandidates(ref candidates, candidate, scope, role, arity, alias);
+                this.AddTypeCandidates(ref candidates, MemberTypes(target, name), scope, role, arity, alias);
             }
         }
 
@@ -176,7 +177,7 @@ public sealed partial class Binding
         foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
             var target = this.DefaultAliasTarget(use, path);
-            this.AddTypeCandidates(ref candidates, target?.Types.GetValueOrDefault(name), scope, role, arity);
+            this.AddTypeCandidates(ref candidates, target is null ? null : MemberTypes(target, name), scope, role, arity);
         }
 
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);

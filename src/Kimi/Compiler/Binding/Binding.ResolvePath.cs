@@ -12,7 +12,9 @@ namespace Kimi.Compiler;
 // - Outputs: a ResolvedPath (how the path ended, the selected symbol, a stage stop's typed facts); its steps stand on nameSteps.
 // - Invariants: evaluation writes nothing on the use's nodes or in a table keyed by them, and reads no state a publication writes. It may
 //   force a declaration query (a base clause, an alias target), whose facts and records are that declaration's own. PublishPath alone
-//   writes, once. One path stands above a mark, but for an adaptation target, whose roles are compared (ResolveAdaptationTarget).
+//   writes, once. One path stands above a mark, but for an adaptation target, whose roles are compared (ResolveAdaptationTarget). A
+//   Container's members are read through MemberTypes (SPEC 9.6, 18.2.1): no path, `::` member step or import stage reaches a formal
+//   parameter, which only the scope walk finds.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
 public sealed partial class Binding
 {
@@ -419,7 +421,7 @@ public sealed partial class Binding
         var candidates = default(TypeCandidates);
         if (this.scopes.TryGetValue(left.Declaration, out var members))
         {
-            this.AddTypeCandidates(ref candidates, QualifiedTypeMember(members.Types.GetValueOrDefault(name)), scope, role, arity);
+            this.AddTypeCandidates(ref candidates, MemberTypes(members, name), scope, role, arity);
             if (candidates.Ambiguous)
             {
                 return new(PathEnd.Ambiguous, null, member);
@@ -467,7 +469,7 @@ public sealed partial class Binding
         if (syntax is MemberAccessKoto member && this.ResolveRootPath(member.Left, root, LookupRole.Any) is { Symbol: { } qualifier } &&
             this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName)
         {
-            this.AddTypeCandidates(ref candidates, members.Types.GetValueOrDefault(rightName), root, role, arity);
+            this.AddTypeCandidates(ref candidates, MemberTypes(members, rightName), root, role, arity);
             var selected = candidates.Ambiguous ? null : candidates.Match ?? candidates.First;
             this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier));
             if (candidates.Ambiguous)

@@ -225,6 +225,59 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static DiagnosticCode[] LoanCodes => [DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticCode.CallReservationConflict_Kd,
         DiagnosticCode.CallActivationConflict_Kd, DiagnosticCode.PlacementActivationConflict_Kd];
 
+    // SPEC 4.8.1, 15.6 (G597): a view's storage is its receiver's, so the Loans its elements hold end with the view's last use: a fixed
+    // array, an Array and a Slice of references, each read through a whole view and a prefix view, and written while an element is live.
+    [Fact]
+    public void AViewHoldsItsReceiversElementLoans()
+        => Assert.Equal(
+            ["fixedWrite: x = 5", "arrayWrite: x = 5", "sliceWrite: x = 5"],
+            Problems("""
+                func fixedRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: [2 of ref/i32] = [x@ref, y@ref]
+                    let s = arr[..]
+                    inspect(s[i])
+                func fixedWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: [2 of ref/i32] = [x@ref, y@ref]
+                    let s = arr[..1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                func arrayRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let s = arr[..]
+                    inspect(s[i])
+                func arrayWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let s = arr[..^1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                func sliceRead(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let t = arr[1..]
+                    let s = t[..]
+                    inspect(s[i])
+                func sliceWrite(i: isize)
+                    var x = 1
+                    var y = 2
+                    var arr: Array<ref/i32> = [x@ref, y@ref]
+                    let t = arr[1..]
+                    let s = t[..1]
+                    let e = s[i]
+                    x = 5
+                    inspect(e)
+                """));
+
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
     // disjoint.

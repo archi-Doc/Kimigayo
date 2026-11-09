@@ -33,8 +33,12 @@ public class DictionaryLiteralEmissionTest
             "Hello.kimi:4:" + column + ": abort KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key\n");
     }
 
-    [Fact]
-    public void StoredKeyIsTheEqualityReceiverBeforeValueAcquisition()
+    // SPEC 12.4.3: a later entry's key is compared with the stored keys, each stored key the receiver, before its value is evaluated; the
+    // first entry makes no equality call, as no key is inserted before it (PLAN G442 U1).
+    [Theory]
+    [InlineData("DictionaryLiteralEqualityOrder", "[Key.init(1, 1): value(), Key.init(2, 2): value()]", "value\nequals\nvalue\n")]
+    [InlineData("DictionaryLiteralFirstEntryEquality", "[Key.init(1, 1): value()]", "value\n")]
+    public void StoredKeyIsTheEqualityReceiverBeforeValueAcquisition(string name, string literal, string expected)
     {
         const string source = """
             struct Key
@@ -51,9 +55,20 @@ public class DictionaryLiteralEmissionTest
             func value() -> i32
                 Console.writeLine("value")
                 return 1
-            let entries = [Key.init(1, 1): value(), Key.init(2, 2): value()]
+
             """;
-        ScalarEmissionTest.EmitFixture("DictionaryLiteralEqualityOrder", source, "value\nequals\nvalue\n");
+        ScalarEmissionTest.EmitFixture(name, source + "let entries = " + literal, expected);
+    }
+
+    // SPEC 12.4.3 (PLAN G442 U1): MIR looks no first key up, so a one-entry literal reaches no findEntry, nor the key's equality through it;
+    // a second entry's lookup does.
+    [Theory]
+    [InlineData("let entries = [(1, 2): \"one\"]", false)]
+    [InlineData("let entries = [(1, 2): \"one\", (2, 3): \"two\"]", true)]
+    public void OnlyALaterEntryLooksItsKeyUp(string source, bool looked)
+    {
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
+        Assert.Equal(looked, Array.IndexOf(generated, sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!.Declaration) >= 0);
     }
 
     [Fact]
@@ -138,11 +153,11 @@ public class DictionaryLiteralEmissionTest
     [Fact]
     public void RebindingAndReloadKeepLiteralGenerationStable()
     {
-        const string source = "let entries = [(1, 2): \"ok\"]\nConsole.writeLine(entries[(1, 2)])";
+        const string source = "let entries = [(1, 2): \"ok\", (2, 3): \"two\"]\nConsole.writeLine(entries[(1, 2)])";
         var c = MinimalEmissionTest.Analyze(source);
 
         // The library reach of the literal's duplicate check in the checked set (SPEC 12.4.3; DECISIONS R4-M13a, R5-M27, R5-M124): MIR looks
-        // each key up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY).
+        // each key after the first up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY).
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!.Declaration, generated);
         var original = CompilationTestHelper.WriteIr(c);

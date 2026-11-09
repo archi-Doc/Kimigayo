@@ -91,6 +91,10 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
+    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
+
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
 
     // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
@@ -151,8 +155,10 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
 /// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
 /// otherwise, whose value-target pairs are <see cref="Count"/> entries of <see cref="MirBody.Cases"/> from <see cref="Start"/>, as a
 /// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
-/// <see cref="Place"/> a Call's destination or the dropped Place, and <see cref="CheckTarget"/> the block only the checks reach
-/// (-1: none). A new block's terminator is a Goto without a target until it is terminated.</summary>
+/// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
+/// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
+/// a whole temp it transfers into the construction (a Dictionary literal entry's placeEntry; PLAN G442). A new block's terminator is a
+/// Goto without a target until it is terminated.</summary>
 internal readonly record struct MirTerminator(
     MirTerminatorKind Kind,
     SourceInfo Source,
@@ -162,7 +168,8 @@ internal readonly record struct MirTerminator(
     MirPlace Place = default,
     int Start = 0,
     int Count = 0,
-    MirCallee Callee = default)
+    MirCallee Callee = default,
+    bool Places = false)
 {
     internal static MirTerminator Goto(int target, SourceInfo source, int check = -1) => new(MirTerminatorKind.Goto, source, target, check);
 
