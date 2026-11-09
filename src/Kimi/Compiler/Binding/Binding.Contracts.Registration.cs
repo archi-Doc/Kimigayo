@@ -87,10 +87,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.6.1 (G621's limit): a projection that found no associated Type before the conformance declarations registered and finds one
-    // now names an existing member; its declaration bound before the evidence registered, which is an analysis limit: a located
-    // Unsupported_Kd that stays unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps
-    // its missing-Type record, which VerifyEarlyReads may read again.
+    // SPEC 8.6.1, 8.5.2 (G621's limit): an unqualified projection over a declared Type that found no associated Type before the
+    // conformance declarations registered (its candidates come from the conformance table) and finds one now names an existing member;
+    // its conformance declaration bound before the table filled, which is an analysis limit: a located Unsupported_Kd that stays
+    // unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps its missing-Type
+    // record, which VerifyEarlyReads may read again. A qualified projection searches its Contract, so it finds an existing member before
+    // registration.
     private void VerifyEarlyProjections()
     {
         foreach (var (use, type, scope, name, qualifier) in this.earlyProjections)

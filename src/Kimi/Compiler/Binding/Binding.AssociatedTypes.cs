@@ -223,8 +223,9 @@ public sealed partial class Binding
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
         if (associated is null)
         {
-            // G621: before the conformance declarations register, a declared Type's conformances are not known yet; the read is judged
-            // again once they are (VerifyEarlyProjections).
+            // G621: before the conformance declarations register, an unqualified name over a declared Type has no candidates yet (they
+            // come from the conformance table; a qualified one searches its Contract); the read is judged again once they register
+            // (VerifyEarlyProjections).
             if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
             {
                 this.earlyProjections.Add((syntax, type, scope, name, qualifier));
