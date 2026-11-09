@@ -39,6 +39,7 @@ public partial class KimiLibraryShapeTest
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
         (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
+        (KimiDeclarationId.ConsoleWriteStdout, "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
         (KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()"),
         (KimiDeclarationId.Exchange, "public func exchange<T>(target: uniq/T ! with => value: T) -> T"),
@@ -52,7 +53,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter"),
         (KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format"),
         (KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format"),
-        (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
@@ -104,7 +104,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(177, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(178, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -402,6 +402,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
+    [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, Line(Library.Value.Library.GetSymbol(id)!.Declaration));
 

@@ -244,7 +244,6 @@ internal static partial class LegacyRuntimeHelpers
         var rows = new FormattingHelperRow[CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextWriter + 1];
         var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
         var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
-        var owned = new AbiParameter("ptr", "self", AbiParameterKind.OwnedSlot, 0);
         var value = new AbiParameter("ptr", "value", LogicalIndex: 0);
         var builtin = new AbiParameter("i32", "kind", AbiParameterKind.Context);
         var location = RuntimeAbi.Location;
@@ -267,7 +266,6 @@ internal static partial class LegacyRuntimeHelpers
                 "__kimi_text_try_format",
                 [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity with { LogicalIndex = 1 }, builtin, location, length]),
             Runtime);
-        Add(CompilerFunctionKind.WriteLineUtf8, new("__kimi_write_line_utf8", "void", [owned, location, length]), Runtime);
         return rows;
 
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextWriter] = new(kind, abi, needs);

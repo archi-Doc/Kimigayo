@@ -1,6 +1,6 @@
 // UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer (the erased adapter), Text.toString and Text.tryFormat
-// are compiler implementations (Text.kimi); the buffers, windows and the other Text operations are bodies here, each
-// raw Field's storage where its Origin states (SPEC 5.7).
+// are compiler implementations (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine of a
+// view are bodies here, each raw Field's storage where its Origin states (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -389,3 +389,15 @@ public group Text
                     if scalar < minimum or scalar > 1114111 => return false
                     if scalar >= 55296 and scalar < 57344 => return false
             return true
+
+// SPEC 22.7: the view overload of Console.writeLine; the string overload is a compiler function until W2.
+public group Console
+    /// Writes the view's bytes and one LF to standard output (SPEC 22.7).
+    ///
+    /// - abort: the host does not accept the bytes (`KIMI_E_STDOUT`); the output may be partial.
+    public func writeLine(text: Text.Utf8Slice)
+        let bytes = text.bytes()
+        var feed: u8 = 10
+        unsafe
+            Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
+            Console.writeStdout(feed@raw, 1)

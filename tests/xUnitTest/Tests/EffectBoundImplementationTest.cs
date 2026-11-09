@@ -144,7 +144,7 @@ public partial class EffectBoundImplementationTest
             var expected = kind switch
             {
                 CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
                 CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Unclassified,
                 _ => CompilerFunctionEffect.Inputs,
             };

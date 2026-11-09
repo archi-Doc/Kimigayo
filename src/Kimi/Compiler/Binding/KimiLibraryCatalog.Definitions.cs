@@ -26,7 +26,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.Copy, "Copy", Intrinsic: IntrinsicKind.Copy),
         new(KimiDeclarationId.Owned, "Owned", Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, "Callable", Intrinsic: IntrinsicKind.Callable),
-        new(KimiDeclarationId.WriteLine, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLine, Overload: 0),
+        new(KimiDeclarationId.WriteLine, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLine, Overload: 1),
+        new(KimiDeclarationId.ConsoleWriteStdout, "writeStdout", KimiLibraryContainer.Console, Function: CompilerFunctionKind.ConsoleWriteStdout),
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
@@ -114,7 +115,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.WriterStatus, "status", SourceFunction: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterWriteUtf8, "writeUtf8", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
-        new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLineUtf8, Overload: 1),
+        new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, SourceFunction: true, CallerLocation: true, Overload: 0),
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: Equality),
         new(

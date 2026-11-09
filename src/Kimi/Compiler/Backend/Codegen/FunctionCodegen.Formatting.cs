@@ -5,7 +5,7 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The formatting rows of FunctionCodegen (R5 plans C9a and C9b, package C 3.2; SPEC 22.7, 22.9, 22.10.1, 22.10.5; DECISIONS R5-M30, R5-M128,
-// R5-M130): a call of a Text, buffer, window or writer function or of writeLine(Utf8Slice), the Body-disposition kinds whose legacy row's
+// R5-M130): a call of a Text, buffer, window or writer function, the Body-disposition kinds whose legacy row's
 // writer is Formatting (LegacyRuntimeHelpers.Row), is the call of its row's routine in the formatting runtime (P1d's row ABI, one text, PD2)
 // through the one call writer, at its direct call, its Item's Value call and its Item adapter's entry alike (SPEC 7.7.4), the module
 // requesting the formatting runtime its row declares (ModuleCodegen.Request). Its Context words are facts the call's Types fix:

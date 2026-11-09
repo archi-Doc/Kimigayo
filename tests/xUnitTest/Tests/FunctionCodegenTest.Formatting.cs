@@ -8,17 +8,17 @@ using Xunit;
 
 namespace XunitTest;
 
-// The formatting rows of MIR code generation (R5 C9a, C9b; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128, R5-M130): writeLine
-// of a view, Text.writer, toString and tryFormat call their row's routine in the formatting runtime with their operands by parameter kind,
+// The formatting rows of MIR code generation (R5 C9a, C9b; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128, R5-M130):
+// Text.writer, toString and tryFormat call their row's routine in the formatting runtime with their operands by parameter kind,
 // their result slot and location, a capacity Context the length of the fixed array their operand refers to and a kind Context their witness
 // target's Self's, the runtime written once on request, at a direct call, an Item's Value call and an adapter's entry; the buffer, window
-// and writer operations and the other Text operations are library bodies (R8-W1a, W1b, W1c); a user formatter's toString or tryFormat runs
-// through its wrappers; a BuiltinFormat item is the built-in witness; Text.writer gives its destination's writer kind and dispatch word;
-// natively. The kinds are the formatting runtime's own numbering, the one table both generators read.
+// and writer operations, the other Text operations and writeLine of a view are library bodies (R8-W1a, W1b, W1c); a user formatter's
+// toString or tryFormat runs through its wrappers; a BuiltinFormat item is the built-in witness; Text.writer gives its destination's writer
+// kind and dispatch word; natively. The kinds are the formatting runtime's own numbering, the one table both generators read.
 public sealed partial class FunctionCodegenTest
 {
-    // A Library without a witness target: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
-    // validateUtf8), writeLine of a view (its one formatting row), a writer's status, Text.fixed's Item called and erased.
+    // A Library without a formatting row: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
+    // validateUtf8), writeLine of a view (a body), a writer's status, Text.fixed's Item called and erased.
     private const string Buffers =
         "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
         "    var window = try (buffer@uniq).reserve(2)\n    try (window@uniq).push(65)\n    let pair: [2 of u8] = [66, 67]\n" +
@@ -141,19 +141,31 @@ public sealed partial class FunctionCodegenTest
     public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
 
-    // SPEC 22.7, 22.9 (DECISIONS R5-M128, R5-M89, R5-M116): writeLine of a view, the program's one formatting row, calls its routine, the
-    // symbol P1d's row names, with its owned operand's own copy slot and the call's location; the buffer, window and Text operations are
-    // bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through a copy slot too.
+    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program calls no formatting row: writeLine of a view and the buffer, window and Text
+    // operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
     [Fact]
     public void FormattingRowsCallTheirRoutine()
     {
         var c = Analyze(Buffers, OutputKind.Library);
-        var ir = GeneratedIr.Parse(Generate(c));
-        Assert.Empty(FormattingCalls(ir, c, "fxRun"));
-        Assert.Empty(FormattingCalls(ir, c, "hpRun"));
-        var show = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwShow"))), x => x.Callee == ir.Function(Routines(CompilerFunctionKind.WriteLineUtf8)[0]));
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+
+        // R8-W1c-3: every buffer, window and view operation is a body, so the module requests no formatting runtime and calls none of
+        // its routines.
+        using var runtime = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(runtime);
+        Assert.DoesNotContain(runtime.ToString(), text, StringComparison.Ordinal);
+
+        // SPEC 22.7, 22.5.1 (R8-W1c-3): writeLine(Utf8Slice) is a body with a CallerLocation row: the user's call passes the view's own
+        // copy slot and its location, and the body writes the bytes and the LF through WriteStdout's routine, each at the location it
+        // received, so KIMI_E_STDOUT reports the user's call.
+        var lines = FunctionsOf(ir, c, "writeLine").ToArray();
+        var show = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwShow"))), x => lines.Contains(x.Callee!));
         Assert.Equal($"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})", show.Shape);
-        Assert.Equal("alloca", show.Operands[0].Opcode); // The view's own copy slot, which the routine owns from the call on (R5-M116).
+        Assert.Equal("alloca", show.Operands[0].Opcode); // The view's own copy slot, which the body owns from the call on (R5-M89).
+        var writes = CallsOf(show.Callee!).Where(x => x.Callee == ir.Function(RuntimeAbi.Stdout.Name)).ToArray();
+        Assert.Equal(2, writes.Length);
+        Assert.All(writes, x => Assert.Equal(show.Callee!.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
 
         // SPEC 22.5.1, 22.9.2 (R8-W1c): the Text operations are bodies; heap has a CallerLocation row, so the user's call passes its own
         // location, and the other three take none. A fixed buffer's capacity N is its instance's: [8 of u8] and [4 of u8] call two.
@@ -420,7 +432,7 @@ public sealed partial class FunctionCodegenTest
     {
         using var runtime = new StringWriter();
         LegacyRuntimeHelpers.WriteFormattingRuntime(runtime);
-        var text = Generate(Analyze(Buffers, OutputKind.Library));
+        var text = Generate(Analyze(Formats, OutputKind.Library));
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
@@ -514,14 +526,6 @@ public sealed partial class FunctionCodegenTest
 
     // The routine symbols of formatting rows (P1d's FormattingRow), in order.
     private static string[] Routines(params CompilerFunctionKind[] kinds) => [.. kinds.Select(static x => LegacyRuntimeHelpers.FormattingRow(x)!.Abi.Name)];
-
-    // A function's calls of the formatting runtime's routines, their symbols in order.
-    private static string[] FormattingCalls(GeneratedIr ir, Compilation c, string name)
-    {
-        var routines = Enumerable.Range((int)CompilerFunctionKind.TextWriter, CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextWriter + 1)
-            .Select(static x => LegacyRuntimeHelpers.FormattingRow((CompilerFunctionKind)x)!.Abi.Name).Distinct().ToDictionary(ir.Function);
-        return [.. CalleesOf(Assert.Single(FunctionsOf(ir, c, name))).Where(routines.ContainsKey).Select(x => routines[x])];
-    }
 
     // The definitions of a program's ItemAdapter items, each written directly whatever records the module's other items make (ItemTexts).
     private static string[] AdapterTexts(Compilation c)

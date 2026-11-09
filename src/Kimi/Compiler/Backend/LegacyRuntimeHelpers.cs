@@ -19,7 +19,7 @@
 // The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
 // writer: writeLine's runtime routine, the whole-value updates and
-// the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
+// the Text, buffer, window and writer kinds as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; the expanded runtime texts (Texts) are built only when a code
 // generation writer first reads one, never on the check path (G350).
@@ -105,7 +105,7 @@ internal static partial class LegacyRuntimeHelpers
         CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
         CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
 
-        // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds and WriteLineUtf8, their formatting routines
+        // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds, their formatting routines
         // (P1d's rows, one text); a Body-disposition kind without a row is a fault.
         _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body =>
             new(LegacyWriter.Formatting, FormattingRow(kind)?.Abi ?? throw new InvalidOperationException($"The compiler function {kind} has no legacy row.")),
