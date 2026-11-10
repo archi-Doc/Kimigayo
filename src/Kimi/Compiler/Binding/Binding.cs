@@ -248,7 +248,7 @@ public sealed partial class Binding
         this.PrepareEffectBounds();
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
-        this.ValidateConstraintEnvironments();
+        this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();
         if (this.CaptureOmittedBaseQueries)

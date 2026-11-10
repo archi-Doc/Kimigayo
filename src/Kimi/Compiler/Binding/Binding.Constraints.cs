@@ -368,7 +368,7 @@ public sealed partial class Binding
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
-    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
@@ -387,17 +387,24 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
                 {
-                    var previous = scope.Owner.BindingState;
-                    changed |= !environment.Invalid;
-                    environment.Fail(scope.Owner);
-                    // Other input facts can have independent contradictions. Record a
-                    // sole missing-name cause only when this is the entire environment.
-                    this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                    changed |= previous != scope.Owner.BindingState;
-                    break;
+                    this.DropConsultation(frame);
+                    continue;
                 }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
             }
         }
 
@@ -626,9 +633,9 @@ public sealed partial class Binding
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid)
+        if (evidence.Invalid is { } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         var positive = evidence.Positive;

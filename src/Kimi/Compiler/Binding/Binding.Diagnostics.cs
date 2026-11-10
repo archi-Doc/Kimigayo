@@ -355,6 +355,10 @@ public sealed partial class Binding
     }
 
     // The call signature of a Function Item, closure or Function value.
+    // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
+    private static bool IsMissingInformation(Koto? node)
+        => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
     {
         BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),
@@ -758,9 +762,9 @@ public sealed partial class Binding
         }
 
         this.Fail(use, BindingFailure.InvalidConstraint);
-        if (diagnosticCause is null && use is IsKoto clause)
+        if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
-            diagnosticCause = this.FindMissingConformanceName(clause);
+            diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
         if (diagnosticCause is not null)

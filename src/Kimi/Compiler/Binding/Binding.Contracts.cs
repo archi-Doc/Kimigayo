@@ -570,6 +570,7 @@ public sealed partial class Binding
                 {
                     this.failedCause = null;
                     this.conformanceChecks++;
+                    var frame = this.BeginConsultation(identity.PathStorage[0].Use); // The agreement's judgment is at its first path's use.
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
                     var explicitPath = false;
@@ -580,7 +581,11 @@ public sealed partial class Binding
 
                     if (explicitPath || agreement == ConstraintProof.Error)
                     {
-                        this.RequireConstraint(identity.PathStorage[0].Use, agreement, mode);
+                        this.RequireConstraintInFrame(identity.PathStorage[0].Use, agreement, mode, frame);
+                    }
+                    else
+                    {
+                        this.DropConsultation(frame);
                     }
                 }
             }

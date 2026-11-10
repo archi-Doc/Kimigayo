@@ -5,8 +5,8 @@
 // (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply, which
 // retention's handed signatures read too) and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts.
-// - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain holds an Invalid environment).
-// - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply; availability
+// - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names).
+// - Invariants: innermost scope first, each environment in its order; an Invalid environment answers itself to Supply; availability
 //   is asked per fact, lazily, in the caller's order.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here; no mode or bool parameter; no answer kept across
 //   requests; no second scheduler; no read sets. From C3 (C1 §5), broken until then by the eager derivation moved here: no Binding
@@ -25,15 +25,15 @@ public sealed partial class Binding
     private readonly record struct EvidenceView(BindingScope Premises);
 
     // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
-    // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain holds an Invalid
-    // environment, which ProveProposition answers Error.
+    // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain's Invalid environment,
+    // which ProveProposition answers Error resting on (InvalidEnvironment).
     private readonly struct Evidence
     {
         internal bool Positive { get; init; }
 
         internal bool Negative { get; init; }
 
-        internal bool Invalid { get; init; }
+        internal ConstraintEnvironment? Invalid { get; init; }
     }
 
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
@@ -54,7 +54,7 @@ public sealed partial class Binding
 
             if (environment.Invalid)
             {
-                return new() { Invalid = true };
+                return new() { Invalid = environment };
             }
 
             positive |= this.AvailableConstraintFact(environment, proposition);
