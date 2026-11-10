@@ -257,6 +257,39 @@ public class ArchitectureRulesTest
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
+    // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
+    // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
+    // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
+    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines and the indexes are the
+    // request boundary, not the walk; a walk that reaches PremiseRefines fails at run time (InternalInvariant).
+    [Fact]
+    public void EnumeratesWalkCallsNoJudgment()
+    {
+        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply"];
+        string[] allowed =
+        [
+            "Add", "AppliedAssociatedContract", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClauseHeads", "Clear",
+            "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
+            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "Max", "ReadSourceState", "ReferenceEquals", "RemoveAt", "RemoveRange",
+            "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+        ];
+        var source = File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding/Binding.ContractSolver.cs"));
+        var members = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken).DescendantNodes()
+            .Where(x => (x is MethodDeclarationSyntax method && walk.Contains(method.Identifier.Text)) || (x is StructDeclarationSyntax type && walk.Contains(type.Identifier.Text))).ToArray();
+        Assert.Equal(walk.Length, members.Length);
+        var calls = members.SelectMany(static x => x.DescendantNodes().OfType<InvocationExpressionSyntax>()).ToArray();
+        var actual = calls.Select(Name).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(allowed.SequenceEqual(actual), $"Enumerate's walk calls: {string.Join(", ", actual)}.");
+        Assert.All(calls.Where(static x => Name(x) is "InstantiatedContract" or "ContractConstraint"), static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
+
+        static string Name(InvocationExpressionSyntax call) => call.Expression switch
+        {
+            MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+            IdentifierNameSyntax name => name.Identifier.Text,
+            _ => call.Expression.ToString(),
+        };
+    }
+
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)
     {

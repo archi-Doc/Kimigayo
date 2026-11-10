@@ -462,30 +462,14 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
-
         // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
         // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
         // conformances of its argument but is never a Position (SPEC 3.1.1).
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
+        var premise = contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
-        for (var current = scope; current is not null && !premise; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
 
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
-                {
-                    premise = true;
-                    break;
-                }
-            }
-        }
+        // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
+        premise = premise || this.PremiseRefines(type, contract, scope);
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);

@@ -550,10 +550,10 @@ public sealed partial class Binding
 
     private ConstraintProof SymbolicCapability(CapabilityWork work)
     {
-        var positive = false;
         var negative = false;
         var parameterIdentity = HasParameterIdentity(work.Scope);
         var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true) : work.Type;
+        var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { } environment)
@@ -584,10 +584,6 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Contract && IsRefinement(fact.Contract!, work.Intrinsic) && this.AvailableContractPremise(fact.Contract!))
-                {
-                    evidence = ConstraintProof.Proven;
                 }
                 else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
