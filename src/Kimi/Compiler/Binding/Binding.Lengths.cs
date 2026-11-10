@@ -711,7 +711,7 @@ public sealed partial class Binding
 
     private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
-        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: GroupKoto } qualifier ||
+        if (this.TypeName(member.Left, scope) is not { Declaration: GroupKoto } qualifier ||
             !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
         {
             return null;

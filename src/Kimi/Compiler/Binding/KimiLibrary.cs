@@ -114,6 +114,11 @@ public sealed partial class KimiLibrary
                 CompilerFunction = entry.Function,
                 LibraryDeclaration = entry.Id,
             };
+            if (IntrinsicContract.Of(entry.Intrinsic).Judged)
+            {
+                symbol.Contract = new(symbol) { State = 2 }; // SPEC 8.4.3, 8.7.1: a refinement parent without members.
+            }
+
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;
             this.symbols[i] = symbol;

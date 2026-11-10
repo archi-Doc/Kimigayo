@@ -67,7 +67,7 @@ public struct Dictionary<K, V>
         let link = Storage.findDictionaryLink(state@uniq, key)
         require link != 0 else => return .None
         unsafe
-            let slot = state.storage + (link - 1) * DictionaryStorage.slotStride<K, V>()
+            let slot = state.storage + DictionaryStorage.slotOffset(link, DictionaryStorage.slotStride<K, V>())
             return .Some((*DictionaryStorage.valueAt<K, V>(slot))@ref)
 
     /// Starts a shared enumeration of the entries in insertion order.

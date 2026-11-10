@@ -35,7 +35,7 @@ public class BuildCommand : ISimpleCommand<BuildCommand.Options>
                     throw new InvalidDataException("Use kimi build --Manifest <path> without source, project, target, debug or lock options; generation settings come from the manifest.");
                 }
 
-                await Compiler.NativeToolchain.BuildManifest(manifest, options.ToolchainRoot, options.LlvmBin, this.kimigayo.WriteLine, cancellationToken);
+                await Build.NativeToolchain.BuildManifest(manifest, options.ToolchainRoot, options.LlvmBin, this.kimigayo.WriteLine, cancellationToken);
                 return 0;
             }
 
