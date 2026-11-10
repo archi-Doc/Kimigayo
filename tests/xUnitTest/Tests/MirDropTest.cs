@@ -34,7 +34,8 @@ public sealed partial class MirDropTest
 
     // SPEC 12.2, 16.2.1 (DECISIONS R5-M129): an Array literal's elements, each one before the last that builds code secured where it is
     // evaluated (_3, _4), are moved by its one aggregate (Elide after it); a transfer out of a later element (`try`'s Err) destroys those
-    // secured so far in reverse acquisition order (_4, then _3) and not the unbuilt Array, whose flag the aggregate sets.
+    // secured so far in reverse acquisition order (_4, then _3) and not the unbuilt Array, whose flag the aggregate sets. The Drop after
+    // the return, which only the checks reach, destroys the whole Array (PLAN G641 kind 4).
     [Fact]
     public void AnInterruptedArrayLiteralDestroysItsSecuredElementsInReverse()
     {
@@ -43,7 +44,7 @@ public sealed partial class MirDropTest
                 "flags 1", "StorageLive(_2) [clear f0]", "drop _6 -> bb22 [open ((_ as case 1) elide, (_ as case 0) open (.0 elide))]",
                 "drop _8 -> bb7 [elide]", "drop _2 -> bb13 [flag f0] [clear f0]", "StorageDead(_2) [clear f0]", "drop _4 -> bb15 [keep]",
                 "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [keep]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
-                "drop _5 -> bb23 [elide]", "drop _4 -> bb24 [elide]", "drop _3 -> bb25 [elide]",
+                "drop _5 -> bb23 [elide]", "drop _4 -> bb24 [elide]", "drop _3 -> bb25 [elide]", "drop _2 -> bb29 [keep]",
             ],
             Lines(
                 Resource + "func third(ok: bool) -> Result<Resource, i32>\n    if ok => return .Ok(make())\n    return .Err(7)\n" +
@@ -141,19 +142,22 @@ public sealed partial class MirDropTest
     // Plan 5.6.1: the Type rule is per view: a pair-generic value is destroyed in its owner case and owns nothing in a reference case, so
     // its Drop has a group per view class, a part moved out of it included (GenericCleanupCaseTest's select). A default copy keeps the Drops
     // its instance Type may need (an abstract U's, judged by their state; none of i32), the call's result before its slots (SPEC 3.6,
-    // DECISIONS R4-M129). A Drop only the checks reach, after the return, is Elide where nothing of it is initialized (PLAN G641).
+    // DECISIONS R4-M129). A Drop only the checks reach, after a return, has its group by the same Type rule per view (PLAN G641).
     [Fact]
     public void TheTypeRuleIsPerView()
     {
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]", "drop _2 -> bb9 [elide]"], Lines(Select, "select"));
+        Assert.Equal(
+            ["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]", "drop _2 -> bb9 [elide]",
+                "drop _1 -> bb10 [elide in v0; open (.0 elide) in v1]"],
+            Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
         Assert.Equal(
             ["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]", "drop _2 -> bb13 [elide]",
-                "drop _4 -> bb14 [elide]", "drop _3 -> bb15 [elide]"],
+                "drop _4 -> bb14 [elide]", "drop _3 -> bb15 [elide]", "drop _1 -> bb16 [keep]"],
             Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
@@ -167,16 +171,35 @@ public sealed partial class MirDropTest
             Lines("struct S\n    var name: string\n    public init(flag: bool)\n        if flag => self.name = \"a\"\n        self.name = \"b\"\n", "init")
                 .Where(static x => x.Contains("_0.0", StringComparison.Ordinal) || x.StartsWith("flags", StringComparison.Ordinal)));
 
-    // SPEC 14.10.3, plan 5.6.3: a Drop only the checks reach adds no runtime path and has no verdict, so a layer with its own drop left
-    // incomplete in check-only code is no problem (plan Appendix B C3); an owning interpolation's buffer keeps its statement-end Drop.
+    // SPEC 14.10.3, plan 5.6.3 (R4-M6a): a Drop only the checks reach adds no runtime path and is not judged; its group says what it would
+    // destroy (here each value whole, Keep). A layer with its own drop left incomplete in check-only code is no problem (plan Appendix B
+    // C3) but a Keep row with no child rows, its whole destruction, drop included (PLAN G641 kind 4; the runtime form is MovedPlace_Kd,
+    // ALayerWithItsOwnDropIsCompleteAtItsDrop); an owning interpolation's buffer keeps its statement-end Drop.
     [Fact]
-    public void OnlyRuntimeDropsHaveVerdicts()
+    public void ACheckOnlyDropIsNotJudged()
     {
         Assert.Equal(
-            ["drop _1 -> bb5 [keep]", "drop _3 -> bb10", "drop _3 -> bb13", "drop _1 -> bb14"],
+            ["drop _1 -> bb5 [keep]", "drop _3 -> bb10 [keep]", "drop _3 -> bb13 [keep]", "drop _1 -> bb14 [keep]"],
             Lines(Resource + "func f() -> i32\n    let r = make()\n    return 1\n    let s = make()\n    return 2\n", "f", all: true));
-        Assert.Empty(Problems(Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n"));
+        const string Partial = Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n";
+        Assert.Empty(Problems(Partial));
+        Assert.Equal(["drop _2 -> bb6 [elide]", "drop _4 -> bb8 [elide]", "drop _1 -> bb9 [keep]"], Lines(Partial, "f", all: true));
         Assert.Equal(["drop _2 -> bb9 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+    }
+
+    // SPEC 14.10.3, 16.3.2, 8.15.3 (PLAN G641 kind 4): a Drop only the checks reach has the group of what it would destroy on its assumed
+    // paths, by the runtime rules but flagless (R4-M6a): after the return, a partly moved Tuple is Open with its moved elements Elide, and
+    // an element moved on some assumed paths only is Keep, not Flag, so the body has no flag; the return's runtime Drop keeps the whole.
+    [Fact]
+    public void ACheckOnlyDropsGroupIsWhatItWouldDestroy()
+    {
+        const string Pair = "func see(s: string) => ()\nfunc f(flag: bool, t: (string, string)) -> i32\n    return 1\n";
+        Assert.Equal(
+            ["drop _2 -> bb4 [keep]", "drop _5 -> bb8 [elide]", "drop _7 -> bb10 [elide]", "drop _2 -> bb13 [open (.0 elide, .1 elide)]"],
+            Lines(Pair + "    see(t.0@move)\n    see(t.1@move)\n    return 2\n", "f"));
+        Assert.Equal(
+            ["drop _2 -> bb4 [keep]", "drop _7 -> bb11 [elide]", "drop _9 -> bb13 [elide]", "drop _2 -> bb16 [open (.0 keep, .1 elide)]"],
+            Lines(Pair + "    if flag => see(t.0@move)\n    see(t.1@move)\n    return 2\n", "f"));
     }
 
     // DECISIONS R4-M102: the verdicts are exact only for a body A1 accepts (R4-M6a), so the table records each body's first A1 or A2 problem,

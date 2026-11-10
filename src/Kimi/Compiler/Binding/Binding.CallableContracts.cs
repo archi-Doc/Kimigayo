@@ -38,8 +38,10 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 8.6.3, 8.4.2: the slots correspond before the requirement's premises in `scope` normalize either side.
+            var corresponded = Corresponding(actual);
             actual = this.ProjectCallableType(actual, declaringType);
-            if (actual is null || !SignatureEquals(required, this.ContractType(actual, scope), requirement.Binder, implementation.Binder))
+            if (actual is null || corresponded is null || !SignatureEquals(required, this.ContractType(corresponded, scope), requirement.Binder, implementation.Binder))
             {
                 return ConstraintProof.Refuted;
             }
@@ -109,11 +111,13 @@ public sealed partial class Binding
 
         return this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
 
+        // An implementation Type with the requirement's slots for its own and its declaring Type's arguments projected.
+        BoundType? Corresponding(BoundType type)
+            => this.SubstituteType(type, implementation.Binder, arguments.AsSpan(0, requirement.GenericCount)) is { } substituted ? this.ProjectCallableType(substituted, declaringType) : null;
+
         BoundType? Translate(BoundType type)
         {
-            var substituted = this.SubstituteType(type, implementation.Binder, arguments.AsSpan(0, requirement.GenericCount));
-            substituted = substituted is null ? null : this.ProjectCallableType(substituted, declaringType);
-            if (substituted is null)
+            if (Corresponding(type) is not { } substituted)
             {
                 return null;
             }

@@ -329,10 +329,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public var b: Loud = Loud.init()\ncontract Make\n    func make(self: ref/Self) -> Loud\n        effect confined\nstruct M\n    Self is Make\n" +
                 "    public func make(self: ref/Self) -> Loud\n" + body));
 
-    // R4-M6a: a Drop only the checks reach runs no destructor (drop elaboration applies to runtime paths only, SPEC 14.10.3), while the
-    // check-only statements' own effects count.
+    // R4-M6a: a Drop only the checks reach runs no destructor (drop elaboration applies to runtime paths only, SPEC 14.10.3), whatever its
+    // group (a whole value's Keep, a partly moved one's Open: PLAN G641 kind 4), while the check-only statements' own effects count.
     [Theory]
     [InlineData("        let l = Loud.init()\n", "")]
+    [InlineData("        let p = (Loud.init(), Loud.init())\n        let a = p.0@move\n", "")]
     [InlineData("        Console.writeLine(\"x\")\n", Failed)]
     public void ACheckOnlyDropRunsNothing(string checkOnly, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + Witness + "        return .Ok(())\n" + checkOnly));
@@ -586,6 +587,18 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Fixed + $"struct G<K>\n    K is {premise}\n    Self is Sink\n    var table: Dictionary<K, i32> = [:]\n    var key: K\n" +
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
+
+    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
+    // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
+    // its confined bound where Text.writer erases it. No body reaches the call before S2a's built-in bodies, its first callers.
+    [Fact]
+    public void AnErasedReserveCallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
+    }
 
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
     // an interpolation (fail-before: each, a limit).

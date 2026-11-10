@@ -52,6 +52,16 @@ public class Utf8DeclarationTest
         Assert.Equal([(DiagnosticCode.InaccessibleBinding_Kd, site)], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
+    // SPEC 22.9.4 (R8-W1b): a window's `written` and `remaining` are getters for user code; the window's bodies write them through a
+    // private standard setter (a raised `remaining` would let `push` and `append` write past the buffer), so a user write through the
+    // window is an access error at the member.
+    [Theory]
+    [InlineData("func f(window: uniq/WriteWindow)\n    window.written = 9\n", "window.written")]
+    [InlineData("func f(window: uniq/WriteWindow)\n    window.remaining = 9\n", "window.remaining")]
+    [InlineData("func f(window: uniq/WriteWindow)\n    window.remaining += 1\n", "window.remaining")]
+    public void WindowCountsAreNotWritable(string source, string site)
+        => this.BufferLengthsAreNotWritable(source, site);
+
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));

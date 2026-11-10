@@ -259,7 +259,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var self = this.SelfType(path.Type);
+                var self = this.ConformanceSelf(path);
                 foreach (var identity in path.Contract.Contract!.RequirementStorage)
                 {
                     if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
@@ -268,7 +268,7 @@ public sealed partial class Binding
                     }
 
                     this.BindHeader(identity.Symbol);
-                    var match = this.IdentifyRequirement(path, identity, self);
+                    var match = this.IdentifyRequirement(path, identity);
                     if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
                     {
                         batch.Pairs.Clear();
@@ -668,7 +668,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity, BoundType self)
+    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
         var key = (path, identity);
         if (this.requirementMatches.TryGetValue(key, out var known) && known.State != RequirementMatchState.Pending)
@@ -676,6 +676,7 @@ public sealed partial class Binding
             return known;
         }
 
+        var self = this.ConformanceSelf(path);
         var selection = this.LookupTypeMember(self, identity.Symbol.Name, path.Scope, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;

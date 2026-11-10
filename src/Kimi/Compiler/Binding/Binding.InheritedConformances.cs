@@ -191,7 +191,7 @@ public sealed partial class Binding
                 return proof;
             }
 
-            var self = this.SelfType(path.Type);
+            var self = this.ConformanceSelf(path);
             var scope = path.Scope; // D and the source's P, built once per pass (PrepareInheritedScopes).
             var shape = path.Contract.Contract!;
             foreach (var ancestor in shape.AncestorStorage)
