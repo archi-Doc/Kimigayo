@@ -62,9 +62,6 @@ public enum CompilerFunctionKind : byte
     None,
     WriteLine,
     Abort,
-    Replace,
-    Exchange,
-    Swap,
     MakeObj,
     MakeRc,
     MakeArc,
@@ -167,8 +164,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
-            CompilerFunctionKind.Swap or
+        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or
             CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),

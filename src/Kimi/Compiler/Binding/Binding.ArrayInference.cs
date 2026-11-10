@@ -338,7 +338,7 @@ public sealed partial class Binding
                 this.arrayInferenceShapes[literal] = shape;
             }
 
-            var length = literal.FillLength is { } fill ? this.BindLength(fill, scope) : this.InternLength(KotoKind.NumberLiteral, literal.Elements.Count);
+            var length = literal.FillLength is { } fill ? this.BindLength(fill, scope) : this.InternLength(LengthOperation.Constant, literal.Elements.Count);
             if (length is null || !this.InferArrayLength(array, length, source))
             {
                 failed = length is null ? literal.FillLength : source;
@@ -399,7 +399,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (!this.InferArrayLength(nested, actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length), source))
+            if (!this.InferArrayLength(nested, actual.LengthExpression ?? this.InternLength(LengthOperation.Constant, actual.Length), source))
             {
                 failed = source;
                 return false;
