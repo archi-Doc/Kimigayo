@@ -436,7 +436,7 @@ public sealed partial class Binding
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
-        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left, scope);
+        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
@@ -559,7 +559,7 @@ public sealed partial class Binding
                     {
                         // A complete Type (SPEC 8.2), formed from the requirement's own lookup (BindNamedType).
                         var type = this.BindType(node, scope);
-                        result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node, scope) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
+                        result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
                     }
                 }
 
@@ -725,36 +725,31 @@ public sealed partial class Binding
         }
     }
 
-    private bool HasUnresolvedConstraintSyntax(Koto node, BindingScope scope)
+    private bool HasUnresolvedConstraintSyntax(Koto node)
     {
         if (this.capabilityMode != BindingMode.Provisional)
         {
             return false;
         }
 
-        this.constraintSyntaxVisitor ??= new(this);
-        this.constraintSyntaxVisitor.Scope = scope;
+        this.constraintSyntaxVisitor ??= new();
         this.constraintSyntaxVisitor.Missing = false;
         this.constraintSyntaxVisitor.Invalid = false;
         this.constraintSyntaxVisitor.Visit(node);
         return this.constraintSyntaxVisitor.Missing && !this.constraintSyntaxVisitor.Invalid;
     }
 
-    private sealed class ConstraintSyntaxVisitor(Binding binding) : KotoVisitor
+    private sealed class ConstraintSyntaxVisitor : KotoVisitor
     {
-        internal BindingScope Scope { get; set; } = null!;
-
         internal bool Missing { get; set; }
 
         internal bool Invalid { get; set; }
 
         public override void Visit(Koto node)
         {
-            var missing = node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
-            this.Missing |= missing;
+            // A missing name is pending whatever the role excluded (SPEC 9.2, 9.5): a declaration that is no candidate decides nothing.
+            this.Missing |= node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
             this.Invalid |= node.BindingState == BindingState.Invalid;
-            // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.ProbePath(node, this.Scope, LookupRole.Qualifier, 0)?.Kind == BindingSymbolKind.Container; // A question, not the use's lookup.
             node.VisitChildren(this);
         }
     }

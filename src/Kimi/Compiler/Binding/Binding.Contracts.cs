@@ -308,7 +308,7 @@ public sealed partial class Binding
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
+                if (this.HasUnresolvedConstraintSyntax(syntax))
                 {
                     shape.HasUnresolvedParents = true;
                     continue;

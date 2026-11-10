@@ -31,7 +31,6 @@ public class UnresolvedRefinementBindingTest
 
     [Theory]
     [InlineData("i32")]
-    [InlineData("Api")]
     [InlineData("Future<i32>")]
     public void AvailableNonContractOrGenericParentsRemainInvalid(string parent)
     {
@@ -84,13 +83,19 @@ public class UnresolvedRefinementBindingTest
         Assert.False(c.Bind().IsComplete);
     }
 
-    // A parent is a Contract Reference (SPEC 9.2, 9.5): its lookup sees Contracts only, so a struct of the parent's name, declared
-    // beside it or supplied later, is no candidate and the parent is missing: pending while Provisional, a missing parent's records
-    // at the final Bind.
+    // A role filters candidates by declaration kind, and lookup stops only at a stage with an eligible declaration (SPEC 9.2, 9.5): a
+    // declaration of the name that the role excludes, of any kind, decides nothing. The name is missing: pending while Provisional,
+    // since a later source can still supply it, and a missing name's records at the final Bind.
     [Theory]
-    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "Target")]
-    [InlineData("public contract Child: Future", "public struct Future", "Future")]
-    public void ANonContractOfTheParentsNameLeavesTheParentMissing(string source, string? supplied, string parent)
+    // A parent (Contract Reference): a struct or a group of its name beside it, a struct supplied later, and a nearer group passed
+    // for the Contract a later source supplies (v07).
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "InvalidConstraint_Kd Target|InvalidConstraint_Kd contract Child")]
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Api", null, "InvalidConstraint_Kd Api|InvalidConstraint_Kd contract Child")]
+    [InlineData("public contract Child: Future", "public struct Future", "InvalidConstraint_Kd Future|InvalidConstraint_Kd contract Child")]
+    [InlineData("public group G\n    group Future\n        func z() -> i32 => 0\n    public contract Child: Future", "public contract Future", "")]
+    // A requirement's Type argument (Core): a Contract of its name (v11).
+    [InlineData("public contract C\n    func m(self: ref/Self) -> i32\npublic struct Box<T>\ngroup G\n    func f<T>(x: T)\n        T is Box<C>\n        ()", null, "InvalidConstraint_Kd Box<C>|InvalidConstraint_Kd func f<T>(x: T)\n    T is Box<C>\n    ()|UnresolvedBinding_Kd C")]
+    public void ADeclarationTheRoleExcludesLeavesTheNameMissing(string source, string? supplied, string records)
     {
         var c = Parse(source);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
@@ -100,10 +105,8 @@ public class UnresolvedRefinementBindingTest
             Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         }
 
-        Assert.Equal(BindingState.Unresolved, Container(c, "Child").StateOf());
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
-        Assert.Equal($"InvalidConstraint_Kd {parent}|InvalidConstraint_Kd contract Child", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
     [Fact]

@@ -95,8 +95,9 @@ public class UseLookupTest
     [InlineData("contract C\n    func m(self: ref/Self) -> i32\ngroup G\n    struct C\n    struct S\n        Self is C\n        func m(self: ref/Self) -> i32 => 0", "UnsatisfiedConstraint_Kd Self is C")]
     // Object View Target (9.2): every Contract is eligible, so the nearer Contract is selected and Type legality rejects it (n06).
     [InlineData(CoreX + NearerContract + "    func f(v: obj/X) -> i32 => 0", "InvalidTypeFormation_Kd X")]
-    // A parenthesized qualifier of a Type path is a Contract Reference (4.9.5): a group or a Contract there selects no receiver (d01,
-    // d02), and a struct is not a projection's base (h01, h02), which the unparenthesized spelling is (h03).
+    // A parenthesized name before `.` at a parameter Type forms no member access (the parser stops there), so `(G)` and `(C)` are
+    // asked in Core's row, where a group or a Contract alone is unresolved (d01, d02). A projection's parenthesized left is a Contract
+    // Reference (9.2, 8.5.2): a struct there is not the projection's base (h01, h02), which the unparenthesized spelling is (h03).
     [InlineData("group G\n    public struct S\n        public let n: i32 = 0\nfunc f(v: (G).S) -> i32 => 0", "UnresolvedBinding_Kd G")]
     [InlineData("contract C\n    associate Item\nfunc f(v: (C).Item) -> i32 => 0", "UnresolvedBinding_Kd C")]
     [InlineData(Projected + "func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd P")]
