@@ -5935,6 +5935,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rejected.** One loop at each entry (four copies of one rule, C-172 N5); per-key selection with the call's Types (O-109 (b));
     entering a specialization at no substitution (design revision 0: every Container case, review 1 F1).
 
+  - Its Open sentence (a requirement call on a closed Self records no own Type arguments) is closed by R4-M197.
 - **R4-M190 A5's must-facts: a body's direct store of an input's own part where its contract refuses it (PLAN G581-1)** (2026-11-09;
   Middle; Major, an acceptance mover; design review 2 ACCEPT, implementation review ACCEPT after REVISE; the owner's O-110 (a), verbatim
   「O-110 (a)」, approving the vocabulary, and O-103 (a), verbatim 「どちらもaでお願いします」; O-72 (a), O-58 (a), O-62 (a), O-56 (a); commits 45e713ed3
@@ -6001,6 +6002,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
     second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
     the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
+  - Amended by R4-M196: `Width` left `ScalarTypes` too; an integer Type's width is `BoundType.Width`, decided with the category by
+    one table. `ScalarTypes` keeps the Scalar predicate, `SizeWidth`, `Normalize` and the literal predicates.
 - **R4-M193 G673: the own-step Warning carries no Loan fact** (2026-11-09; Middle, record content under Q13; implementation review
   ACCEPT, N3 and N4 applied; supersedes in part R4-M116 OQ-2's fact list and R4-M124's Record facts; the owner's OQ-2 (a), the code
   and requirement, stands) SPEC 5.2.1 condition 3, 5.4, 5.7.
@@ -6061,6 +6064,58 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G583 deletes); a walk of the Type's syntax; LayerMembers over the whole written Type (it conflates unstated layers); a per-layer
     covering that ignores an unstated element ("a null writes nothing" at an unstated store: G598-2b, after G339).
   - Open (N8'): G599's `WritesScalar` reads `TyCtxt.OwnLayers` when it lands (O-105), not a walk of its own.
+- **R4-M196 One table of an integer Core's row: its category and width are the Type's own** (2026-11-10; PLAN G625, G678; plan
+  R7-T2, `ScalarTypes`' width part; under R5-M148; amends R4-M192, BU-130 and R7-M14; design review 1 REVISE, repeated review
+  ACCEPT; the Front's C-214 and the Back's C-215; commit 64c510256 on `claude/m-g678`) SPEC 3.1 gives an integer Core one row, its
+  signedness and its storage size, the N of every range rule; `Wrapping<T>` has T's (SPEC 3.1.1), and validity reads `isize` and
+  `usize` at the profile's width on every target (SPEC 22). `BoundType.Row` is the one table of a numeric Core's category and an
+  integer Core's width, read once at construction (a wrapping integer Type copies its argument's) and published as `IsSigned`
+  (R4-M192) and `Width`, 0 for every other Type, among them one whose instance decides its width (SPEC 8.7.4). `ScalarTypes.Width`,
+  a second table over the same names re-derived from `Underlying.Name` at each call, is deleted, and every reader in Binding, the
+  MIR builder, `MirValidator`, the Backend and the root Type predicates reads `Width`. No reader pairs the profile's constant with
+  `isize`: `Binding.Lengths.TryLengthArithmetic` takes the Type alone (G625), and a position's bound (`MirBuilder.Selections`) and a
+  literal position's limit (`Binding.PositionWarnings`) read `BoundType.ISize.Width`. `BitWidth` (SPEC 13.5.4) excludes `isize` and
+  `usize` by identity, so no reader of the row names a Core by string outside `Row`. The split's reason ended with BU-130: `Width`
+  took the Compilation's `pointerWidth`, which an interned Type could not hold. Behavior-preserving: the 12 integer rows are
+  `Categorize`'s and `Width`'s arms joined by name.
+  - With the row in one table an integer Type's width is never 0, so the conditions that asked it are deleted
+    (`Binding.Conversions`' truncated-literal and integer-and-floating-point tests, `Binding.PositionWarnings.TryLiteralBits`), and
+    `ComparisonTypes.OperatorTableRuns` asks `HasIntegerArithmetic`, the same predicate under its own name.
+  - What remains of `ScalarTypes` for R7-T2: `SizeWidth` (the profile's constant from `IrTarget`'s row; its one reader is `Row`),
+    `Supports` (SPEC 3.1's Scalar predicate, which reads `IsNumeric`; PLAN G289 (1)'s rename), `Normalize`, `TryLiteral` and
+    `TryFloatLiteral`. R5-M148's rejected (b) stands until T2 moves the predicate.
+  - `BoundType` does not grow: `width` is a byte beside `numeric`, 96 data bytes and 112-byte objects before and after (measured by
+    the design reviewer). It takes the last padding byte: a later one-byte field costs 8 bytes per instance and should pack the row
+    then.
+  - Other contracts keep their tables: `Layout.Rows` is IMPL 21.1.3's storage of the executable profile (size, alignment, stride and
+    LLVM types of every Scalar), tied to `Width` by a test (`Width` is eight times the row's size); `Binding.Attributes.ScalarCode`
+    is SPEC 22.6's whitelist of C-exchangeable scalars and its codes; `BitWidth` is SPEC 13.5.4's 32- or 64-bit rule over `Width`.
+  - Rejected: closing the row as two facts (after BU-130 only the two switches differ, and `Wrapping<T>` was answered two ways);
+    `ScalarTypes.Width` kept as a forwarder; the width switch beside `Categorize`; rows that also create the primitives (the
+    dictionary's order is observable); the width or category from the name's text (G659); one byte encoding both the category and
+    the width (each of six category readers would decode it, and the padding absorbs the byte); Layout's integer rows or
+    `ScalarCode` derived from `Width`.
+- **R4-M197 A4: a requirement call on a closed Self enters its witness at the call's own Types and lengths (PLAN G663)**
+  (2026-11-10; Middle; Major, records only; design review ACCEPT, implementation reviews ACCEPT; the Front's C-213, the Back's
+  C-216) SPEC 7.2.3, 8.6.3, 15.6.4. A4's Requires item keeps the call's substitution (`MirEffects.Atom.Call`, replacing
+  `Atom.Reference`): its Contract reference, read in the selected view, and the requirement's own Types and lengths.
+  `TyCtxt.Witnesses` (`Binding.Witnesses`) takes the call's substitution (A4 passes it in the view, `TyCtxt.InView`, built in
+  `MirEffects.Terminator`; a requirement no call names passes `Synthesized(requirement, self, reference)`); a Conformance target's
+  instance is the witness under its declaring instance at them, as `TyCtxt.Witness`'s `Conformance` binds them; a built-in target, a
+  library witness, an accessor and a comparison leaf bind no own slot of the requirement and are unchanged. `TyCtxt.Synthesized`'s
+  span form takes the lengths as a required parameter (the Front's C-213; one form with R8-W2 a2's). A summary's atom and a
+  published row's item keep no call: their requirement has no own slot (no library Contract declares a generic requirement); one
+  that had would end in the Limit, never an empty effect.
+  - **Reason.** The witness's parameter-dependent atoms over its own slots composed to null at an instance that bound none: a Limit
+    (`Unsupported_Kd` at the conformance) on valid programs and instead of the conflict on invalid ones.
+  - **Two producers.** The Conformance row builds what `TyCtxt.Witness`'s `Conformance` builds, without Origins (the analyses relate
+    them); `TyCtxtTest.AConformanceWitnessIsGivenItsCallsOwnTypesAndLengths` holds the two equal but for Origins, and A-12 (PLAN
+    G186), which reads `TyCtxt.Witness` with the item's substitution, removes the row with its reader.
+  - **Rejected.** A4 reading `TyCtxt.Witness` now (A-12's unit, not before H11; this entry's item is its input); A4 building the
+    instance from the call's Types itself (Binding's 8.6.3 correspondence decided in a consumer); the MIR builder resolving the
+    witness in the copy (a responsibility moved between phases for one consumer).
+  - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
+    parameter-dependent atom ...").
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10648,6 +10703,10 @@ resumed by R4-M86 (2026-10-20).
     proof (`:246`: `isize << 40` becomes proven) move too. Evidence: the Front's `F\Lit\mir-dumps\` and the Middle's C-142 R11-R14.
   - Amends R5-M174: "what the phases share is `PointerWidth`" now means `ScalarTypes.SizeWidth`. `IrTarget` keeps the target's width
     for the Condition, and its 0 for no IR target.
+  - Amended by R4-M196: `SizeWidth` stays the profile's one constant, but its only reader is `BoundType.Row`'s rows of `isize` and
+    `usize`; Binding and the MIR builder read the width of either Core, like any integer Type's, as `BoundType.Width`.
+    `ScalarTypes.Width` is deleted; `TryLiteral` stays the one literal-fit predicate. R5-M174's "what the phases share" is now the
+    Type's `Width`.
 - **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
   review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
   - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
@@ -16747,6 +16806,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - G658 kept the row: a folded wrap to a Type whose instance decides its width is a Wrap Cast of its i128 payload (`MirBuilder.Convert`),
     so the generic row stays 0..127. No open limit remains (N5, N6/F4 and the family's second copy closed by G643-G645; the generic row's
     question by G658).
+  - Amended by R4-M196: rule 1's width is `BoundType.Width` (`constant.Type.Width != 0`); the rule is unchanged.
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
