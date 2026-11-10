@@ -5,7 +5,7 @@
 // operator row, FunctionCodegen.Shims) read, as both read a statement's operation.
 // Input: an arithmetic shim's Contract, by its declaration identity. Output: its MIR operator, a BinaryOp's or UnaryOp's kind and operator.
 // Invariants: a row per Contract with a built-in witness (ArithmeticContracts.Supports), the operator the MIR builder makes for the token
-// Binding's ArithmeticContracts.Operator gives it (a test ties them); any other Contract is a broken contract.
+// Binding's ArithmeticContractSyntax.Operator gives it (a test ties them); any other Contract is a broken contract.
 // Must not: decide which Types have the witness (Binding's), or restate the operator table's entries or the capability table's rows.
 
 using Kimi.Compiler.Mir;

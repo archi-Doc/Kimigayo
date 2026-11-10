@@ -106,7 +106,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
         {
-            issue.Node.Report(requirement, issue.Code, ArithmeticOperatorText(ArithmeticContracts.Operator(direction.Id)), evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name], related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
+            issue.Node.Report(requirement, issue.Code, ArithmeticOperatorText(ArithmeticContractSyntax.Operator(direction.Id)), evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name], related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
         }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {

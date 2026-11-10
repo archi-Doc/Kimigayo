@@ -2470,7 +2470,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
 
-    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContracts.Operator,
+    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContractSyntax.Operator,
     // composed with the MIR builder's operator for that token, agree: each Contract with a built-in witness on i32 has the MIR operation the
     // builder writes for its operator on i32 operands, one each; any other Contract, a comparison or a Left one, has none.
     [Fact]
@@ -2480,7 +2480,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(6, contracts.Length);
         foreach (var contract in contracts)
         {
-            var token = ArithmeticContracts.Operator(contract);
+            var token = ArithmeticContractSyntax.Operator(contract);
             var spelling = token switch
             {
                 KotoKind.Plus => "+",
