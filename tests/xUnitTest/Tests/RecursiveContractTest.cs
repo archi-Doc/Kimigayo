@@ -192,7 +192,9 @@ public sealed class RecursiveContractTest
     // SPEC 8.3.3 Finality: neither the order of the premises nor the order of the declarations changes a result. Each row is one program
     // in two orders whose view is prepared under a parameter identity; normalizing a fact there asks a capability (o-capability: the
     // built-in Addable's Output asks whether its receiver is a PrimitiveInteger) or a conformance condition (o-condition, o-binding:
-    // Box's `when`), each answered from the written facts alone. An answer kept beyond its request would make the two orders differ.
+    // Box's `when`), each answered from the written facts alone. o-binding's clause stands in a struct region, since a body parses
+    // a clause whose subject begins with a declared Type as an expression (PLAN G507); its condition and its consumer are each
+    // answered through a refinement (E: D, Sub: Tag). The memo's clear after the preparation is p33-prepmemo's.
     [Theory]
     [InlineData(
         "o-capability",
@@ -204,8 +206,8 @@ public sealed class RecursiveContractTest
         "func probe<T, W>(value: ref/T.(K).Y)\n    W is T\n    T is M\n    needs<T.(K).Y>(value)\ncontract M: K, D\n" + Clauses + Conditions)]
     [InlineData(
         "o-binding",
-        "contract D: Copy\ncontract C\n    associate X\nstruct Box<A>\n    Self is C when A is Copy\n    associate X is i32\ngroup H\n    public func twice<T, U>(value: U) -> (U, U)\n        T is D\n        T is U\n        Box<U>.(C).X is Copy\n        return (value, value)\n",
-        "group H\n    public func twice<T, U>(value: U) -> (U, U)\n        T is U\n        T is D\n        Box<U>.(C).X is Copy\n        return (value, value)\nstruct Box<A>\n    Self is C when A is Copy\n    associate X is i32\ncontract C\n    associate X\ncontract D: Copy\n")]
+        "contract Tag\ncontract Sub: Tag\ncontract D\ncontract E: D\ncontract C\n    associate X\nstruct Box<A>\n    Self is C when A is D\n    associate X is A\nstruct Need<V>\n    V is Tag\n    public var item: i32\nstruct W<T, U>\n    U is E\n    T is U\n    Box<T>.(C).X is Sub\n    public var need: Need<U>\n",
+        "struct W<T, U>\n    Box<T>.(C).X is Sub\n    T is U\n    U is E\n    public var need: Need<U>\nstruct Need<V>\n    V is Tag\n    public var item: i32\nstruct Box<A>\n    Self is C when A is D\n    associate X is A\ncontract C\n    associate X\ncontract E: D\ncontract D\ncontract Sub: Tag\ncontract Tag\n")]
     public void TheOrderOfPremisesNeverChangesAResult(string form, string first, string second)
         => Assert.True(CompilationTestHelper.RecordsAtLines(first + "()").SequenceEqual(CompilationTestHelper.RecordsAtLines(second + "()")), $"{form}: [{string.Join(" | ", CompilationTestHelper.RecordsAtLines(first + "()"))}] and [{string.Join(" | ", CompilationTestHelper.RecordsAtLines(second + "()"))}]");
 
