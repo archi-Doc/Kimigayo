@@ -88,7 +88,21 @@ public class NormalizedConstraintProofBindingTest
         AssertProof(c, ConstraintProof.Proven);
     }
 
-    // DECISIONS R7-C2e1 (F5): a requirement's signature is formed in its declaration's view under the call's reference (SPEC 8.6.4), so
+    // DECISIONS R7-C2e1 (F1): `T is K` supplies `T.(K).X is Q` and Q's clause `T.(K).X.(Q).Y is i32` (SPEC 8.3.2), so the written premise
+    // asks `i32 is Marker`, which a primitive's fixed conformances refute (SPEC 8.7.1): f's premises contradict, and each use of them is
+    // InvalidConstraint_Kd. f's view's environment is written after its facts are first read in the pass, so a kept reading is valid only
+    // under the serial naming the environment's state. Both orders.
+    [Theory]
+    [InlineData("x.q()\n    g<i32>()\n")]
+    [InlineData("g<i32>()\n    x.q()\n")]
+    public void AReadingIsKeptOnlyForTheEnvironmentItWasFormedIn(string uses)
+        => Assert.Equal(
+            "9*InvalidConstraint_Kd",
+            DiagnosticCorpus.RecordProfile("contract Marker\ncontract Q\n    associate Y\n    Self.(Q).Y is i32\n    func q(self: ref/Self) -> ()\n" +
+                "contract K\n    associate X is Q\nfunc g<Z>()\n    Z is Marker\n    ()\nfunc f<T>(x: ref/T.(K).X)\n    T is K\n    T.(K).X.(Q).Y is Marker\n" +
+                "    g<T.(K).X.(Q).Y>()\n    " + uses));
+
+    // DECISIONS R7-C2e1 (F5):a requirement's signature is formed in its declaration's view under the call's reference (SPEC 8.6.4), so
     // P's clause reads `A.(Src).Item is not Marker` under P<A> and `B.(Src).Item is not Marker` under P<B>, and each call's candidate is
     // refuted under its own reference (SPEC 8.3.2): a reading is one per requirement Contract. Both orders.
     [Theory]
