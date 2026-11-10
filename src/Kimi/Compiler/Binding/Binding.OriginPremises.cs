@@ -170,12 +170,12 @@ public sealed partial class Binding
         var initializers = this.initializerOrigins.Count != 0;
         for (var node = environment.Use; node is not null; node = node.Parent)
         {
-            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State >= 2)
+            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
             {
                 environment.Resolvers.Add(declaration);
             }
 
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.State >= 2)
+            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
             {
                 environment.Resolvers.Add(inferred);
             }
@@ -257,10 +257,10 @@ public sealed partial class Binding
 
             // Only declaration contracts are assumptions. A field or local relation being checked must never prove itself.
             if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || requirement) &&
-                this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
+                this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Completed)
             {
                 this.AddDeclarationPremises(environment, declaration.Relations);
-                if (environment.ReadsFailedContracts && declaration.Failure is not null)
+                if (environment.ReadsFailedContracts && declaration.Unavailable)
                 {
                     this.ReadFailedContract(environment, declaration, OriginPremiseRule.Declaration, null);
                 }
@@ -337,7 +337,7 @@ public sealed partial class Binding
     }
 
     // R1: an established enclosing declaration's clauses.
-    private void AddDeclarationPremises(OriginPremiseEnvironment environment, List<OriginRelation> relations)
+    private void AddDeclarationPremises(OriginPremiseEnvironment environment, ReadOnlySpan<OriginRelation> relations)
     {
         foreach (var relation in relations)
         {
@@ -351,7 +351,7 @@ public sealed partial class Binding
     private void ReadFailedContract(OriginPremiseEnvironment environment, OriginDeclaration declaration, OriginPremiseRule rule, BoundOrigin[]? arguments)
     {
         var read = environment.Reads.Count;
-        foreach (var relation in declaration.RejectedRelations!)
+        foreach (var relation in declaration.RejectedRelations)
         {
             var a = Substitute(relation.Longer)!;
             var b = Substitute(relation.Shorter)!;
@@ -371,7 +371,7 @@ public sealed partial class Binding
         }
 
         environment.Reads.Add(declaration.Failure!);
-        foreach (var (clause, left, right) in declaration.FailedClauses!)
+        foreach (var (clause, left, right) in declaration.FailedClauses)
         {
             environment.Repairs.Add((clause, Substitute(left), Substitute(right), arguments is null ? declaration.Owner : null, arguments));
         }
@@ -395,7 +395,7 @@ public sealed partial class Binding
             this.AddTypePremises(environment, formation, OriginPremiseRule.Associated);
         }
 
-        if (!this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
+        if (!this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || !requirement.Completed)
         {
             return;
         }
@@ -449,7 +449,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
+        if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
             {
@@ -459,7 +459,7 @@ public sealed partial class Binding
             }
 
             // The declaration judge reads R1 only (DECISIONS BU-69's limit: no declaration row reaches a failed Type's premises here).
-            if (environment.Dependence && declaration.Failure is not null)
+            if (environment.Dependence && declaration.Unavailable)
             {
                 this.ReadFailedContract(environment, declaration, rule, (BoundOrigin[])type.OriginArguments);
             }

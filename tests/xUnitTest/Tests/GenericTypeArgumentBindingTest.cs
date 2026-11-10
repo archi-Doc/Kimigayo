@@ -48,13 +48,13 @@ public class GenericTypeArgumentBindingTest
 
     [Theory]
     [InlineData("G", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("C", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("C", DiagnosticCode.UnresolvedBinding_Kd)] // SPEC 9.2: a Contract is not eligible in the Core row, as a group is not.
     [InlineData("1", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("(1 + 2)", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("Box", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("([2 of Box])", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("([2 of C])", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("(Box<C>)", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("([2 of C])", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("(Box<C>)", DiagnosticCode.UnresolvedBinding_Kd)]
     public void NonTypesAndIncompleteNestedTypesRemainInvalid(string type, DiagnosticCode expected, DiagnosticCode? callExpected = null)
     {
         foreach (var use in new[] { $"func f(value: Box<{type}>) => ()", $"take<{type}>()" })

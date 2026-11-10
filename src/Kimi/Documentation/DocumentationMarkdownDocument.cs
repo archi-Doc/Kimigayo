@@ -4,9 +4,10 @@ using System.Buffers;
 using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1600, SA1649 // Compact syntax model and allocation-free enumeration.
 

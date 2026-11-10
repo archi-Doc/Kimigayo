@@ -193,7 +193,7 @@ public sealed partial class Binding
 
                     // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
                     // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
-                    if (isLength && this.ProbePath(argumentName, scope, LookupRole.NoContainer, 0) is not null)
+                    if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;

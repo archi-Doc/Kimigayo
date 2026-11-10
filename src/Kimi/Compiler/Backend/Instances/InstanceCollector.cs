@@ -6,7 +6,7 @@
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
-// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
+// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
 // MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the
 // compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
@@ -25,7 +25,7 @@
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
 // and the erased Self, or a gap); a Dictionary from none targets the body of DictionaryStorage.initialize (Declared); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
+// a DropGlue's level, DropGlue.Level, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
 // comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a property-witness setter's Field glue;
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
@@ -69,7 +69,7 @@
 // that holds its subject (Declaration; an import's own).
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
-// targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
+// targets are at its default site, a DropGlue's in DropGlue.Level's order, a ClosureErasure's body before its environment's glue; a repeated
 // run of a version is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS R5-M183: the Templates
 // walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
 // an earlier one allocates nothing.
@@ -93,7 +93,8 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
-    private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's scratch.
+    private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's and DropGlue.Level's steps.
+    private readonly List<MirDropStep> walk = new(); // Their scratch of Mir's steps.
     private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).

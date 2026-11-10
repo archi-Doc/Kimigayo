@@ -2,7 +2,7 @@
 
 using System.Text.Json;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>Resolves compiler tools and profile libraries independently of project locations.</summary>
 internal static class ToolchainResolver
