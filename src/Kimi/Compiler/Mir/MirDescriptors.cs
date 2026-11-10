@@ -42,14 +42,17 @@ internal enum MirEffect : ushort
 }
 
 /// <summary>A row of the descriptor table: the access a kind makes, its effects, and for an intrinsic its arity (-1: its lowering
-/// defines it later), whether it diverges and the operand the builder adds beyond its declaration whose value its result retains
+/// defines it later) and the operand the builder adds beyond its declaration whose value its result retains
 /// (<see cref="RetentionKind.Value"/>; -1: none; A3 E14), which the declaration's retention does not cover. A kind without a row is not
-/// <see cref="Defined"/>.</summary>
-internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, bool Diverges, sbyte Retained)
+/// <see cref="Defined"/>. A column that only some rows of a family set is named at its row.</summary>
+internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, sbyte Retained)
 {
     /// <summary>Gets a value indicating whether an rvalue of the kind has a Place (<see cref="MirRvalue.Place"/>), which its access is to:
     /// a Ref's, Discriminant's, Len's or Storage's Place or an Adapt's payload. An Opaque's access is to its site's roots.</summary>
     internal bool HasPlace { get; init; }
+
+    /// <summary>Gets a value indicating whether the intrinsic diverges: its Call has no target (<see cref="MirValidator"/>).</summary>
+    internal bool Diverges { get; init; }
 }
 
 /// <summary>A position in a body: the statement at an index of a block, or its terminator at the index after the last statement.</summary>
@@ -160,37 +163,37 @@ internal static class MirDescriptors
     // code as a string constant and RawSlice's backing (DECISIONS R4-M40), which its result retains (A3 E14, R4-M63).
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
-        IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.RawRelease => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.TryAllocateBytes => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.MakeObj => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.MakeRc => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.MakeArc => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.RawInitialize => Row(MirAccess.None, MirEffect.None, 2),
-        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 3, retained: 2), // The storage, the length and the backing (DECISIONS R4-M40).
-        IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
-        IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
-        IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
-        IntrinsicId.DestroyValues => Row(MirAccess.None, MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
-        IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
-        IntrinsicId.ErasedReserve => Row(MirAccess.None, MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
-        IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),
-        IntrinsicId.Abort => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
-        IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
-        IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, 2, diverges: true), // The issue and the site's location.
-        IntrinsicId.WriteStdout => Row(MirAccess.None, MirEffect.Environment),
-        IntrinsicId.TestMessage => Row(MirAccess.None, MirEffect.Environment, 2), // The issue and a shared view of the message.
-        IntrinsicId.TestRecordValue => Row(MirAccess.None, MirEffect.Environment, 2), // The side and the Scalar value (F8b).
-        IntrinsicId.TestObserve => Row(MirAccess.None, MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
-        IntrinsicId.TestTempDirectory => Row(MirAccess.None, MirEffect.Environment, 0),
-        IntrinsicId.StaticEnsure => Row(MirAccess.None, MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
-        IntrinsicId.FormatBuffer => Row(MirAccess.None, MirEffect.Allocation, 3), // The literal bytes, the values' Types' token, the direct mark.
+        IntrinsicId.RawAllocate => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.RawRelease => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.TryAllocateBytes => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.MakeObj => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.RawInitialize => Intrinsic(MirEffect.None, 2),
+        IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
+        IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
+        IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
+        IntrinsicId.ErasedWriter => Intrinsic(MirEffect.None, 1),
+        IntrinsicId.Clone => Intrinsic(MirEffect.None, 1),
+        IntrinsicId.TypeTest => Intrinsic(MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
+        IntrinsicId.DestroyValues => Intrinsic(MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
+        IntrinsicId.FormatFloat => Intrinsic(MirEffect.None, arity: -1),
+        IntrinsicId.ErasedReserve => Intrinsic(MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
+        IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, arity: -1),
+        IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
+        IntrinsicId.Fail => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
+        IntrinsicId.TestRequireAbort => Intrinsic(MirEffect.Abort, 2) with { Diverges = true }, // The issue and the site's location.
+        IntrinsicId.WriteStdout => Intrinsic(MirEffect.Environment, arity: -1),
+        IntrinsicId.TestMessage => Intrinsic(MirEffect.Environment, 2), // The issue and a shared view of the message.
+        IntrinsicId.TestRecordValue => Intrinsic(MirEffect.Environment, 2), // The side and the Scalar value (F8b).
+        IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
+        IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment, 0),
+        IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
+        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation, 3), // The literal bytes, the values' Types' token, the direct mark.
         // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
         // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
-        IntrinsicId.FormatSegment => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4),
-        IntrinsicId.FormatFinish => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
+        IntrinsicId.FormatSegment => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4),
+        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
         _ => default,
     };
 
@@ -200,13 +203,12 @@ internal static class MirDescriptors
     /// <returns>Whether it is an Opaque site's root's.</returns>
     internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
 
-    private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false, sbyte retained = -1) => new(
-        Defined: true,
-        access,
-        effects,
-        arity,
-        diverges,
-        retained);
+    // Each family's rows state the columns every row of the family has: a kind's its access and effects, an intrinsic's its effects and
+    // arity (it accesses no Place itself: its arguments have their operand rows). A column only some rows set (HasPlace, Diverges,
+    // Retained) is named at its row, so a new column adds no parameter.
+    private static MirDescriptor Row(MirAccess access, MirEffect effects) => new(Defined: true, access, effects, Arity: -1, Retained: -1);
+
+    private static MirDescriptor Intrinsic(MirEffect effects, sbyte arity) => new(Defined: true, MirAccess.None, effects, arity, Retained: -1);
 }
 
 /// <summary>The one enumeration of what a location reads, writes, moves, borrows, defines, kills and destroys, and of its effects, by the
