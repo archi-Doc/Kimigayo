@@ -75,7 +75,10 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         MirDataflow.Grow(ref this.held, moves.MaxCarried);
-        var transfer = new Transfer(body, moves, cases, flow, state, drops) { Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all, Held = this.held };
+        var transfer = new Transfer(body, moves, cases, flow, state, drops)
+        {
+            Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all, Held = this.held,
+        };
         flow.Forward(ref transfer);
         transfer.Checks = true;
         flow.Replay(ref transfer);

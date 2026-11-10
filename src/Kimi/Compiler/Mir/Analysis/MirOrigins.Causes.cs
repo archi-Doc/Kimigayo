@@ -65,12 +65,14 @@ internal sealed partial class MirOrigins
         return this.FixedOrigins(type, site) > 0;
     }
 
-    // The Origins a part holds, each Fixed, or -1 where one is not or the part is one the body does not know (a raw layer, a Type
-    // parameter, a projection, a Callable); a part met before counts none.
+    // The Origins a part holds, each Fixed, or -1 where one is not or the part is one the body does not know (a raw layer, a Type an
+    // instance decides: a Type parameter or a projection, or a Callable: a Function, Closure or Function Item Type); a part met before
+    // counts none.
     private int FixedOrigins(BoundType? type, SourceRef site)
     {
-        if (type is null || type.Semantics == SemanticsKind.Raw || type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or
-            BoundTypeKind.AssociatedProjection or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
+        var dependent = type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection;
+        var callable = type?.Kind is BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem;
+        if (type is null || type.Semantics == SemanticsKind.Raw || dependent || callable)
         {
             return -1;
         }

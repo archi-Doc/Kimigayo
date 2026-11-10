@@ -132,7 +132,8 @@ internal sealed partial class MirBuilder
             case HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value: // A built-in range selection.
                 this.Slice(destination, (IndexKoto)node);
                 break;
-            case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
+            case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call
+                when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
                 // SPEC 3.5, 14.2.2: a discarded Place's value is its Place evaluated (an Index checks its bounds) and acquired by its bare
                 // acquisition, its plan row's Adjust (DECISIONS R4-M145), as any consumed child's Adjust is (Operand).
                 this.Use(destination, this.Operand(node, HirTables.PlanOf(node).Adjust, this.body.TypeOf(destination), input, destination), node);

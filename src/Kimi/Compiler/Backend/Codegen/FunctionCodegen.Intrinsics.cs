@@ -116,7 +116,7 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Routine:
                 return row.Routine;
             case IntrinsicWriter.Requested:
-                this.module.Request(ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory);
+                this.module.Request(row.Requests);
                 return row.Routine;
             case IntrinsicWriter.Allocate:
                 this.slotless[0] = new('\0', this.Needed(subst!, 0, out _)?.Layout.Stride ?? 0); // Its row's TypeArguments need.

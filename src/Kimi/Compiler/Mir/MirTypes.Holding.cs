@@ -103,7 +103,8 @@ internal static partial class MirTypes
     /// <param name="entries">Scratch for the entries the walk is reading, used in stack order and left as given.</param>
     /// <param name="writes">What a call may write past the value.</param>
     /// <returns>Whether the value may hold a Loan.</returns>
-    internal static bool HoldsLoans(BoundType? type, TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, List<Hold> entries, out MirWrites writes)
+    internal static bool HoldsLoans(
+        BoundType? type, TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, List<Hold> entries, out MirWrites writes)
     {
         seen.Clear();
         var found = new Holding(types, seen, members, entries).Holds(type, null, null, Own, 0);
@@ -198,7 +199,8 @@ internal static partial class MirTypes
         // The facts a part adds in its mode: the Join of its entries'.
         internal Facts Holds(BoundType? type, BoundType? written, BoundType? holder, int mode, int depth)
         {
-            if (type is null || type.Kind == BoundTypeKind.FunctionItem || (type.Semantics != SemanticsKind.Raw && !this.Enters(type, written, holder, mode, depth)))
+            if (type is null || type.Kind == BoundTypeKind.FunctionItem ||
+                (type.Semantics != SemanticsKind.Raw && !this.Enters(type, written, holder, mode, depth)))
             {
                 return default;
             }
@@ -249,7 +251,7 @@ internal static partial class MirTypes
             HoldStep.Loan => this.Holds(entry.Part, null, null, (mode & ~LoanOnly) == Own ? mode | LoanOnly : mode, depth),
             HoldStep.Abstract => mode == Own ? new(true, MirOutcome.None, named: true) : Met(mode),
             HoldStep.Unsupported => new((mode & ~LoanOnly) == Own, (mode & LoanOnly) == 0 ? MirOutcome.Limit : MirOutcome.None),
-            HoldStep.Own or HoldStep.Address or HoldStep.Static or HoldStep.Shared or HoldStep.Exclusive or HoldStep.Erased
+            <= HoldStep.Exclusive or HoldStep.Erased // The five steps a raw layer takes (HoldStep's first) and an erased environment.
                 => Met(mode).Join(mode == Own ? this.Past(entry, layer, written, holder, depth) : default),
             _ => throw new InvalidOperationException($"HoldStep {entry.Step} has no row (InternalInvariant)."),
         };
