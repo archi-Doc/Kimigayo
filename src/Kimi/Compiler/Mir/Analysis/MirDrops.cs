@@ -139,8 +139,9 @@ internal sealed class MirDropTable
         return -1;
     }
 
-    /// <summary>Gets whether a Drop destroys nothing under a view: its group is Elide (SPEC 16.2.1, 14.10.3), the one statement A5 and the
-    /// instance collector read.</summary>
+    /// <summary>Gets whether a Drop destroys nothing under a view: its group is Elide (SPEC 16.2.1, 14.10.3), the one
+    /// statement A5 (Dropping) reads; the Backend's walk of a group (DropGlue.Destroyed) gives an Elide row no
+    /// step.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="view">The view.</param>

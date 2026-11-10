@@ -66,7 +66,7 @@ public sealed partial class Binding
         this.permitClosureReceivers = true;
         try
         {
-            var permitted = solution.Prove(solution.Types.AsSpan(0, CallOwnSlots(solution.Function).Count), waitingCallables);
+            var permitted = solution.Prove(solution.Types[..CallOwnSlots(solution.Function).Count], waitingCallables);
             return permitted == ConstraintProof.Proven ? mismatch : null;
         }
         finally

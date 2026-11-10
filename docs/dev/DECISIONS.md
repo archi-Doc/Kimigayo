@@ -6296,6 +6296,7 @@ resumed by R4-M86 (2026-10-20).
     function-reference argument on its own when no candidate takes a callable there (`PrepareArgument`'s `TakesCallableContext`), so
     `wrap(identity)` reports the reference's `UnboundTypeArgument_Kd` even at `let o: Option<(i64) -> i64> = wrap(identity)`, while a
     payload's waits (`Option.Some(identity)` there is valid).
+  - Amended by R7-M18 (R7-I2-core's store): U1/U7a's `SlotSolution` keeps its operations; the writer of its frames is `InferCtxt`.
 - **BU-3** (2026-10-18; found by R4's E13 implementer; amends R4-M51's Kind rule and narrows its Open note) A pair-layer input in call
   retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits only borrows (ref, uniq, objref, objuniq) is a borrowed input
   in every admitted case, so `BorrowReferent`, the one predicate for a borrowed input, returns its target: its slot (`OuterOrigin`)
@@ -16691,6 +16692,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a root file (not readable by MIR analyses; R7-T2); conditions in the core's bitsets (A5's Work changes); the copy's
     per-source search as the core (A5's Work and order change); one graph per OR-closed candidate condition (revision 0: 2^k graphs
     for k independent rows, measured 51 s at k = 13); views for declarations (no MirCases).
+- **R7-M18 `InferCtxt` owns every solve's slot frames (R7-I2-core's store)** (Front, 2026-11-10; the owner's O-123 (a), and O-129
+  (a): the store lands alone; design review 3, no blocking finding for the store; implementation review ACCEPT; Major,
+  behavior-preserving) SPEC 10.8.
+  - **Representation.** `InferCtxt` (`Binding.InferCtxt.cs`), one per Binding, holds the Type and length slot frames of every solve
+    that infers, privately in pooled arrays. `SlotFrame` is a handle (store, id) with read-only views (`ReadOnlySpan`) and logged
+    writes (`SetType`, `SetLength`, `ClearTypes`, `ClearLengths`, `CopyTypes`, `CopyLengths`); an undo log is written while a
+    snapshot is open; `Snapshot` and `Rollback`. `SlotSolution` reads its frame (G130 U1/U7a amended: its operations stay, the
+    writer moves).
+  - **Rule.** A frame is written only through the store: no array or mutable span of a frame leaves the store's file, so the
+    compiler enforces the one write path (31 write sites through 9 rent sites). The store decides no rule (no fit, meet,
+    applicability, formation, membership or Origin relation) and reads no syntax. `ArchitectureRulesTest`'s RP6 trial-copy row stays
+    at 1 until part c.
+  - **Reason.** Two design reviews found frame writes outside the store (B2, C1); a name-matching ratchet cannot see them, and the
+    type system can.
+  - **Parts c and d1** are their own Major units (O-129 (a)): c from design review 3's E1 (its rollback before `CloseTrial`), d1
+    from E2 (it starts from `ResultContext.Expected`, one representation); d2 later, with G159 (2); parts e-i as the plan lists
+    them.
+  - **Rejected:** frames as exposed arrays with a ratchet (missed two sites); an undo log inside `SlotSolution` (the other frame
+    owners have none); variables beyond frames in the core (each lands with its consumer).
+  - **Temporary:** none.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -17086,6 +17107,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     reason was 'A4 relies on it: such a row elaborates nothing, no flag, no codegen, no destructor'; that reason is now carried by
     A4's runtime gate (no destructor), the flagless reading of a check-only group (no flag) and code generation's runtime walk
     (`FunctionCodegen` I3: no codegen), and a check-only Drop has the group of what it would destroy.
+  - Superseded in part by R8-M23 (U2b), for R8-M10's reader clause ("which A5 (`Dropping`) and the instance collector read; the
+    collector requests no DropGlue for such a Drop"): the collector now reads a Drop's group row by row through
+    `DropGlue.Destroyed`, whose walk gives an Elide row no step (`MirDropTable`'s summary, U1). The reason that no longer holds: the
+    collector needed its own top-level reading of `Elides` only while no walk read every row's verdict; with the walk it became a
+    second copy. `MirDropTable.Elides` stays the one statement A5 (`Dropping`) reads, and its summary in `MirDrops.cs` now says so
+    (the Middle's YES on C-195; U2b implementation review 1's B1).
 - **R8-M17 `replace`, `exchange` and `swap` are Kimigayo bodies** (Back, 2026-11-09; R8-U1; Major; design and SP3 reviews ACCEPT; the
   Middle's RP17 consent C-174 YES; plan RP20, RQ9; on R8-M3; supersedes in part R5-M116 and R5-M117; amends R8-M1's guard list) SPEC 15.7
   as R8-SP3 states it, 15.7.1, 22.5.1.
@@ -17346,6 +17373,25 @@ R8-M* and R9-M* by the stage of the recording unit.
       unsound acceptance, B's design review 1 B1); `MovedPlace_Kd` on check-only groups (R4-M6a; SPEC 14.10.3's assumed paths add no
       normal completion; the Middle's C-195 ruling); applying the check-only reading in the state recording too (two sites, a bool
       steering `Subtree`: the Middle's implementation review B1′).
+  - **R3-U2b: a Drop's checked set is what its group destroys** (Back, 2026-11-10; PLAN G641 kind 4's last part; Major, an
+    acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE (B1), 2 ACCEPT) SPEC 16.3.2, 8.15.3,
+    14.10.3.
+    - **Rule.** `DropGlue.Destroyed`'s walk gives an Elide row no step: it destroys nothing (`MirDropTable`'s statement). So the
+      instance collector requests, and code generation writes, exactly the glues of what a Drop's group destroys, on runtime groups
+      and on U1's check-only groups alike.
+    - **Removed.** The collector's `Elided` (a Drop whose group is Elide requests nothing): the walk now gives such a group no step,
+      the same rule, so it had become a second copy. Codegen's per-step Elide test (an Elide row read its target and wrote nothing)
+      goes for the same reason; codegen's whole-Drop Elide test stays (an Elide Drop writes no address, no cleanup phase).
+    - **Moves.** Acceptance: 12 valid programs rejected with `InvalidCLayout_Kd` are accepted (`V_openAllMoved`, `V_openOkLeft`,
+      `V_openNested`, `V_openMixed`, `V_openDict`, `V_deadOpenAll`; B's reviewer's `T_condAll`, `T_fixAll`, `T_baseAll`, `T_genAll`,
+      `T_dictValGone`, `T_deadRetAll`); every invalid twin stays rejected. Records on rejected programs (Q13): the false records at
+      a Drop that destroys nothing go (`I_deadOpenKeep` 8:18, `I_deadOpenU` 8:18, `T_deadRet` and `T_deadFlag` 10:18); of U2a's four
+      records, `T_deadRetAll`'s and `I_deadOpenU`'s go, `T_deadRet`'s and `T_deadFlag`'s (12:5, the true use) stay. At check-only
+      Drops (N15): U1 merged with U2a adds `I_deadOpenKeep` 10:5 (the dead local `w`'s Keep group requests its glue at its Drop, the
+      true use), which U2b keeps while its false 8:18 goes; the final records equal design review 2's on all 29 programs. Generated
+      IR: 119 of 6,151 `.ll` move, all classified (77 no longer switch to an Open enum's Case holding only Elide parts, one also
+      losing a glue function; 2 lose Elide-only glue functions; 40 renumber items); natives equal.
+    - **Rejected:** keeping `Elided` beside the walk (two statements of one rule).
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -17389,6 +17435,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     Ref, Discriminant, Len, Storage, Adapt). MirUses' walk, the default copy's fold and the builder's Never test read it; no site
     lists the kinds.
   - **Rejected:** deriving it from the row's Access (an Opaque has an access and no Place).
+
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

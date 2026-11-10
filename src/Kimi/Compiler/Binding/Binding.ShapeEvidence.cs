@@ -301,7 +301,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.typeScratch.Rent(slotStride);
+        var bindings = this.infer.Rent(slotStride);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
@@ -324,11 +324,11 @@ public sealed partial class Binding
                 {
                     if (!function.IsConstructor && generic is not null && g < generic.TypeArguments.Count)
                     {
-                        bindings[g] = generic.TypeArguments[g].BoundType;
+                        bindings.SetType(g, generic.TypeArguments[g].BoundType);
                     }
 
-                    fixedSlots[(c * slotStride) + g] = bindings[g] is not null;
-                    if (bindings[g] is { } fixedType)
+                    fixedSlots[(c * slotStride) + g] = bindings.Types[g] is not null;
+                    if (bindings.Types[g] is { } fixedType)
                     {
                         modes[(c * slotStride) + g] = (int)this.ShapeOf(fixedType, function, true).Modes;
                     }
@@ -349,7 +349,7 @@ public sealed partial class Binding
                     CollectTypes(result, expected, fillOnly: true);
                 }
 
-                bindings.AsSpan(0, count).CopyTo(types.AsSpan(c * slotStride));
+                bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
                 void CollectArgument(BoundType pattern, Koto source)
                 {
@@ -433,11 +433,11 @@ public sealed partial class Binding
                         var mode = (int)this.ShapeOf(actual, function, true).Modes;
                         if (modes[at] == 0)
                         {
-                            bindings[slot] = actual;
+                            bindings.SetType(slot, actual);
                         }
-                        else if (bindings[slot] is not { } previous || !SameShapeBinding(previous, actual))
+                        else if (bindings.Types[slot] is not { } previous || !SameShapeBinding(previous, actual))
                         {
-                            bindings[slot] = null;
+                            bindings.SetType(slot, null);
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
                         }
 
@@ -512,7 +512,7 @@ public sealed partial class Binding
         {
             this.acquisitionFailure = savedAcquisition;
             this.flagScratch.Return(fixedSlots);
-            this.typeScratch.Return(bindings, clearArray: true);
+            this.infer.Return(bindings);
             this.indexScratch.Return(modes);
             this.typeScratch.Return(types, clearArray: true);
         }
