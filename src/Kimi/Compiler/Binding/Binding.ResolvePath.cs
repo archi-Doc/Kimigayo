@@ -75,7 +75,7 @@ public sealed partial class Binding
     {
         LookupRole.Any => true,
         LookupRole.NoContainer => candidate.Kind != BindingSymbolKind.Container,
-        LookupRole.Type => candidate.Declaration is not ContractKoto &&
+        LookupRole.Type => !candidate.IsContract &&
             candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or
                 BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType,
         LookupRole.Semantics => candidate.Kind == BindingSymbolKind.SemanticsParameter,

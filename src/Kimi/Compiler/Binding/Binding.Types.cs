@@ -342,7 +342,7 @@ public sealed partial class Binding
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
-        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.IsContract && !isSelf))
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }

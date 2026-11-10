@@ -30,7 +30,7 @@ public sealed partial class Binding
     // SPEC 8.4, 9.7.1: the bound Contract reference a Contract qualifier's Type arguments form (BindContractReference, which completes the
     // qualifier with its Type), else the qualifier's selection itself; null when the reference fails.
     private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
-        => selection.Declaration is ContractKoto && UnwrapTransparentType(qualifier) is GenericsKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
+        => selection.IsContract && UnwrapTransparentType(qualifier) is GenericsKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {

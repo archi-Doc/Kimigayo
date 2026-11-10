@@ -172,7 +172,7 @@ public sealed partial class Binding
         MemberSelection valueSelection = default;
         BoundType? qualified = null; // The Type path's binding of the qualifier.
         var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-        if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
+        if (qualifier?.Type is { } type && !qualifier.IsContract)
         {
             typeMember = this.RequirementMember(member, scope, type, true);
         }
