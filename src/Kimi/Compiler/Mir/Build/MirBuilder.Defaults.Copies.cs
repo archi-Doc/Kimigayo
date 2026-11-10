@@ -83,17 +83,19 @@ internal sealed partial class MirBuilder
         return true;
     }
 
-    // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution, which instantiates it (Instantiates):
-    // its scopes in a scope Inlined at the call, its locals after this body's (its result the slot, its parameters the borrows from at;
-    // a Result temp, delivered into the slot, is no result of this body: it keeps no role, DECISIONS R4-M132),
-    // its entry block the current one (the builder targets no entry block) and its returns going on after it; each Type applied and each
-    // callee's substitution composed (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its
-    // case's layer and a case-dependent acquisition its case's (ByCase), each static and constant added again, and a Drop the instance's
-    // Type does not need left out. No MustNotComplete row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3).
-    private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
+    // A copy's location, in the copy's scope (Frame).
+    private SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = (ushort)this.folded[info.Scope] };
+
+    // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's.
+    private BoundType FoldType(BoundType type, Subst? subst) => subst is null ? type : this.instances[type];
+
+    // Plan 5.6.2: a copy's frame, where each scope, local and block of its template is in this body (folded, in that order, each in its
+    // template's order: Inline reads a local at the scope count, a block after the locals): its scopes in a scope Inlined at the call,
+    // its locals after this body's (its result the slot, its parameters the borrows from at; a Result temp, delivered into the slot, is
+    // no result of this body: it keeps no role, DECISIONS R4-M132), its entry block the current one (the builder targets no entry block).
+    private void Frame(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;
-        var after = this.body.AddBlock();
         map.Clear();
         foreach (ref readonly var scope in template.Scopes)
         {
@@ -104,7 +106,6 @@ internal sealed partial class MirBuilder
                 scope.Source));
         }
 
-        var locals = map.Count;
         for (var i = 0; i < template.Locals.Length; i++)
         {
             var local = template.Locals[i];
@@ -120,18 +121,30 @@ internal sealed partial class MirBuilder
             else
             {
                 var role = local.Role == MirLocalRole.Result ? MirLocalRole.None : local.Role;
-                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source), Role = role });
+                mapped = this.body.AddLocal(local with { Type = this.FoldType(local.Type, subst), Source = this.FoldInfo(local.Source), Role = role });
             }
 
             map.Add(mapped);
         }
 
-        var blocks = map.Count;
         for (var i = 0; i < template.Blocks.Length; i++)
         {
             map.Add(i == 0 ? this.current : this.body.AddBlock());
         }
+    }
 
+    // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution, which instantiates it (Instantiates),
+    // in its frame (Frame), its returns going on after it; each Type applied and each callee's substitution composed (TyCtxt.Compose),
+    // each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent acquisition its
+    // case's (ByCase), each static and constant added again, and a Drop the instance's Type does not need left out. No MustNotComplete
+    // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3).
+    private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
+    {
+        var map = this.folded;
+        var after = this.body.AddBlock();
+        this.Frame(template, subst, at, slot, node);
+        var locals = template.Scopes.Length;
+        var blocks = locals + template.Locals.Length;
         for (var b = 0; b < template.Blocks.Length; b++)
         {
             var block = template.Blocks[b];
@@ -139,7 +152,7 @@ internal sealed partial class MirBuilder
             this.current = map[blocks + b];
             foreach (ref readonly var statement in template.Statements.Slice(block.Start, block.Count))
             {
-                var copy = statement with { Place = FoldPlace(statement.Place), Source = FoldInfo(statement.Source) };
+                var copy = statement with { Place = FoldPlace(statement.Place), Source = this.FoldInfo(statement.Source) };
                 if (statement.Kind == MirStatementKind.Assign)
                 {
                     var acquires = statement.Rvalue is { Kind: MirRvalueKind.Use, Op: not 0 }; // A PairAcquire's Use is marked (R4-M66).
@@ -184,7 +197,7 @@ internal sealed partial class MirBuilder
 
             var copied = terminator with
             {
-                Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
+                Source = this.FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
                 Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
@@ -207,10 +220,6 @@ internal sealed partial class MirBuilder
 
         int Target(int block) => block < 0 ? block : map[blocks + block];
 
-        SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = (ushort)map[info.Scope] };
-
-        BoundType FoldType(BoundType type) => subst is null ? type : this.instances[type];
-
         MirPlace FoldPlace(MirPlace place)
         {
             if (place.Projection == 0)
@@ -230,7 +239,7 @@ internal sealed partial class MirBuilder
         }
 
         MirOperand FoldOperand(in MirOperand operand) => operand.Kind == MirOperandKind.Const
-            ? MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = FoldType(template.Consts[operand.Arg].Type) }))
+            ? MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = this.FoldType(template.Consts[operand.Arg].Type, subst) }))
             : operand with { Place = FoldPlace(operand.Place) };
 
         // A template that did not fail has no Opaque value.
@@ -244,7 +253,7 @@ internal sealed partial class MirBuilder
 
             var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage or MirRvalueKind.Adapt
                 ? FoldPlace(rvalue.Place) : default;
-            return rvalue with { Place = place, Start = this.Flush(start), Type = rvalue.Type is { } type ? FoldType(type) : null };
+            return rvalue with { Place = place, Start = this.Flush(start), Type = rvalue.Type is { } type ? this.FoldType(type, subst) : null };
         }
 
         // A PairAcquire, acquired again as the instance's case decides it (ByCase), by the borrow its marker names; or Copied (R4-M66).
