@@ -143,7 +143,7 @@ public sealed partial class Binding
     {
         var application = AssociatedHead(clause) as OriginApplicationKoto;
         var owner = scope.Owner.BoundSymbol!;
-        if (this.TypeName(member.Left, scope) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
+        if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
             ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
         {
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
