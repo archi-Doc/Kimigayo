@@ -326,8 +326,9 @@ public sealed partial class MirDropTest
             Walks(program, "cases"));
     }
 
-    // PLAN G702, V16: the walk reads a group's rows in passes over them, never once per part: over a struct of N Fields with every second
-    // one moved, N 32, 64 and 128 (the wider two past the walk's inline index), the rows read grow with N.
+    // PLAN G702, V16: the walk passes over the rows below the walked row a fixed number of times (their count, their index), never once
+    // per part: over a struct of N Fields with every second one moved, N 32, 64 and 128 (the wider two past the walk's inline index),
+    // the rows those passes read grow with N. The walker's searches of the sorted index (one per part) are not rows read.
     [Fact]
     public void AnOpenLevelsChildRowsAreReadInOnePass() => RowsReadGrowLinearly([32, 64, 128], static size =>
     {
@@ -346,9 +347,9 @@ public sealed partial class MirDropTest
         return text.ToString();
     });
 
-    // PLAN G702, V16: a level reads only its direct child rows, so a walk reads each row of its group the same number of times at any
-    // depth: over a chain of D nested structs with the innermost Field moved (D Open levels, one inside the other), D 8, 16 and 32,
-    // the rows read grow with D.
+    // PLAN G702, V16: no level passes over the rows below it again, so the walk's passes read each row of its group the same number
+    // of times at any depth: over a chain of D nested structs with the innermost Field moved (D Open levels, one inside the other), D
+    // 8, 16 and 32, the rows those passes read grow with D. The walker's searches of the sorted index are not rows read.
     [Fact]
     public void NestedOpenLevelsReadOnlyTheirDirectChildRows() => RowsReadGrowLinearly([8, 16, 32], static depth =>
     {
@@ -426,7 +427,7 @@ public sealed partial class MirDropTest
             }
 
             steps.Clear();
-            program.Drops.Destroyed(body, group, body.TypeOf(terminator.Place)!, steps);
+            program.Drops.Destroyed(body.Ordinal, group, body.TypeOf(terminator.Place)!, steps);
             for (var open = 0; open < steps.Count; open++)
             {
                 if (steps[open].Kind == MirDropStepKind.Open)

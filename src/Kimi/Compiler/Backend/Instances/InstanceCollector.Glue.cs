@@ -30,7 +30,7 @@ internal sealed partial class InstanceCollector
         }
 
         var start = this.steps.Count;
-        DropGlue.Destroyed(drops, body, group, closed, this.walk, this.steps);
+        DropGlue.Destroyed(drops, body.Ordinal, group, closed, this.walk, this.steps);
         this.Destroys(program, item, subject, site, start);
     }
 

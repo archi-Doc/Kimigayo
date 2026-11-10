@@ -4,7 +4,8 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple
+// operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
 // Output: IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
@@ -309,7 +310,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         // Each part the group destroys whole (MirDropTable.Destroyed: a Keep or Flag row's, a part's without a row, a fixed array's
         // run of elements). The items are a set: the walk's order and an array's several Runs of one element Type read alike. An Open
         // level has no drop of its own, an Elide row no step.
-        program.Drops.Destroyed(body, group, type, this.destroyed);
+        program.Drops.Destroyed(body.Ordinal, group, type, this.destroyed);
         foreach (var step in this.destroyed)
         {
             if (step.Kind is MirDropStepKind.Whole or MirDropStepKind.Run)

@@ -106,7 +106,7 @@ internal sealed partial class FunctionCodegen
         }
         else
         {
-            DropGlue.Destroyed(this.program.Drops, this.body, row, type, this.walk, steps);
+            DropGlue.Destroyed(this.program.Drops, this.body.Ordinal, row, type, this.walk, steps);
         }
 
         _ = this.Step(start, null, null, address, site);

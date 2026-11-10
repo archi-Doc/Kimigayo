@@ -33,7 +33,8 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>What a direct part of a destroyed value is (<see cref="DropGlue.Parts"/>).</summary>
+/// <summary>What a direct part of a destroyed value is: Part from the mapping of Mir's steps (<see cref="DropGlue.Destroyed"/>,
+/// <see cref="DropGlue.Level"/>), the others the Backend's own (<see cref="DropGlue.Parts"/>).</summary>
 internal enum DropPartKind : byte
 {
     Destructor, // The struct's declared destructor, which destroys all the rest (R4-M6b).
@@ -177,12 +178,12 @@ internal static class DropGlue
     /// own, as its parts under the payload's rows: an Open payload's steps, a payload destroyed whole the parts of Mir's level of the
     /// payload Tuple (<see cref="MirDropTable.Level"/>).</summary>
     /// <param name="drops">The drop table.</param>
-    /// <param name="body">The body whose row it is.</param>
+    /// <param name="body">The ordinal of the body whose row it is.</param>
     /// <param name="row">The row.</param>
     /// <param name="type">The row's closed Type.</param>
     /// <param name="walk">The scratch list of Mir's steps, left as it was.</param>
     /// <param name="into">The list the steps are appended to.</param>
-    internal static void Destroyed(MirDropTable drops, MirBody body, int row, BoundType type, List<MirDropStep> walk, List<DropStep> into)
+    internal static void Destroyed(MirDropTable drops, int body, int row, BoundType type, List<MirDropStep> walk, List<DropStep> into)
     {
         var start = walk.Count;
         drops.Destroyed(body, row, type, walk);

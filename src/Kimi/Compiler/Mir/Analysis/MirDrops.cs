@@ -20,6 +20,9 @@
 // naming another requirement); generation's gate reads the mark.
 // A Drop only check edges reach (SPEC 14.10.3) with a Move Path gets the group of what it would destroy from its assumed paths, by the
 // same rules but flagless (check-only code has no flags, R4-M6a), so the instance collector reads it; one without a Move Path has none.
+// The table also states what a row of a group destroys, in destruction order (MirDrops.Destroyed.cs: MirDropTable.Destroyed, a
+// group's walk, and MirDropTable.Level, the level no row governs, as MirDropSteps over MirTypes.LevelPart's order), which A4 and the
+// Backend's drop glue read.
 // Must not rewrite MIR, judge a check-only Drop (no problem, no mark), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
