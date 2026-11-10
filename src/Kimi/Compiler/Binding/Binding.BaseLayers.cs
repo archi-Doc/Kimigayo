@@ -101,7 +101,7 @@ public sealed partial class Binding
             return known.Symbol;
         }
 
-        var named = clause.BoundType?.Symbol ?? this.ProbePath(clause, scope, LookupRole.NoContainer, 0);
+        var named = clause.BoundType?.Symbol ?? this.ProbePath(clause, scope, UseRow(clause), 0);
         var failed = this.clausesBindable && clause.BindingFailure != BindingFailure.None;
         if (clause.BoundType is not null || failed || (reads == this.notReadyReads && named?.Declaration is StructKoto))
         {
@@ -169,7 +169,7 @@ public sealed partial class Binding
         (this.knownBases ??= new(ReferenceEqualityComparer.Instance)).Clear();
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is StructKoto { BaseClause: { BoundType: { } type } clause } structure && this.ProbePath(clause, this.scopes[structure], LookupRole.NoContainer, 0)?.Declaration is not StructKoto)
+            if (this.nodes[i] is StructKoto { BaseClause: { BoundType: { } type } clause } structure && this.ProbePath(clause, this.scopes[structure], UseRow(clause), 0)?.Declaration is not StructKoto)
             {
                 this.knownBases[structure] = type;
             }

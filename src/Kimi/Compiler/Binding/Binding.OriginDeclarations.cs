@@ -376,7 +376,7 @@ public sealed partial class Binding
         }
 
         // SPEC 9.2, 9.7.2: `(Outer<T>.G{o}).f` puts the set's Type at a qualifier position; elsewhere it is a Type occurrence (15.3.1).
-        var path = this.NamePath(syntax, scope, UseRow(UseNode(syntax)));
+        var path = this.NamePath(syntax, scope);
         return path.Symbol?.Declaration is GroupKoto
             ? this.BindContainerQualifier(syntax, path.Symbol, scope, this.TypeContext(syntax, scope))
             : this.BindType(syntax, scope);

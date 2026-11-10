@@ -47,7 +47,7 @@ public class WrappingIntegerTest
         Assert.True(wrapping.IsNumeric);
         Assert.False(wrapping.IsUnsignedInteger);
         Assert.Same(primitive, wrapping.Underlying);
-        Assert.Equal(ScalarTypes.Width(primitive), ScalarTypes.Width(wrapping));
+        Assert.Equal(primitive.Width, wrapping.Width);
         Assert.Equal(primitive.IsSigned, wrapping.IsSigned);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(wrapping, a));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProvePrimitiveInteger(wrapping, a));
@@ -62,6 +62,38 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
         Assert.Same(Layout.Row(primitive), Layout.Row(wrapping));
+    }
+
+    // SPEC 3.1, 3.1.1, 22: Width is an integer Type's storage size in bits, isize's and usize's the profile's, Wrapping<T>'s that of T,
+    // and eight times its IMPL 21.1.3 row's size; no other Type has one.
+    [Theory]
+    [InlineData("i8", 8)]
+    [InlineData("u8", 8)]
+    [InlineData("i16", 16)]
+    [InlineData("u16", 16)]
+    [InlineData("i32", 32)]
+    [InlineData("u32", 32)]
+    [InlineData("i64", 64)]
+    [InlineData("u64", 64)]
+    [InlineData("i128", 128)]
+    [InlineData("u128", 128)]
+    [InlineData("isize", 64)]
+    [InlineData("usize", 64)]
+    [InlineData("f32", 0)]
+    [InlineData("f64", 0)]
+    [InlineData("char", 0)]
+    [InlineData("bool", 0)]
+    [InlineData("string", 0)]
+    [InlineData("()", 0)]
+    public void OnlyIntegersAndTheirWrappingTypesHaveAWidth(string name, int width)
+    {
+        var type = BoundType.Primitives[name];
+        Assert.Equal(width, type.Width);
+        if (width != 0)
+        {
+            Assert.Equal(width, BoundType.WrappingOf(type).Width);
+            Assert.Equal(width, 8 * Layout.Row(type).Layout.Size);
+        }
     }
 
     // SPEC 3.1, 3.1.1: IsSigned is the representation's signedness, Wrapping<T>'s that of T; no other Type is signed, whatever its name.

@@ -29,10 +29,15 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
+    // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
+    // DependencyLock (ArtifactFiles.Replace only).
+    private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
+        "Unit/Command/CommandExecution.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
+
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
     private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Constraints.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=18;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=17;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
@@ -84,7 +89,7 @@ public class ArchitectureRulesTest
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
 
     [Theory]
-    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
+    [InlineData("Emission failure strings", "src/Kimi/Build", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
     [InlineData("Advice in the diagnostic catalog", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"(?m)^\s*Advice=", 0)]
     [InlineData("Test reads and writes of Koto semantic slots", "tests/xUnitTest", "*.cs", @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|CallStorage|ClosureStorage|ConversionBinding|EntryCall|Iteration|IsDirectStorage|FillCount|SemanticsIndexed)\s*:", 13)]
@@ -209,6 +214,52 @@ public class ArchitectureRulesTest
             .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
             .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // The R7-R9 plan's unit M2 (§5.3): a component moved out of the compiler is read only by its listed readers, so the compiler, check,
+    // LSP, Testing and Diagnostics read none of its types. A reader is a file of src/Kimi outside the component's folder that names a
+    // type the folder declares, however the name reaches it (a using, a namespace or type alias, a qualified name), that imports the
+    // component's namespace, or that declares it. Roslyn reads the tokens, so comments and strings do not count; the component's own
+    // files are not readers; build output (bin, obj) is not source. A further reader fails here until its row is reviewed. Not seen,
+    // so review reads them (COMPILER_ARCHITECTURE, "Dependency rules"): a type reached without its name (a var over a member's result,
+    // reflection); a delegate type the folder declares (the types are its class, struct, record, interface and enum declarations); an
+    // attribute class used by its short name ([Foo] for FooAttribute). Build declares neither today.
+    [Theory]
+    [InlineData("src/Kimi/Build", "Kimi.Build", BuildReaders)]
+    public void ComponentIsReadOnlyByItsReaders(string folder, string name, string readers)
+    {
+        var root = Path.Combine(Repository.Root, "src/Kimi");
+        var inside = Path.GetRelativePath(root, Path.Combine(Repository.Root, folder)).Replace(Path.DirectorySeparatorChar, '/') + "/";
+        var files = SourceFiles("src/Kimi", "*.cs")
+            .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Path: x))
+            .Where(static x => !x.Name.StartsWith("bin/", StringComparison.Ordinal) && !x.Name.StartsWith("obj/", StringComparison.Ordinal))
+            .ToArray();
+        var types = files.Where(x => x.Name.StartsWith(inside, StringComparison.Ordinal))
+            .SelectMany(static x => CSharpSyntaxTree.ParseText(File.ReadAllText(x.Path)).GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+            .Select(static x => x.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(types);
+
+        // Only a file that spells a type's name or the namespace's last part can read or declare it.
+        var spelled = new Regex(@"\b(?:" + string.Join("|", types.Append(name[(name.LastIndexOf('.') + 1)..]).Select(Regex.Escape)) + @")\b");
+        var actual = files.Where(x => !x.Name.StartsWith(inside, StringComparison.Ordinal))
+            .Where(x => File.ReadAllText(x.Path) is var text && spelled.IsMatch(text) && Reads(CSharpSyntaxTree.ParseText(text).GetRoot()))
+            .Select(static x => x.Name).Order(StringComparer.Ordinal).ToArray();
+        Assert.True(
+            readers.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual),
+            $"{folder}: {string.Join(";", actual)}; the readers are {readers}.");
+
+        bool Reads(SyntaxNode unit)
+            => unit.DescendantTokens().Any(x => x.IsKind(SyntaxKind.IdentifierToken) && types.Contains(x.ValueText)) ||
+                unit.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(x => Within(x.NamespaceOrType.ToString())) ||
+                unit.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().Any(x => Within(string.Join(
+                    ".", x.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(static y => y.Name.ToString()))));
+
+        bool Within(string written)
+        {
+            written = written.Replace(" ", string.Empty, StringComparison.Ordinal);
+            written = written.StartsWith("global::", StringComparison.Ordinal) ? written["global::".Length..] : written;
+            return written == name || written.StartsWith(name + ".", StringComparison.Ordinal);
+        }
     }
 
     // R7-N1e2-1R (the owner's O-111 (a)): a written Type name is evaluated only by name resolution's own file (ResolvePath) and named

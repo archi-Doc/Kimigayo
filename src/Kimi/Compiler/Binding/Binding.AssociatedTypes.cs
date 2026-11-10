@@ -208,7 +208,7 @@ public sealed partial class Binding
 
         // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
         // projection forms nothing from it.
-        var receiverPath = this.NamePath(receiver, scope, LookupRole.Any);
+        var receiverPath = this.NamePath(receiver, scope);
         if (receiverPath.End is PathEnd.QualificationStop or PathEnd.Ambiguous)
         {
             return null;
@@ -315,7 +315,7 @@ public sealed partial class Binding
             return target;
         }
 
-        var selection = this.TypeName(syntax.Right, scope, LookupRole.Any);
+        var selection = this.TypeName(syntax.Right, scope);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
@@ -356,7 +356,7 @@ public sealed partial class Binding
             name = member.Right;
 
             // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
-            if (this.TypeName(member.Left, scope, LookupRole.Any) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
+            if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
             {
                 this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;

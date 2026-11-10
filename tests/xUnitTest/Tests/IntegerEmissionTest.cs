@@ -110,7 +110,7 @@ public class IntegerEmissionTest
         var c = MinimalEmissionTest.Analyze("let x = 'a'");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(ScalarTypes.Supports(BoundType.Char));
-        Assert.Equal(0, ScalarTypes.Width(BoundType.Char));
+        Assert.Equal(0, BoundType.Char.Width);
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("store i32 97", ir);
     }
