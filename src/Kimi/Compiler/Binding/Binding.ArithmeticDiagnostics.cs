@@ -35,6 +35,20 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
+    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
+    // Contract declaration is related.
+    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
+    {
+        var note = failure.Cause switch
+        {
+            ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
+            ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
+            ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
+            _ => throw new UnreachableException(),
+        };
+        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
+    }
+
     private static Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
     {
         var clauses = scope.Owner is FunctionKoto function ? function.TypeConstraints : scope.Owner is DeclarationContainerKoto container ? container.ConstraintNodes : [];
@@ -55,20 +69,6 @@ public sealed partial class Binding
             => ReferenceEquals(node.BoundSymbol, contract) ? node
             : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
-    }
-
-    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
-    // Contract declaration is related.
-    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
-    {
-        var note = failure.Cause switch
-        {
-            ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
-            ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
-            ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
-            _ => throw new UnreachableException(),
-        };
-        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
     }
 
     private bool ValidateArithmeticDirections(BindingScope scope, ConstraintEnvironment environment)

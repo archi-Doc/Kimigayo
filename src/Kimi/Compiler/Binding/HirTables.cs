@@ -75,6 +75,9 @@ internal struct HirTables
 
     internal static UseLookup LookupOf(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Lookups[node.SyntaxId] : default;
 
+    // The Symbols column's one writer (Koto.BoundSymbol's setter).
+    internal static void WriteSymbol(Koto node, BindingSymbol? symbol) => Of(node).Symbols[node.SyntaxId] = symbol;
+
     internal static BoundType? ErasedType(Koto node) => node.SyntaxOwner is { } table ? table.Hir.ErasedTypes[node.SyntaxId] : null;
 
     // A node the latest publish did not reach, such as one synthesized after it, reads as unpublished.

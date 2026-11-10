@@ -317,42 +317,26 @@ public sealed partial class Binding
             return target;
         }
 
-        var symbol = this.TypeName(syntax.Right, scope, LookupRole.Any);
+        var selection = this.TypeName(syntax.Right, scope, LookupRole.Any);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
             referenceSyntax = groupedReference.Type;
         }
 
-        if (symbol?.Declaration is ContractKoto && UnwrapTransparentType(referenceSyntax) is GenericsKoto)
-        {
-            symbol = this.BindContractReference(referenceSyntax, symbol, scope);
-        }
-
         receiver = syntax.Left;
-        if (symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto)
+        if (selection is null || (selection.Kind != BindingSymbolKind.Container && selection.Declaration is not ContractKoto))
         {
-            var qualifierName = syntax.Right;
-            while (true)
-            {
-                qualifierName.BoundSymbol = symbol;
-                Complete(qualifierName, BoundType.Unit);
-                if (qualifierName is ParenthesizedTypeKoto grouped)
-                {
-                    qualifierName = grouped.Type;
-                }
-                else if (qualifierName is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
-                {
-                    qualifierName = inner;
-                }
-                else
-                {
-                    break;
-                }
-            }
+            return null;
         }
 
-        return symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto ? symbol : null;
+        var symbol = this.QualifierReference(referenceSyntax, selection, scope);
+        if (symbol is not null)
+        {
+            CompleteQualifier(syntax.Right, symbol);
+        }
+
+        return symbol;
     }
 
     private void BindAssociatedSpecification(IsKoto clause, BindingScope scope, BindingSymbol? owner = null)
@@ -372,20 +356,16 @@ public sealed partial class Binding
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-            if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
-            {
-                // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
-                qualifier = this.BindContractReference(member.Left, qualifier, scope);
-            }
 
-            if (qualifier?.Declaration is not ContractKoto)
+            // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
+            if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
             {
                 this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;
             }
 
-            member.Left.BoundSymbol = qualifier;
+            qualifier = bound;
+            member.Left.BoundSymbol = bound;
             Complete(member.Left, BoundType.Unit);
         }
 

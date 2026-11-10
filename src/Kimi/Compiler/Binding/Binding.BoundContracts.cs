@@ -9,6 +9,21 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
 
+    // Writes a qualifier's meaning at each of its levels (its parentheses and transparent wrappers down to its use).
+    private static void CompleteQualifier(Koto qualifier, BindingSymbol reference)
+    {
+        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
+        {
+            level.BoundSymbol = reference;
+            Complete(level, BoundType.Unit);
+        }
+    }
+
+    // SPEC 8.4, 9.7.1: the bound Contract reference a Contract qualifier's Type arguments form (BindContractReference, which completes the
+    // qualifier with its Type), else the qualifier's selection itself; null when the reference fails.
+    private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
+        => selection.Declaration is ContractKoto && UnwrapTransparentType(qualifier) is GenericsKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
+
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
         // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written
