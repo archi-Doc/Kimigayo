@@ -82,7 +82,7 @@ internal static class Capability
     /// <returns>The row, or null.</returns>
     internal static CapabilityGap? Of(MirRvalueKind kind, byte op, BoundType operand, BoundType? target) => kind switch
     {
-        MirRvalueKind.BinaryOp when (MirBinaryOp)op is MirBinaryOp.Div or MirBinaryOp.Rem && ScalarTypes.Width(operand) == 128 =>
+        MirRvalueKind.BinaryOp when (MirBinaryOp)op is MirBinaryOp.Div or MirBinaryOp.Rem && operand.Width == 128 =>
             CapabilityGap.WideDivision,
         MirRvalueKind.Cast when (MirCastKind)op == MirCastKind.Numeric && IsWideFloat(operand, target!) => CapabilityGap.WideFloatConversion,
         _ => null,
@@ -90,5 +90,5 @@ internal static class Capability
 
     // Whether a numeric conversion is between a 128-bit integer and a floating-point Type.
     private static bool IsWideFloat(BoundType source, BoundType target)
-        => (ScalarTypes.Width(source) == 128 && target.IsFloatingPoint) || (source.IsFloatingPoint && ScalarTypes.Width(target) == 128);
+        => (source.Width == 128 && target.IsFloatingPoint) || (source.IsFloatingPoint && target.Width == 128);
 }

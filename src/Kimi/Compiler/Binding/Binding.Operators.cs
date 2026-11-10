@@ -357,7 +357,7 @@ public sealed partial class Binding
         if (left.IsNumeric)
         {
             // A valid wide division remains an implementation boundary, independently of operator applicability.
-            return ScalarTypes.Width(left) == 128 && operation is KotoKind.Slash or KotoKind.Percent
+            return left.Width == 128 && operation is KotoKind.Slash or KotoKind.Percent
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
