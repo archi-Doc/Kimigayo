@@ -75,12 +75,7 @@ public enum CompilerFunctionKind : byte
     TextToString,
     TextTryFormat,
     TextRelease,
-    WindowPush,
-    WindowAppend,
-    WindowLimit,
-    WindowCommit,
     WriterWrite,
-    WriterStatus,
     WriteLineUtf8,
     BuiltinFormat,
     BuiltinEquals,
@@ -94,6 +89,7 @@ public enum CompilerFunctionKind : byte
     StorageTransferBytes,
     StorageIndexBounds,
     StorageDestroyValues,
+    StorageErasedReserve,
     StorageStride,
     RawAllocate,
     RawRelease,
@@ -176,9 +172,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or
             CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
-            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or
-            CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
-            CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus => default,
+            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.WriterWrite => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -190,6 +184,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
         CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
+        CompilerFunctionKind.StorageErasedReserve => Intrinsic(IntrinsicId.ErasedReserve),
         CompilerFunctionKind.StorageStride => Intrinsic(IntrinsicId.Stride),
         CompilerFunctionKind.RawAllocate => Intrinsic(IntrinsicId.RawAllocate),
         CompilerFunctionKind.RawRelease => Intrinsic(IntrinsicId.RawRelease),
@@ -212,7 +207,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
         >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.TextValidateUtf8 =>
             CompilerFunctionEffect.Inputs,
-        >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or
+        CompilerFunctionKind.TextRelease or
             >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,
