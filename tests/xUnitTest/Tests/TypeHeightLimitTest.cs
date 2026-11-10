@@ -164,7 +164,7 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         AssertHeightRecord(Assert.Single(records, x => x.Span.Start >= call), source, "useU(v)");
     }
 
-    // G348-d's DECISIONS entry: a Type's display does not recurse on the Type, so a record naming a Type under H, or a closure whose
+    // DECISIONS BU-153: a Type's display does not recurse on the Type, so a record naming a Type under H, or a closure whose
     // display nests a chain of closure signatures (an edge the height does not count, BU-71), is reported on the caller's stack. The
     // CLI runs the display in tier-0 code: dev's recursion overflowed its 1.5 MB stack from about 820 layers (1,856 B a frame). This
     // host compiles optimized code (QuickJit off), whose frames hold H, so each row runs alone in a fresh process in tier-0 code.

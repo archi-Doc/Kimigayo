@@ -40,7 +40,7 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(form)),
     };
 
-    // The display does not recurse on the Type (G348-d's DECISIONS entry): Show notes a form's parts in reading order (Emit), and
+    // The display does not recurse on the Type (DECISIONS BU-153): Show notes a form's parts in reading order (Emit), and
     // the loop shows them from one list used as a stack, so neither a Type's height nor a chain of closure signatures, which the
     // height does not count (BU-71), reaches the host stack. A Primitive or Parameter returns before the list exists: a Bind, and a
     // check without Hover whose records name no structural Type, allocate nothing more; each structural Type displayed adds one list.
