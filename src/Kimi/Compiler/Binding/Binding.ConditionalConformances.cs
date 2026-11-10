@@ -425,18 +425,15 @@ public sealed partial class Binding
     {
         if (path.InheritedFrom is not null)
         {
-            if (this.StoredType(path.InheritedBase!, type) is not { } parent)
+            // SPEC 8.8.2: the declared path's conditions at the declared Self at this Type (BoundConformancePath.DeclaredPath); where the
+            // generic Self was refused, the instance's is formed one base clause at a time. A Type past the limit is refused here.
+            this.inheritedPremiseSteps++;
+            if (path.DeclaredSelf is { } layer)
             {
-                return ConstraintProof.Unknown;
+                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope) : ConstraintProof.Unknown;
             }
 
-            var proof = ConstraintProof.Proven;
-            for (var i = 0; i < path.InheritedSourceCount; i++)
-            {
-                proof = CombineProof(proof, this.ProveConformanceConditions(path.InheritedSource(i), parent, scope), true);
-            }
-
-            return proof;
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
         }
 
         if (path.Scope.Parent?.Constraints?.Invalid == true)

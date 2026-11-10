@@ -129,6 +129,31 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         Assert.Contains(records, static x => x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd));
     }
 
+    // SPEC 8.6.2, 8.8.2 (PLAN G665; its review's `h41-u`, `hgt-u44`): L(k)'s declaring layer L0<W^(200k)<X>> passes the limit from k = 41,
+    // so a use of the marker at L(k)<i32> forms it and is refused at its own site, never a Language record or a fault (fail-before: dev
+    // faults at k = 44). The siteless InternalInvariant_Kd of the generic composition's refusal is PLAN G651's.
+    [Theory]
+    [InlineData(41)]
+    [InlineData(44)]
+    public void AUseThroughAnInheritedLayerPastTheLimitIsRecordedAtIt(int k)
+    {
+        var source = Heirs(k) + $"func t(v: ref/L{k}<i32>) => useU(v)\n" + Main;
+        var record = Assert.Single(this.Compile(source).Records, static x => x.Code != nameof(DiagnosticCode.InternalInvariant_Kd));
+        AssertHeightRecord(record, source, "useU(v)");
+    }
+
+    // A marker conformance of L0 inherited through L(i)<X> : L(i-1)<W^200<X>>, i = 1..n.
+    private static string Heirs(int n)
+    {
+        var s = new System.Text.StringBuilder("contract U\nfunc useU<T>(value: ref/T)\n    T is U\n    ()\nstruct W<T>\n    var v: T\nopen struct L0<X>\n    Self is U\n");
+        for (var i = 1; i <= n; i++)
+        {
+            s.Append($"open struct L{i}<X> : L{i - 1}<{string.Concat(Enumerable.Repeat("W<", 200))}X{new string('>', 201)}\n");
+        }
+
+        return s.ToString();
+    }
+
     // D0's Item is (T, i32); each D_i's is D_{i-1}<D_{i-1}<T>.Item>.Item, so D_n<i32>.Item has height 2^n.
     private static string Doubling(int n)
     {
