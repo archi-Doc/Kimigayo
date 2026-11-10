@@ -5,11 +5,13 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 // A5's raw addresses of the view (SPEC 15.6 Addresses, 5.2.1, 5.7; DECISIONS R4-M116, design B′ §4.1–§4.3 on B §5.1–§5.2): entries of the
-// Loan table with mode Raw after the Loans, which no Loan rule meets: one per root a `P@raw` addresses through no dereference or owning
-// handle's payload, and one own-step entry per owning Place (an owning handle's payload past which `@raw` forms a pointer, or a value
-// whose `during self` layer a Place uses), direct (naming its root) when the owning Place passes no borrow or raw Deref, else carried
-// for the own-step Warning only. Each names its root's holder as a direct Loan does, so the readers of direct Loans read it, and it is
-// never a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
+// Loan table with mode Raw after the Loans, which no Loan rule meets: one per Place `P` of a `P@raw` that passes no dereference or
+// owning handle's payload (SPEC 5.2.1 condition 1: `P@raw` reaches the storage of `P` alone), and one own-step entry per owning Place (an
+// owning handle's payload past which `@raw` forms a pointer, or a value whose `during self` layer a Place uses), direct (naming its root)
+// when the owning Place passes no borrow or raw Deref, else carried for the own-step Warning only. Each entry keeps its Place and the
+// Place's steps, as a Loan does, and names its root's holder as a direct Loan does, so the readers of direct Loans read it (a part's
+// address is no whole-value reference, and a call's write past a holder takes the Reached entry of the Place's Type), and it is never
+// a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
 // A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
 // Origin. The untracked rule (PQ-2): a raw value formed with a direct address or exclusive Loan naming a local that is no holder also
 // carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
@@ -23,7 +25,7 @@ namespace Kimi.Compiler.Mir;
 // Must not issue a Loan, carry a value (MirBorrows.Values) or record a problem (MirBorrows.Locations records PQ-10's).
 internal sealed partial class MirBorrows
 {
-    private readonly MirTable<(int Root, int Owner)> addressOf = new(); // A root's plain address (Owner -1) and its own-step entries.
+    private readonly MirTable<(int Root, int Key)> addressOf = new(); // By Place: plain address (Key ~projection), own-step entry (projection).
     private readonly MirTable<(int Root, int Layer)> ownAt = new(); // By a raw Place: its layer's own-step entry, -1 for no layer.
     private readonly HashSet<(BoundType Type, BoundType? Written)> visited = new(); // A Type walk's visited parts, cleared per walk.
     private int[] positions = []; // An owner's inline positions, from the part on.
@@ -115,7 +117,7 @@ internal sealed partial class MirBorrows
         this.producing |= this.layerBorrowed[location]; // A located Unsupported_Kd is the replay's to record (D5).
     }
 
-    // `P@raw`'s entry (B §5.2 item 1): through no borrow or raw Deref the root's plain address, or past an owning handle's payload its
+    // `P@raw`'s entry (B §5.2 item 1): through no borrow or raw Deref the plain address of `P`, or past an owning handle's payload its
     // owning Place's own-step entry; past one with an owning handle's payload after the last, that owner's entry past a dereference; else
     // none, the value being the borrow's parents.
     private int Formation(MirPlace place, int location)
@@ -132,7 +134,7 @@ internal sealed partial class MirBorrows
             return this.OwnStep(place with { Projection = this.walk[own].Prefix }, location);
         }
 
-        return deref < 0 ? this.Address(place.Root, -1, direct: true, location, []) : -1;
+        return deref < 0 ? this.Address(place, ~place.Projection, location) : -1;
     }
 
     // A raw address's step walk at a location: its Place's steps, and where the location's rvalue is a Storage, the element step that
@@ -169,62 +171,50 @@ internal sealed partial class MirBorrows
     private int OwnStepAt(int root, int projection) => this.ownCount > 0 && this.ownAt.TryGetValue((root, projection), out var entry) ? entry : -1;
 
     // The owning Place's own-step entry, made at its first formation: direct where the owning Place passes no borrow or raw Deref.
-    private int OwnStep(MirPlace owner, int location)
+    private int OwnStep(MirPlace owner, int location) => this.Address(owner, owner.Projection, location);
+
+    // A Place's address entry at its first formation, keyed by the Place (key ~projection: the plain address of the Place itself, which
+    // passes no dereference; its projection: the Place as an owning Place's own-step entry), with the Place's steps, as a Loan names its
+    // Place; direct where the steps pass no borrow or raw Deref.
+    private int Address(MirPlace place, int key, int location)
     {
-        if (this.addressOf.TryGetValue((owner.Root, owner.Projection), out var entry))
+        if (this.addressOf.TryGetValue((place.Root, key), out var entry))
         {
             return entry;
         }
 
-        var count = this.placeSteps.Walk(this.body, owner, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
         var direct = true;
         for (var i = 0; i < count; i++)
         {
             direct &= this.walk[i].Class is not (MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw);
         }
 
-        return this.Address(owner.Root, owner.Projection, direct, location, this.walk.AsSpan(0, count));
-    }
-
-    // An address entry: a root's plain address (owner -1) or an owning Place's own-step entry with its steps, at its first formation.
-    private int Address(int root, int owner, bool direct, int location, ReadOnlySpan<MirStep> steps)
-    {
-        if (this.addressOf.TryGetValue((root, owner), out var entry))
+        var address = new Loan
         {
-            return entry;
-        }
-
-        entry = this.loanCount + this.addressCount++;
-        MirDataflow.Grow(ref this.loans, entry + 1);
-        MirDataflow.Grow(ref this.loanSteps, this.loanStepCount + steps.Length);
-        steps.CopyTo(this.loanSteps.AsSpan(this.loanStepCount));
-        this.loans[entry] = new()
-        {
-            Root = this.Key(root),
-            Place = new(root, owner >= 0 ? owner : 0),
+            Root = this.Key(place.Root),
+            Place = place,
             Group = -1,
-            Start = this.loanStepCount,
-            Count = steps.Length,
             Mode = MirRefKind.Raw,
             Holder = -1,
-            Named = direct ? root : -1,
+            Named = direct ? place.Root : -1,
             Direct = direct,
-            OwnStep = owner >= 0,
+            OwnStep = key >= 0,
             Location = location,
         };
-        this.loanStepCount += steps.Length;
-        if (direct && root >= 0)
+        entry = this.Record(this.loanCount + this.addressCount++, address, count);
+        if (direct && place.Root >= 0)
         {
-            this.named[root] |= NamedHolder | ExposedHolder;
+            this.named[place.Root] |= NamedHolder | ExposedHolder;
         }
 
-        if (owner >= 0)
+        if (key >= 0)
         {
-            this.borrowed[this.Key(root)] = true; // Its root's accesses are listed for its departures (MirBorrows.OwnSteps).
+            this.borrowed[this.Key(place.Root)] = true; // Its root's accesses are listed for its departures (MirBorrows.OwnSteps).
             this.ownEntries++;
         }
 
-        this.addressOf.Add((root, owner), entry);
+        this.addressOf.Add((place.Root, key), entry);
         return entry;
     }
 

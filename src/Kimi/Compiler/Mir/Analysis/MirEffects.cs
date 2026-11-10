@@ -120,6 +120,18 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.Terminator(program, body, block, view, body.Blocks[block].Terminator);
         }
 
+        // SPEC 15.6.4, 12.7.2 (the owner's O-109 (a)): a function's summary, computed once per declaration, includes every implementation
+        // of its closed explicit-specialization set: whatever body a call's key selects, a call enters the declaration (SPEC 8.13.3:
+        // specializations are never candidates). A specialization fixes only its own slots (SPEC 8.13.1), so it is entered at the
+        // declaration's own substitution, which binds its Container's parameters to themselves: the view of the same Container case.
+        for (var i = 0; body.Key is { Kind: MirBodyKind.Fn, Decl: { } declaration } && types.Implementation(declaration, null, i) is { } implementation; i++)
+        {
+            if (!ReferenceEquals(implementation, declaration) && program.Callee(new(MirCalleeKind.Fn, implementation)) is { } specialization)
+            {
+                this.AddEdge(specialization, types.Identity(implementation.Declaration));
+            }
+        }
+
         (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.itemCount, this.edgeCount);
         this.keyEnds[node] = this.keyCount;
     }
@@ -158,8 +170,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
-    // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
-    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
+    // its body (SPEC 4.9.6); a call of another function with a body enters its declaration's summary at the call's substitution (SPEC
+    // 15.6.4: its specializations included, Local), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
     // comparisons (Compared). A requirement call that selects a built-in
     // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
     // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
@@ -248,21 +260,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
         if (program.Callee(call) is { } target)
         {
-            if (call.Arg > 0)
-            {
-                this.AddEdge(target, subst); // SPEC 8.13: a default is always the original's, evaluated before a specialization is called.
-                return;
-            }
-
-            for (var i = 0; types.Implementation(symbol, subst, i) is { } implementation; i++)
-            {
-                var own = ReferenceEquals(implementation, symbol);
-                if ((own ? target : program.Callee(new(MirCalleeKind.Fn, implementation))) is { } callee)
-                {
-                    this.AddEdge(callee, own ? subst : null);
-                }
-            }
-
+            this.AddEdge(target, subst); // SPEC 15.6.4: the declaration, its specializations included (Local); a default is the original's (SPEC 8.13).
             return;
         }
 
@@ -435,7 +433,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// not abstract; null for a summary's atom, whose abstract Self names no conformance.</param>
     internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, BoundType? Reference = null);
 
-    // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
+    // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
+    // null for a body entered in every view (a static's initializer); the identity (TyCtxt.Identity) for the callee's own Types read in the
+    // caller's view (a specialization of the caller's declaration, Local).
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
 
     // The local facts of a location: an environment effect (an access to a mutable static, Console output, an integer made a pointer, a

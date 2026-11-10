@@ -1332,6 +1332,19 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 49 (2026-11-09, plan §14; the owner's 「Adopt now」): quiet slots by one guard (`quiet_guard.py`) and a begin handshake. Nothing frozen.
 - Revision 50 (2026-11-09, plan §14; the owner's 「Adopt all three」): R7 spread over the three sessions (DECISIONS Q18). Nothing frozen.
 - Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
+- R8-SP3 (2026-11-09; the Back's D-181; drafted by R8-U1's designer, independent review ACCEPT): SPEC §15.7's first sentence
+  states `replace`, `exchange` and `swap` as safe functions with bodies whose unsafe obligations the section's rules meet, and
+  a call is checked against those rules, never a body. §15.7.1 is unchanged (the reviewer chose the draft's second option). No
+  rule changes; SPECJ follows (RQ10). Nothing frozen.
+- R8-SP2 and R8-SP4 (2026-11-09; the Back's D-214; drafted by R8-G1's designer, independent reviews ACCEPT, SP2's after the owner's
+  O-121 (a)): PLAN10's (`Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md`) §5.8 「識別」 and its §11 row "SPEC §6.5,
+  §22.1, IMPL §21" go into SPEC §6.7, §6.3.1, §14.2.1, §22.1, Appendix F and IMPL §21.3.4: some Kimi declarations have no Kimigayo
+  definition and may omit their Body; the Kimi Kotonoha's own sources may carry implementation Attributes, which identify a declaration
+  and add no rule or form; IMPL §21.3.4 names `#Lang`, `#Intrinsic`, `#CallerLocation` and `#Unsupported`; Appendix F's
+  `ForeignFunctionDeclaration` becomes `BodilessFunctionDeclaration`. SETTLED's constructor entry states that the Attributes grant no
+  rule, and RQ11's entry (the managed Types as ordinary structs) is added. No user program changes validity or record; SPECJ follows
+  (RQ10). Frozen: 「識別」's first three sentences (its implementation sentences stay plan text); the R7/R8/R9 plan's text is not.
+- Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
