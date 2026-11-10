@@ -3,7 +3,7 @@
 using System.Text;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1600, SA1649 // Candidate model and its snapshot-local extraction.
 

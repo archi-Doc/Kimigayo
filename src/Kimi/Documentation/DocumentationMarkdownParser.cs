@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Compiler.Documentation;
+using Kimi.Compiler;
+
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1401, SA1513, SA1600 // Private parser records and state-machine layout.
 

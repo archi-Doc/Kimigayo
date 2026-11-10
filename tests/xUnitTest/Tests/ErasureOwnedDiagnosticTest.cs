@@ -130,7 +130,7 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("func use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    let h: () -> () = g@move\n    return\n", null)]
     public void AnOwnedFailureOnAFailedDeclarationIsDerived(string uses, string? own)
         => Assert.Equal(
-            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "UnresolvedBinding_Kd C", .. own is null ? Array.Empty<string>() : [own]],
             Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
 
     // The valid twins: the same captures of a declaration that formed convert with no record.
@@ -151,7 +151,7 @@ public class ErasureOwnedDiagnosticTest
     public void AnOwnedFailureOnAFailedStoredTypeIsDerived(string uses, string? own)
     {
         Assert.Equal(
-            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "UnresolvedBinding_Kd C", .. own is null ? Array.Empty<string>() : [own]],
             Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
         Assert.Empty(Records("struct S\n    let x: i32\n\n" + uses + "\n" + Main + "    return\n"));
     }
