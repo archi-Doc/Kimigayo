@@ -113,14 +113,14 @@ public sealed partial class Binding
                 if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
                     (binding.BindType(written, headerScope) is not { } actual ||
                     !binding.Infer(
-                        parameterTypes.Components[i], actual, this.SlotOwner, this.Types, lengths: this.Lengths, structural: true, evidence: header)))
+                        parameterTypes.Components[i], actual, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: header)))
                 {
                     return false;
                 }
             }
 
             return literal.ReturnType is null || (binding.BindType(literal.ReturnType, headerScope) is { } result &&
-                binding.Infer(memberSignature.Components[1], result, this.SlotOwner, this.Types, lengths: this.Lengths, structural: true, evidence: header));
+                binding.Infer(memberSignature.Components[1], result, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: header));
         }
 
         // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence alongside ordinary
@@ -148,7 +148,7 @@ public sealed partial class Binding
                 }
 
                 var evidence = new SignatureEvidence(CalleeBinder(actual, actualSignature), source);
-                if (!binding.Infer(memberSignature, actualSignature, this.SlotOwner, this.Types, lengths: this.Lengths, structural: true, evidence: evidence))
+                if (!binding.Infer(memberSignature, actualSignature, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: evidence))
                 {
                     var required = this.Type(memberSignature) ?? memberSignature;
                     operations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
@@ -169,16 +169,14 @@ public sealed partial class Binding
                 return false;
             }
 
-            var count = CallSlotCount(this.Binder);
-            var trial = binding.typeScratch.Rent(count);
+            var trial = binding.infer.Snapshot();
             try
             {
-                this.Types.AsSpan(0, count).CopyTo(trial);
-                return binding.Infer(LiteralInputType(memberPattern), shape, this.SlotOwner, trial);
+                return binding.Infer(LiteralInputType(memberPattern), shape, this.SlotOwner, this.Frame);
             }
             finally
             {
-                binding.typeScratch.Return(trial, clearArray: true);
+                binding.infer.Rollback(trial);
             }
         }
 
@@ -314,9 +312,9 @@ public sealed partial class Binding
                 pattern,
                 actual,
                 this.SlotOwner,
-                this.Types,
+                this.Frame,
                 inferOrigins: true,
-                lengths: this.Lengths,
+                lengths: true,
                 commonOrigins: common,
                 structural: structural,
                 evidence: known,
@@ -339,7 +337,7 @@ public sealed partial class Binding
                     type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
                     binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-                    return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
+                    return binding.Infer(pattern, type, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
                 default:
                     return true;
             }
@@ -383,7 +381,7 @@ public sealed partial class Binding
                 }
                 else if (binding.IndependentPositionType(start, late) is { } inferred)
                 {
-                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Types, lengths: this.Lengths);
+                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
                 }
             }
 
@@ -422,7 +420,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.Lengths[parameter.Slot] = length;
+            this.Frame.SetLength(parameter.Slot, length);
             return true;
         }
 
@@ -464,7 +462,7 @@ public sealed partial class Binding
             actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && binding.ReadTypeReferent(actual, source) is { } read ? read : actual;
             binding.MatchInputOrigins(pattern, actual, this.Binder, this.Origins, this.Inputs);
             pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-            return binding.Infer(pattern, actual, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
+            return binding.Infer(pattern, actual, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
         }
 
         // SPEC 4.6.2: in the late pass, a literal-only boundary whose S or E no other evidence fixed takes the other boundary's integer
@@ -472,7 +470,7 @@ public sealed partial class Binding
         private readonly bool InferLiteralBoundary(BoundType pattern, Koto boundary, BoundType? other, bool late)
             => !late || this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
                 (this.Binding.DefaultOf(boundary) ?? this.Binding.RangeTyping(boundary, other)) is not { } type ||
-                this.Binding.Infer(pattern, type, this.SlotOwner, this.Types, lengths: this.Lengths);
+                this.Binding.Infer(pattern, type, this.SlotOwner, this.Frame, lengths: true);
 
         // The defaults of a part's Literal leaves at the positions that hold an unsolved slot: the part itself, the elements of a Tuple
         // or array literal and the literal-only boundary of a mixed range.

@@ -110,7 +110,8 @@ public sealed partial class Binding
 
     private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
     {
-        if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))
+        if (self is not null && ArithmeticContractSyntax.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic &&
+            ArithmeticContracts.Supports(self, arithmetic))
         {
             return Prepared(this.builtinArithmetic[ArithmeticSlot(arithmetic)]);
         }

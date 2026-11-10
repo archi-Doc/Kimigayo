@@ -17,7 +17,8 @@
 //   consumer's failure or dependency outside a bare acquisition position) neither marks its capture nor is published.
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
 //   recorded, a nested Closure's published Storage; the Adjust rule (AdjustChildren, ChildAdjust, Discarded, Covers, OpOf, UseOf),
-//   IsBareAcquisitionPosition, HasFailureCauses and BareReborrows.
+//   IsBareAcquisitionPosition, HasFailureCauses and BareReborrows; each node's value identity (SourceRef), the key of what a Classify
+//   knows of it.
 // - Outputs: BoundClosure's receiver facts: Receiver, the strongest over every case, which every reader of a Closure's call
 //   receiver reads (value calls, candidate selection and Callable proofs, effects and the MIR builder);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
@@ -28,9 +29,14 @@
 // - Invariants: Classify runs once per binding of a Closure that bound its body, right after it, from the facts BindClosure and
 //   BindConcreteClosure reset (Shared, no mark, no cause, not Classified); only this binding's captures are classified; the
 //   case-free receiver only strengthens, Receiver is derived from the facts once at the end and the first exclusive use while the
-//   call is not Consuming is kept; a nested function's body is never visited, so one Closure is classified at a time.
+//   call is not Consuming is kept; a nested function's body is never visited, so one Closure is classified at a time. What a
+//   Classify knows of a node (Facts: its Op, its children's takes recorded, its own takes) is that Classify's: the store is emptied at
+//   its start, holds one row per node met (a consumer, a child it takes, a parent whose Op is read) and is never sized by the module.
+//   A row's key is its node's SourceRef.Of, which numbers no node here and moves none to another table: every node met is one the
+//   Adjust rule reads in a bound body, so its module's table already numbers it (FactsOf, TakeRecord.Row).
 // - Prohibitions: no record or failure; no other component classifies a Closure's receiver.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -47,14 +53,9 @@ public sealed partial class Binding
     // nested function's body, so one closure is classified at a time.
     private sealed class ClosureEffects(Binding binding) : KotoVisitor
     {
-        // Each consumer's takes of its children by selection, and the consumers recorded, in this Classify (TakesOf); kept across Classify
-        // calls, so a warm classification reuses their storage.
-        private readonly Dictionary<(Koto Child, bool Exclusive), ConsumedTakes> takes = new();
-        private readonly HashSet<(Koto Consumer, bool Exclusive)> walks = new();
-
-        // Each node's Op read in this Classify (OpOf): a call's Op reads its N argument operations, so every capture use of its consumer
-        // reads it once.
-        private readonly Dictionary<Koto, HirOp> ops = new();
+        // What this Classify knows of each node it met (Facts), by the node's value identity; kept across Classify calls, so a warm
+        // classification reuses its storage, which the nodes met size.
+        private readonly Dictionary<SourceRef, Facts> met = new();
 
         // SPEC 5.2.1 condition 3, 7.7.3 (R7-Y2c): each definition of a pointer-typed body local (its initializer or assigned value) by the
         // root it is reached from (RootOf); the uses of such locals; and what each local's definitions hold (Derive).
@@ -79,9 +80,7 @@ public sealed partial class Binding
 
         public void Classify(FunctionKoto function, BoundClosure plan)
         {
-            this.takes.Clear();
-            this.walks.Clear();
-            this.ops.Clear();
+            this.met.Clear();
             this.definitions.Clear();
             this.localUses.Clear();
             this.holds.Clear();
@@ -424,16 +423,23 @@ public sealed partial class Binding
             return binding.UseOf(place, takes.Last, takes.Earlier, place.Parent, this.OpOf(place.Parent!));
         }
 
-        // A node's evaluated Op (Binding.OpOf), read once per Classify.
-        private HirOp OpOf(Koto node)
+        // A node's evaluated Op (Binding.OpOf), read once per Classify: a call's Op reads its N argument operations, so every capture use
+        // of its consumer reads it once.
+        private HirOp OpOf(Koto node) => this.OpOf(node, ref this.FactsOf(node));
+
+        private HirOp OpOf(Koto node, ref Facts facts)
         {
-            if (!this.ops.TryGetValue(node, out var op))
+            if ((facts.Marks & Marks.Op) == 0)
             {
-                this.ops[node] = op = binding.OpOf(node);
+                facts.Op = binding.OpOf(node);
+                facts.Marks |= Marks.Op;
             }
 
-            return op;
+            return facts.Op;
         }
+
+        // The row of a node met, created when absent; it is valid until the next row is created.
+        private ref Facts FactsOf(Koto node) => ref CollectionsMarshal.GetValueRefOrAddDefault(this.met, SourceRef.Of(node), out _);
 
         // SPEC 3.5, 8.14, 14.2.2, 23.1.2 (DECISIONS R4-M145): whether a Place is taken by case (Take's ByCase, a pair-case acquisition that
         // Reborrows in some admitted case) as the Adjust rule takes it (TakesOf), its groups taken through: false where its own failure
@@ -476,20 +482,23 @@ public sealed partial class Binding
                 return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: false) : default, default);
             }
 
-            var op = closure ? HirOp.Closure : this.OpOf(consumer);
+            ref var facts = ref this.FactsOf(consumer);
+            var op = closure ? HirOp.Closure : this.OpOf(consumer, ref facts);
             if (op is HirOp.Unset or HirOp.Error or HirOp.Syntax)
             {
                 return null; // The HIR publisher's walk takes no child of such a consumer.
             }
 
-            if (this.walks.Add((consumer, exclusive)))
+            var walked = exclusive ? Marks.ExclusiveWalk : Marks.SharedWalk;
+            if ((facts.Marks & walked) == 0)
             {
-                var record = new TakeRecord(binding, this.takes, exclusive);
+                facts.Marks |= walked;
+                var record = new TakeRecord(binding, this.met, exclusive);
                 binding.AdjustChildren(consumer, op, exclusive, ref record);
                 this.Work += record.Count;
             }
 
-            return this.takes.TryGetValue((target, exclusive), out var takes) ? takes : null;
+            return this.met.TryGetValue(SourceRef.Written(target), out var taken) ? taken.Takes(exclusive) : null;
         }
 
         // The index of the capture of this binding whose environment binding a use names, or -1 (SPEC 7.7.3: the resolved operations of
@@ -521,6 +530,19 @@ public sealed partial class Binding
             Environment = 2,
         }
 
+        // What a Classify knows of a node (Facts.Marks): its Op is read (OpOf); its children's takes are recorded under the shared and the
+        // exclusive selection (TakesOf); its consumer's record took it under each (TakeRecord).
+        [Flags]
+        private enum Marks : byte
+        {
+            None = 0,
+            Op = 1,
+            SharedWalk = 2,
+            ExclusiveWalk = 4,
+            SharedTake = 8,
+            ExclusiveTake = 16,
+        }
+
         // What a use of a Place needs of the environment (SPEC 7.7.3, 8.14): exclusive access (Exclusive), or only in the admitted cases
         // where its acquisition by value Reborrows (ByCase), its value moved out (Consuming), or none of these (Shared); and whether a rule
         // decides its acquisition by case (Listed: not where no consumer takes it, TakenByCase).
@@ -535,9 +557,23 @@ public sealed partial class Binding
                 binding.Take(child.BoundType, child, this.Last) == PlaceUse.ByCase || binding.Take(child.BoundType, child, this.Earlier) == PlaceUse.ByCase;
         }
 
+        // What one Classify knows of a node it met: its evaluated Op (OpOf) and its takes by its consumer under each selection (TakeRecord),
+        // each read only where its mark is set.
+        private struct Facts
+        {
+            public ConsumedTakes Shared;
+            public ConsumedTakes Exclusive;
+            public HirOp Op;
+            public Marks Marks;
+
+            // The node's takes under a selection, or null where its consumer's record took it under none.
+            public readonly ConsumedTakes? Takes(bool exclusive) =>
+                (this.Marks & (exclusive ? Marks.ExclusiveTake : Marks.SharedTake)) == 0 ? null : exclusive ? this.Exclusive : this.Shared;
+        }
+
         // The record of one consumer's takes under one selection (TakesOf), every child's as the publisher's RowUses writes them: each
         // completed by the claim of its two rows so far (Claimed, DECISIONS R7-M8).
-        private struct TakeRecord(Binding binding, Dictionary<(Koto Child, bool Exclusive), ConsumedTakes> taken, bool exclusive) : IHirUses
+        private struct TakeRecord(Binding binding, Dictionary<SourceRef, Facts> met, bool exclusive) : IHirUses
         {
             private int call = -1;
 
@@ -550,7 +586,8 @@ public sealed partial class Binding
             {
                 if (child is not null)
                 {
-                    this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
+                    ref var takes = ref this.Row(child, out var taken);
+                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
                 }
             }
 
@@ -558,7 +595,8 @@ public sealed partial class Binding
             {
                 if (child is not null)
                 {
-                    this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
+                    ref var takes = ref this.Row(child, out var taken);
+                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
                 }
             }
 
@@ -566,13 +604,25 @@ public sealed partial class Binding
             {
                 if (child is not null)
                 {
-                    this.Count++;
-                    taken.TryGetValue((child, exclusive), out var takes);
-                    taken[(child, exclusive)] = new(adjust, this.call >= 0 ? EarlierAdjust(this.call, takes.Last, adjust) : takes.Earlier);
+                    this.Fix(ref this.Row(child, out _), adjust);
                 }
             }
 
-            private readonly bool Claimed(Koto child) => taken.TryGetValue((child, exclusive), out var takes) && binding.Claimed(child, takes.Last, takes.Earlier);
+            // The child's takes so far under this selection, marked taken for the take that follows (Fix), and whether one was recorded.
+            private readonly ref ConsumedTakes Row(Koto child, out bool taken)
+            {
+                ref var facts = ref CollectionsMarshal.GetValueRefOrAddDefault(met, SourceRef.Of(child), out _);
+                var mark = exclusive ? Marks.ExclusiveTake : Marks.SharedTake;
+                taken = (facts.Marks & mark) != 0;
+                facts.Marks |= mark;
+                return ref exclusive ? ref facts.Exclusive : ref facts.Shared;
+            }
+
+            private void Fix(ref ConsumedTakes takes, HirAdjust adjust)
+            {
+                this.Count++;
+                takes = new(adjust, this.call >= 0 ? EarlierAdjust(this.call, takes.Last, adjust) : takes.Earlier);
+            }
         }
     }
 }

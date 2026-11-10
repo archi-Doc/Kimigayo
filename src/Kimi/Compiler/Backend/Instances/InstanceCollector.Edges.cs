@@ -130,7 +130,7 @@ internal sealed partial class InstanceCollector
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed && !Elided(program, body, site.At.Block, this.Set.Items[item].View) &&
+            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed &&
                 !(Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok))
             {
                 this.DropTargets(program, item, subject, body, site, closed);
@@ -246,6 +246,27 @@ internal sealed partial class InstanceCollector
             : -1;
     }
 
+    // K 4.8, SPEC 8.15.3 (PLAN G597): a keyed Storage, a key selection's whose key's start is open in the body, reads its element's stride
+    // where its key, in the item's instance, does not start at the storage (LayoutNeeds): a use of the element there, and none in an
+    // instance whose key starts at the storage. A key still open in the instance is a broken contract (Report: after a failed Binding its
+    // dependent, without a record; DECISIONS R5-M155).
+    private void Keyed(int item, SourceRef subject, MirBody body, in MirRvalue storage)
+    {
+        if (this.In(item, subject, OperandType(body, body.Operands[storage.Start + 1])) is not { } key)
+        {
+            return;
+        }
+
+        if (LayoutNeeds.Of(key) is not { } need)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+        }
+        else if (need != LayoutNeed.None && this.In(item, subject, LayoutNeeds.TypeOf(body, storage)) is { } element)
+        {
+            _ = this.LaysOut(item, subject, element);
+        }
+    }
+
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
     // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body, a Dictionary from none's
     // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124),
@@ -253,7 +274,8 @@ internal sealed partial class InstanceCollector
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
-    // (DECISIONS R5-M108); an operation whose Types depend on slots checked against the capability table (no target).
+    // (DECISIONS R5-M108); an operation whose Types depend on slots checked against the capability table (no target); a keyed Storage's
+    // element a use where its key displaces (Keyed; no target).
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -268,6 +290,12 @@ internal sealed partial class InstanceCollector
                 _ = this.LaysOut(item, subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
             }
 
+            return -1;
+        }
+
+        if (rvalue.Kind == MirRvalueKind.Storage)
+        {
+            this.Keyed(item, subject, body, rvalue);
             return -1;
         }
 

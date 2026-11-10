@@ -272,7 +272,7 @@ public sealed partial class FunctionCodegenTest
     // A requirement whose witness's result is Never (SPEC 10.7), its Item taken in a generic function at the requirement's result.
     private const string NeverWitness = "contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public let x: i64 = 0\n" +
         "    public func empty() -> Never => $abort(\"no value\")\nfunc g<T>() -> () -> T\n    T is Empty\n    T is Owned\n    return T.empty\n" +
-        "public func h() -> () -> Impossible => g<Impossible>()\n";
+        "func h() -> () -> Impossible => g<Impossible>()\n";
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:
     // none).

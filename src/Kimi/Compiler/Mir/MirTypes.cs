@@ -3,9 +3,12 @@
 #pragma warning disable SA1402 // The walks' outcome belongs to the Type facts.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind,
-// pointer-cast and integer facts.
+// Input: published Types, their stored shapes, Binding's Copy and Sealed proofs and the root Type statements the operator domain composes
+// (ArithmeticContracts.Supports, ComparisonTypes.OperatorCompares, ReferenceTypes.IsPointer). Output: the destruction walk and the drop,
+// observation, Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, view-start,
+// agreement, borrow-kind, pointer-cast, integer and operator-domain facts (Operates, the operator table's domain, which the Backend's
+// operator columns read too), and the pairing of the arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract
+// through ArithmeticOperation).
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
@@ -19,7 +22,7 @@
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast, integer and agreement facts.
+// here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer, operator-domain and agreement facts.
 
 using Kimi.Compiler.Parsing;
 
@@ -33,6 +36,20 @@ internal static partial class MirTypes
     // 15.3.5's growing recursion). The guard and the destruction walk answer it as its own outcome (Deep), never as a value they did not
     // establish; a check whose verdict rests on such a part records OwnershipDepthLimit_Kd (DECISIONS R4-M153).
     private const int Bound = 32;
+
+    // SPEC 13.3.3 (DECISIONS R5-M126): each arithmetic Contract's built-in witness as its MIR operator, the one pairing of the two
+    // vocabularies: Operates' arithmetic rows read it by operator, the Backend's arithmetic shim and its capability check by Contract
+    // (ArithmeticOperation). The MIR builder's operator for Binding's token (ArithmeticContractSyntax.Operator) is the same; a test ties
+    // them.
+    private static readonly (KimiDeclarationId Contract, MirRvalueKind Kind, byte Op)[] ArithmeticOperations =
+    [
+        (KimiDeclarationId.Addable, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Add),
+        (KimiDeclarationId.Subtractable, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Sub),
+        (KimiDeclarationId.Multipliable, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Mul),
+        (KimiDeclarationId.Dividable, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Div),
+        (KimiDeclarationId.RemainderProvider, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Rem),
+        (KimiDeclarationId.Negatable, MirRvalueKind.UnaryOp, (byte)MirUnaryOp.Neg),
+    ];
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
@@ -92,6 +109,23 @@ internal static partial class MirTypes
     /// <returns>Whether the selection reads the receiver's value.</returns>
     internal static bool SelectsByValue(BoundType? type) => type is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw };
 
+    /// <summary>Gets where a range key's view starts (SPEC 4.6.1-4.6.2, 8.15.3; DECISIONS R8-M13; G597), the one rule of the start, by
+    /// the Type that decides it, the start boundary's of the library's Range or ClosedRange, else the key's own: at its receiver's
+    /// storage where that boundary is Start, the static zero; open where the deciding Type stands for any Type of an instance (R, or
+    /// the S of Range&lt;S, End&gt;), which each instance decides; else at a position, which displaces (another boundary, a resolved
+    /// range, another PositionRange, a Type that did not bind). Neither the key's own IsAbstract nor "the key holds a parameter" is
+    /// the test: the first is false for Range&lt;S, End&gt;, whose start is open, and the second holds for Range&lt;i32, E&gt;, whose
+    /// start is decided, a position. The builder reads it at the key's Type in the body and in a default copy's instance, the
+    /// validator at a keyed Storage's token, and the instance step at the key's Type in the item's instance (LayoutNeeds).</summary>
+    /// <param name="key">The key's Type.</param>
+    /// <returns>True at the storage, false at a position, null where open.</returns>
+    internal static bool? StartsAtStorage(BoundType? key)
+    {
+        var range = key?.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange;
+        var decides = range ? key!.Components[0] : key;
+        return decides?.IsAbstract == true ? null : range && decides!.Symbol?.LibraryDeclaration == KimiDeclarationId.Start;
+    }
+
     /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.6, 5.4), the mode of every Ref: an address for a raw
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and
     /// activated at the Call that takes it, a call's input on its preparation path (SPEC 15.6.7), or at the write through it, an update's
@@ -127,8 +161,53 @@ internal static partial class MirTypes
     /// Type (MirValidator.Casts).</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether it has the integer operators, concrete or generic.</returns>
-    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || type.IsAbstract ||
-        (type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping);
+    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || InstanceDecides(type);
+
+    /// <summary>Gets whether a MIR operator's built-in operation takes an operand's terminal Type (SPEC 13.2-13.4): the operator table's
+    /// domain, the one statement MirValidator's operator rvalues and the Backend's operator columns (FunctionCodegen.Column) read, keyed by
+    /// MIR's operator over the root statements. + - * / % and unary - where the operator's arithmetic Contract has a built-in witness
+    /// (ArithmeticContracts.Supports, SPEC 13.3.3, by ArithmeticOperations), + and - a raw pointer too (its displacement, SPEC 5.3); &amp; | ^
+    /// and a shift's left operand an integer or wrapping integer Type (SPEC 13.3.1); not bool; a comparison a Type the operator table
+    /// compares (ComparisonTypes.OperatorCompares). An abstract Type's on Binding's proof of its instance, which MIR trusts by the shape:
+    /// a PrimitiveInteger T's or Wrapping over one's every binary operator (SPEC 13.3.3, 3.5.3), Wrapping over one's negation (SPEC 3.1.1); a
+    /// T's negation is a requirement call and no T is bool by proof, so neither stands there. Any other operator is a broken contract.</summary>
+    /// <param name="kind">The rvalue's kind, BinaryOp or UnaryOp.</param>
+    /// <param name="op">Its operator.</param>
+    /// <param name="type">The operand's terminal Type.</param>
+    /// <returns>Whether the operator's built-in operation takes it.</returns>
+    internal static bool Operates(MirRvalueKind kind, byte op, BoundType type) => kind == MirRvalueKind.UnaryOp
+        ? (MirUnaryOp)op switch
+        {
+            MirUnaryOp.Neg => Conforms(kind, op, type) || IsGenericWrapping(type),
+            MirUnaryOp.Not => ReferenceEquals(type, BoundType.Boolean),
+            _ => false,
+        }
+        : InstanceDecides(type) || (MirBinaryOp)op switch
+        {
+            MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || ReferenceTypes.IsPointer(type),
+            MirBinaryOp.Mul or MirBinaryOp.Div or MirBinaryOp.Rem => Conforms(kind, op, type),
+            var bitwise when IsBitwiseOrShift(bitwise) => type.HasIntegerArithmetic,
+            MirBinaryOp.Eq or MirBinaryOp.Ne => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable),
+            MirBinaryOp.Lt or MirBinaryOp.Le or MirBinaryOp.Gt or MirBinaryOp.Ge => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Comparable),
+            _ => false,
+        };
+
+    /// <summary>Gets the MIR operator of an arithmetic Contract's built-in witness (ArithmeticOperations; SPEC 13.3.3), which the Backend's
+    /// arithmetic shim applies and its capability check reads; any other Contract is a broken contract.</summary>
+    /// <param name="contract">The Contract's declaration identity.</param>
+    /// <returns>Its rvalue kind and operator.</returns>
+    internal static (MirRvalueKind Kind, byte Op) ArithmeticOperation(KimiDeclarationId? contract)
+    {
+        foreach (var row in ArithmeticOperations)
+        {
+            if (row.Contract == contract)
+            {
+                return (row.Kind, row.Op);
+            }
+        }
+
+        throw new InvalidOperationException($"The Contract {contract} has no built-in arithmetic witness.");
+    }
 
     /// <summary>Gets whether an Integer constant (MirConstKind.Integer) has a Type: one with the integer operators, concrete or generic
     /// (IsArithmeticInteger), char or a raw pointer, whose one constant is null (SPEC 3.1, 5.1). The one family MirValidator checks a
@@ -186,6 +265,31 @@ internal static partial class MirTypes
         }
 
         return true;
+    }
+
+    // An abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one: its instance decides which operators it has.
+    private static bool InstanceDecides(BoundType type) => type.IsAbstract || IsGenericWrapping(type);
+
+    // Wrapping over an abstract Type, which stays constructed until substitution (SPEC 3.1.1; TyCtxt.Intern).
+    private static bool IsGenericWrapping(BoundType type)
+        => type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping;
+
+    // SPEC 13.3.1's bitwise and shift group, each operator named: the shifts << >> and the bitwise & | ^.
+    private static bool IsBitwiseOrShift(MirBinaryOp op)
+        => op is MirBinaryOp.Shl or MirBinaryOp.Shr || op is MirBinaryOp.BitAnd or MirBinaryOp.BitOr or MirBinaryOp.BitXor;
+
+    // Whether an arithmetic operator's Contract has a built-in witness at a Type (ArithmeticOperations; ArithmeticContracts.Supports).
+    private static bool Conforms(MirRvalueKind kind, byte op, BoundType type)
+    {
+        foreach (var row in ArithmeticOperations)
+        {
+            if (row.Kind == kind && row.Op == op)
+            {
+                return ArithmeticContracts.Supports(type, row.Contract);
+            }
+        }
+
+        return false; // Not an arithmetic Contract's operator: Operates names none such.
     }
 }
 

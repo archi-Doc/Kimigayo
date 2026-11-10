@@ -5,8 +5,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // InheritedConformances (PLAN G602; DeclQueryKind.InheritedConformances): a struct's inherited conformance paths (SPEC 8.6.2).
-// - Responsibility: registering a struct's inherited paths, its base's under the base clause, once its base's are; the one by-type
-//   read of ImplTable (ConformancesOf, ConformanceOf); verifying an inherited path and its conformance scope.
+// - Responsibility: registering a struct's inherited paths, its base's under the base clause, once its base's are, with each path's
+//   declared path and Self composed from its first source's (BoundConformancePath.DeclaredPath); the one by-type read of ImplTable
+//   (ConformancesOf, ConformanceOf); verifying an inherited path and building its conformance scope.
 // - Inputs: the struct's base clause read through DirectBase, the base's paths in ImplTable. Outputs: the paths in ImplTable.
 // - Invariants: once clauses are bindable every by-type read demands the query first; a Done query has filled the table, and a read
 //   after an abandoned demand sees it without the struct's inherited paths, which no final reading has given yet. Before, a read sees
@@ -17,9 +18,14 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private int inheritedSteps;
+    private int inheritedPremiseSteps;
 
     /// <summary>Gets the clause readings the InheritedConformances query took in the latest pass, read by the scaling tests.</summary>
     internal int InheritedConformanceWork => this.inheritedSteps;
+
+    /// <summary>Gets the steps that read an inherited path's declared premises (its scope's build and its conditions' proofs) in the latest
+    /// pass, read by the scaling tests.</summary>
+    internal int InheritedPremiseWork => this.inheritedPremiseSteps;
 
     // SPEC 8.6.2: every struct's inherited paths, demanded in node order. Pass 0's demand (BindConstraints) registers the paths through
     // bases named by a struct; this one, once clauses are bindable, the rest.
@@ -131,7 +137,11 @@ public sealed partial class Binding
                 path.Use = syntax;
                 if (path.InheritedFrom is null)
                 {
+                    // The declared path and Self from the first source's (BoundConformancePath.DeclaredPath).
                     path.InheritedFrom = source;
+                    var declared = source.InheritedFrom is null;
+                    path.DeclaredPath = declared ? source : source.DeclaredPath;
+                    path.DeclaredSelf = declared ? baseType : source.DeclaredSelf is { } layer ? this.StoredType(layer, baseType) : null;
                 }
                 else if (!ReferenceEquals(path.InheritedFrom, source))
                 {
@@ -191,7 +201,12 @@ public sealed partial class Binding
                 return proof;
             }
 
-            var self = this.SelfType(path.Type);
+            if (this.RefusedConformance(path))
+            {
+                return ConstraintProof.Unknown; // No conformance scope: a refused declared Self (Binding.TypeHeight).
+            }
+
+            var self = this.ConformanceSelf(path);
             var scope = path.Scope; // D and the source's P, built once per pass (PrepareInheritedScopes).
             var shape = path.Contract.Contract!;
             foreach (var ancestor in shape.AncestorStorage)
@@ -313,32 +328,26 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its source's premises P, built once per pass
-    // after the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
+    // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its premises P (Register copies the declared path's) at its
+    // declared Self (BoundConformancePath.DeclaredPath), one step per path; none where that Self was refused. Built once per pass after
+    // the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
     // VerifyInheritedConformance, which read it and never build it.
     private void PrepareInheritedScopes()
     {
         foreach (var path in this.impls.Paths)
         {
-            if (path.InheritedFrom is not null)
+            if (path.InheritedFrom is null)
             {
-                this.AddInheritedPremises(path, this.SelfType(path.Type), path.Scope);
+                continue;
             }
-        }
-    }
 
-    private void AddInheritedPremises(BoundConformancePath path, BoundType self, BindingScope scope)
-    {
-        if (path.InheritedFrom is { } source)
-        {
-            // Registration merges only paths with the same original declaration, root Contract and inline base.
-            // Additional sources therefore carry the same declaration premises; their mapping obligations are
-            // verified separately in VerifyInheritedConformance and ProveConformanceConditions.
-            this.AddInheritedPremises(source, this.StoredType(path.InheritedBase!, self)!, scope);
-        }
-        else if (path.Premises is { } premises)
-        {
-            var environment = scope.Constraints ??= new();
+            this.inheritedPremiseSteps++;
+            if (path.Premises is not { } premises || path.DeclaredSelf is not { } self)
+            {
+                continue;
+            }
+
+            var environment = path.Scope.Constraints ??= new();
             foreach (var clause in premises.Operands)
             {
                 if (((IsKoto)clause).BoundConstraint is { } constraint)
@@ -347,7 +356,7 @@ public sealed partial class Binding
                 }
             }
 
-            this.ExpandScopeContractPremises(scope);
+            this.ExpandScopeContractPremises(path.Scope);
         }
     }
 

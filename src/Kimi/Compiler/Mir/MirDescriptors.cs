@@ -45,7 +45,12 @@ internal enum MirEffect : ushort
 /// defines it later), whether it diverges and the operand the builder adds beyond its declaration whose value its result retains
 /// (<see cref="RetentionKind.Value"/>; -1: none; A3 E14), which the declaration's retention does not cover. A kind without a row is not
 /// <see cref="Defined"/>.</summary>
-internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, bool Diverges, sbyte Retained);
+internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, bool Diverges, sbyte Retained)
+{
+    /// <summary>Gets a value indicating whether an rvalue of the kind has a Place (<see cref="MirRvalue.Place"/>), which its access is to:
+    /// a Ref's, Discriminant's, Len's or Storage's Place or an Adapt's payload. An Opaque's access is to its site's roots.</summary>
+    internal bool HasPlace { get; init; }
+}
 
 /// <summary>A position in a body: the statement at an index of a block, or its terminator at the index after the last statement.</summary>
 internal readonly record struct MirLocation(int Block, int Index);
@@ -84,22 +89,22 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The access to the rvalue's Place: a Ref's, Discriminant's or Len's, an Adapt's payload, or an Opaque site's roots, which the replaced
-    // syntax may have read, written or borrowed. An operator or a checked Cast aborts unless Proven; an Adapt may create an object; an
-    // aggregate's effects are its kind's row's.
+    // The access to the rvalue's Place where its kind has one (HasPlace): a Ref's, Discriminant's, Len's or Storage's, or an Adapt's
+    // payload; an Opaque's is to its site's roots, which the replaced syntax may have read, written or borrowed. An operator or a checked
+    // Cast aborts unless Proven; an Adapt may create an object; an aggregate's effects are its kind's row's.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
         MirRvalueKind.Aggregate => Row(MirAccess.None, effects: MirEffect.None),
-        MirRvalueKind.Ref => Row(MirAccess.Borrows, effects: MirEffect.None),
+        MirRvalueKind.Ref => Row(MirAccess.Borrows, effects: MirEffect.None) with { HasPlace = true },
         MirRvalueKind.BinaryOp => Row(MirAccess.None, MirEffect.Abort),
         MirRvalueKind.UnaryOp => Row(MirAccess.None, MirEffect.Abort),
         MirRvalueKind.Cast => Row(MirAccess.None, MirEffect.Abort),
-        MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None),
-        MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
-        MirRvalueKind.Storage => Row(MirAccess.Borrows, effects: MirEffect.None), // A raw borrow; no bounds check, no abort.
+        MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None) with { HasPlace = true },
+        MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None) with { HasPlace = true },
+        MirRvalueKind.Storage => Row(MirAccess.Borrows, effects: MirEffect.None) with { HasPlace = true }, // A raw borrow; no bounds check, no abort.
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
-        MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation),
+        MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation) with { HasPlace = true },
         _ => default,
     };
 
@@ -310,11 +315,20 @@ internal static class MirUses
 
         var row = MirDescriptors.Of(rvalue.Kind);
         Operands(body, rvalue.Start, rvalue.Count, row.Access & MirAccess.CaseDependent, ref visitor);
+        if (row.HasPlace)
+        {
+            if (rvalue.Kind == MirRvalueKind.Adapt)
+            {
+                visitor.Place(rvalue.Place, row.Access, default); // The operand reported the index locals and the static effect of the payload's root.
+            }
+            else
+            {
+                Place(body, rvalue.Place, row.Access, (MirRefKind)rvalue.Op, ref visitor);
+            }
+        }
+
         switch (rvalue.Kind)
         {
-            case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
-                Place(body, rvalue.Place, row.Access, (MirRefKind)rvalue.Op, ref visitor);
-                break;
             case MirRvalueKind.Aggregate when rvalue.Count > 0: // `[]` allocates nothing (SPEC 4.9.5).
                 Effect(MirDescriptors.Of((MirAggregateKind)rvalue.Op).Effects, -1, ref visitor);
                 break;
@@ -341,8 +355,7 @@ internal static class MirUses
                 }
 
                 break;
-            case MirRvalueKind.Adapt: // The operand reported the index locals and the static effect of the payload's root.
-                visitor.Place(rvalue.Place, row.Access, default);
+            case MirRvalueKind.Adapt:
                 Effect(row.Effects, -1, ref visitor);
                 break;
         }

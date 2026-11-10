@@ -85,6 +85,8 @@ internal sealed class ImplTable
             result.InheritedFrom = null;
             result.AdditionalInheritedSources?.Clear();
             result.InheritedBase = null;
+            result.DeclaredPath = null;
+            result.DeclaredSelf = null;
             result.Use = use;
             result.Declaration = use;
             result.RootContract = root;

@@ -19,7 +19,7 @@ public class DependentRequirementConstraintBindingTest
     [InlineData("i32 is T or u32", "u32", false)]
     public void BothPropositionOperandsDetermineInputDependence(string clause, string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\nfunc use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
@@ -32,7 +32,7 @@ public class DependentRequirementConstraintBindingTest
     [InlineData("string", false)]
     public void EnumConditionsAreCheckedAtUses(string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public enum Target<T>\n    i32 is T\n    A\npublic func use(value: Target<" + argument + ">)\n    return");
+        var c = MinimalEmissionTest.Analyze("public enum Target<T>\n    i32 is T\n    A\nfunc use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -43,7 +43,7 @@ public class DependentRequirementConstraintBindingTest
     [InlineData("string", false)]
     public void AssociatedRequirementsAreNormalizedAfterSubstitution(string item, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.Origin.Item\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.Origin.Item\n    T is Origin\nfunc use(value: Target<Source>)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
@@ -75,7 +75,7 @@ public class DependentRequirementConstraintBindingTest
     [Fact]
     public void ReplacingTheRequiredTypeRevokesAndRestoresUses()
     {
-        const string source = "public struct Target<T>\n    i32 is T\npublic func use(value: Target<i32>)\n    return";
+        const string source = "public struct Target<T>\n    i32 is T\nfunc use(value: Target<i32>)\n    return";
         var c = MinimalEmissionTest.Analyze(source);
         var clause = c.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0];
         var original = clause.Right;
@@ -92,7 +92,7 @@ public class DependentRequirementConstraintBindingTest
     [Fact]
     public void WarmDependentRequirementProofsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    i32 is T\npublic func use(value: Target<i32>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    i32 is T\nfunc use(value: Target<i32>)\n    return");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

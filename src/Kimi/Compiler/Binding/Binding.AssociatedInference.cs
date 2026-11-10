@@ -8,7 +8,9 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BindingSymbol, AssociatedInference> associatedInference = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), RequirementMatch> requirementMatches = new();
-    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
+
     private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundConformancePath, List<BoundConformancePath>> inferenceConsumers = new(ReferenceEqualityComparer.Instance);
     private readonly Queue<BoundConformancePath> inferenceInvalidation = new();
@@ -259,7 +261,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var self = this.SelfType(path.Type);
+                var self = this.ConformanceSelf(path);
                 foreach (var identity in path.Contract.Contract!.RequirementStorage)
                 {
                     if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
@@ -268,7 +270,7 @@ public sealed partial class Binding
                     }
 
                     this.BindHeader(identity.Symbol);
-                    var match = this.IdentifyRequirement(path, identity, self);
+                    var match = this.IdentifyRequirement(path, identity);
                     if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
                     {
                         batch.Pairs.Clear();
@@ -388,7 +390,7 @@ public sealed partial class Binding
         // Copy` specifies i32), or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`) fixes nothing
         // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
-            => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
+            => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.RootContract) &&
                 ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
                 (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
                     clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||
@@ -668,7 +670,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity, BoundType self)
+    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
         var key = (path, identity);
         if (this.requirementMatches.TryGetValue(key, out var known) && known.State != RequirementMatchState.Pending)
@@ -676,6 +678,7 @@ public sealed partial class Binding
             return known;
         }
 
+        var self = this.ConformanceSelf(path);
         var selection = this.LookupTypeMember(self, identity.Symbol.Name, path.Scope, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;

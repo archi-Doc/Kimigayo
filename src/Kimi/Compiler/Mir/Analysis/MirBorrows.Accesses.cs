@@ -53,7 +53,7 @@ internal sealed partial class MirBorrows
     }
 
     // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
-    // some of it (no group: only the checks reach it and it may destroy something), else shallowly.
+    // some of it (a group that is not Elide, or none), else shallowly.
     private AccessKind Dropping(int block, MirPlace place)
     {
         if (this.program.Drops.Elides(this.body.Ordinal, block, this.view))

@@ -399,11 +399,10 @@ public sealed partial class Binding
         BoundType required,
         BoundType? container,
         BoundType? item,
-        BoundType?[]? arguments,
+        SlotFrame? frame,
         Span<BoundArgumentOperation> operations,
         BoundOrigin[] origins,
-        BoundOrigin[] inputs,
-        BoundLength?[]? lengths = null)
+        BoundOrigin[] inputs)
     {
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
@@ -505,7 +504,7 @@ public sealed partial class Binding
         BoundType? Bound(BoundType type)
         {
             var bound = item is not null ? this.ItemType(type, item, function)
-                : this.MemberType(type, container) is not { } member ? null : arguments is null ? member : this.SubstituteType(member, function, arguments.AsSpan(0, generic), lengths.AsSpan(0, lengths is null ? 0 : generic));
+                : this.MemberType(type, container) is not { } member ? null : frame is not { } slots ? member : this.SubstituteType(member, function, slots.Types[..generic], slots.Lengths[..generic]);
             return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
         }
 

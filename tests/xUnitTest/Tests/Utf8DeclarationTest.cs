@@ -26,14 +26,6 @@ public class Utf8DeclarationTest
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveOwned(symbol.Type!, symbol.Declaration));
     }
 
-    [Fact]
-    public void StringifyIsAnOrdinaryUserName()
-    {
-        var c = MinimalEmissionTest.Analyze("struct Stringify\n    public init() => ()\nlet value = Stringify.init()");
-        Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Stringify));
-    }
-
     [Theory]
     [InlineData("var bytes = [8 of 0@u8]\nlet buffer = Text.fixed(bytes@uniq)\n_ = buffer.length")]
     [InlineData("let buffer = Text.heap(0)\n_ = buffer.capacity")]

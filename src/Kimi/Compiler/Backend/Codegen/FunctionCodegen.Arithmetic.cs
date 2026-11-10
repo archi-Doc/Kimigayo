@@ -8,12 +8,12 @@ namespace Kimi.Compiler.Backend;
 
 // The operator rows (R5 plan C1a, C1b, C8a, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92): a BinaryOp or UnaryOp into its
 // Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand read at
-// its terminal Place through its ref and uniq layers (SPEC 13.4; TerminalAddress). No string reaches it: a string comparison is its library
-// witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b), and MirValidator rejects a comparison BinaryOp
-// outside the table's domain (OperandsCompare, by ComparisonTypes.OperatorCompares, which Column reads). A Proven operation
-// (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts at the statement's location text (SPEC
-// 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics' declarations, which the frame's fixed set omits
-// (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract (DECISIONS R5-M143).
+// its terminal Place through its ref and uniq layers (SPEC 13.4; TerminalAddress). No string reaches it: a string comparison is its
+// library witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b), and MirValidator rejects an operator
+// rvalue outside the table's domain (MirTypes.Operates, which Column reads). A Proven operation (MirRvalue.Proven, the builder's IMPL
+// 21.3.3 fact) writes no check; any other check Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation
+// requests its overflow intrinsics' declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with
+// no entry is a broken contract (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // The first UnaryOp's row.
@@ -22,13 +22,14 @@ internal sealed partial class FunctionCodegen
     // SPEC 13.2-13.4, 3.1.1, 5.1, 5.3: a row per MIR operator, MirBinaryOp's members then MirUnaryOp's, with its entry for a signed
     // integer, an unsigned integer, a signed wrapping, an unsigned wrapping integer, a floating-point and a raw pointer Type: the LLVM
     // operator (an instruction, an icmp or fcmp predicate or a checked operation's overflow intrinsic stem), the check SPEC 13.3.1 makes
-    // and a unary operator's fixed operand, the other side's spelling (0 - x; x xor -1, logical on bool and bitwise on an integer; fneg has
-    // none, so -0.0 keeps its sign). A wrapping entry is the operation without its check, which a Proven one writes; bool and char take the
-    // unsigned integer entries, where their operators (equality, char's order, not) check nothing. Floating point follows IEEE 754 and
-    // checks nothing (SPEC 13.3.1); its comparisons are ordered but for !=, so a NaN operand makes != true and the others false, and +0.0
-    // == -0.0 (SPEC 13.4); it has no remainder, bitwise or shift operator. A raw pointer has == and != on its address and p + n and p - n,
-    // a displacement by n * stride(T) (LayoutNeeds' Element row, the one statement of which operator displaces, DECISIONS R5-M149; Displace),
-    // unchecked; Binding admits no other pointer operator (DECISIONS R5-M92).
+    // and a unary operator's fixed operand, the other side's spelling (0 - x; x xor -1, bool's not; fneg has none, so -0.0 keeps its
+    // sign); none outside the operator's domain (Column), but bool's not, which the unsigned columns hold. A wrapping entry is the
+    // operation without its check, which a Proven one writes; bool and char take the unsigned integer entries, where their operators
+    // (equality, char's order, not) check nothing. Floating point follows IEEE 754 and checks nothing (SPEC 13.3.1); its comparisons are
+    // ordered but for !=, so a NaN operand makes != true and the others false, and +0.0 == -0.0 (SPEC 13.4); it has no remainder, bitwise
+    // or shift operator. A raw pointer has == and != on its address and p + n and p - n, a displacement by n * stride(T) (LayoutNeeds'
+    // Element row, the one statement of which operator displaces, DECISIONS R5-M149; Displace), unchecked; Binding admits no other pointer
+    // operator (DECISIONS R5-M92).
     // Reflexive: the result on equal operands, a comparison of Unit's one value.
     private static readonly Row[] Rows = Complete(
     [
@@ -74,11 +75,9 @@ internal sealed partial class FunctionCodegen
                 default],
             Reflexive: true), // Ge
         new(
-            [new("ssub", Check.Overflow, Left: "0"), new("usub", Check.Overflow, Left: "0"), new("sub", Check.None, Left: "0"),
-                new("sub", Check.None, Left: "0"), new("fneg", Check.None), default]), // Neg
-        new(
-            [new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"),
-                new("xor", Check.None, Right: "-1"), default, default]), // Not
+            [new("ssub", Check.Overflow, Left: "0"), default, new("sub", Check.None, Left: "0"), new("sub", Check.None, Left: "0"),
+                new("fneg", Check.None), default]), // Neg
+        new([default, new("xor", Check.None, Right: "-1"), default, new("xor", Check.None, Right: "-1"), default, default]), // Not
     ]);
 
     // SPEC 13.3.1's checks, each one LlvmScalarText writer.
@@ -96,17 +95,17 @@ internal sealed partial class FunctionCodegen
     // wrapping integer's and a floating-point Type's own.
     private static ReadOnlySpan<byte> Unchecked => [2, 3, 2, 3, 4, 5];
 
-    // The entry an operand Type takes, by its terminal below its ref and uniq layers (Terminal; SPEC 13.4: a comparison operand denotes its
-    // terminal Place, and an operand's Type keeps its layers where MIR inspects the terminal in place, a raw pointer's, and where an
-    // identity premise gives them, which the item's instance substitutes, `a: T` under `T is ref/i32`; DECISIONS R5-M75, R5-M143) (SPEC
-    // 3.1, 3.1.1, 13.4, 5.1, 8.2.3) in the table's domain, the Types with built-in equality (ComparisonTypes.OperatorCompares, the
-    // statement MirValidator's comparison BinaryOp reads): an integer's or a wrapping integer's by its signedness, a floating-point Type's
-    // and a raw pointer's own, bool's and char's the unsigned integer's; Unit's and Never's, the unsigned integer's too, is never read:
-    // zero-sized, they compare by the row's Reflexive result (Apply); -1 for a Type with no operator.
-    private static int Column(BoundType type)
+    // The entry an operand Type takes for a MIR operator, by its terminal below its ref and uniq layers (Terminal; SPEC 13.4: a comparison
+    // operand denotes its terminal Place, and an operand's Type keeps its layers where MIR inspects the terminal in place, a raw pointer's,
+    // and where an identity premise gives them, which the item's instance substitutes, `a: T` under `T is ref/i32`; DECISIONS R5-M75,
+    // R5-M143) (SPEC 3.1, 3.1.1, 13.4, 5.1, 8.2.3) in the operator's domain (MirTypes.Operates, the statement MirValidator's operator
+    // rvalues read): an integer's or a wrapping integer's by its signedness, a floating-point Type's and a raw pointer's own, bool's and
+    // char's the unsigned integer's; Unit's and Never's, the unsigned integer's too, is never read: zero-sized, they compare by the row's
+    // Reflexive result (Apply); -1 for a Type outside the domain.
+    private static int Column(MirRvalueKind kind, byte op, BoundType type)
     {
         type = Terminal.Of(type).Type!;
-        if (!ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable))
+        if (!MirTypes.Operates(kind, op, type))
         {
             return -1;
         }
@@ -124,7 +123,8 @@ internal sealed partial class FunctionCodegen
         return type.IsFloatingPoint ? 4 : 1;
     }
 
-    // The row of a MIR operator, a statement's or an arithmetic shim's (BuiltinArithmetic): MirBinaryOp's members, then MirUnaryOp's.
+    // The row of a MIR operator, a statement's or an arithmetic shim's (MirTypes.ArithmeticOperation): MirBinaryOp's members, then
+    // MirUnaryOp's.
     private static int RowOf(MirRvalueKind kind, byte op) => (kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + op;
 
     // The table, whose rows follow the operator enums' order with an entry per column; a row or an entry missing is a broken contract.
@@ -147,7 +147,7 @@ internal sealed partial class FunctionCodegen
         var rvalue = statement.Rvalue;
         var row = RowOf(rvalue.Kind, rvalue.Op);
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
-        var column = this.InstanceType(operands[0]) is { } type ? Column(type) : -1; // None: a broken contract, recorded below.
+        var column = this.InstanceType(operands[0]) is { } type ? Column(rvalue.Kind, rvalue.Op, type) : -1; // None: a broken contract, recorded below.
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
@@ -162,7 +162,8 @@ internal sealed partial class FunctionCodegen
 
         if (rvalue.Kind == MirRvalueKind.BinaryOp && LayoutNeeds.Of((MirBinaryOp)rvalue.Op, left.Type) == LayoutNeed.Element)
         {
-            this.Displace(statement, left, right); // A raw pointer, never zero-sized; its entry is its own unchecked one.
+            // A raw pointer, never zero-sized; its entry is its own unchecked one.
+            this.Displace(statement, left.Value, right, (MirBinaryOp)rvalue.Op == MirBinaryOp.Sub ? -1 : 1);
             return;
         }
 
@@ -187,9 +188,8 @@ internal sealed partial class FunctionCodegen
         var check = proven ? Check.None : entry.Check;
         if (entry.Operator is null)
         {
-            // No entry: an operator Binding admits on no operand of this terminal Type (a raw pointer's ordering, product, negation or
-            // bitwise operator, a floating-point remainder, bitwise or shift operator, a Type without a column), so no accepted program
-            // reaches it: a broken contract (DECISIONS R5-M143).
+            // No entry: a Type outside the operator's domain (Column, by MirTypes.Operates, which MirValidator reads), so no accepted
+            // program reaches it: a broken contract (DECISIONS R5-M143).
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return null;
         }
@@ -253,17 +253,16 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance (the operator's Element need,
     // Needed), unchecked (overflow is undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place
-    // writer's Offset.
-    private void Displace(in MirStatement statement, in Computed pointer, in Computed count)
+    // writer's Offset. A keyed Storage's start displaces its first element's address the same way, by its element's stride (LayoutNeeds;
+    // PLAN G597). The sign is the caller's: -1 for p - n, else 1.
+    private void Displace(in MirStatement statement, Value pointer, in Computed count, int sign)
     {
         if (this.Needed(statement.Rvalue) is not { } element)
         {
             return; // A broken contract, recorded.
         }
 
-        var sign = (MirBinaryOp)statement.Rvalue.Op == MirBinaryOp.Sub ? -1 : 1;
-
-        var result = pointer.Value;
+        var result = pointer;
         if (element.Layout.Stride != 0)
         {
             var bytes = new Value('t', this.next++);
@@ -277,7 +276,7 @@ internal sealed partial class FunctionCodegen
             output.Write(", ");
             WriteNumber(output, sign * element.Layout.Stride);
             output.Write('\n');
-            result = this.Offset(pointer.Value, bytes);
+            result = this.Offset(pointer, bytes);
         }
 
         this.Store(statement, result);
