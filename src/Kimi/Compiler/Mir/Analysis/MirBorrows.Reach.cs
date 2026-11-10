@@ -48,6 +48,7 @@ internal sealed partial class MirBorrows
     private (BoundType? Type, bool Several)[] writingPlace = []; // By slot: the erased case Type of the Places named by the Loans by
                                                                  // which that walk reached it past a holder (PlaceType), or several.
     private int walks; // The W walks made.
+    private bool walkResting; // Whether the W walk read a set that rests on an undecided write (Φ_M, Φ_U; MirBorrows.Puns).
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
     // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (Parts).
@@ -87,7 +88,7 @@ internal sealed partial class MirBorrows
             this.Parts(state[Escaped], whole: false, writable);
         }
 
-        var content = this.PartsUnion();
+        var content = this.Rested(this.PartsUnion(), set);
         this.Memo(set).Content = content + 1;
         return content;
     }
@@ -135,7 +136,7 @@ internal sealed partial class MirBorrows
             this.Parts(state[holder], whole: this.partlyBy[holder] != this.closures, this.writableBy[holder] == this.closures);
         }
 
-        var chain = this.PartsUnion();
+        var chain = this.Rested(this.PartsUnion(), set);
         this.Memo(set).Chain = chain + 1;
         return chain;
     }
@@ -297,6 +298,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
         MirDataflow.Grow(ref this.writingPlace, this.holderCount);
         this.walks++;
+        this.walkResting = false;
         this.targets.Clear();
     }
 
@@ -317,6 +319,7 @@ internal sealed partial class MirBorrows
         foreach (var element in this.sets.Elements(set))
         {
             escaped |= element == Escaped;
+            this.walkResting |= element is Maybe or Undecided;
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
                 direct = true;
@@ -413,6 +416,7 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
+            this.walkResting |= element is Maybe or Undecided;
             if (element == (named ? Writable : Escaped))
             {
                 this.Written(Escaped, MirWrites.None, via, null);

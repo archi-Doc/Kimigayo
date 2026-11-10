@@ -3,7 +3,6 @@
 using System.Runtime.CompilerServices;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Parsing;
 using Kimi.Lsp;
 using Xunit;
@@ -130,6 +129,19 @@ public sealed class HoverProjectionTest
         var specification = At(snapshot, text.IndexOf("Source.Item", StringComparison.Ordinal) + "Source.".Length);
         Assert.Equal("associate Source.Item is i32", Assert.Single(specification.Declarations).Header);
         Assert.Equal("The concrete item.", Extract(Assert.Single(specification.Declarations[0].Documentation)));
+    }
+
+    // SPEC 9.1 (PLAN G701): a written `Self` in a Contract selects the Contract's Self Type parameter and is described as that Contract,
+    // in a receiver and in a parameter.
+    [Fact]
+    public void SelfInAContractIsDescribedAsItsContract()
+    {
+        const string text = "contract C\n    func get(self: ref/Self, other: Self) -> i32\nstruct S\n    Self is C\n    public func get(self: ref/Self, other: S) -> i32 => 0\n";
+        var snapshot = Project(text);
+        var contract = Assert.Single(At(snapshot, text.IndexOf("C\n", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("contract C", contract.Header);
+        Assert.Same(contract, Assert.Single(At(snapshot, text.IndexOf("ref/Self", StringComparison.Ordinal) + 4).Declarations));
+        Assert.Same(contract, Assert.Single(At(snapshot, text.IndexOf("other: Self", StringComparison.Ordinal) + 7).Declarations));
     }
 
     [Fact]

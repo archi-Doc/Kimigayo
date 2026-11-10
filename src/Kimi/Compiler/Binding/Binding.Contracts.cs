@@ -192,10 +192,6 @@ public sealed partial class Binding
 
     private void PrepareContracts()
     {
-        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
-        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
-        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
-        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -303,19 +299,19 @@ public sealed partial class Binding
             // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
             // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
             var generic = GenericParentApplication(name);
-            var parentPath = this.NamePath(name, this.scopes[contract], LookupRole.Any);
+            var parentPath = this.NamePath(name, this.scopes[contract]);
             var parent = parentPath.Symbol;
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
+                if (this.HasUnresolvedConstraintSyntax(syntax))
                 {
                     shape.HasUnresolvedParents = true;
                     continue;
                 }
             }
 
-            if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
+            if (parent is not { IsContract: true } || parent.Contract is not { } inherited ||
                 (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.

@@ -31,8 +31,7 @@
 // Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a
 // Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle
 // operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the legacy rows of compiler functions
-// (DECISIONS R5-M116); the formatting rows' Context words and
-// witness targets, a user formatter's write wrapper and Text.writer's words (.Formatting.cs; DECISIONS R5-M128, R5-M130); an owning
+// (DECISIONS R5-M116); Text.writer's words (.Formatting.cs; DECISIONS R5-M130); an owning
 // interpolation's buffer, hints and end, its estimate and its buffer's Region home (.Interpolation.cs; DECISIONS R5-M131); the Array rows
 // written in place: an Array from none, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written
 // in place: a Dictionary from none and a Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124); a test build's phases, the
@@ -240,7 +239,7 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    // A conditional branch between two of the function's own numbered labels (a drop guard, a comparison part, a write wrapper's frame):
+    // A conditional branch between two of the function's own numbered labels (a drop guard, a comparison part):
     // `br i1 <condition>, label <then><id>, label <otherwise><id>`.
     private void Branch(Value condition, string then, string otherwise, int id)
     {

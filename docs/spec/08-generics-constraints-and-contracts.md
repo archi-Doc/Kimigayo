@@ -295,7 +295,7 @@ contract Factory
 
 ### 8.4.3. Refinement
 
-`contract C: A, B` refines each parent, given as a bound Contract reference ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)), as in `contract UniqIndexable<Key>: Indexable<Key>`, and inherits its requirements, associated Types and Constraints. Parent order gives no priority, and cycles are errors. Inside a Contract, `Self is C` for a user Contract does not declare refinement (intrinsic parents: [§8.7.1](#871-compiler-intrinsic-contracts)). Conformance to a child entails every ancestor, with `Self` the final conforming Type. A child may add but never remove or weaken. Paths to one ancestor declaration with equal bindings give one requirement ([§8.9.2](#892-merging-paths-and-cycles)); independent same-named declarations stay distinct, and one implementation may satisfy several.
+`contract C: A, B` refines each parent, given as a bound Contract reference ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)), as in `contract UniqIndexable<Key>: Indexable<Key>`, and inherits its requirements, associated Types and Constraints. Parent order gives no priority, and cycles are errors. Inside a Contract, a clause `Self is C` for a user Contract `C` is an error; `C` is listed as a parent instead (compiler-intrinsic Contracts: [§8.7.1](#871-compiler-intrinsic-contracts)). Conformance to a child entails every ancestor, with `Self` the final conforming Type. A child may add but never remove or weaken. Paths to one ancestor declaration with equal bindings give one requirement ([§8.9.2](#892-merging-paths-and-cycles)); independent same-named declarations stay distinct, and one implementation may satisfy several.
 
 A refinement is an error when its requirements can neither coexist as separate implementations ([§8.6.3](#863-implementation-matching), [§9.1](09-names-signatures-and-access.md#91-signatures)) nor be satisfied by one implementation. Labels alone never distinguish overloads, and different result Types alone prove no conflict, since result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)) applies. Unknown proves no conflict.
 
@@ -559,7 +559,7 @@ Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger and Transferable 
 | Owned | Checked assertion: the Type must be Owned ([§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned)) for every binding its Constraints (and `P`) admit. It grants nothing. |
 | Sealed, ObjectPayload, PrimitiveInteger, Callable, Transferable | Error. These are decided by the Type's structure alone. |
 
-In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` (and `Self is not ObjectPayload`) is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body.
+In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` with X one of Copy, Owned and ObjectPayload, and `Self is not ObjectPayload`, is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body. Neither form opts a conforming Type in: a struct or enum conforming to a Contract that requires Copy is Copy only by its own `Self is Copy`, optionally `when P` ([§3.5.2](03-types-and-values.md#352-copy-capability)), and otherwise the requirement fails. Callable is written only as a requirement `Callable<r, S>` or `Callable<S>` in a Constraint ([§8.10](#810-callable-constraints)): a bare `Callable`, in a Constraint or as a refinement parent, and either form as a refinement parent are errors. Any other Contract-wide clause whose subject is `Self` (a projection of `Self` is not, [§8.5.3](#853-constraints-on-inherited-associated-types)) is an error: a user Contract is related by refinement (`contract C: B`, [§8.4.3](#843-refinement)), and an identity premise on `Self` such as `Self is i32` would admit at most one conforming Type, and `Self is Self` states nothing.
 
 The identities of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration and the Indexable Contracts are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); they are ordinary Contracts with their declared bounds. The arithmetic Contracts are ordinary declarations with built-in witnesses ([§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)). Conformance proves only the stated requirements: documented laws such as symmetry of equality are not enforced, and nothing is proven about initialization, Loans or representation.
 
@@ -572,6 +572,12 @@ struct Pair<T>
 
 struct Plain
     Self is Sealed                  // Error: Sealed is structural.
+
+contract Shape
+    Self is Copy                    // Every conforming Type is Copy.
+
+contract Named
+    Self is Shape                   // Error: write contract Named: Shape.
 ```
 
 ### 8.7.2. Sealed

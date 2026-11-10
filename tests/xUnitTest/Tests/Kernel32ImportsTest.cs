@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Kimi.Build;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Testing;

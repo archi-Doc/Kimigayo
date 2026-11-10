@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using Kimi;
+using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
 using Xunit;

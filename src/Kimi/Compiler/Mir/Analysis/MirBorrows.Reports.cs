@@ -31,9 +31,9 @@ internal sealed partial class MirBorrows
     {
         ref readonly var found = ref this.candidates[candidate];
         var outcome = found.Outcome(taking);
-        if (outcome.IsDeep)
+        if (!outcome.IsDecided)
         {
-            this.Limit(this.Declaration(found.Dropped.Via), outcome);
+            this.Limit(outcome.IsLimit ? this.Subject(at) : this.Declaration(found.Dropped.Via), outcome);
             return;
         }
 

@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using System.Text.Json;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
-using static Kimi.Compiler.ArtifactFiles;
+using static Kimi.Build.ArtifactFiles;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>Publication of a checked, matched pre-optimization IR/manifest pair, which records its own failure. Does not run native tools.</summary>
 public static class EmissionArtifacts
@@ -66,7 +66,7 @@ public static class EmissionArtifacts
                 var unique = Guid.NewGuid().ToString("N");
                 tempIr = destination + "." + unique + ".tmp";
                 tempManifest = manifest + "." + unique + ".tmp";
-                writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384);
+                writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), Utf8, 16384);
             }
             catch (Exception ex) when (IsPublicationFailure(ex))
             {
@@ -86,8 +86,12 @@ public static class EmissionArtifacts
                 using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
                 {
-                    var kind = compilation.Binding.Startup.OutputKind;
-                    WriteManifest(json, settings, kind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                    json.WriteStartObject();
+                    WriteProfile(json, settings.Optimization);
+                    WriteOutput(json, Path.GetFileName(destination), hash, compilation.Binding.Startup.OutputKind);
+                    WriteLibraries(json, backend, foreign, directory, outputDirectory);
+                    WriteLinkInputs(json, llvm);
+                    json.WriteEndObject();
                 }
 
                 Replace(tempIr, destination);
@@ -130,7 +134,7 @@ public static class EmissionArtifacts
         {
             return compilation.Generate(output);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (IsOutputFailure(ex))
         {
             Fail(compilation, DiagnosticCode.ArtifactPublicationFailed_Kd, ex.Message);
             return false;
@@ -138,8 +142,8 @@ public static class EmissionArtifacts
     }
 
     // An output, configuration or supply failure a publication step throws (DECISIONS R5-M165); any other exception is a fault (R5-M169).
-    private static bool IsPublicationFailure(Exception ex)
-        => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
+    internal static bool IsPublicationFailure(Exception ex)
+        => IsOutputFailure(ex) || ex is InvalidDataException or ArgumentException or NotSupportedException;
 
     // A publication failure, at the project, beside the generation's records (R5-M181).
     private static void Fail(Compilation compilation, DiagnosticCode code, string? cause)
@@ -201,7 +205,8 @@ public static class EmissionArtifacts
     // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
     // module's requirement, and combined-module native records are not generated, so Binding makes a
     // dependency module's import, but kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
-    private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
+    private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(
+        Compilation compilation, ProjectFile settings)
     {
         List<(string Name, string Kind, string Input, string? Sha256)>? result = null;
         var imports = compilation.Binding.LibraryImports;
@@ -247,9 +252,10 @@ public static class EmissionArtifacts
         }
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, List<(string Name, string Kind, string Input, string? Sha256)>? foreign, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    // The manifest's fixed head (IMPL 20.8.3, schema 3): the target, the profile's code generation settings with the project's
+    // optimization, and the adopted backend supply's identity.
+    private static void WriteProfile(Utf8JsonWriter json, string optimization)
     {
-        json.WriteStartObject();
         json.WriteNumber("schemaVersion", 3);
         json.WriteString("target", WindowsProfile.Target);
         json.WriteStartObject("codegen");
@@ -260,7 +266,7 @@ public static class EmissionArtifacts
         json.WriteString("relocationModel", WindowsProfile.RelocationModel);
         json.WriteString("codeModel", WindowsProfile.CodeModel);
         json.WriteString("unwindTables", WindowsProfile.UnwindTables);
-        json.WriteString("optimization", settings.Optimization);
+        json.WriteString("optimization", optimization);
         json.WriteEndObject();
         json.WriteStartObject("backendSupport");
         json.WriteString("packageId", ToolchainIdentity.BackendPackageId);
@@ -270,11 +276,27 @@ public static class EmissionArtifacts
         json.WriteString("artifactSha256", ToolchainIdentity.BackendSha256);
         WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
         json.WriteEndObject();
+    }
+
+    // The published module: the IR file with its hash, and the output kind with an Application's entry and subsystem.
+    private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, OutputKind outputKind)
+    {
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
         json.WriteString("outputKind", outputKind == OutputKind.Library ? "Library" : "Application");
         json.WriteString("entry", outputKind == OutputKind.Library ? null : WindowsProfile.EntrySymbol);
         json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
+    }
+
+    // The libraries in Ordinal name order (SPEC 20.3.2): the generated kernel32 import library, the backend archive (the toolchain's, or
+    // the configured input) and the foreign supplies around them, an input with a directory relative to the output directory.
+    private static void WriteLibraries(
+        Utf8JsonWriter json,
+        NativeLibraryInput? backend,
+        List<(string Name, string Kind, string Input, string? Sha256)>? foreign,
+        string projectDirectory,
+        string outputDirectory)
+    {
         json.WriteStartArray("libraries");
         var next = 0;
         WriteForeign(WindowsProfile.Kernel32Library);
@@ -295,22 +317,12 @@ public static class EmissionArtifacts
         }
         else
         {
-            json.WriteString("input", HasDirectory(backend.Input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(backend.Input, projectDirectory)) : backend.Input);
+            json.WriteString("input", Relative(backend.Input));
         }
 
         json.WriteEndObject();
         WriteForeign(null);
         json.WriteEndArray();
-        WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
-        WriteStrings(json, "expectedUndefinedSymbols", []);
-        if (llvm is not null)
-        {
-            json.WriteStartObject("toolchain");
-            json.WriteString("llvmBin", llvm);
-            json.WriteEndObject();
-        }
-
-        json.WriteEndObject();
 
         // Writes the supplies ordered before the reserved name (all remaining ones for null).
         void WriteForeign(string? before)
@@ -321,7 +333,7 @@ public static class EmissionArtifacts
                 json.WriteStartObject();
                 json.WriteString("name", name);
                 json.WriteString("kind", kind);
-                json.WriteString("input", HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input);
+                json.WriteString("input", Relative(input));
                 if (sha256 is not null)
                 {
                     json.WriteString("sha256", sha256);
@@ -329,6 +341,22 @@ public static class EmissionArtifacts
 
                 json.WriteEndObject();
             }
+        }
+
+        string Relative(string input) => HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input;
+    }
+
+    // What the link takes beside the libraries: the runtime symbols the module provides, no expected undefined symbol, and the
+    // configured LLVM directory.
+    private static void WriteLinkInputs(Utf8JsonWriter json, string? llvm)
+    {
+        WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
+        WriteStrings(json, "expectedUndefinedSymbols", []);
+        if (llvm is not null)
+        {
+            json.WriteStartObject("toolchain");
+            json.WriteString("llvmBin", llvm);
+            json.WriteEndObject();
         }
     }
 

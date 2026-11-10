@@ -71,7 +71,7 @@ public sealed partial class Binding
     {
         foreach (var declaration in this.originDeclarations.Values)
         {
-            if (declaration.State != 3 || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
+            if (!declaration.Completed || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
             {
                 continue;
             }
@@ -268,21 +268,16 @@ public sealed partial class Binding
         // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
         OriginVariance? InferredEnd(BoundOrigin end)
         {
-            if (local.Inferred is not { } slots)
-            {
-                return null;
-            }
-
-            if (slots.TryGetValue(end, out var position))
+            if (local.InferredVariance(end) is { } position)
             {
                 return position;
             }
 
             for (var i = 0; i < end.Operands.Count; i++)
             {
-                if (slots.TryGetValue(end.Operands[i], out position))
+                if (local.InferredVariance(end.Operands[i]) is { } operand)
                 {
-                    return position;
+                    return operand;
                 }
             }
 

@@ -18,7 +18,8 @@ public sealed partial class Binding
 
     /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
-    /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
+    /// ones. One whose Attribute fails before (InvalidLibraryImport) is none here, though <c>DirectCallOnly</c>, which reads the Attribute,
+    /// still holds it to direct calls.</summary>
     internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
 
     private static Koto? AttributeTarget(AttributeKoto attribute)

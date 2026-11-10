@@ -13,7 +13,7 @@ internal static class ComparisonTypes
     // table's question (Binding.WitnessGroup); conformance asks both.
     internal static bool OperatorTableRuns(BoundType? type, KimiDeclarationId? contract)
         => contract == KimiDeclarationId.Equatable ? ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit)
-            : contract == KimiDeclarationId.Comparable && (ScalarTypes.Width(type) != 0 || ReferenceEquals(type, BoundType.Char));
+            : contract == KimiDeclarationId.Comparable && (type is { HasIntegerArithmetic: true } || ReferenceEquals(type, BoundType.Char));
 
     // SPEC 13.4, 13.4.1, 5.1, 3.1.3: whether the operator table runs a built-in comparison operator at a terminal Type, == and != under
     // Equatable, the ordering ones under Comparable: the Contract's built-in comparison (OperatorTableRuns), a floating-point Type's

@@ -2,7 +2,7 @@
 
 using Kimi.Compiler.Helper;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 internal static class MarkdownUnicode
 {

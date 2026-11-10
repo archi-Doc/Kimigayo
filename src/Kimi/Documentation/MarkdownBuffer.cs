@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1202 // Keep growth next to its scratch-buffer implementation.
 

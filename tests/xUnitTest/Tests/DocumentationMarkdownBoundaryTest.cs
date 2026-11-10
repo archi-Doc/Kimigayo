@@ -3,8 +3,8 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Kimi.Compiler.Documentation;
 using Kimi.Diagnostics;
+using Kimi.Documentation;
 using Xunit;
 
 namespace XunitTest;

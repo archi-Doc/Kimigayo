@@ -161,6 +161,10 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public enum Target\n    Future is Copy\n    A")]
     [InlineData("public struct Target<T>\n    T is Future")]
     [InlineData("group G\n    func take<T>()\n        T is Future\n        ()")]
+    // A group of the name is no candidate of a subject or a requirement (SPEC 9.2, 9.5), so it decides nothing: the name is missing.
+    [InlineData("public group Future\npublic struct Target\n    i32 is Future")]
+    [InlineData("public group Invalid\npublic struct Target\n    Invalid is Copy")]
+    [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
     public void FinalBindingRejectsNamesThatRemainMissing(string source)
     {
         var c = Parse(source);
@@ -172,9 +176,6 @@ public class UnresolvedConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("public group Future\npublic struct Target\n    i32 is Future")]
-    [InlineData("public group Invalid\npublic struct Target\n    Invalid is Copy")]
-    [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
     [InlineData("public struct Target<s/T>\n    s is Future")]
     public void AvailableViolationsRemainInvalidInProvisionalBinding(string source)
     {

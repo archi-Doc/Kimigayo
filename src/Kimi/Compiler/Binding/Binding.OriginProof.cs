@@ -107,12 +107,12 @@ public sealed partial class Binding
         var initializers = this.initializerOrigins.Count != 0;
         for (var node = use; node is not null; node = node.Parent)
         {
-            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State >= 2)
+            if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
             {
                 origin = this.ResolveOrigin(origin, declaration);
             }
 
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.State >= 2)
+            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
             {
                 origin = this.ResolveOrigin(origin, inferred);
             }
@@ -207,7 +207,7 @@ public sealed partial class Binding
             if (node is VariableKoto { InitializerKoto: { } initializer } variable && IsWithin(use, initializer) &&
                 (IsWithin(atom.Binder!, initializer) || (variable.TypeKoto is { } annotation && IsWithin(atom.Binder!, annotation))))
             {
-                return this.initializerOrigins.TryGetValue(variable, out var declaration) && declaration.State >= 2 ? null : variable;
+                return this.initializerOrigins.TryGetValue(variable, out var declaration) && declaration.Resolves ? null : variable;
             }
         }
 
@@ -479,19 +479,18 @@ public sealed partial class Binding
     // Records `bound` for a local's omitted Origin. A bound required only in some Semantics cases still bounds the Origin in every case.
     private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
     {
-        pending.Replacements[variable] = pending.Replacements.TryGetValue(variable, out var previous) ? this.Meet(previous, bound) : bound;
-        this.originStateVersion++;
+        this.MeetInitializerBound(pending, variable, bound);
         this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, bound, variable, Condition: condition));
     }
 
     private ConstraintProof CheckTypeOriginRelations(BoundType type, BindingScope scope)
     {
-        if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || declaration.State != 3)
+        if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
         {
             return ConstraintProof.Proven;
         }
 
-        if (declaration.Failure is not null)
+        if (declaration.Unavailable)
         {
             return ConstraintProof.Error;
         }
@@ -518,7 +517,7 @@ public sealed partial class Binding
     {
         this.termWalks++;
         if (type.OriginArguments.Count != 0 && type.Symbol is { } symbol &&
-            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
+            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
             {
@@ -550,7 +549,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (declaration.Failure is not null)
+        if (declaration.Unavailable)
         {
             return false;
         }
