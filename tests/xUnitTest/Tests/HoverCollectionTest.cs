@@ -44,6 +44,31 @@ public sealed class HoverCollectionTest : IDisposable
         }
     }
 
+    // Hover's display of a Type is bounded by HoverLimits.Depth (HOVER "Deterministic limits"), counted per part of G348-d's explicit
+    // stack as the recursion counted it: a Type of 1,024 layers interrupts the optional projection and leaves the records as they are.
+    [Theory]
+    [InlineData("func p(x: ref/D10<i32>.Item) => ()\n", true)]
+    [InlineData("func p() -> ()\n    let x: D10<i32>.Item = true\n    return\n", false)]
+    public void ADeepTypeInterruptsTheProjectionOnly(string use, bool accepted)
+    {
+        var doubling = "contract HasItem\n    associate Item\nstruct D0<T>\n    Self is HasItem\n    associate HasItem.Item is (T, i32)\n";
+        for (var i = 1; i <= 10; i++)
+        {
+            doubling += $"struct D{i}<T>\n    Self is HasItem\n    associate HasItem.Item is D{i - 1}<D{i - 1}<T>.Item>.Item\n";
+        }
+
+        var path = Path.Combine(this.directory, "App.kimiproj");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), doubling + use + "public func main() => ()\n");
+        var plain = Run(path, false);
+        var hover = Run(path, true);
+        Assert.Equal("Hover depth limit exceeded", hover.HoverFault);
+        Assert.Null(hover.Hover);
+        Assert.Equal((CheckOutcome.Completed, accepted), (hover.Outcome, hover.Accepted));
+        Assert.Equal(accepted, hover.Diagnostics.Length == 0);
+        Assert.Equal(JsonSerializer.Serialize(plain), JsonSerializer.Serialize(hover));
+    }
+
     [Fact]
     public void OptionalProjectionFailureIsSeparateFromFinalizedRecords()
     {

@@ -6,7 +6,7 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The one form of a test that needs the state of a fresh process (a type initializer not yet run, the pools under High memory
-/// pressure): an Explicit test of this assembly, run alone in a child process of the test apphost. Never a collectible load context:
+/// pressure, code in the JIT tier its environment sets): an Explicit test of this assembly, run alone in a child process of the test apphost. Never a collectible load context:
 /// its collection flushes process-wide runtime caches and charges the rebuild to another test's measuring thread
 /// (<c>ArchitectureRulesTest</c> forbids it). The child runs that one test and takes no part in the run's evidence collection
 /// (snapshots, census and fixture directories), which belongs to the parent run: it would write into the parent's evidence.</summary>

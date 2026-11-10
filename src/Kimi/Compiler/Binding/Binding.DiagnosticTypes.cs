@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Text;
 using Kimi.Checking;
 using Kimi.Compiler.Parsing;
@@ -39,6 +40,10 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(form)),
     };
 
+    // The display does not recurse on the Type (G348-d's DECISIONS entry): Show notes a form's parts in reading order (Emit), and
+    // the loop shows them from one list used as a stack, so neither a Type's height nor a chain of closure signatures, which the
+    // height does not count (BU-71), reaches the host stack. A Primitive or Parameter returns before the list exists: a Bind, and a
+    // check without Hover whose records name no structural Type, allocate nothing more; each structural Type displayed adds one list.
     private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
     {
         if (value is not BoundType type)
@@ -54,16 +59,68 @@ public sealed partial class Binding
 
         var budget = complete ? new HoverBudget() : null;
         var text = new StringBuilder();
-        Append(type, false);
+        List<DisplayPart> parts = [new(type, 0)];
+        var form = 0;
+        var depth = 0;
+        while (parts.Count != 0)
+        {
+            var part = parts[^1];
+            form = parts.Count - 1;
+            parts.RemoveAt(form);
+            depth = part.Depth + 1;
+
+            // Hover's depth (HoverLimits.Depth) is the part's nesting, as a recursive walk counts it.
+            budget?.At(part.Depth);
+            switch (part.Value)
+            {
+                case BoundType inner:
+                    Show(inner, part.UnderBorrow);
+                    break;
+                case string piece:
+                    text.Append(piece);
+                    break;
+                case BoundOrigin origin:
+                    text.Append(HoverOriginName(origin, budget!));
+                    break;
+                case BoundLength length:
+                    AppendDiagnosticLength(text, length, budget);
+                    break;
+                case BindingSymbol declaration:
+                    AppendDeclaration(declaration);
+                    break;
+                default:
+                    throw new UnreachableException();
+            }
+
+            parts.Reverse(form, parts.Count - form);
+        }
+
         return text.ToString();
 
-        void Append(BoundType current, bool underBorrow = false)
+        // Notes the next parts of the form Show is reading: a text is written at once while nothing of its form waits before it; a
+        // Type, an Origin (its Hover name), a length or a declaration is shown after the parts noted before it; null adds nothing.
+        void Emit(params ReadOnlySpan<object?> items)
+        {
+            foreach (var item in items)
+            {
+                if (item is string piece && parts.Count == form)
+                {
+                    text.Append(piece);
+                }
+                else if (item is not null)
+                {
+                    parts.Add(new(item, depth));
+                }
+            }
+        }
+
+        void Show(BoundType current, bool underBorrow)
         {
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
             if (current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })
             {
-                text.Append(semantics.Name).Append('/');
+                Emit(semantics.Name, "/");
             }
 
             if (current.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
@@ -76,29 +133,31 @@ public sealed partial class Binding
                     shown = null;
                     if (underBorrow)
                     {
-                        text.Append('(');
+                        Emit("(");
                     }
                 }
 
-                text.Append(current.Kind == BoundTypeKind.Semantics ? current.Semantics.ToText() : current.Symbol?.Pair?.Name ?? current.Symbol?.Name ?? current.Name).Append('/');
+                Emit(
+                    current.Kind == BoundTypeKind.Semantics ? current.Semantics.ToText() : current.Symbol?.Pair?.Name ?? current.Symbol?.Name ?? current.Name,
+                    "/");
                 var group = complete && current.Components[0].Kind == BoundTypeKind.Function;
                 if (group)
                 {
-                    text.Append('(');
+                    Emit("(");
                 }
 
-                Append(current.Components[0], true);
+                parts.Add(new(current.Components[0], depth, UnderBorrow: true));
                 if (group)
                 {
-                    text.Append(')');
+                    Emit(")");
                 }
 
                 if (mark)
                 {
-                    text.Append(" during ").Append(complete ? HoverOriginName(layer!, budget!) : shownText);
+                    Emit(" during ", complete ? layer : shownText);
                     if (underBorrow)
                     {
-                        text.Append(')');
+                        Emit(")");
                     }
                 }
 
@@ -107,7 +166,7 @@ public sealed partial class Binding
 
             if (current.Kind == BoundTypeKind.SemanticsAdaptation)
             {
-                text.Append("case ").Append(current.Symbol?.Pair?.Name ?? current.Symbol?.Name).Append(" { ");
+                Emit("case ", current.Symbol?.Pair?.Name ?? current.Symbol?.Name, " { ");
                 var index = 0;
                 foreach (var mode in SemanticsOrder)
                 {
@@ -115,37 +174,29 @@ public sealed partial class Binding
                     {
                         if (index != 0)
                         {
-                            text.Append("; ");
+                            Emit("; ");
                         }
 
-                        text.Append(mode.ToText()).Append(" => ");
-                        Append(current.Components[index++]);
+                        Emit(mode.ToText(), " => ", current.Components[index++]);
                     }
                 }
 
-                text.Append(" }");
+                Emit(" }");
                 return;
             }
 
             if (current.Kind == BoundTypeKind.AssociatedProjection && current.Components.Count != 0)
             {
                 // SPEC 8.5: a projection reads as written, T.Item or Self.LentItem(step).
-                Append(current.Components[0]);
-                text.Append('.').Append(current.Name);
+                Emit(current.Components[0], ".", current.Name);
                 for (var i = 0; i < current.OriginArguments.Count; i++)
                 {
-                    text.Append(i == 0 ? '(' : ',');
-                    if (i != 0)
-                    {
-                        text.Append(' ');
-                    }
-
-                    text.Append(complete ? HoverOriginName(current.OriginArguments[i], budget!) : current.OriginArguments[i].Name);
+                    Emit(i == 0 ? "(" : ", ", complete ? current.OriginArguments[i] : current.OriginArguments[i].Name);
                 }
 
                 if (current.OriginArguments.Count != 0)
                 {
-                    text.Append(')');
+                    Emit(")");
                 }
 
                 return;
@@ -153,32 +204,30 @@ public sealed partial class Binding
 
             if (current.Kind == BoundTypeKind.FunctionItem)
             {
-                text.Append("function item ");
-                AppendDeclaration(current.Symbol!);
+                Emit("function item ", current.Symbol!);
                 var slots = current.LengthArguments.Length == 0 ? current.Components.Count : current.LengthArguments.Length;
                 var component = 0;
                 for (var i = 0; i < slots; i++)
                 {
-                    text.Append(i == 0 ? "<" : ", ");
+                    Emit(i == 0 ? "<" : ", ");
                     if (i < current.LengthArguments.Length && current.LengthArguments[i] is { } length)
                     {
-                        text.Append(DiagnosticLengthName(length, budget));
+                        Emit(length);
                     }
                     else
                     {
-                        Append(current.Components[component++]);
+                        Emit(current.Components[component++]);
                     }
                 }
 
                 while (component < current.Components.Count)
                 {
-                    text.Append(slots++ == 0 ? "<" : ", ");
-                    Append(current.Components[component++]);
+                    Emit(slots++ == 0 ? "<" : ", ", current.Components[component++]);
                 }
 
                 if (slots != 0)
                 {
-                    text.Append('>');
+                    Emit(">");
                 }
 
                 return;
@@ -188,38 +237,29 @@ public sealed partial class Binding
             {
                 // SPEC 7.7: a closure Type has no written name; its components are the captured environment, so it is shown by
                 // the signature of its anonymous function, also when the closure node itself failed, as at a call argument.
-                text.Append("closure ");
-                if (BoundClosure.Of(current)?.Signature is { } signature)
-                {
-                    Append(signature);
-                }
-
+                Emit("closure ", BoundClosure.Of(current)?.Signature);
                 return;
             }
 
             if (current.Kind == BoundTypeKind.Function && current.Components.Count == 2)
             {
-                Append(current.Components[0]);
-                text.Append(" -> ");
-                Append(current.Components[1]);
+                Emit(current.Components[0], " -> ", current.Components[1]);
                 return;
             }
 
             if (current.Kind == BoundTypeKind.FixedArray)
             {
-                text.Append('[');
+                Emit("[");
                 if (current.LengthExpression is { } length)
                 {
-                    AppendDiagnosticLength(text, length, budget);
+                    Emit(length);
                 }
                 else
                 {
-                    text.Append(current.Length < 0 ? "_" : current.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    Emit(current.Length < 0 ? "_" : current.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
 
-                text.Append(" of ");
-                Append(current.Components[0]);
-                text.Append(']');
+                Emit(" of ", current.Components[0], "]");
                 return;
             }
 
@@ -227,60 +267,50 @@ public sealed partial class Binding
             {
                 if (complete && current.Symbol is { Kind: BindingSymbolKind.Type } nominal)
                 {
-                    AppendDeclaration(nominal);
+                    Emit(nominal);
                 }
                 else
                 {
                     if (current.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or
                         KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange)
                     {
-                        text.Append("Kimi.");
+                        Emit("Kimi.");
                     }
 
-                    text.Append(current.Name);
+                    Emit(current.Name);
                 }
             }
 
             if (current.Components.Count != 0 || current.Kind == BoundTypeKind.Tuple)
             {
-                text.Append(current.Kind == BoundTypeKind.Tuple ? '(' : '<');
+                Emit(current.Kind == BoundTypeKind.Tuple ? "(" : "<");
                 for (var i = 0; i < current.Components.Count; i++)
                 {
-                    if (i != 0)
-                    {
-                        text.Append(", ");
-                    }
-
-                    Append(current.Components[i]);
+                    Emit(i == 0 ? null : ", ", current.Components[i]);
                 }
 
                 if (complete && current.Kind == BoundTypeKind.Tuple && current.Components.Count == 1)
                 {
-                    text.Append(',');
+                    Emit(",");
                 }
 
-                text.Append(current.Kind == BoundTypeKind.Tuple ? ')' : '>');
+                Emit(current.Kind == BoundTypeKind.Tuple ? ")" : ">");
             }
 
             if (complete && current.OriginArguments.Count != 0)
             {
-                text.Append("{");
+                Emit("{");
                 for (var i = 0; i < current.OriginArguments.Count; i++)
                 {
-                    if (i != 0)
-                    {
-                        text.Append(", ");
-                    }
-
-                    text.Append(current.Symbol?.Schema?.Origins[i].Name ?? "origin").Append(" = ").Append(HoverOriginName(current.OriginArguments[i], budget!));
+                    Emit(i == 0 ? null : ", ", current.Symbol?.Schema?.Origins[i].Name ?? "origin", " = ", current.OriginArguments[i]);
                 }
 
-                text.Append('}');
+                Emit("}");
             }
 
             if (complete && current.Origin is { } ownOrigin)
             {
-                text.Append(" during ").Append(HoverOriginName(ownOrigin, budget!));
+                Emit(" during ", ownOrigin);
             }
         }
 
@@ -337,6 +367,10 @@ public sealed partial class Binding
             ? $"<{origin.Kind.ToString().ToLowerInvariant()} origin at {location.Line + 1}:{location.Character + 1}>"
             : $"<{origin.Kind.ToString().ToLowerInvariant()} origin>";
     }
+
+    // A part of a Type's display still to show: a text, a Type, an Origin (its Hover name), a length or a declaration, at its
+    // Hover depth; UnderBorrow marks a borrow layer's referent.
+    private readonly record struct DisplayPart(object Value, int Depth, bool UnderBorrow = false);
 
     private static void AppendDiagnosticLength(StringBuilder text, BoundLength length, HoverBudget? budget = null)
     {
