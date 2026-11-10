@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -389,6 +390,15 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         var program = Compile(source).BuildMir();
         Assert.Empty(program.Findings);
         return program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+    }
+
+    // A function's view statements as its dump spells them (a Storage; an Add), without their sites, scopes and local numbers.
+    private static string Views(MirProgram program, string name)
+    {
+        var ordinal = Array.FindIndex(program.Bodies.ToArray(), x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+        return string.Join("|", MirDumpTest.Unsited(program, ordinal).Split('\n')
+            .Where(static x => x.Contains("storage(", StringComparison.Ordinal) || x.Contains("= Add(", StringComparison.Ordinal))
+            .Select(static x => Regex.Replace(Regex.Replace(x, @"^[ *]+| s\d+$", string.Empty), @"_\d+", "_")));
     }
 
     // The locations of a body's runtime path from its entry, as far as each block has one runtime successor: its statements, then its

@@ -11072,6 +11072,25 @@ resumed by R4-M86 (2026-10-20).
     scope (expanded facts under substitution not shown equal; the conditions still walk); composing only the Self and reaching the
     declaring scope by syntax (a consumer deciding by syntax); presizing `TyCtxt.types` or relaxing the row (moves the resize; the
     factor is never relaxed).
+- **BU-149 An access word where none is taken is one parser rule, `Parser.RejectAccessWord` (PLAN G689)** (2026-11-10; Front,
+  Parsing; Major, an acceptance mover (invalid programs newly rejected); design reviews 1-3 and the R3-1 re-check, implementation
+  review ACCEPT; the owner's O-127 (a) and O-134 (a)) SPEC 6.1.1, 9.3, Appendix F.
+  - **Rule.** An access word on an item whose production has no `Access` (Appendix F), or on a function item where 6.1.1 or 9.3
+    forbids it, is reported by one parser rule, `Parser.RejectAccessWord`: `Decoration` at the access word itself, once, the word
+    cleared.
+  - **Location.** The prefix reader publishes the word's span (`TokenReader.AccessModifierSpan`, the first access word, carried by
+    `TokenContext` beside `DispatchModifierSpan`); the location is the word because it is the token SPEC calls wrong and no record
+    of the item's own parse has its span (a record at the item's first token merged with the item's record through `RecallError`:
+    design review 3, R3-1).
+  - **Rows.** The 16 of the G689 site table: alias; root and local function; LocalBinding; body and member Constraint clause, Origin
+    relation and effect; conditional conformance; `associate`; EnumCase; `property` requirement; function requirement; `drop`;
+    specialization. The specialization header reports only its other modifiers (`SpecializationHeader`). A new production without
+    `Access` adds a call row and a table row.
+  - **Binding.** Its protected placement check no longer judges function bodies or Contracts and treats a word there as a broken
+    parser contract.
+  - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
+    check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
+    restore changed; recorded under G525).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -17052,6 +17071,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     (c) LayoutNeeds by value; (d) prefix-view bodies (two producers). `v[0..]` stays invalid: a written start is a position resolved
     at run time whatever its value, and only `Start` is the static zero (SPEC 4.6.1, 8.15.3; the Middle's report O-88 (ii); 8.15.3
     does not name range views, and no SPEC change is asked).
+  - Superseded in part by R8-M27 (PLAN G597's generic ranges): its Producer bullet for key selections, its "no LayoutNeeds row" and
+    "It projects no element and reads no element layout": an open key gives the keyed `Storage(P, start, key)`, decided per
+    instance.
 - **R8-M14 A sequence handle's layout is its representation struct's placement; `Layout.Rows`' handle rows and `LengthWord` go**
   (Back, 2026-11-09; R8-R1b; Major; design reviews 1 REVISE (B1), 2 ACCEPT; on R8-M1; supersedes in part R5-M19 and R5-M124) SPEC
   4.7.3, 22.2; IMPL 21.1.1-21.1.3.
@@ -17529,6 +17551,50 @@ R8-M* and R9-M* by the stage of the recording unit.
     lists the kinds.
   - **Rejected:** deriving it from the row's Access (an Opaque has an access and no Place).
 
+- **R8-M27 A key selection whose start is open is decided per instance: the keyed `Storage(P, start, key)`** (Back, 2026-11-10; PLAN
+  G597's generic ranges; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation reviews: the Middle's ACCEPT
+  after its one-line re-check, the Back's ACCEPT; the Middle's C-196) SPEC 8.15.3. Supersedes R8-M13 in part, on three lines: (1)
+  its Producer sentence for key selections ("Any other start gives `Storage(seq)` plus a raw `Add`"): an open key gives the keyed
+  form; (2) its "no LayoutNeeds row": the keyed form has one; (3) its Adopted bullet "It projects no element and reads no element
+  layout" and `MirVocabulary.cs`'s Storage text: the keyed form reads the element's stride in an instance whose key displaces. The
+  reason that no longer holds: R8-M13 decided the start in the builder from the key's Type in the body, as if that were the Type
+  every instance runs with. MIR is built once per generic definition, so for a key of Type `R` the builder's answer was "displace"
+  for every instance, and the instance `R = Range<Start, _>` read a stride that SPEC 8.15.3 ¶2 says it does not need (dev's
+  conservative `InvalidCLayout_Kd`).
+  - **Adopted.** The rule of the start has one owner, `MirTypes.StartsAtStorage`, with three answers: starts at the storage,
+    displaces, or open (the deciding Type, a library range's start boundary or else the key itself, stands for any Type of an
+    instance). One builder function, `First`, writes the form of each answer: `Storage(P)`; `Storage(P)` plus the proven raw `Add`
+    (both R8-M13's); the keyed `Storage(P, start, key)`, the start position (`isize`) and the token of the key's Type. The selection
+    builder and a default copy's fold both build by it, so a key that closes under a call's substitution is unkeyed. The fold
+    re-decides two forms, a PairAcquire's case (`Reacquired`) and a keyed Storage (`Refirst`), each through its owner; a third would
+    be an open family to close with one mechanism. The validator admits a keyed Storage only where its token answers open.
+    `LayoutNeeds` gains the keyed Storage's row, read at the key's Type in the item's instance: `None` where it starts at the
+    storage, `Element` where it displaces; the collector (a site, a use of the stride) and code generation (`Displace`) read that
+    row. A key still open in an instance has no need: a broken contract its reader records (`InternalInvariant_Kd`), which the
+    collector's record path drops as a dependent after a failed Binding (R5-M151, R5-M155); the row does not throw.
+  - **Units.** U1 the form and the rule's owner; U2 the Backend readers; U3a `First` extracted (behavior-preserving); U3b-1 `Inline`
+    split by responsibility (behavior-preserving; 69 statements on dev with its local functions; a copy's frame is `Frame`'s); U3b-2
+    the producer.
+  - **Counts.** `MirRvalueKind` 11, `LayoutNeed` 4, `MirConstKind`: unchanged. No new form, no second copy of the rule.
+  - **Moves** (on U3b-2's head `c5c61517c`, Session against the shared base `2a9aee719`). Acceptance: valid programs newly accepted,
+    a `slice(range)` or a generic `v[r]` whose instance's key starts at the storage, over an element whose C layout fails; none
+    newly rejected (whole suite 30,867 tests, 0 failed); invalid: none newly accepted (the displacing instances keep
+    `InvalidCLayout_Kd`). Records (Q13), one class, false whole-view records at the view removed: `v.slice(..)[0].value` and its
+    generic and module forms keep the record at the element projection only. Diagnostic snapshot 0; semantic snapshot:
+    `library.mir.txt` only, the four `slice` bodies with a key of Type `R` (52 lines); `.ll`: 8 of 6,151 common fixtures, classes A
+    (the displacement leaves, 1) and B (the `first` temp leaves, 7), other 0; one native row added (`RvalueKeyedStorage`, passes O0
+    and O2); natives pass (12,304 executions). The prototype's probe counts (13 of 20 valid newly accepted, 23 invalid) were
+    measured on `aab961bab` and are not re-run on the head; the head pins the same forms as tests.
+  - **Remainder.** `sliceUniq(range)`: `Storage.sliceUniq` stays the one library displacement until L2 (R8-M13's removal condition,
+    unchanged); its record on a valid program is a known conservative error, not a verdict. PLAN G597 stays open for it.
+  - **Rejected.** A new MIR form for a view's start (a closed-vocabulary change the keyed operand makes unnecessary); the rule
+    copied into the Backend; a per-instance rebuild of generic MIR; keying on the key's Place (its value may be consumed by its
+    resolution); the keyed form for every key that does not start at the storage in the body (round 1: it moved closed keys' MIR and
+    `.ll` for no instance decision, and let a fold close a keyed token); a test of the key's own `IsAbstract` (false for `Range<S,
+    End>`, an open key, so a narrow subset) or of "the key contains a parameter" (true for `Range<i32, E>`, whose start is closed
+    and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
+  - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
+    const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
