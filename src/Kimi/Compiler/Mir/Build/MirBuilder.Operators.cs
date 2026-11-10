@@ -104,7 +104,7 @@ internal sealed partial class MirBuilder
             var collection = this.body.TypeOf(sequence)!;
             var read = compilation.Library.GetSymbol(
                 collection.Kind == BoundTypeKind.Array ? KimiDeclarationId.StorageArrayCapacity : KimiDeclarationId.DictionaryStorageCapacity)!;
-            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components]);
+            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components], []);
             this.Invoke(destination, new MirCallee(MirCalleeKind.Fn, read, subst), start, member);
             return;
         }

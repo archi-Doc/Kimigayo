@@ -201,8 +201,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
             (callee.Symbol!.CompilerFunction != CompilerFunctionKind.None || !self.IsAbstract))
         {
-            // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference.
-            this.Item(self, Requires, callee.Symbol, callee.Contract, subst.Declaring is { } reference ? cases.Type(reference) : null);
+            // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
+            // own Types (SPEC 8.6.3; PLAN G663): the item keeps the call's substitution.
+            this.Item(self, Requires, callee.Symbol, callee.Contract, subst);
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -396,7 +397,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
     }
 
-    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
+    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
     {
         if (type is null)
         {
@@ -405,7 +406,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         MirDataflow.Grow(ref this.items, this.itemCount + 1);
-        this.items[this.itemCount++] = new(type, kind, requirement, contract, reference);
+        this.items[this.itemCount++] = new(type, kind, requirement, contract, call);
     }
 
     private void AddEdge(MirBody callee, Subst? subst)
@@ -434,9 +435,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <param name="Requirement">The requirement of a <see cref="Requires"/> atom.</param>
     /// <param name="Contract">The Contract reference the requirement's call recorded (<see cref="MirCallee.Contract"/>; a published row's
     /// requirement's own).</param>
-    /// <param name="Reference">That reference in the call's substitution (<see cref="Subst.Declaring"/>) for a local input whose Self is
-    /// not abstract; null for a summary's atom, whose abstract Self names no conformance.</param>
-    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, BoundType? Reference = null);
+    /// <param name="Call">The call's substitution for a local input whose Self is not abstract: its Contract reference
+    /// (<see cref="Subst.Declaring"/>) and the requirement's own Types and lengths, at which its witness runs; null for a summary's atom,
+    /// whose abstract Self names no conformance, and for a published row's requirement, which has no own slot.</param>
+    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
     // null for a body entered in every view (a static's initializer); the identity (TyCtxt.Identity) for the callee's own Types read in the

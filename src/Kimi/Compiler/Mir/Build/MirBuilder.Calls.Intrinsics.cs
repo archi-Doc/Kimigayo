@@ -24,7 +24,7 @@ internal sealed partial class MirBuilder
     {
         var function = compilation.Library.Function(kind)!;
         var disposition = IntrinsicDisposition.Of(kind);
-        var subst = compilation.Types.Synthesized(function, declaring, types);
+        var subst = compilation.Types.Synthesized(function, declaring, types, []);
         var callee = disposition.Kind == DispositionKind.Intrinsic
             ? MirCallee.Intrinsic(disposition.Id, function, subst)
             : new(MirCalleeKind.Fn, function, subst);

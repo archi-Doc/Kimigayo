@@ -14,7 +14,10 @@ public sealed partial class Binding
     // function), and a library witness at the Self's arguments (TyCtxt.LibraryInstance); false where none resolves, a standard Property
     // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches through
     // its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
+    // `types` and `lengths` are the requirement call's own Types and lengths by position (SPEC 8.6.3), empty for a requirement no call names
+    // (a published row's), whose own slots then stay unbound as before; a Conformance target's instance is the witness under its declaring
+    // instance at those Types and lengths, as TyCtxt.Witness's Conformance binds them; every other row is unchanged.
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
     {
         var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
@@ -27,15 +30,18 @@ public sealed partial class Binding
 
         switch (witness.Kind)
         {
-            case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
-                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [])));
+            case RequirementWitnessKind.Builtin:
+                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [], [])));
+                return true;
+            case RequirementWitnessKind.Conformance:
+                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, types, lengths))); // SPEC 8.6.3: by position.
                 return true;
             case RequirementWitnessKind.LibraryWitness when this.types.LibraryInstance(witness, self, [], []) is { } instance:
                 into.Add((witness.Target!, instance));
                 return true;
             case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
                 var accessor = this.AccessorFunction(witness.Property.Implementation).BoundSymbol!;
-                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [])));
+                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [], [])));
                 return true;
             default:
                 return false;
@@ -84,7 +90,7 @@ public sealed partial class Binding
     {
         if (plan.Implementation is { } call)
         {
-            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [])));
+            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [], [])));
         }
 
         foreach (var part in plan.Parts)

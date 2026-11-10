@@ -133,9 +133,11 @@ internal sealed partial class TyCtxt
     // The substitution that binds none of a binder's slots: its own body's.
     internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
 
-    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
-    // arguments; its Origins are the analyses' to relate.
-    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
+    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5), or the instance A4 enters a target at
+    // (Binding.Witnesses): its declaring Type's instance, its Type arguments and its length arguments by slot (a conformance witness's are
+    // its requirement call's, SPEC 8.6.3; empty: no length argument at any slot (Intern's rule)); its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
+        => this.Intern(target, null, declaring, types, lengths, [], []);
 
     // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
     // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type
