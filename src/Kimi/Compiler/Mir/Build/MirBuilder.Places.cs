@@ -86,6 +86,39 @@ internal sealed partial class MirBuilder
         return place;
     }
 
+    // SPEC 8.2.3 (DECISIONS BU-72, R8-M9): a Place read as the Type the body's premises make its own (y: T under T is ref/i32), which no
+    // projection of the Place selects, since MIR Types keep the parameter: the referent of a shared borrow of it, retyped by a copy into a
+    // reference to the premised Type (MirTypes.Agrees admits it); the Place itself where the premises change nothing. A read's view only:
+    // an inspection's (Viewed) and a value read's (Read). Temporary (PLAN G355): Y5's identity Places, giving the Place the identical
+    // Type, remove it.
+    private MirPlace Premised(MirPlace place, Koto node)
+    {
+        if (this.body.TypeOf(place) is not { } actual || (MirTypes.Premised(this.body, actual) is var premised && MirTypes.Agree(actual, premised)))
+        {
+            return place;
+        }
+
+        var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
+        this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
+        return this.body.Project(view, MirProjectionKind.Deref, 0);
+    }
+
+    // SPEC 3.5.3, 8.2.3: the terminal Place a value read copies, below the ref and uniq layers of its Type as the body's premises make it:
+    // the layers the Place's own Type has (Follow), then those a premise gives, through the Place's view as its premised Type (Premised),
+    // to a Place of the target Type.
+    private MirPlace Read(MirPlace place, BoundType? target, Koto node)
+    {
+        place = this.Follow(place, 16, target);
+        while (this.body.TypeOf(place) is { } type && !(target is not null && MirTypes.Agrees(this.body, target, type)) &&
+            MirTypes.Premised(this.body, type).Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.Premised(place, node) is var view &&
+            !view.Equals(place))
+        {
+            place = this.Follow(view, 16, target);
+        }
+
+        return place;
+    }
+
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
     // storage of the receiver's Property (an accessor's `storage`, SPEC 11.3).
     private MirPlace Named(Koto node)

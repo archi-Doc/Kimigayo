@@ -335,6 +335,34 @@ public sealed partial class MirBuildTest
         Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
+    // SPEC 3.5.3, 8.2.3 (PLAN G697): a value read follows a ref or uniq layer an identity premise gives as it follows a written one, at
+    // every read position (an operator's operand, a condition, a result, an argument, a typed binding, an assignment's source, a range
+    // bound), through the Place's view as its premised Type (Read): the body validates and copies no Place of the premised parameter's
+    // own Type (fail-before: `copy _2` at T, the validator's Type and Operation findings).
+    [Theory]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    return y + 1\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    return -y * y\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    return (y << 1@u8) + (y & 1)\n")]
+    [InlineData("func f<T>(x: ref/bool during a, y: T) -> bool\n    T is ref/bool during a\n    return not y\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is uniq/i32 during a\n    return y + 1\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> bool\n    T is uniq/i32 during a\n    return y == 1\n")]
+    [InlineData("func f<T, U>(x: ref/i32 during a, y: T) -> i32\n    T is U\n    U is ref/i32 during a\n    return y + 1 + (-y)\n")]
+    [InlineData("func f<T, U>(x: ref/i32 during a, y: T) -> i32\n    T is ref/U during a\n    U is i32\n    return y + 1\n")]
+    [InlineData("func f<T>(x: ref/bool during a, y: T) -> i32\n    T is ref/bool during a\n    if y\n        return 1\n    return 0\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    return y\n")]
+    [InlineData("func g(v: i32) -> i32 => v\nfunc f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    return g(y)\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    let z: i32 = y\n    return z\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    var s = 0\n    s = y\n    return s\n")]
+    [InlineData("func f<T>(x: ref/i32 during a, y: T) -> i32\n    T is ref/i32 during a\n    var s = 0\n    for i in 0..y\n        s += i\n    return s\n")]
+    public void APremiseGivenLayerIsReadToItsTerminal(string source)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        Assert.DoesNotContain(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && body.TypeOf(x.Place) is { Kind: BoundTypeKind.Parameter });
+    }
+
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
     // Function Type with its own Origins, not the call's, whose result is bound to the argument.
     [Fact]

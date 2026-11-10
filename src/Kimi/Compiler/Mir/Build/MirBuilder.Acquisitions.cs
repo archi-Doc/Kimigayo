@@ -66,7 +66,7 @@ internal sealed partial class MirBuilder
                     _ => MirOperand.Move(place),
                 };
             case HirAdaptation.ReferentRead:
-                return MirOperand.Copy(this.Follow(place, 16, expected));
+                return MirOperand.Copy(this.Read(place, expected, node));
             case HirAdaptation.Erasure: // SPEC 7.7.4: of the value its ordinary acquisition gives.
                 var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
                 return this.Temporary(

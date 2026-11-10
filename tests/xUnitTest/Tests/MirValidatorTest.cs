@@ -1270,6 +1270,34 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(reported, Validate(body, c.Types).Any(static x => x.Rule == MirViolation.Operation));
     }
 
+    // SPEC 5.3, 13.3.4, 8.2.3 (PLAN G697): a raw pointer's displacement takes its left operand's Type as the body's premises make it
+    // (T is raw/i32; no read follows a raw layer, so the operand keeps the parameter) and an isize count: p + n and p - n stand, as the
+    // built body does; another operator, a count of another Type and a pointer count are reported (fail-before: the valid rows reported,
+    // the pointer read from the parameter's own Type). The count: 0 an isize, 1 an i32, 2 the pointer.
+    [Theory]
+    [InlineData((int)MirBinaryOp.Add, 0, false)]
+    [InlineData((int)MirBinaryOp.Sub, 0, false)]
+    [InlineData((int)MirBinaryOp.Add, 1, true)]
+    [InlineData((int)MirBinaryOp.Mul, 0, true)]
+    [InlineData((int)MirBinaryOp.Add, 2, true)]
+    public void ARawDisplacementReadsItsPremisedPointer(int op, int count, bool reported)
+    {
+        var c = MirBuildTest.Compile("func same<T>(p: T) -> T\n    T is raw/i32\n    unsafe\n        return p + 2\n");
+        Assert.Empty(c.BuildMir().Findings);
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
+        var pointer = function.Parameters.First().Type.TypeOf()!;
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(pointer, MirLocalKind.Return, At));
+        var p = MirModelTest.Local(body, pointer, MirLocalKind.Arg);
+        var block = body.AddBlock();
+        var second = count == 2 ? MirOperand.Move(p) : MirOperand.Const(body.Const(new(MirConstKind.Integer, count == 0 ? BoundType.ISize : BoundType.I32)));
+        var operands = AddOperands(body, [MirOperand.Move(p), second]);
+        body.Push(block, MirStatement.Assign(MirModelTest.Local(body, pointer), MirRvalue.Binary((MirBinaryOp)op, operands, proven: true), At));
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Equal(reported, Validate(body, c.Types).Any(static x => x.Rule == MirViolation.Operation));
+    }
+
     // SPEC 8.2.3, 13.4 (C-159, the Front's refuting form; G157 (29)): a Field whose Type is a projection bound in its struct's scope compares
     // as the premises of the comparison's scope make it, string under H.Item is string, also as ref/string under a layer-adding premise and
     // inside a Closure: each comparison is the witness's call, so every body validates and holds no equality BinaryOp. Binding.OperandTerminal

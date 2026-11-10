@@ -106,17 +106,8 @@ internal sealed partial class MirBuilder
         }
 
         // SPEC 8.2.3, 13.4: a Place whose Type the body's premises make another (T is uniq/string) is walked as that Type, every layer of
-        // it: a shared borrow of it, retyped by a copy into a reference to the premised Type (MirTypes.Agrees admits it), whose referent the
-        // walk then follows, since MIR Types keep the parameter (DECISIONS BU-72).
-        var place = operand.Place;
-        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
-        {
-            var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
-            this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
-            place = this.body.Project(view, MirProjectionKind.Deref, 0);
-        }
-
-        return this.Inspected(this.Follow(place, 16, type), node);
+        // it (Premised).
+        return this.Inspected(this.Follow(this.Premised(operand.Place, node), 16, type), node);
     }
 
     // SPEC 13.4: a tuple operator is one Requirement call of its Contract's own requirement on its Self (TyCtxt.Synthesized) under the

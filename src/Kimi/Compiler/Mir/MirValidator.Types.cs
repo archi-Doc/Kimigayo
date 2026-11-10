@@ -183,7 +183,8 @@ internal sealed partial class MirValidator
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
         // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator takes its operands
         // in the operator table's domain (Operates); they agree (a comparison's at their premised terminals) but for a shift count, any
-        // integer, and a raw pointer's displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's
+        // integer, and a raw pointer's displacement, an isize (SPEC 5.3), a pointer being what the premises make its Type (SPEC 8.2.3: no
+        // read follows a raw layer, so the operand keeps its own Type); a Cast converts what its kind admits; a Ref's Type is its kind's
         // reference to its Place; an aggregate's operands are its components; an Adapt gives its target Type.
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
@@ -200,7 +201,8 @@ internal sealed partial class MirValidator
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
                     >= MirBinaryOp.Eq => MirTypes.Agree(this.PremisedTerminal(first), this.PremisedTerminal(second)),
-                    MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
+                    MirBinaryOp.Add or MirBinaryOp.Sub when first is not null && MirTypes.Premised(body, first).Semantics == SemanticsKind.Raw
+                        => second is null || MirTypes.Agrees(body, BoundType.ISize, second),
                     _ => MirTypes.Agrees(body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
