@@ -20,7 +20,13 @@ namespace Kimi.Compiler;
 /// contracts (Retains) is discarded with that pass.</summary>
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
-    private readonly Dictionary<int, List<BoundType>> types = new();
+    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
+
+    /// <summary>Gets the number of keys the interned Types take.</summary>
+    internal int KeyCount => this.types.Count;
+
+    /// <summary>Gets the free slots of the interned Types' table.</summary>
+    internal int KeyFree => this.types.Capacity - this.types.Count;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];

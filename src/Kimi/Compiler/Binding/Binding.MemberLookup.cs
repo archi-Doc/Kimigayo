@@ -7,7 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(
+        KimiLibrarySize.Stated.MemberSelections, ReferenceEqualityComparer.Instance);
+
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
 
