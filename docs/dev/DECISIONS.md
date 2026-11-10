@@ -1594,6 +1594,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   go on to its join for the checks only where it is a Never form, and an operand that does not complete leaves an assumed delivery,
   which places the operand's value through `Set`, instead of no transfer. The aggregate sentence per part: an aggregate with a
   Never-value component places nothing into that component, which A1 tracks (`MirMoveData`'s Never parts), and its other parts.
+  - Amended by R8-M26 (G668c): its list of rvalues with a Place (Ref, Len, Discriminant) is the descriptor column
+    `MirDescriptor.HasPlace` now, which also has Storage and Adapt.
 - **R4-M63** (2026-10-18; A3 §12 E14; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every
   operand to the result"; its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says
   (SPEC 15.6, 15.6.4).
@@ -17338,6 +17340,12 @@ R8-M* and R9-M* by the stage of the recording unit.
       unsound acceptance, B's design review 1 B1); `MovedPlace_Kd` on check-only groups (R4-M6a; SPEC 14.10.3's assumed paths add no
       normal completion; the Middle's C-195 ruling); applying the check-only reading in the state recording too (two sites, a bool
       steering `Subtree`: the Middle's implementation review B1′).
+- **R8-M26 MIR publishes whether an rvalue kind has a Place: `MirDescriptor.HasPlace`** (Middle, 2026-11-10; PLAN G668's remainder,
+  G668c; Minor, behavior-preserving; review ACCEPT by the Middle's reviewer, who wrote none of it; amends R4-M62).
+  - **Rule.** Whether an rvalue kind has a Place is the descriptor column `MirDescriptor.HasPlace` (MirDescriptors' rvalue table:
+    Ref, Discriminant, Len, Storage, Adapt). MirUses' walk, the default copy's fold and the builder's Never test read it; no site
+    lists the kinds.
+  - **Rejected:** deriving it from the row's Access (an Opaque has an access and no Place).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
