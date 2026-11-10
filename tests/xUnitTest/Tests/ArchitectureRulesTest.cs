@@ -244,7 +244,9 @@ public class ArchitectureRulesTest
         var actual = files.Where(x => !x.Name.StartsWith(inside, StringComparison.Ordinal))
             .Where(x => File.ReadAllText(x.Path) is var text && spelled.IsMatch(text) && Reads(CSharpSyntaxTree.ParseText(text).GetRoot()))
             .Select(static x => x.Name).Order(StringComparer.Ordinal).ToArray();
-        Assert.True(readers.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{folder}: {string.Join(";", actual)}; the readers are {readers}.");
+        Assert.True(
+            readers.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual),
+            $"{folder}: {string.Join(";", actual)}; the readers are {readers}.");
 
         bool Reads(SyntaxNode unit)
             => unit.DescendantTokens().Any(x => x.IsKind(SyntaxKind.IdentifierToken) && types.Contains(x.ValueText)) ||
