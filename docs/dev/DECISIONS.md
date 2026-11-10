@@ -16765,6 +16765,17 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** frames as exposed arrays with a ratchet (missed two sites); an undo log inside `SlotSolution` (the other frame
     owners have none); variables beyond frames in the core (each lands with its consumer).
   - **Temporary:** none.
+- **R7-M19 ClosureEffects' store is by the nodes met** (Middle, 2026-11-10; PLAN G622 U1b; Major, behavior-preserving; the Front's
+  implementation review ACCEPT and consent C-209; the owner's O-81 (a)).
+  - **Rule.** What a Classify knows of a node (its Op, its children's takes recorded, its own takes: `Facts`) is one row of one
+    table keyed by the node's value identity (`SourceRef`), emptied at each Classify's start and sized by the nodes it meets; the
+    key is `SourceRef.Of`, which numbers no node there. It replaces R7-Y2a's three tables keyed by the Koto reference (about seven
+    hash operations per capture use; four remain, over a value key).
+  - **Rejected:** a column over the module's syntax ids (U1's first form, C-209: cold and retained bytes by the module); the
+    published Ops column (empty until the Final publication); a table per body's id range (ids past ParsedCount); the three tables
+    with value keys (nothing removed).
+  - **Cost named:** one table holds the union of the nodes met, so its capacity step can come where the three did not (Milestone12,
+    +232 B cold). RP8 (T-99): the Literal per-use slope -106 ns, about 41% of Y2a's step.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
