@@ -456,15 +456,23 @@ The declaration promises that, for every call meeting its signature and `- safet
 | `Option<ref/T>`, `Option<uniq/T>` | pointer, `None` is null |
 | Unit (result only) | `void` |
 
-A C-exchangeable Type is a fixed-width integer, `f32` or `f64`, `raw/T`, `ref/T` or `uniq/T` over a C-exchangeable referent and their `Option`, a positive-length fixed array of C-exchangeable elements, or a C-layout struct ([§21.1.2](../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)) whose Fields are all C-exchangeable. A parameter or result whose Type has no C counterpart — `string`, dynamic collections, object handles, function and Closure values, and borrows of such Types — is an error. Any other Type outside the table — `bool`, `char`, `isize`/`usize`, `i128`/`u128`, Tuples, enums, structs or fixed arrays passed by value, and borrows of a referent that is not C-exchangeable — is Unsupported.
+A C-exchangeable Type is a fixed-width integer, `f32` or `f64`, `raw/T`, `ref/T` or `uniq/T` over a C-exchangeable referent and their `Option`, a positive-length fixed array of C-exchangeable elements, or a C-layout struct ([§21.1.2](../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)) whose Fields are all C-exchangeable. The definition is read coinductively: while a C-layout struct's Fields are judged, that struct, and each C-layout struct already being judged on the same path, counts as C-exchangeable, so a struct that holds a `ref` or `uniq` to itself, directly or through other C-layout structs, is C-exchangeable when its other Fields are. A borrow does not embed its referent, so no inline storage cycle arises ([§6.2](06-declarations-and-containers.md#62-structure-declarations)). A parameter or result whose Type has no C counterpart — `string`, dynamic collections, object handles, function and Closure values, and borrows of such Types — is an error. Any other Type outside the table — `bool`, `char`, `isize`/`usize`, `i128`/`u128`, Tuples, enums, structs or fixed arrays passed by value, and borrows of a referent that is not C-exchangeable — is Unsupported.
 
 ```kimi
+#Layout("C")
+struct Node
+    var value: i32
+    var next: ref/Node during static   // C: struct Node { int32_t value; const struct Node *next; };
+
 group Native
     #LibraryImport("observer", "observe_record")
     public func observe(record: uniq/NativeRecord) -> ()     // C: void observe_record(NativeRecord *);
 
     #LibraryImport("observer", "observe_raw")
     public unsafe func observeRaw(record: raw/NativeRecord) -> ()   // - safety: states layout, lifetime, retention.
+
+    #LibraryImport("observer", "walk")
+    public func walk(head: ref/Node) -> i32           // Valid: Node is C-exchangeable.
 
     // #LibraryImport("observer", "print")
     // public func print(text: ref/string) -> ()   // Error: string has no C counterpart.
