@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -36,11 +37,6 @@ public sealed partial class KimiLibrary
         this.TextScope = new(this.Text) { Parent = this.Scope };
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
-        this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
-        var dictionaryStorage = (DeclarationContainerKoto)this.DictionaryUnlink.Parent!;
-        this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
-        this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
-        this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
         foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
         {
@@ -50,16 +46,8 @@ public sealed partial class KimiLibrary
             }
         }
 
-        // Array operation signatures are members of the Array struct; recognition finds them through this owner scope,
-        // and indexing later gives their symbols the struct's ordinary member scope.
-        var arrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new BindingScope(array) { Parent = this.Scope } : this.Scope;
-        var dictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new BindingScope(dictionary) { Parent = this.Scope } : this.Scope;
         var storageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new BindingScope(storage) { Parent = this.Scope } : this.Scope;
-        var rawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new BindingScope(raw) { Parent = this.Scope } : this.Scope;
-        this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
-        this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
-        this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
-        this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
+        this.FindPrivateDeclarations(storageScope);
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
         // The four containers, then the catalog's symbols in catalog order.
@@ -67,58 +55,7 @@ public sealed partial class KimiLibrary
         {
             this.ConsoleSymbol, this.IntrinsicsSymbol, this.TestSymbol, this.TextSymbol,
         };
-        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = storageScope } : storageScope;
-        var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
-        for (var i = 0; i < entries.Length; i++)
-        {
-            ref readonly var entry = ref entries[i];
-            var scope = entry.Container switch
-            {
-                KimiLibraryContainer.Console => this.ConsoleScope,
-                KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
-                KimiLibraryContainer.Test => this.TestScope,
-                KimiLibraryContainer.Array => arrayScope,
-                KimiLibraryContainer.Dictionary => dictionaryScope,
-                KimiLibraryContainer.Storage => storageScope,
-                KimiLibraryContainer.Raw => rawScope,
-                KimiLibraryContainer.FixedArray => fixedArrayScope,
-                _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
-            };
-            if (entry.Owner is { } owner)
-            {
-                if (!sourceScopes.TryGetValue(owner, out var sourceScope))
-                {
-                    var container = FindDeclaration(this.Kotonoha.RootKoto, owner, false) as DeclarationContainerKoto;
-                    sourceScope = container is null ? this.Scope : new(container) { Parent = this.Scope };
-                    sourceScopes.Add(owner, sourceScope);
-                }
-
-                scope = sourceScope;
-            }
-
-            // SPEC 22.1: a missing or duplicate required declaration is a defect of the compiler build, whose embedded library
-            // KimiLibraryShapeTest checks; FindDeclaration finds no duplicate.
-            if (FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload) is not { } declaration)
-            {
-                if (entry.SourceExpected)
-                {
-                    throw new InvalidOperationException($"The embedded Kimi library has no unique declaration of {entry.Id}.");
-                }
-
-                continue;
-            }
-
-            var symbol = new BindingSymbol(entry.Name, entry.IsFunction ? BindingSymbolKind.Function : BindingSymbolKind.Type, declaration, scope)
-            {
-                Intrinsic = entry.Intrinsic,
-                CompilerFunction = entry.Function,
-                LibraryDeclaration = entry.Id,
-            };
-            declaration.BoundSymbol = symbol;
-            declaration.BindingState = BindingState.Resolved;
-            this.symbols[i] = symbol;
-            this.registeredSymbols.Add(symbol);
-        }
+        this.RegisterCatalog(storageScope);
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
@@ -243,15 +180,15 @@ public sealed partial class KimiLibrary
     internal BindingScope Scope { get; }
 
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
-    internal DeclarationContainerKoto? FixedArrayMembers { get; }
+    internal DeclarationContainerKoto? FixedArrayMembers { get; private set; }
 
     /// <summary>Gets the internal Kimi group whose receiver function implements the built-in integer conformance to
     /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
-    internal DeclarationContainerKoto? IntegerPositionMembers { get; }
+    internal DeclarationContainerKoto? IntegerPositionMembers { get; private set; }
 
     /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison bodies (SPEC 13.4.1), which the witness
     /// table's String row selects; string gains no members from it.</summary>
-    internal DeclarationContainerKoto? StringWitnessMembers { get; }
+    internal DeclarationContainerKoto? StringWitnessMembers { get; private set; }
 
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
@@ -288,15 +225,15 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the internal Kimi group whose functions construct prefix <c>^</c> and range syntax values and resolve
     /// position and range keys (SPEC 4.6.1-4.6.4).</summary>
-    internal DeclarationContainerKoto? PositionSyntax { get; }
+    internal DeclarationContainerKoto? PositionSyntax { get; private set; }
 
-    internal FunctionKoto DictionaryUnlink { get; }
+    internal FunctionKoto DictionaryUnlink { get; private set; }
 
-    internal FunctionKoto DictionaryAppendSlot { get; }
+    internal FunctionKoto DictionaryAppendSlot { get; private set; }
 
-    internal FunctionKoto DictionaryClearLinks { get; }
+    internal FunctionKoto DictionaryClearLinks { get; private set; }
 
-    internal FunctionKoto DictionaryCompact { get; }
+    internal FunctionKoto DictionaryCompact { get; private set; }
 
     internal GroupKoto Console { get; }
 
@@ -456,6 +393,85 @@ public sealed partial class KimiLibrary
             }
 
             return false;
+        }
+    }
+
+    // The library's private declarations the compiler reads directly: the Dictionary storage functions, the witness table's groups
+    // (R8-M4) and the position syntax group.
+    [MemberNotNull(nameof(DictionaryUnlink), nameof(DictionaryAppendSlot), nameof(DictionaryClearLinks), nameof(DictionaryCompact))]
+    private void FindPrivateDeclarations(BindingScope storageScope)
+    {
+        this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
+        var dictionaryStorage = (DeclarationContainerKoto)this.DictionaryUnlink.Parent!;
+        this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
+        this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
+        this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
+        this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
+        this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
+        this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
+        this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
+    }
+
+    // SPEC 22.1: the catalog's symbols in catalog order, each bound to its declaration in its container's or owner's scope.
+    private void RegisterCatalog(BindingScope storageScope)
+    {
+        // Array operation signatures are members of the Array struct; recognition finds them through this owner scope,
+        // and indexing later gives their symbols the struct's ordinary member scope.
+        var arrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new BindingScope(array) { Parent = this.Scope } : this.Scope;
+        var dictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new BindingScope(dictionary) { Parent = this.Scope } : this.Scope;
+        var rawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new BindingScope(raw) { Parent = this.Scope } : this.Scope;
+        var entries = KimiLibraryCatalog.Entries;
+        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = storageScope } : storageScope;
+        var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
+        for (var i = 0; i < entries.Length; i++)
+        {
+            ref readonly var entry = ref entries[i];
+            var scope = entry.Container switch
+            {
+                KimiLibraryContainer.Console => this.ConsoleScope,
+                KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
+                KimiLibraryContainer.Test => this.TestScope,
+                KimiLibraryContainer.Array => arrayScope,
+                KimiLibraryContainer.Dictionary => dictionaryScope,
+                KimiLibraryContainer.Storage => storageScope,
+                KimiLibraryContainer.Raw => rawScope,
+                KimiLibraryContainer.FixedArray => fixedArrayScope,
+                _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
+            };
+            if (entry.Owner is { } owner)
+            {
+                if (!sourceScopes.TryGetValue(owner, out var sourceScope))
+                {
+                    var container = FindDeclaration(this.Kotonoha.RootKoto, owner, false) as DeclarationContainerKoto;
+                    sourceScope = container is null ? this.Scope : new(container) { Parent = this.Scope };
+                    sourceScopes.Add(owner, sourceScope);
+                }
+
+                scope = sourceScope;
+            }
+
+            // SPEC 22.1: a missing or duplicate required declaration is a defect of the compiler build, whose embedded library
+            // KimiLibraryShapeTest checks; FindDeclaration finds no duplicate.
+            if (FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload) is not { } declaration)
+            {
+                if (entry.SourceExpected)
+                {
+                    throw new InvalidOperationException($"The embedded Kimi library has no unique declaration of {entry.Id}.");
+                }
+
+                continue;
+            }
+
+            var symbol = new BindingSymbol(entry.Name, entry.IsFunction ? BindingSymbolKind.Function : BindingSymbolKind.Type, declaration, scope)
+            {
+                Intrinsic = entry.Intrinsic,
+                CompilerFunction = entry.Function,
+                LibraryDeclaration = entry.Id,
+            };
+            declaration.BoundSymbol = symbol;
+            declaration.BindingState = BindingState.Resolved;
+            this.symbols[i] = symbol;
+            this.registeredSymbols.Add(symbol);
         }
     }
 
