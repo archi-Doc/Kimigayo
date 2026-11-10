@@ -216,7 +216,7 @@ public class ClosedConformancePrerequisiteBindingTest
                 string.Empty,
                 ["public struct X\n    HeldY is Copy\n", "public contract K\n    func k(self) -> i32\n", r, pair, y,
                     "public contract Q: K\n    HeldY is Copy\n"],
-                "public func f<T>(x: T) -> i32\n    T is Q\n    return x.k()\n"),
+                "func f<T>(x: T) -> i32\n    T is Q\n    return x.k()\n"),
             "cap10" => (string.Empty, [x, k, "public contract R: Copy\n    i32 is Copy\n", pair, y], useK),
             "n3b" => (string.Empty, [r1, r2, "public contract R3: Copy\n    i32 is Copy\n", ranked, k, ranks], useK),
             "n3c" => (
@@ -231,7 +231,7 @@ public class ClosedConformancePrerequisiteBindingTest
                 c,
                 [a, "public struct B\n    A is C\n    Self is C\n"],
                 "public contract K\n    func k(self) -> i32\npublic contract R: K\n    A is C\n" +
-                    "public func f<T>(x: T) -> i32\n    T is R\n    return x.k()\n"),
+                    "func f<T>(x: T) -> i32\n    T is R\n    return x.k()\n"),
             "occ1" => (
                 string.Empty,
                 [

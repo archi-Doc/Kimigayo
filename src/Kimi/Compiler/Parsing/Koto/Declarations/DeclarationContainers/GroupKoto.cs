@@ -75,9 +75,10 @@ public sealed class GroupKoto : DeclarationContainerKoto
         if (tokenKind == TokenKind.Alias)
         {
             // An alias takes no modifier or attribute (SPEC F.6.1 AliasDeclaration): the prefix's attributes are reported and attach to
-            // nothing, and its modifiers are taken before its target is read, so none lands there.
+            // nothing, its access word is rejected, and the prefix is taken before its target is read, so nothing lands there.
             Parser.ReportPendingAttributes(ref reader);
-            var context = reader.TakeContext();
+            Parser.RejectAccessWord(ref reader);
+            _ = reader.TakeContext();
             reader.Advance();
             string? aliasName = null;
             if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
@@ -108,11 +109,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                if (context.ModifierKind.Judged() != default)
-                {
-                    reader.Unexpected(SyntaxForm.Decoration, token.Span);
-                }
-
                 var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
                 Parser.ParseAttachedOriginBlock(ref reader, alias);
                 this.AddLast(alias);
@@ -156,8 +152,24 @@ public sealed class GroupKoto : DeclarationContainerKoto
             return;
         }
 
+        // A root function declaration is the root's own item (SPEC 6.1.1, F.6.1); every other item is the execution scope's.
         var oldPosition = reader.Position;
-        var item = Parser.ParseBlockItem(ref reader);
+        Koto? item;
+        if (Parser.IsFunctionDefinitionStart(ref reader))
+        {
+            // Only `public main` takes an access word among the root's functions (SPEC 6.1.1, 22.4); the Name is compared as written.
+            if (!(reader.ModifierKind.ExtractAccessibilityModifiers() == ModifierKind.Public && reader.GetSpan(reader.PeekToken(1)) is "main"))
+            {
+                Parser.RejectAccessWord(ref reader);
+            }
+
+            item = Parser.ParseFunctionItem(ref reader);
+        }
+        else
+        {
+            item = Parser.ParseBlockItem(ref reader);
+        }
+
         reader.ExpectLineEnd();
 
         if (item is not null && !reader.InExcludedSyntax)

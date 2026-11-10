@@ -66,10 +66,10 @@ public sealed partial class Binding
     {
         var container = DeclaringContainer(declaration) switch
         {
-            DeclarationContainerKoto { IsRoot: true } or FunctionKoto { IsGenerated: true } => "the source root",
+            DeclarationContainerKoto { IsRoot: true } => "the source root",
             GroupKoto group => $"group {group.Name}",
             EnumKoto enumeration => $"enum {enumeration.Name}",
-            FunctionKoto => "a function body",
+            FunctionKoto or ContractKoto => throw new InvalidOperationException("A declaration of a body or of a Contract holds an access word the parser rejects (InternalInvariant; G689)."),
             _ => "a Container other than a struct",
         };
 
@@ -375,12 +375,12 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            // SPEC 9.4: a protected form is invalid on root and group declarations, group members, enum members and local
-            // declarations: every declaration whose declaring Container is not a struct. A Contract requirement takes no
-            // modifier at all, which the parser reports (MisplacedSyntax_Kd).
+            // SPEC 9.4: a protected form is invalid on root Containers and on group and enum members: every declaration that takes an
+            // access word and whose declaring Container is not a struct. A root function, a local function or binding and a Contract
+            // item take no access word at all, which the parser rejects and drops (Parser.RejectAccessWord; SPEC 6.1.1, 9.3, F.6.2).
             if (this.nodes[i].BoundSymbol is { } declared && ReferenceEquals(declared.Declaration, this.nodes[i]) &&
                 WrittenAccess(this.nodes[i]) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal &&
-                DeclaringContainer(this.nodes[i]) is not (StructKoto or ContractKoto))
+                DeclaringContainer(this.nodes[i]) is not StructKoto)
             {
                 this.Fail(this.nodes[i], BindingFailure.ProtectedPlacement);
             }

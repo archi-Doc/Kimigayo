@@ -84,7 +84,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void UsesOriginalSpecializationContractAndEffectiveAccess()
     {
-        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("public group Docs\n    /// original\n    public func weight<T>(value: ref/T) -> i32 => 1\n    /// implementation\n    specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
         var c = tree.RootKoto.CodeContext.Compilation;
         Assert.True(c.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;

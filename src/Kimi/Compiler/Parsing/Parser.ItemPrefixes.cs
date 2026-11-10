@@ -62,6 +62,23 @@ public static partial class Parser
         reader.AttributeKoto = null;
     }
 
+    /// <summary>Rejects the pending access word before an item whose production has no Access (Appendix F; SPEC 6.1.1, 9.3), such as
+    /// an alias, a root function other than <c>public main</c>, a local function or binding, a Contract requirement, a <c>drop</c>, a
+    /// Case, an <c>associate</c>, a specialization, or a Constraint, Origin relation or effect clause. The written word is misplaced
+    /// where it stands (the first one of a two-word form), once, and is dropped: nothing is recovered, so no node holds an access word
+    /// its production does not take and no later check judges it. Called before the item takes the prefix.</summary>
+    /// <param name="reader">The token reader.</param>
+    internal static void RejectAccessWord(ref TokenReader reader)
+    {
+        var access = reader.ModifierKind.ExtractAccessibilityModifiers();
+        if (access != ModifierKind.NoModifier)
+        {
+            reader.Unexpected(SyntaxForm.Decoration, reader.AccessModifierSpan);
+            reader.ModifierKind ^= access;
+            reader.AccessModifierSpan = default;
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ModifierKind GetAccessibilityModifier(TokenKind tokenKind)
         => tokenKind switch
@@ -236,6 +253,7 @@ public static partial class Parser
 
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
+            reader.AccessModifierSpan = default;
         }
 
         reader.Advance();
@@ -265,6 +283,7 @@ public static partial class Parser
 
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
+            reader.AccessModifierSpan = default;
         }
 
         if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
@@ -326,6 +345,7 @@ public static partial class Parser
         if (acc == default)
         {
             reader.ModifierKind |= kind;
+            reader.AccessModifierSpan = reader.CurrentTokenRange;
         }
         else if ((acc == ModifierKind.Protected && kind == ModifierKind.Internal) || (acc == ModifierKind.Private && kind == ModifierKind.Protected))
         {
