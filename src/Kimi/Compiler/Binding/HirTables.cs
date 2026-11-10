@@ -107,6 +107,13 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
+    /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
+    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
+    /// the discard's plan row Flag.</summary>
+    /// <param name="discard">The explicit discard.</param>
+    /// <returns>Whether it destroys in place, transferring nothing.</returns>
+    internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
+
     /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
@@ -217,7 +224,8 @@ internal struct HirTables
 /// <summary>
 /// The plan slots of one node (the planIndex column): its kind's retained plan, a second plan, its formatting plan, a folded
 /// constant (a conversion's, or a number literal's value, a ConstIndex position and a Tuple element's position, which
-/// <see cref="HirTables.Publish"/> writes), a mode and a flag. Each Koto class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
+/// <see cref="HirTables.Publish"/> writes), a mode and a flag (an explicit discard's: <see cref="HirTables.DestroysInPlace"/>). Each Koto
+/// class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
 /// </summary>
 internal struct PlanRow
 {

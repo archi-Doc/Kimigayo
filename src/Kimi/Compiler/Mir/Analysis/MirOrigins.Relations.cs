@@ -23,10 +23,17 @@ internal sealed partial class MirOrigins
 {
     private readonly List<int> above = []; // Outlives' Fixed and Finite nodes at or above the longer end.
     private readonly List<int> below = []; // Outlives' Fixed nodes at or below the shorter end.
-    private int[] reachStamps = []; // Outlives', the meet law's and ClassEdges' stamps by node, and the walks' queue (the law's stack).
+    private int[] reachStamps = []; // Outlives' and the meet law's stamps by node, and the walks' queue (the law's stack).
     private int[] reachQueue = [];
     private int reachStamp;
-    private int edgesClass = -1; // The class whose edges tails, heads and their indexes hold for Outlives (-1: none, Judge's own).
+    private int[] queryTails = []; // Outlives' class edges (every one with two ends, Fixed ones included), by tail and by head.
+    private int[] queryHeads = [];
+    private int[] queryOutStart = [];
+    private int[] queryOut = [];
+    private int[] queryInStart = [];
+    private int[] queryIn = [];
+    private int queryCount;
+    private int edgesClass = -1; // The class whose edges the query arrays hold for Outlives (-1: none; Judge re-forms classEdges).
     private int edgesNodes; // The node count they were indexed for.
 
     /// <summary>Gets whether one Origin can outlive another at a site under the class of a view of the body Judge last judged (SPEC
@@ -73,8 +80,8 @@ internal sealed partial class MirOrigins
             return null;
         }
 
-        this.Bounds(from, this.inStart, this.inEdges, this.tails, this.above);
-        this.Bounds(to, this.outStart, this.outEdges, this.heads, this.below);
+        this.Bounds(from, this.queryInStart, this.queryIn, this.queryTails, this.above);
+        this.Bounds(to, this.queryOutStart, this.queryOut, this.queryHeads, this.below);
         var part = this.slice.InLayer(from) || this.slice.InLayer(to) ? this.slice.Layer : this.key;
         using var oracle = this.below.Count == 0 ? null : types.UniversalRelations(part);
         foreach (var lower in this.below)
@@ -130,7 +137,7 @@ internal sealed partial class MirOrigins
             return true;
         }
 
-        (this.edgeCount, this.edgesClass) = (0, -1);
+        (this.queryCount, this.edgesClass) = (0, -1);
         if (!this.ClassEdges(c))
         {
             return false;
@@ -140,15 +147,15 @@ internal sealed partial class MirOrigins
         {
             if (edge.Tail >= 0 && edge.Tail != edge.Head)
             {
-                MirDataflow.Grow(ref this.tails, this.edgeCount + 1);
-                MirDataflow.Grow(ref this.heads, this.edgeCount + 1);
-                (this.tails[this.edgeCount], this.heads[this.edgeCount++]) = (edge.Tail, edge.Head);
+                MirDataflow.Grow(ref this.queryTails, this.queryCount + 1);
+                MirDataflow.Grow(ref this.queryHeads, this.queryCount + 1);
+                (this.queryTails[this.queryCount], this.queryHeads[this.queryCount++]) = (edge.Tail, edge.Head);
             }
         }
 
         (this.edgesClass, this.edgesNodes) = (c, this.slice.Atoms.Count);
-        this.IndexEdges(this.tails.AsSpan(0, this.edgeCount), this.edgesNodes, ref this.outStart, ref this.outEdges);
-        this.IndexEdges(this.heads.AsSpan(0, this.edgeCount), this.edgesNodes, ref this.inStart, ref this.inEdges);
+        TyCtxt.OriginChains.Index(this.queryTails.AsSpan(0, this.queryCount), this.edgesNodes, ref this.queryOutStart, ref this.queryOut, ref this.cursors);
+        TyCtxt.OriginChains.Index(this.queryHeads.AsSpan(0, this.queryCount), this.edgesNodes, ref this.queryInStart, ref this.queryIn, ref this.cursors);
         return true;
     }
 }

@@ -238,9 +238,9 @@ public sealed partial class MirOriginsTest
     {
         Assert.True(MirDataflow.Within(8L * 1024 * 1024));
         Assert.False(MirDataflow.Within((8L * 1024 * 1024) + 1));
-        Assert.True(MirDataflow.Within(MirOrigins.ArenaWords(65_535, 0, 8_192)));
-        Assert.False(MirDataflow.Within(MirOrigins.ArenaWords(65_536, 0, 8_192)));
-        Assert.Equal(4, MirOrigins.ArenaWords(1, 3, 70));
+        Assert.True(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(65_535, 0, 8_192)));
+        Assert.False(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(65_536, 0, 8_192)));
+        Assert.Equal(4, TyCtxt.OriginChains.ArenaWords(1, 3, 70));
     }
 
     // V16 A3 (9) (2a0-D §6.4): N chained locals and N signature Origins into one fixed target, with premises ordering them, keep the work

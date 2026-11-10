@@ -19,14 +19,14 @@ public sealed partial class Binding
     /// <param name="contract">The required Contract identity.</param>
     /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
 
     /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
     /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -116,12 +116,12 @@ public sealed partial class Binding
     private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
     {
         ambiguous = false;
-        if (this.impls.Find(type, contract) is { } direct)
+        if (this.ConformanceOf(type, contract) is { } direct)
         {
             return direct;
         }
 
-        if (IsBoundContractReference(contract) || this.impls.OfType(type) is not { } identities)
+        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
         {
             return null;
         }

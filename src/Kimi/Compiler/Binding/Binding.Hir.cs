@@ -2,7 +2,7 @@
 
 // Owns publication of HIR facts from the Binding pass: a Final pass's Check publishes between its failure producers and its counting.
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
-// target rows).
+// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs,
 // whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
@@ -118,6 +118,11 @@ public sealed partial class Binding
 
                 // Every node a publish reaches gets its discarded Type, null where it is none, so no row keeps an earlier pass's (BU-98).
                 HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
+                if (node is DiscardKoto discard)
+                {
+                    var inPlace = DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
+                    HirTables.PlanFor(node, inPlace).Flag = inPlace;
+                }
             }
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).

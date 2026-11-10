@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 //   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
-// - Outputs: the verdict and, for FitsType, FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
+// - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
 //   holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
@@ -23,16 +23,7 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected) => FitsType(actual, expected, out _);
-
-    // FitsType with the walk's first failure.
-    internal static bool FitsType(BoundType actual, BoundType expected, out ComparisonFailure failure)
-    {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
-        var fits = NeverFits(actual) || walk.Fits(actual, expected);
-        failure = walk.Failure;
-        return fits;
-    }
+    public static bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || IsSubtype(actual, expected);
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
@@ -54,6 +45,12 @@ public sealed partial class Binding
     // own fit judges them (DECISIONS R4-M155, landing review B1).
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
+
+    // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal: the structural part alone, no Never
+    // root rule, so it is symmetric. It reads no premise; with no use scope the walk reads `use` only in InactiveOuterOrigin, which then
+    // reads an adaptation selector's own scope: a use scope only narrows what it admits, so its absence can only turn "same" into
+    // "different" (review N2). A reference-equal pair is Discharged by the walk itself.
+    internal bool SameStructure(BoundType a, BoundType b) => new RelationWalk(this, null, OriginPart.Everywhere).Fits(a, b);
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);

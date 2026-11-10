@@ -19,8 +19,8 @@
 // holder's declaration); each a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
 // view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
 // signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
-// operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
-// anchor, witness and Evaluated facts (SPEC 5.2.1 condition 3); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
+// operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with only
+// an Evaluated fact (SPEC 5.2.1 condition 3; no Loan fact, G673); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
 // their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
 // (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:

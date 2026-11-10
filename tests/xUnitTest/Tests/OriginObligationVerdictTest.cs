@@ -69,7 +69,7 @@ public class OriginObligationVerdictTest
         var c = Analyze("func f() -> isize\n    let n: isize = 4\n    return n\n");
         Assert.True(c.Binding.Result.IsComplete);
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).Last(static x => x is IdentifierNameKoto && x.ToString() == "n");
-        var compound = new BoundLength(KotoKind.Minus, 0, null, new(KotoKind.NumberLiteral, 1, null, null, null), new(KotoKind.NumberLiteral, 2, null, null, null));
+        var compound = new BoundLength(LengthOperation.Sub, 0, null, new(LengthOperation.Constant, 1, null, null, null), new(LengthOperation.Constant, 2, null, null, null));
         BindingObligation obligation = new(BindingObligationKind.TypeFormation, use, BindingDeadline.Instantiation, Length: compound);
         typeof(Binding).GetMethod("AddObligation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [obligation]);
         Assert.False(c.Binding.CheckBound().IsComplete);
