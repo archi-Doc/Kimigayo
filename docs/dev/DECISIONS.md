@@ -10893,8 +10893,8 @@ resumed by R4-M86 (2026-10-20).
     proof's named cause; `VerifyConformance` names the failed root it read, never a record's category. A node keeps its first
     failure.
   - Margin: Binding's walks recurse at most H + L (BU-112's L). Dev's deepest measured walk frame (the substitution walk: 2,752 B a level
-    in Release, 3,632 B in Debug) times 3.5 x (H + L) is 117 MB, inside S = 128 MB. Not covered: the diagnostics adapter's Type text on a
-    host's own thread (open issue below).
+    in Release, 3,632 B in Debug) times 3.5 x (H + L) is 117 MB, inside S = 128 MB. The diagnostics adapter's Type text does not
+    recurse (BU-153).
   - Rejected: a check before a walk from `part.Height + Subst.Height` (over-approximates); a typed outcome through `SubstituteType`'s
     callers; an exception to the site (Binding's paired state is not exception-safe); a sentinel Type; a stack probe (acceptance would
     depend on the build configuration, IMPL A.5); smaller frames by a query struct (U-D1: +3-5% Bind, located 2026-11-08, dropped by
@@ -10909,6 +10909,37 @@ resumed by R4-M86 (2026-10-20).
     independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
+- **BU-153 A Type's display does not recurse on the Type (PLAN G348, unit G348-d)** (2026-11-11; Front; Major; design
+  `F\G348d\design.md` with revision 1, the Front's ruling 1 (P2), design review 1 REVISE and its revision, implementation review
+  ACCEPT) SPEC 7.7, 23.1, 23.1.1; IMPL A.4; HOVER "Deterministic limits".
+  - Rule: `Binding.DisplayTypeName` (records' `DiagnosticTypeName`, Hover's `HoverTypeName`, MIR dumps through `TyCtxt.Name`) shows
+    a Type from one list used as a stack: `Show` notes a form's parts in reading order (`Emit`), the loop shows them, a text is
+    written at once while nothing of its form waits. Its host-stack depth is constant in the Type's height and in a chain of closure
+    signatures, on every thread and for every caller. Text unchanged. Hover's limit (64) is counted per part as the recursion
+    counted it (`HoverBudget.At`). No depth cut: a Type past H never reaches a display (BU-134), and a closure chain is shown whole.
+  - Departures. R4-M178 rejected "iterative walks (U2 bounds the depth)" and lists `ReportDiagnostics` among members that start no
+    walk; R7 plan D3 and BU-134's margin bound a Type walk by `BoundType.Height` (at most H + L) on the 128 MB compile stack
+    (BU-135). Neither reason holds for the display: it runs on its caller's thread (the CLI's `check`, any host or test calling
+    `Compilation.Check`; dev overflowed the CLI's 1.5 MB stack from about 820 layers in tier-0 code, 1,856 B a frame), and its depth
+    is bounded by neither L nor H, because a closure is shown by its signature, an edge `BoundType.Height` does not count (BU-71): a
+    chain of closures each taking the previous nests the display four frames a link at a height under 8 (`clo-20000-I` overflowed
+    even a compiler thread when the display was a site). So the display does not recurse rather than run on a compiler thread.
+    R4-M178's "`ReportDiagnostics` starts no walk" now holds for Type walks; the adapter's syntax texts still recurse at most L
+    there (BU-112).
+  - Amends BU-134's margin: its "Not covered" sentence (the diagnostics adapter's Type text on a host's own thread) now reads that
+    the adapter's Type text does not recurse (BU-153).
+  - Cost: a `Bind`, and a check without Hover whose records name no structural Type, allocate nothing more (a Primitive or Parameter
+    returns before the list exists). Each display of a structural Type, a record's in any check or Hover's, allocates one list (cold
+    for records). The LSP's check (`collectHover: true`), warm: +0 B (Hello, Functions, Matches, Results, Strings) to +864 B
+    (References), +2,568 B (FixedArrays) and +33,800 B (a 10-link closure chain, +0.3% of its check); time within noise.
+  - Tests: `TypeHeightLimitTest.TierZeroCodeDisplaysADeepType` runs `ARecordNamingADeepTypeIsReported` (8,190 layers) and
+    `ARecordNamingAClosureChainIsReported` (512 links) each in a fresh process in tier-0 code (`FreshProcess.RunExplicit`,
+    `DOTNET_TC_QuickJit=1`): the test host compiles optimized code (128 B a frame), which holds H, so only the CLI's tier-0 frames
+    reproduce the overflow; `HoverCollectionTest.ADeepTypeInterruptsTheProjectionOnly` pins Hover's 64.
+  - Rejected: `ReportDiagnostics` as a compiler-thread site (no bound for the closure chain; a second stack rule for one function;
+    MIR dumps and direct displays stay on the host stack); counting the signature edge in `Height` (a Closure is interned before its
+    signature exists; an acceptance mover for a display); a depth cut or an inner closure without its signature (a private cut that
+    changes text); forming the text where the check fails (text comes only from the adapter); a hop inside the display.
 - **BU-137 The object-form rule reads a concrete target's opt-out once it is published (PLAN G600)** (2026-11-09; Major; design
   review 1 ACCEPT, implementation review ACCEPT) SPEC 8.7.3.
   - SPEC 8.7.3's object-form rule reads a concrete target's opt-out through one function, `Binding.RenouncedObjectTarget` (its record
