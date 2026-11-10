@@ -15482,6 +15482,7 @@ structure is recorded here by the unit that first implements it.
     publication and profile files until R9 moves the toolchain out of the compiler.
   - Amended by R5-M174 (the owner's 「(b) 分割を認める」): the profile file's target half left `C/Emission` for `Core/WindowsProfile.cs`;
     `C/Emission` keeps the toolchain identity (`ToolchainIdentity.cs`) with the toolchain and publication files until R9.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, plan §4.9 row G9, R5-M18's G9a/G9b split; design
   `draft/Sketches/R6-gen/G9-design.md` with rulings Q1-Q10; under R5-M162; G:R6-gen-del)
   - Rule: a member goes with its last reader (S7). Deleted, each without a reader in `src`, `tests` or `src/Benchmark` since G7:
@@ -15614,6 +15615,7 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M174 (row 15; the owner's 「(b) 分割を認める」, 2026-11-01): the profile file's target half moved to Core
     (`Core/WindowsProfile.cs`), since P2-P12 read it and R9's move cannot take it; the toolchain identity (`Emission/ToolchainIdentity.cs`)
     stays with the toolchain and publication files until R9.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, PLAN G337; the owner's G337 acceptance 「(a) 受け入れる」;
   under R4-M1, R4-M2a and R5-M156)
   - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's; A3 and
@@ -15900,6 +15902,7 @@ structure is recorded here by the unit that first implements it.
     `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
   - Amended by BU-130: what the phases share is `ScalarTypes.SizeWidth`, the profile's width of `isize` and `usize`; `IrTarget` keeps the target's width for the `pointerWidth` Condition and its 0 for no IR target.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -17770,3 +17773,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     switch checked against the table by a test (a second statement); a hash (it hashes every identifier); `Constants` as the table.
   - **Candidates.** `SemanticsMask.ToText`'s single-kind rows, the Name check in `Compilation`/`DependencyConfiguration`, `HoverBuilder`'s
     `& 7` access mask.
+- **R9-M6 The toolchain is `Kimi.Build`, outside the compiler** (Middle, 2026-11-11; R9-M2, the R7-R9 plan's §5.3 unit M2; Major,
+  behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review ACCEPT after the commit messages' fix; the Back's
+  consent C-220)
+  - Rule: `src/Kimi/Build` (namespace `Kimi.Build`) is P13: publication of the IR/manifest pair (`EmissionArtifacts`); the build
+    record, the native build, the built Application's run and toolchain verification (`NativeToolchain`, with `.Build` and
+    `.Verification`); the toolchain's identity and resolution (`ToolchainIdentity`, `ToolchainResolver`); kernel32's import identity
+    (`Kernel32Imports`); the artifact paths and files (`ArtifactPaths`, `ArtifactFiles`).
+  - Dependency rule (ARCH "Dependency rules", the Build row; the code's statement is the header of `Build/NativeToolchain.cs`).
+    Build reads, of the compiler, exactly: the generation entry `Compilation.Generate`, with `Compilation.Project` and
+    `Compilation.Diagnostics`; `Binding.Startup.OutputKind` and `Binding.LibraryImports` (an import's `Library` and `Kind`); the
+    enum `OutputKind`, which project configuration states too (`ProjectFile.OutputKind`); the target profile `WindowsProfile`;
+    `CompilerRelease`; `CompilationBuildMetadata`, through `Project.BuildMetadata`; the Backend's `LlvmModuleText.SymbolFromName`;
+    and of `Kimi.Diagnostics` the record writer `DiagnosticOwner.Report`, `DiagnosticCode`, `DiagnosticPartition` and
+    `DiagnosticSeverity`. Beside the compiler it reads project configuration (`Project` with its `KimiOptions`, `ProjectFile`,
+    `NativeConfiguration`, `NativeLibraryInput`). It writes the artifacts and, from publication only, records in the compiler's
+    Emission partition (`ArtifactPublicationFailed_Kd`, `InternalInvariant_Kd`; R5-M165). It reads no other compiler state.
+  - Temporary, with its removal condition: the two reads of Binding (`Startup.OutputKind`, `LibraryImports`) and
+    `LlvmModuleText.SymbolFromName` end with R9-B1, when the generation result carries the output kind, the required libraries and
+    the external declarations. The enum `OutputKind` stays: `RunProject` compares `ProjectFile.OutputKind` with it and the
+    manifest's output section takes it.
+  - No file of `Compiler/`, `Checking/`, `Lsp/`, `Testing/` or `Diagnostics/` reads a Build type. Build's readers are `Project`
+    (`Build`, `Run`, `PublishArtifacts`) and the commands, the hosts that call it, and `DependencyLock` (`ArtifactFiles.Replace`
+    only, as R5-M174 recorded). `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the reader set by file: a reader
+    names a type the folder declares, imports the namespace or declares it (Roslyn; comments do not count; the folder's own files
+    are not readers). It does not see a type reached without its name (a `var` over a member's result, reflection), a delegate type
+    the folder declares, or an attribute class used by its short name (`[Foo]` for `FooAttribute`): review reads those. Build
+    declares neither a delegate nor an attribute.
+  - No reference turned around: since R5-M64/M65 (`Compilation.Generate`) and R5-M174 (`WindowsProfile` to Core) the compiler read
+    no type of the folder; the unit moves the files and pins the direction.
+  - The structure-limit exemption of the toolchain and publication files ends (ARCH "Structure limits"): `NativeBuild` (a private
+    nested class of `NativeToolchain`, in `NativeToolchain.Build.cs` with the build's entries `Build` and `BuildManifest`, its
+    manifest check and its staging) holds one native build's state and steps in place of `BuildCore`'s nine parameters and 108
+    statements; its constructor takes the build's fixed inputs and `Run` the toolchain selection, resolved after the pair's check.
+    `VerifyKernel32`; the manifest's four section writers, composed in `Publish`; `ArtifactFiles.States` and `SequenceEqual`, the
+    one owner of "a JSON value restates expected strings"; the three nested failure predicates (`IsOutputFailure`,
+    `IsPublicationFailure`, `IsToolchainFailure`). No member, file or line of `src/Kimi/Build` is over a limit.
+  - Behavior preserved: every read, write and failure keeps its order but eight evaluation-order changes, none observable in a
+    compiler whose embedded backend record is valid (the list is the unit's commit message's; a base-against-prototype probe found
+    63 command results and 21 published files identical).
+  - Rejected: moving `Project.Build`, `Run` and `PublishArtifacts` into Build (Project owns the target loop and the finalization
+    points of the Input, front-end and Emission results, SPEC 23.3; R9-B2 names `Project.Build` as the boundary); a second assembly
+    (the embedded resources, `InternalsVisibleTo` and the CLI's packaging would change for no reader); a parameter record for
+    `BuildCore` (an argument bag); a top-level `NativeBuild` (a second component name for one concern, and several private members
+    of `NativeToolchain` raised to internal); `States` beside `ToolchainIdentity.SequenceEqual` in `ToolchainIdentity` (its type
+    initializer would run the embedded record's read before a manifest's first comparison) or in `NativeToolchain` (a second owner,
+    and a cycle with `Kernel32Imports`); one row table for the manifest's writer and reader in this unit (their orders differ, so it
+    changes either the manifest's bytes or a failure: R9-B1's, with its manifest revision); a text-pattern ratchet row (it counted
+    Build's own imports and missed aliases and a namespace declared outside the folder).
+  - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.

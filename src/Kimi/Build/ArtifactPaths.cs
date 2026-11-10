@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Compiler;
+using Kimi.Compiler;
+
+namespace Kimi.Build;
 
 /// <summary>One resolved artifact set shared by emission, build records and native execution.</summary>
 internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem)
@@ -22,6 +24,7 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
         }
 
         var manifest = Path.ChangeExtension(ir, ".link.json");
-        return new(ir, manifest, Path.ChangeExtension(manifest, ".build.json"), Path.Combine(Path.GetDirectoryName(ir)!, Path.GetFileNameWithoutExtension(ir) + "." + project.ProjectFile.Optimization));
+        var stem = Path.Combine(Path.GetDirectoryName(ir)!, Path.GetFileNameWithoutExtension(ir) + "." + project.ProjectFile.Optimization);
+        return new(ir, manifest, Path.ChangeExtension(manifest, ".build.json"), stem);
     }
 }
