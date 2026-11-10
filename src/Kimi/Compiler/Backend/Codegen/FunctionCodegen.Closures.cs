@@ -102,7 +102,7 @@ internal sealed partial class FunctionCodegen
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
         {
-            this.Legacy(call, row, target);
+            this.Legacy(call, row);
             return;
         }
 
@@ -113,12 +113,12 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M108): what a call of a function Item runs, decided by its function, for its Value call and its adapter's
-    // entry: a compiler function's call is its direct call's row whatever targets the row needs (a format witness, a descriptor), written
+    // entry: a compiler function's call is its direct call's row whatever targets the row needs (a reserve witness, a descriptor), written
     // when it is one runtime routine (Routine, its slot-less values from the call's result Type, its Type argument or its target into
-    // `given`, a formatting row's capacity measured by the adapter's entry, Forward; DECISIONS R5-M128); any other function's is what
-    // its target runs (the collector's: its function's body or a requirement Item's witness, an import's item included; FunctionCodegen.Calls'
-    // Witness, a virtual witness through its slot, an import by its C signature, the rule of its direct call; DECISIONS R5-M146, R8-M19); a
-    // virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the Item's own substitution (ModuleCodegen.Slot).
+    // `given`); any other function's is what its target runs (the collector's: its function's body or a requirement Item's witness, an
+    // import's item included; FunctionCodegen.Calls' Witness, a virtual witness through its slot, an import by its C signature, the rule of
+    // its direct call; DECISIONS R5-M146, R8-M19); a virtual function's Item, which has no target (X5), runs its slot (SPEC 6.4.3) under the
+    // Item's own substitution (ModuleCodegen.Slot).
     // Null after a record at the source (an adapter's: its site): a broken contract (above).
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
     {
@@ -134,7 +134,7 @@ internal sealed partial class FunctionCodegen
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
-        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, source, out given) is { } routine)
+        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, out given) is { } routine)
         {
             return new Run(routine, null);
         }

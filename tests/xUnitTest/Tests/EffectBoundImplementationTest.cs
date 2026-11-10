@@ -134,8 +134,9 @@ public partial class EffectBoundImplementationTest
     }
 
     // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
-    // allocator; Console output and the test temporary directory are environment effects; the formatting entries are unclassified,
-    // since A4 composes their published rows first. A new kind is unclassified until it is placed here.
+    // allocator; Console output and the test temporary directory are environment effects; the formatting kinds left (Text.writer, the
+    // built-in items) act on their inputs, the formatting operations being bodies (R8-W1). A new kind is unclassified until it is placed
+    // here.
     [Fact]
     public void EveryCompilerFunctionHasOneEffectClass()
     {
@@ -144,8 +145,7 @@ public partial class EffectBoundImplementationTest
             var expected = kind switch
             {
                 CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Unclassified,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
                 _ => CompilerFunctionEffect.Inputs,
             };
             Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());
