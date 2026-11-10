@@ -9,12 +9,6 @@ namespace Kimi.Compiler.Mir;
 // which only the selection's one bounds check rejects (SPEC 4.6.3).
 internal sealed partial class MirBuilder
 {
-    // SPEC 4.6.1-4.6.2, 8.15.3: whether a range key's view starts at its receiver's storage: its Type at the selection is the library's Range
-    // or ClosedRange whose start boundary is Start. A resolved range, a Type parameter or another PositionRange starts at a position.
-    private static bool StartsAtStorage(BoundType? key)
-        => key?.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange &&
-            key.Components[0].Symbol?.LibraryDeclaration == KimiDeclarationId.Start;
-
     // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
     // (Folded); the position evaluates nothing.
     private MirPlace ConstElement(IndexKoto index, bool input)
@@ -176,7 +170,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            based = StartsAtStorage(HirTables.TypeOf(index.Right));
+            based = MirTypes.StartsAtStorage(HirTables.TypeOf(index.Right)) == true; // Else displaced, an open key's too (PLAN G597).
             var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } key ? this.Resolve(key, index, sequence) : this.Place(index.Right), 16);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));

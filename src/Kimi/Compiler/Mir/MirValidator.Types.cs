@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, by MirTypes.Agrees: MirTypes.Agree, modulo Origins, or as the body's
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts; a comparison BinaryOp compares in the operator table's domain, OperandsCompare); every Semantics case view resolves each
+//   Adapts; a comparison BinaryOp compares in the operator table's domain, OperandsCompare; a keyed Storage's key is one whose start is
+//   open by the one rule of the start, MirTypes.StartsAtStorage: Keyed); every Semantics case view resolves each
 //   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose
 //   Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
@@ -186,6 +187,15 @@ internal sealed partial class MirValidator
                 operands[1] is { Kind: MirOperandKind.Const, Arg: var token } &&
                 ((uint)token >= (uint)body.Consts.Length || body.Consts[token].Kind == MirConstKind.TypeToken);
 
+        // SPEC 4.8.1, 8.15.3 (G597): a Storage has no operand, or a key selection's two: its start position, an isize, and the token of its
+        // key's Type, whose start is open in the body (MirTypes.StartsAtStorage: a key that decides it takes the unkeyed form, displaced
+        // by a proven Add at a position; one form for each answer). A constant out of range is the walk's finding.
+        private readonly bool Keyed(ReadOnlySpan<MirOperand> operands, BoundType? start)
+            => operands.Length == 0 || ((start is null || ReferenceEquals(start, BoundType.ISize)) &&
+                operands[1] is { Kind: MirOperandKind.Const, Arg: var token } &&
+                ((uint)token >= (uint)body.Consts.Length ||
+                (body.Consts[token] is { Kind: MirConstKind.TypeToken, Type: var key } && MirTypes.StartsAtStorage(key) is null)));
+
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
         // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator's operands agree (a
         // comparison's at their premised terminals, in the operator table's domain: OperandsCompare) but for a shift count, any integer, and a
@@ -213,7 +223,7 @@ internal sealed partial class MirValidator
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
                     (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
                     rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
-                    MirTypes.Agrees(body, element, place.Components[0]))),
+                    MirTypes.Agrees(body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||

@@ -84,11 +84,12 @@ internal sealed partial class MirValidator
             => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceEquals(type, BoundType.String);
 
-        // The operands an rvalue has: one or two, or an aggregate's by its shape (Shape); none for the other kinds.
+        // The operands an rvalue has: one or two, a keyed Storage's two, or an aggregate's by its shape (Shape); none for the other kinds.
         private static int Arity(in MirRvalue rvalue) => rvalue.Kind switch
         {
             MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
             MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
+            MirRvalueKind.Storage when rvalue.Count != 0 => 2, // A key selection's: the start and the key's Type token (G597).
             MirRvalueKind.Aggregate => Shape(rvalue).Count,
             _ => 0,
         };

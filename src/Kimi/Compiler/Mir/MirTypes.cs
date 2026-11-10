@@ -4,8 +4,8 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind,
-// pointer-cast and integer facts.
+// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement,
+// borrow-kind, pointer-cast and integer facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
@@ -19,7 +19,7 @@
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast, integer and agreement facts.
+// here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer and agreement facts.
 
 using Kimi.Compiler.Parsing;
 
@@ -91,6 +91,23 @@ internal static partial class MirTypes
     /// <param name="type">The receiver's Type.</param>
     /// <returns>Whether the selection reads the receiver's value.</returns>
     internal static bool SelectsByValue(BoundType? type) => type is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw };
+
+    /// <summary>Gets where a range key's view starts (SPEC 4.6.1-4.6.2, 8.15.3; DECISIONS R8-M13; G597), the one rule of the start, by
+    /// the Type that decides it, the start boundary's of the library's Range or ClosedRange, else the key's own: at its receiver's
+    /// storage where that boundary is Start, the static zero; open where the deciding Type stands for any Type of an instance (R, or
+    /// the S of Range&lt;S, End&gt;), which each instance decides; else at a position, which displaces (another boundary, a resolved
+    /// range, another PositionRange, a Type that did not bind). Neither the key's own IsAbstract nor "the key holds a parameter" is
+    /// the test: the first is false for Range&lt;S, End&gt;, whose start is open, and the second holds for Range&lt;i32, E&gt;, whose
+    /// start is decided, a position. The builder reads it at the key's Type in the body and in a default copy's instance, the
+    /// validator at a keyed Storage's token, and the instance step at the key's Type in the item's instance (LayoutNeeds).</summary>
+    /// <param name="key">The key's Type.</param>
+    /// <returns>True at the storage, false at a position, null where open.</returns>
+    internal static bool? StartsAtStorage(BoundType? key)
+    {
+        var range = key?.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange;
+        var decides = range ? key!.Components[0] : key;
+        return decides?.IsAbstract == true ? null : range && decides!.Symbol?.LibraryDeclaration == KimiDeclarationId.Start;
+    }
 
     /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.6, 5.4), the mode of every Ref: an address for a raw
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and
