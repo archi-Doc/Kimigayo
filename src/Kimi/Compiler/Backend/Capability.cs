@@ -12,9 +12,9 @@
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
 // between them and f32 or f64 (a direct literal conversion is a constant, Binding having fitted the literal, so it is no Cast).
-// Input: for an operation, its MIR rvalue, or its kind, operator and Cast target (an arithmetic shim's, BuiltinArithmetic), and its first
-// operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the collector's location rule gives (a declaration row's:
-// the declaration), once per subject.
+// Input: for an operation, its MIR rvalue, or its kind, operator and Cast target (an arithmetic shim's, MirTypes.ArithmeticOperation),
+// and its first operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the collector's location rule gives (a
+// declaration row's: the declaration), once per subject.
 // Must not: be restated in a Supports* gate or another table, or decide acceptance.
 
 using Kimi.Compiler.Mir;
@@ -74,7 +74,7 @@ internal static class Capability
     internal static CapabilityGap? Of(in MirRvalue rvalue, BoundType operand) => Of(rvalue.Kind, rvalue.Op, operand, rvalue.Type);
 
     /// <summary>Gets the row of an operation the backend does not generate (IMPL 21.3.3), or none, by its kind and operator: a statement's
-    /// or an arithmetic shim's (BuiltinArithmetic).</summary>
+    /// or an arithmetic shim's (MirTypes.ArithmeticOperation).</summary>
     /// <param name="kind">The operation's rvalue kind.</param>
     /// <param name="op">Its operator or cast kind.</param>
     /// <param name="operand">The closed Type of its first operand.</param>

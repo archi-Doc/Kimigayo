@@ -47,7 +47,7 @@ public sealed partial class Binding
     }
 
     // The callee's Type slots that are still unbound.
-    private static SlotSet UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments, ref SlotSet slots)
+    private static SlotSet UnboundTypeSlots(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ref SlotSet slots)
     {
         slots.Clear();
         for (var g = 0; g < CallOwnSlots(function).Count; g++)
@@ -71,7 +71,7 @@ public sealed partial class Binding
 
     // SPEC 10.8: the required structural slots that no evidence binds, other than an F that a waiting argument binds (SPEC 10.5).
     // An unresolved length remains pending; structural slots have no fixed-width limit.
-    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
+    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
     {
         unrepresentable = false;
         unsolved.Clear();
@@ -156,7 +156,7 @@ public sealed partial class Binding
     // derived. An anonymous argument whose fixed expected call signature has closed parameter Types is still checked with them, its result
     // inferred from its body, so that its independent problems stay visible; one with open parameter Types, and every other argument that
     // the open slot leaves without a Type, rests on the call.
-    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
         this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
@@ -289,7 +289,7 @@ public sealed partial class Binding
 
             // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
             // that holds a Closure or Function Item Type leaves none to write.
-            static bool NameableSlots(FunctionKoto function, BoundType?[] slots, SlotSet unsolved)
+            static bool NameableSlots(FunctionKoto function, ReadOnlySpan<BoundType?> slots, SlotSet unsolved)
             {
                 for (var g = 0; g < CallOwnSlots(function).Count; g++)
                 {

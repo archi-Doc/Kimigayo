@@ -345,6 +345,16 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(PropertyWitnessKind.StorageCopy, Assert.Single(path.PropertyWitnesses).Kind);
     }
 
+    // SPEC 8.5.1, 8.8.2 (PLAN G695): a Contract clause naming the Contract's Self is read with the path's Self normalized in its
+    // conformance scope, as the specification is, so under an identity condition `E is Option<Self>` agrees with
+    // `associate K.E is Option<Self>`; Option<i32> does not. `T is Copy` is the control.
+    [Theory]
+    [InlineData("T is Option<i32>", "Option<Self>", "clean")]
+    [InlineData("T is Copy", "Option<Self>", "clean")]
+    [InlineData("T is Option<i32>", "Option<i32>", "1*InvalidAssociatedType_Kd")]
+    public void AContractClauseNamingSelfIsReadUnderTheConditionsIdentity(string condition, string associated, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("contract K\n    associate E\n    E is Option<Self>\n    func get(self: ref/Self) -> i32\nstruct S<T>\n    Self is K when " + condition + "\n        associate K.E is " + associated + "\n    public func get(self: ref/Self) -> i32 => 1\n"));
+
     [Theory]
     [InlineData("C")]
     [InlineData("Copy")]

@@ -67,8 +67,7 @@ public sealed partial class Binding
         var failedCause = this.failedCause;
         var requirementContract = this.activeRequirementContract;
         var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
-        var scratch = this.typeScratch.Rent(Math.Max(1, shape.Generics));
-        var lengthArguments = this.lengthScratch.Rent(shape.Generics);
+        var frame = this.infer.Rent(Math.Max(1, shape.Generics));
         var mapping = this.indexScratch.Rent(1);
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         var origins = this.originScratch.Rent(shape.Origins);
@@ -83,8 +82,7 @@ public sealed partial class Binding
                 Call = call,
                 Callee = call.Method,
                 Scope = this.scopes[constructor],
-                Scratch = scratch,
-                LengthArguments = lengthArguments,
+                Frame = frame,
                 ExplicitLengths = [],
                 Mapping = mapping,
                 Used = used,
@@ -144,8 +142,7 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
-            this.lengthScratch.Return(lengthArguments, clearArray: true);
-            this.typeScratch.Return(scratch, clearArray: true);
+            this.infer.Return(frame);
         }
     }
 

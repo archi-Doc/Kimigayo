@@ -126,7 +126,7 @@ fn format @29
   bb15:
       StorageDead(_19) @218 s1
       StorageDead(_18) @50 s1
-      drop _17 -> bb16 @50 s1
+      drop _17 -> bb16 [keep] @50 s1
   bb16:
       StorageDead(_17) @50 s1
       StorageDead(_16) @218 s1
@@ -137,7 +137,7 @@ fn format @29
       StorageDead(_11) @41 s1
       StorageDead(_10) @41 s1
       StorageDead(_9) @46 s1
-      drop _8 -> bb17 @46 s1
+      drop _8 -> bb17 [keep] @46 s1
   bb17:
       StorageDead(_8) @46 s1
       StorageDead(_7) @218 s1
@@ -310,7 +310,7 @@ fn pick @88
       StorageDead(_4) @101 s1
       StorageDead(_3) @100 s1
       StorageDead(_2) @95 s1
-      drop _1 -> bb11 @89
+      drop _1 -> bb11 [keep] @89
   bb11:
       unreachable @94
 fn middle @108

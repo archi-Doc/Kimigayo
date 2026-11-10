@@ -39,7 +39,8 @@ internal sealed partial class MirValidator
 
             foreach (ref readonly var statement in body.Statements)
             {
-                if (statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Aggregate, Op: (byte)MirAggregateKind.Closure, Type: { Kind: BoundTypeKind.Closure } closure } } &&
+                if (statement.Kind == MirStatementKind.Assign &&
+                    statement.Rvalue is { Kind: MirRvalueKind.Aggregate, Op: (byte)MirAggregateKind.Closure, Type: { Kind: BoundTypeKind.Closure } closure } &&
                     program[new(closure.Symbol, MirBodyKind.Closure)] is null)
                 {
                     Missing(program, body, MirViolation.Callee, statement.Source);

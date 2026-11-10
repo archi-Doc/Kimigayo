@@ -376,6 +376,6 @@ fn pairs @56
   bb20:
       StorageDead(_18) @79 s1
       StorageDead(_2) @64 s1
-      drop _1 -> bb21 @57
+      drop _1 -> bb21 [keep] @57
   bb21:
       unreachable @63

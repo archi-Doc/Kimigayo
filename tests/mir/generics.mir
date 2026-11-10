@@ -142,10 +142,10 @@ fn largest @4
       drop _19 -> bb26 [elide] @37 s1
   bb26:
       StorageDead(_19) @37 s1
-      drop _3 -> bb27 @19 s1
+      drop _3 -> bb27 [keep] @19 s1
   bb27:
       StorageDead(_3) @19 s1
-      drop _2 -> bb28 @16
+      drop _2 -> bb28 [keep] @16
   bb28:
       unreachable @18
 fn use @38

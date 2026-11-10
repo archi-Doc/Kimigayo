@@ -1702,6 +1702,33 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
     }
 
+    // PLAN G641 kind 4 (R3-U2a, R3-U2b), SPEC 16.3.2, 8.15.3: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's
+    // order, the walk code generation writes it by, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an
+    // Open Field by its own rows (a Tuple's elements from the last), a Flag Field whole; a fixed array's elements from the last, each run
+    // without a row through the element's glue, an Open element by its rows; an Open base by its rows after the Fields; an enum's Case
+    // payload elements by their Case's rows (no Elide one: each is moved on one arm only). An Elide row (the part moved out on every path
+    // in partly, elements and based) destroys nothing and requests no glue; no whole glue is requested.
+    [Fact]
+    public void AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder()
+    {
+        var (program, set) = Collect("struct Pair\n    public var a: string\n    public var b: (string, Array<i32>)\n    public var n: i32\n" +
+            "    public init(a: string, b: (string, Array<i32>), n: i32)\n        self.a = a@move\n        self.b = b@move\n        self.n = n\n" +
+            "open struct Base\n    public var p: string\n    public var q: Array<i32>\n    protected init(p: string, q: Array<i32>)\n" +
+            "        self.p = p@move\n        self.q = q@move\nstruct Leaf : Base\n    public var x: string\n" +
+            "    public init(x: string, p: string, q: Array<i32>) : base(p@move, q@move)\n        self.x = x@move\n" +
+            "enum Two\n    A(string, Array<i32>)\n    B(string)\n" +
+            "func take(s: string) => ()\nfunc partly(c: bool, p: Pair)\n    if c => take(p.a@move)\n    take(p.b.0@move)\n" +
+            "func elements(a: [3 of (string, string)])\n    take(a[1].0@move)\nfunc based(l: Leaf)\n    take(l.p@move)\n" +
+            "func cases(t: Two)\n    match t@move\n        .A(let r, _) => take(r@move)\n        .B(let s) => take(s@move)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        string[] Glues(string label) => [.. Targets(program, set, label).Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal))];
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Glues("Fn partly"));
+        Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue (string, string)"], Glues("Fn elements"));
+        Assert.Equal(["DropGlue string", "DropGlue Array<i32>"], Glues("Fn based"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn cases"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue Pair" or "DropGlue [3 of (string, string)]" or "DropGlue Two");
+    }
+
     // K 4.5 "DropGlue", R4-M6b, SPEC 16.3.2: a struct that declares a drop is destroyed by its destructor alone, the Body of the struct's
     // instance (TyCtxt.Synthesized), which drops the struct's own Fields: one destructor item per instance of a generic struct, the root
     // for a closed one.
@@ -2084,12 +2111,12 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.7 instance stage, IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): an arithmetic shim's operation, its Contract's MIR operator
-    // (BuiltinArithmetic) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a division or
-    // remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an unused function
-    // reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an operator; a
-    // function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site in two
-    // instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an addition
-    // of i128 and a division of i64 have no record and their shim is admitted.
+    // (MirTypes.ArithmeticOperation) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a
+    // division or remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an
+    // unused function reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an
+    // operator; a function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site
+    // in two instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an
+    // addition of i128 and a division of i64 have no record and their shim is admitted.
     [Theory]
     [InlineData(ShimQuotient + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n", "left.divided(right)")]
     [InlineData(
@@ -2468,37 +2495,6 @@ public sealed partial class InstanceCollectorTest
             [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
-    }
-
-    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContracts.Operator,
-    // composed with the MIR builder's operator for that token, agree: each Contract with a built-in witness on i32 has the MIR operation the
-    // builder writes for its operator on i32 operands, one each; any other Contract, a comparison or a Left one, has none.
-    [Fact]
-    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
-    {
-        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
-        Assert.Equal(6, contracts.Length);
-        foreach (var contract in contracts)
-        {
-            var token = ArithmeticContracts.Operator(contract);
-            var spelling = token switch
-            {
-                KotoKind.Plus => "+",
-                KotoKind.Minus or KotoKind.PrefixMinus => "-",
-                KotoKind.Asterisk => "*",
-                KotoKind.Slash => "/",
-                KotoKind.Percent => "%",
-                _ => throw new InvalidOperationException($"{contract} has no operator."),
-            };
-            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
-            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
-            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
-            Assert.Equal((rvalue.Kind, rvalue.Op), BuiltinArithmetic.Operation(contract));
-        }
-
-        Assert.Equal(contracts.Length, contracts.Select(static x => BuiltinArithmetic.Operation(x)).Distinct().Count());
-        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
-        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => BuiltinArithmetic.Operation(x)));
     }
 
     // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are
