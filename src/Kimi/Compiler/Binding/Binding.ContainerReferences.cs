@@ -238,10 +238,10 @@ public sealed partial class Binding
             return null;
         }
 
-        ConsiderSet(this.originDeclarations.GetValueOrDefault(owner)?.Sets.GetValueOrDefault(name));
+        ConsiderSet(this.originDeclarations.GetValueOrDefault(owner)?.Set(name));
         for (var current = this.NameScope(annotation); current is not null; current = current.Parent)
         {
-            ConsiderSet(this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(name));
+            ConsiderSet(this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name));
             ConsiderSet(current.OriginSets?.GetValueOrDefault(name));
             if (current.Values.TryGetValue(name, out var value) && value.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
             {

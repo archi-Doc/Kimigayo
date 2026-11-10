@@ -30,7 +30,7 @@ internal sealed partial class InstanceCollector
         }
 
         var start = this.steps.Count;
-        DropGlue.Destroyed(this.types, drops.RowsOf(body.Ordinal), group, closed, this.parts, this.steps);
+        DropGlue.Destroyed(drops, body.Ordinal, group, closed, this.walk, this.steps);
         this.Destroys(program, item, subject, site, start);
     }
 
@@ -41,7 +41,7 @@ internal sealed partial class InstanceCollector
         var steps = this.steps;
         for (var i = start; i < steps.Count; i++)
         {
-            if (steps[i].Kind is DropStepKind.Whole or DropStepKind.Run && this.PartTarget(program, item, subject, steps[i].Part) is >= 0 and var target)
+            if (steps[i].Kind is MirDropStepKind.Whole or MirDropStepKind.Run && this.PartTarget(program, item, subject, steps[i].Part) is >= 0 and var target)
             {
                 this.Set.Target(item, new(target, site.At, site.Runtime));
             }
@@ -105,7 +105,7 @@ internal sealed partial class InstanceCollector
         return this.types.Instantiates(initializer.Key.Decl!) ? -1 : this.Admit(item, subject, initializer, null);
     }
 
-    // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its level's walk (DropGlue.Destroyed with no row; Destroys): its
+    // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its level (DropGlue.Level; Destroys): its
     // direct parts in destruction order, a destructor's Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed
     // payload's glue; a collection's, its one destruction body (Collection), whose body reaches the elements' glue by its own edges.
     private void DestructionTargets(MirProgram program, int item, SourceRef site, BoundType type)
@@ -117,7 +117,7 @@ internal sealed partial class InstanceCollector
         }
 
         var start = this.steps.Count;
-        DropGlue.Destroyed(this.types, default, -1, type, this.parts, this.steps);
+        DropGlue.Level(this.types, type, this.parts, this.walk, this.steps);
         this.Destroys(program, item, site, (default(MirLocation), true), start); // At the default site, run whenever the item is (Target).
     }
 

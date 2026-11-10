@@ -3,7 +3,6 @@
 using System.Runtime.CompilerServices;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Parsing;
 using Kimi.Lsp;
 using Xunit;
