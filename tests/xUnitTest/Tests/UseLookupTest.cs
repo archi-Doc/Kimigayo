@@ -133,6 +133,27 @@ public class UseLookupTest
 
     // A bound Contract qualifier (SPEC 8.6.1, 9.7.1): at each level its Symbols entry is the name's selection, the declaration, and its
     // Type is the bound reference its Type arguments form, which a reader takes the reference from (SpecifiesContract).
+    // PLAN G704 (SPEC 3.1.3, 22.1, 9.5, 18.2.1): `Never` is a Kimi declaration, so a Type position names it by ordinary lookup: a nearer
+    // declaration shadows it (dev: the intrinsic won), `Kimi.Never` (stage 4) and `::Kimi.Never` name the declaration (dev:
+    // UnresolvedBinding_Kd), `::Kimi` stays unshadowed where `Kimi` is, and an opening alias may open it. Invalid twins follow, each rejected by
+    // its own rule; 3.8's Never fitting is why only the struct-to-Never direction is one.
+    [Theory]
+    [InlineData("struct Never\n    public var v: i32\nfunc h(a: ref/Never) -> i32 => a.v", "clean")]
+    [InlineData("group G\n    struct Never\n        public var v: i32\n    func h(a: ref/Never) -> i32 => a.v", "clean")]
+    [InlineData("func h(a: ::Kimi.Never) -> () => ()\nfunc g() -> ::Kimi.Never => $abort(\"x\")", "clean")]
+    [InlineData("func h(a: Kimi.Never) -> () => ()", "clean")]
+    [InlineData("group G\n    struct Kimi\n        var v: i32\n    func h(a: ::Kimi.Never) -> () => ()", "clean")]
+    [InlineData("struct Never\n    public var v: i32\nfunc g() -> ::Kimi.Never => $abort(\"x\")\nfunc h(a: ref/Never) -> i32 => a.v", "clean")]
+    [InlineData("func g(a: Never) -> () => ()\nfunc h(a: ::Kimi.Never) -> () => g(a@move)", "clean")]
+    [InlineData("alias Kimi.Never\nfunc f() -> () => ()", "clean")]
+    [InlineData("struct Never\n    public var v: i32\nfunc g(a: ::Kimi.Never) -> () => ()\nfunc h(a: Never) -> () => g(a@move)", "1*NoApplicableOverload_Kd")]
+    [InlineData("group G\n    struct Kimi\n        var v: i32\n    func h(a: Kimi.Never) -> () => ()", "1*UnresolvedBinding_Kd")]
+    [InlineData("func h(a: ref/::Kimi.Never) -> i32 => a.v", "1*UnresolvedBinding_Kd")]
+    [InlineData("func use() -> ()\n    let a = Never()\n    ()", "1*UnresolvedBinding_Kd")]
+    [InlineData("func h(a: Never<i32>) -> () => ()", "1*InvalidTypeFormation_Kd")]
+    [InlineData("alias N => Kimi.Never\nfunc f() -> () => ()", "1*InvalidTypeFormation_Kd")]
+    public void NeverIsAKimiDeclarationFoundByOrdinaryLookup(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Fact]
     public void ABoundContractQualifiersReferenceIsItsType()
     {
