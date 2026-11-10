@@ -714,6 +714,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (token.Kind is TokenKind.Let or TokenKind.Var or TokenKind.Computed or TokenKind.Property)
         {
+            if (token.Kind == TokenKind.Property)
+            {
+                // A Property requirement takes no access word (SPEC F.6.2 PropertyRequirement), wherever it is written.
+                Parser.RejectAccessWord(ref reader);
+            }
+
             if (this is not ContractKoto)
             {
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property, reader.CurrentTokenRange);
@@ -727,11 +733,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 {
                     propertyKoto.Unexpected(SyntaxForm.PropertyDeclaration);
                     return true;
-                }
-
-                if (propertyKoto.IsContractRequirement && propertyKoto.Modifier.Judged() != ModifierKind.NoModifier)
-                {
-                    propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
 
                 foreach (var accessor in propertyKoto.Accessors)
@@ -751,8 +752,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (this is StructKoto && token.Kind == TokenKind.Drop)
         {
             // drop accepts a common Body, without modifiers or attributes (SPEC 16.3): the prefix's attributes are reported and attach
-            // to nothing.
+            // to nothing, and its access word is rejected.
             Parser.ReportPendingAttributes(ref reader);
+            Parser.RejectAccessWord(ref reader);
             var context = reader.TakeContext();
             reader.Advance();
             var destructor = new FunctionKoto(ref reader, context, token.Span, "drop", null, null, new TupleTypeKoto(ref reader, token.Span, []))
@@ -761,11 +763,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             };
             reader.Document(destructor, token.Span);
             reader.Hover(destructor, token.Span);
-            if (context.ModifierKind.Judged() != ModifierKind.NoModifier)
-            {
-                destructor.Unexpected(SyntaxForm.Decoration);
-            }
-
             destructor.Parse(ref reader);
             this.AddLast(destructor);
             return true;
@@ -774,6 +771,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (token.Kind != TokenKind.Func)
         {
             return false;
+        }
+
+        if (this is ContractKoto)
+        {
+            // A Contract's function item is a requirement, which takes no access word (SPEC F.6.2 FunctionRequirement).
+            Parser.RejectAccessWord(ref reader);
         }
 
         CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function, reader.CurrentTokenRange);
@@ -941,6 +944,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (Parser.IsEffectStart(ref reader, specification: true))
         {
             Parser.ReportPendingAttributes(ref reader);
+            Parser.RejectAccessWord(ref reader);
             this.AddLast(Parser.ParseEffectBound(ref reader));
             return;
         }
@@ -950,6 +954,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (Parser.IsOriginRelationStart(ref reader))
         {
             Parser.ReportPendingAttributes(ref reader);
+            Parser.RejectAccessWord(ref reader);
             var keyword = reader.CurrentTokenRange;
             var relation = Parser.ParseOriginRelation(ref reader);
             if (!acceptsTypeConstraints)
@@ -965,6 +970,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
         {
             Parser.ReportPendingAttributes(ref reader);
+            Parser.RejectAccessWord(ref reader);
 
             // The checks of the Constraint item are located at its subject, read before the Constraint is parsed.
             var subject = reader.CurrentTokenRange;

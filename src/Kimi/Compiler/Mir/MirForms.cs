@@ -95,6 +95,12 @@ internal readonly record struct MirRvalue(
     // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
 
+    // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
+    // each instance decides: from the first, the start position, an isize, and the token of the key's Type; the first element's address
+    // where the instance's key starts at the storage, else that address displaced by the start (the element's stride, LayoutNeeds).
+    internal static MirRvalue Storage(MirPlace place, BoundType type, int operands)
+        => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, operands, 2, Type: type);
+
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
 
     // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer

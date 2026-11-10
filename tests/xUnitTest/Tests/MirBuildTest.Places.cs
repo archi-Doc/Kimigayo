@@ -15,6 +15,25 @@ namespace XunitTest;
 /// compound updates and guard candidates.</summary>
 public sealed partial class MirBuildTest
 {
+    // SPEC 8.15.3 (PLAN G597; DECISIONS R8-M13): a key selection's view is built by where its key starts in the body
+    // (MirTypes.StartsAtStorage; MirBuilder.First): open (a key of Type R; a start boundary of Type K), the Storage keyed by the start and
+    // the key's Type, which each instance decides, and no Add; at a position, a concrete key's (an isize start, a resolved range) or a
+    // written start's, the Storage and the proven Add; at the storage, the Storage alone (fail-before: an open key built the displaced
+    // form, the stride of every instance).
+    [Theory]
+    [InlineData("<R>", "r: R", "    R is PositionRange\n", "r", "_ = storage((*_), copy _, const type R)")]
+    [InlineData("<K>", "r: Range<K, End>", "    K is Position\n", "r", "_ = storage((*_), copy _, const type Kimi.Range<K, Kimi.End>)")]
+    [InlineData("", "r: Range<isize, End>", "", "r", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    [InlineData("", "r: ResolvedRange", "", "r", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    [InlineData("", "r: Range<Start, End>", "", "r", "_ = storage((*_))")]
+    [InlineData("", "r: isize", "", "r..", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    public void AViewIsBuiltByWhereItsKeyStarts(string generics, string parameter, string constraint, string key, string expected)
+    {
+        var program = Compile($"func h{generics}(v: ref/Array<i32>, {parameter}) -> isize\n{constraint}    return v[{key}].length\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(expected, Views(program, "h"));
+    }
+
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
     // is located (SPEC 4.7.4: copied first where a boundary builds code); nothing backs a written Raw.slice, so its backing is Unit.

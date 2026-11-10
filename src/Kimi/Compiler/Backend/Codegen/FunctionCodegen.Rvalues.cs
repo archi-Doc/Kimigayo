@@ -63,14 +63,35 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Storage (SPEC 4.8.1; IMPL 21.1.3; O-92 (a)): a sequence Place's first element's address, which reads no layout of the element: a
-    // fixed array's own address, an Array's or Slice's buffer word (Buffer, which an Index's element address starts from too).
+    // fixed array's own address, an Array's or Slice's buffer word (Buffer, which an Index's element address starts from too). A keyed one
+    // (SPEC 8.15.3; PLAN G597) is that address displaced by its start times the element's stride where its key, in the item's instance,
+    // has the Element need (LayoutNeeds), the statement of displacement a raw p + n uses (Displace). A key without an instance Type, or
+    // whose start is still open there, is a broken contract: the collector made every Type of an admitted item and admits closed items only.
     private void Storage(in MirStatement statement)
     {
         var place = statement.Rvalue.Place;
         var type = this.InstanceType(place)!;
-        if (this.Sequence(place, type, out var record, out var address))
+        if (!this.Sequence(place, type, out var record, out var address))
         {
-            this.Store(statement, this.Buffer(type, record, address));
+            return; // A broken contract, recorded.
+        }
+
+        var operands = this.body.Operands.Slice(statement.Rvalue.Start, statement.Rvalue.Count);
+        var need = operands.Length == 0 ? LayoutNeed.None : this.InstanceType(operands[1]) is { } key ? LayoutNeeds.Of(key) : null;
+        if (need is null)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source);
+            return;
+        }
+
+        var buffer = this.Buffer(type, record, address);
+        if (need == LayoutNeed.None)
+        {
+            this.Store(statement, buffer);
+        }
+        else if (this.Compute(operands[0], out var start))
+        {
+            this.Displace(statement, buffer, start, 1);
         }
     }
 

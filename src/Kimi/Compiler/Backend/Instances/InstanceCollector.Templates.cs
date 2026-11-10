@@ -39,7 +39,8 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: a case adaptation, which carries its payload's
     // descriptor where its instance's case creates an object (DECISIONS R5-M111); an aggregate, a by-value use whose Closure environment
     // also carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
-    // capability table checks per instance; an operator with a layout need (LayoutNeeds; DECISIONS R5-M149).
+    // capability table checks per instance; an operator with a layout need (LayoutNeeds; DECISIONS R5-M149); a keyed Storage, whose
+    // need its key's Type in each instance decides (LayoutNeeds; PLAN G597), the unkeyed one none.
     private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
     {
@@ -48,6 +49,7 @@ internal sealed partial class InstanceCollector
         MirRvalueKind.Cast => IsOpen(body, rvalue),
         MirRvalueKind.BinaryOp => IsOpen(body, rvalue) ||
             LayoutNeeds.Of((MirBinaryOp)rvalue.Op, OperandType(body, body.Operands[rvalue.Start])) != LayoutNeed.None,
+        MirRvalueKind.Storage => rvalue.Count != 0,
         MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
         _ => false,
     };

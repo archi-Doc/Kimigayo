@@ -108,7 +108,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
         Assert.True(c.Prepare(WindowsProfile.Target));
         foreach (var path in new[] { "first.kimi", "second.kimi" })
         {
-            c.Kotonoha.AddSource(new SourceDocument(path, "let x = 1\npublic func f() => ()"));
+            c.Kotonoha.AddSource(new SourceDocument(path, "let x = 1\nfunc f() => ()"));
         }
 
         Assert.True(c.Bind().IsComplete);
