@@ -147,7 +147,7 @@ public sealed partial class Binding
             }
         }
 
-        if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type && this.impls.OfType(type) is { } conformances)
+        if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type && this.ConformancesOf(type) is { } conformances)
         {
             // Use the available bound conformance paths, including conditional and constructed references.
             for (var i = 0; i < conformances.Count; i++)

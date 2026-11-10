@@ -20,6 +20,7 @@ public sealed partial class Binding
         this.signatureWalks = 0;
         this.memberWalks = 0;
         this.baseSteps = 0;
+        this.inheritedSteps = 0;
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();

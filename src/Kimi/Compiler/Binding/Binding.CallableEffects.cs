@@ -136,7 +136,8 @@ public sealed partial class Binding
                 substituted = this.StoredConstraint(substituted, declaring);
             }
 
-            substituted = this.ContractConstraint(substituted, scope, null);
+            // SPEC 8.6.4: a selected requirement call's clause reads the Contract's parameters at its reference, as AvailableEffectBounds does.
+            substituted = this.ContractConstraint(substituted, scope, null, reference: call?.RequirementContract);
             var subject = substituted.Subject!;
             var receiver = substituted.Mask == SemanticsMask.Ref ? SemanticsKind.Ref : substituted.Mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
             var at = use;

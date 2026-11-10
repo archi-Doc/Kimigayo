@@ -9,8 +9,10 @@ namespace XunitTest;
 /// <summary>SPEC 8.7.3: ObjectPayload, the opt-out declaration and Object Target evidence.</summary>
 public class ObjectPayloadTest
 {
-    // SPEC 8.7.3 (R7-N2d): the opt-out passes through a projected base, a chain and a fragment; each was accepted before.
+    // SPEC 8.7.3 (R7-N2d): the opt-out passes through a projected base, a chain and a fragment; each was accepted before. PLAN G602: and
+    // through a conformance inherited across a projected base (two InvalidTypeFormation_Kd at the clause and struct before).
     [Theory]
+    [InlineData("contract HasBase\n    associate Parent\nopen struct Root\n    Self is not ObjectPayload\n    public init() => ()\nopen struct Middle\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init() => ()\nstruct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Source: S0.HasBase.Parent\n    public init(): base() => ()\nstruct D: Source.HasBase.Parent\n    public init(): base() => ()\nfunc f(a: obj/D) => ()")]
     [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nstruct D: Source.HasBase.Parent\n    public init(): base() => ()\nfunc f(a: obj/D) => ()")]
     [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nopen struct D: Source.HasBase.Parent\n    public init(): base() => ()\nstruct L: D\n    public init(): base() => ()\nfunc f(a: obj/L) => ()")]
     [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    Self is not ObjectPayload\n    public init() => ()\npublic struct D\n    public init(): base() => ()\npublic struct D: Source.HasBase.Parent\n    func g(self) -> i32 => 1\nfunc f(a: obj/D) => ()")]

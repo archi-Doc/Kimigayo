@@ -24,6 +24,12 @@ public class ContractBindingTest
         "    var large: i64 = 4\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n" +
         "    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref";
 
+    private const string PutOfT = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\n";
+    private const string PutAtI32 = PutOfT + "struct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: ";
+    private const string PutAtE = PutOfT + "struct Box<E>\n    Self is Put<E>\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
+    private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
+    private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
+
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -545,6 +551,27 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A: Copy\ncontract C\n    func f<T>(x: T)\n        T is A\nstruct S\n    Self is C\n    public func f<U>(x: U)\n        U is Copy\n        ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
+    }
+
+    // SPEC 8.6.3, 8.4.2: a requirement's own identity premise is a premise for compatibility, so the implementation's slots correspond
+    // to the requirement's before it normalizes either side; identification never reads it (PLAN G679).
+    [Theory]
+    [InlineData(PutAtI32 + "U) => ()", "")]
+    [InlineData(PutAtI32 + "U)\n        U is i32\n        return", "")]
+    [InlineData(PutAtI32 + "U)\n        U is bool\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData(PutAtI32 + "i32) => ()", "MissingContractImplementation_Kd")]
+    [InlineData(PutAtE + "E\n        return", "")]
+    [InlineData(PutAtE + "i32\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is i32\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is i32\n        return", "")]
+    [InlineData(PutUW + " => ()", "")]
+    [InlineData(PutUW + "\n        U is i32\n        return", "UnprovenConstraint_Kd")]
+    [InlineData(GetU + "i32 => 0", "")]
+    [InlineData(GetU + "bool => true", "IncompatibleContractImplementation_Kd")]
+    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.Equal(codes.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Distinct().Order()));
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
