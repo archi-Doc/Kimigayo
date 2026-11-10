@@ -552,7 +552,6 @@ public sealed partial class Binding
                             return this.InternConstraint(new(ConstraintKind.Error));
                         }
 
-                        node.BoundSymbol = target;
                         result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
                     }
                     else

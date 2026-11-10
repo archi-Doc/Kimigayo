@@ -32,12 +32,12 @@ public class ArchitectureRulesTest
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
     private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Constraints.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=18;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Constraints.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=18;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
-    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;Binding.Calls.cs=1;" +
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
@@ -211,8 +211,9 @@ public class ArchitectureRulesTest
     // R7-N1e2-1R (the owner's O-111 (a)): a written Type name is evaluated only by name resolution's own file (ResolvePath) and named
     // exceptions, each publishing nothing: BaseLayers' DirectBase read of a clause not yet bound and its second run's knownBases (R7-M9: a
     // read that saw a clause not ready stores nothing; both go at R7-D2 d3), BaseLayers' early-read check (it evaluates again by design),
-    // Qualification's repair probe of a Container's own name and Constraints' Container question (questions about another reading, not
-    // the use's lookup), and Types' semantics parameter name (a first lookup). A use is looked up only through NamePath, at the census's
+    // Qualification's repair probe of a Container's own name, Constraints' Container question and Calls' question whether a length
+    // argument's spelling also names a Type (questions about another reading, not the use's lookup), and Types' semantics parameter name
+    // (a first lookup). A use is looked up only through NamePath, at the census's
     // sites: its first call resolves and publishes the use, every later one reads it in the same row (HirTables.Lookups). A further site
     // fails here until its row is reviewed. Roslyn reads the invocations on any receiver, so comments and strings do not count.
     [Theory]

@@ -155,8 +155,7 @@ public sealed partial class Binding
 
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
         clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = application.BoundSymbol = associated;
-        member.Left.BoundSymbol = qualifier;
-        Complete(member.Left, BoundType.Unit);
+        CompleteQualifier(member.Left, selection, qualifier);
         Complete(member.Right, projection);
         Complete(member, projection);
         Complete(application, projection);

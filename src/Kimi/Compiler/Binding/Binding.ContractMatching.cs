@@ -289,7 +289,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {

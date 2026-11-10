@@ -49,7 +49,7 @@ public sealed partial class Binding
         use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
     }
 
-    private static Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
+    private Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
     {
         var clauses = scope.Owner is FunctionKoto function ? function.TypeConstraints : scope.Owner is DeclarationContainerKoto container ? container.ConstraintNodes : [];
         for (var i = 0; i < clauses.Count; i++)
@@ -65,8 +65,9 @@ public sealed partial class Binding
         static bool Contains(BoundConstraint? root, BoundConstraint fact)
             => ReferenceEquals(root, fact) || (root?.Kind == ConstraintKind.And && (Contains(root.Left, fact) || Contains(root.Right, fact)));
 
-        static Koto? ContractUse(Koto node, BindingSymbol? contract)
-            => ReferenceEquals(node.BoundSymbol, contract) ? node
+        // The requirement naming the premise's bound Contract reference (ContractReferenceOf: its Type, else its selection).
+        Koto? ContractUse(Koto node, BindingSymbol? contract)
+            => ReferenceEquals(this.ContractReferenceOf(node), contract) ? node
             : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
@@ -95,8 +96,8 @@ public sealed partial class Binding
                     if (oppositeFact.Kind == ConstraintKind.Contract && oppositeFact.Contract is { Type.Components: [var oppositeCounterpart] } opposite &&
                         ArithmeticContracts.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) && AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
                     {
-                        var here = ArithmeticFactUse(fact, scope);
-                        var there = ArithmeticFactUse(oppositeFact, current);
+                        var here = this.ArithmeticFactUse(fact, scope);
+                        var there = this.ArithmeticFactUse(oppositeFact, current);
                         this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
                         return false;
                     }

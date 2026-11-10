@@ -35,11 +35,11 @@ public sealed partial class Binding
 
     // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
     // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
-    private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    private bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
-        if (head is not MemberAccessKoto { Left.BoundSymbol: { } reference } || !IsBoundContractReference(reference))
+        if (head is not MemberAccessKoto member || this.ContractReferenceOf(member.Left) is not { } reference || !IsBoundContractReference(reference))
         {
             return true;
         }
@@ -204,8 +204,6 @@ public sealed partial class Binding
 
             qualifier = contract;
             receiver = baseSyntax!;
-            qualified.Right.BoundSymbol = contract;
-            Complete(qualified.Right, BoundType.Unit);
         }
 
         // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
@@ -333,7 +331,7 @@ public sealed partial class Binding
         var symbol = this.QualifierReference(referenceSyntax, selection, scope);
         if (symbol is not null)
         {
-            CompleteQualifier(syntax.Right, symbol);
+            CompleteQualifier(syntax.Right, selection, symbol);
         }
 
         return symbol;
@@ -365,8 +363,7 @@ public sealed partial class Binding
             }
 
             qualifier = bound;
-            member.Left.BoundSymbol = bound;
-            Complete(member.Left, BoundType.Unit);
+            CompleteQualifier(member.Left, selection, bound);
         }
 
         BindingSymbol? reference = null;
@@ -456,7 +453,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && SpecifiesContract(clause, path.RootContract))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.RootContract))
                 {
                     Collect(constraint, path);
                 }

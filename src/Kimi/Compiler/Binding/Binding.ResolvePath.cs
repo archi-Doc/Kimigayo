@@ -42,9 +42,9 @@ internal enum PathEnd : byte
     QualificationStop,
 }
 
-// A use's published lookup (HirTables.Lookups), written once: how it ended, the row it was looked up in and its selection (its own,
-// never the Symbols column a binder may write over).
-internal readonly record struct UseLookup(PathEnd End, LookupRole Role, BindingSymbol? Symbol);
+// A use's published lookup (HirTables.Lookups), written once: how it ended and the row it was looked up in. A Selected use's selection
+// is its Symbols entry, which is then written once too (HirTables.WriteSymbol).
+internal readonly record struct UseLookup(PathEnd End, LookupRole Role);
 
 public sealed partial class Binding
 {
@@ -129,25 +129,21 @@ public sealed partial class Binding
     }
 
     // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
-    // different end, row or selection is a broken contract. The selection is also written on the use for the binders that read it.
-    private static void PublishUse(Koto use, UseLookup lookup)
+    // different end or row is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol).
+    private static void PublishUse(Koto use, UseLookup lookup, BindingSymbol? symbol)
     {
         var published = HirTables.LookupOf(use);
-        if (published.End != PathEnd.None)
+        if (published.End != PathEnd.None && published != lookup)
         {
-            if (published != lookup)
-            {
-                throw new InvalidOperationException($"`{use}` was published as {published}, then as {lookup} (InternalInvariant; R7-N1e2-1R).");
-            }
+            throw new InvalidOperationException($"`{use}` was published as {published}, then as {lookup} (InternalInvariant; R7-N1e2-1R).");
+        }
 
-            return;
+        if (lookup.End == PathEnd.Selected)
+        {
+            use.BoundSymbol = symbol;
         }
 
         HirTables.Of(use).Lookups[use.SyntaxId] = lookup;
-        if (lookup.Symbol is not null)
-        {
-            use.BoundSymbol = lookup.Symbol;
-        }
     }
 
     // The node a use's lookup is published on: below the transparent wrappers and the parentheses that ResolvePath sees through.
@@ -181,7 +177,7 @@ public sealed partial class Binding
         if (HirTables.LookupOf(use) is { End: not PathEnd.None } published)
         {
             // One use, one row: a reader asking another row than the use's lookup is a broken contract (the census's rows agree).
-            return published.Role == role ? new(published.End, published.Symbol, use)
+            return published.Role == role ? new(published.End, published.End == PathEnd.Selected ? use.BoundSymbol : null, use)
                 : throw new InvalidOperationException($"`{use}` was looked up in {published.Role}, asked in {role} (InternalInvariant; R7-N1e2-1R).");
         }
 
@@ -194,7 +190,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.PublishPath(path, mark);
-        PublishUse(use, new(path.End, role, symbol));
+        PublishUse(use, new(path.End, role), symbol);
         return path with { Symbol = symbol };
     }
 
@@ -237,7 +233,7 @@ public sealed partial class Binding
                     this.AddImportCandidates(step.Use, step.Qualifier!, step.Symbol!);
                     break;
                 case NameStepKind.Qualifier:
-                    PublishUse(step.Use, new(step.End, LookupRole.Any, step.End == PathEnd.Selected ? step.Symbol : null)); // The state stays the binder's.
+                    PublishUse(step.Use, new(step.End, LookupRole.Any), step.Symbol); // The state stays the binder's.
                     break;
                 case NameStepKind.Member:
                     var member = (MemberAccessKoto)step.Use;

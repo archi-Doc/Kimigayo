@@ -75,8 +75,20 @@ internal struct HirTables
 
     internal static UseLookup LookupOf(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Lookups[node.SyntaxId] : default;
 
-    // The Symbols column's one writer (Koto.BoundSymbol's setter).
-    internal static void WriteSymbol(Koto node, BindingSymbol? symbol) => Of(node).Symbols[node.SyntaxId] = symbol;
+    // The Symbols column's one writer and its contract (R7-N1e2-1R): a use whose published lookup selected keeps its selection
+    // (Binding.NamePath), so a later write must be equal; and no node's entry is a bound Contract reference, which is a use's Type
+    // (Binding.CompleteQualifier, SPEC 8.6.1, 9.7.1). Another meaning is written where it belongs, never over a selection.
+    internal static void WriteSymbol(Koto node, BindingSymbol? symbol)
+    {
+        ref var hir = ref Of(node);
+        if ((hir.Lookups[node.SyntaxId].End == PathEnd.Selected && !ReferenceEquals(hir.Symbols[node.SyntaxId], symbol)) ||
+            (symbol is { Declaration: ContractKoto, Type: { } bound } && !ReferenceEquals(bound.Symbol, symbol)))
+        {
+            throw new InvalidOperationException($"`{node}` held {hir.Symbols[node.SyntaxId]}, then was written {symbol} (InternalInvariant; R7-N1e2-1R).");
+        }
+
+        hir.Symbols[node.SyntaxId] = symbol;
+    }
 
     internal static BoundType? ErasedType(Koto node) => node.SyntaxOwner is { } table ? table.Hir.ErasedTypes[node.SyntaxId] : null;
 
