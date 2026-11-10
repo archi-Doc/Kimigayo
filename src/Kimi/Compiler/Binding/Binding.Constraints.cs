@@ -380,7 +380,7 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Invalid = true;
+                environment.Invalidate();
                 changed = true;
                 continue;
             }
@@ -391,7 +391,7 @@ public sealed partial class Binding
                 {
                     var previous = scope.Owner.BindingState;
                     changed |= !environment.Invalid;
-                    environment.Invalid = true;
+                    environment.Invalidate();
                     // Other input facts can have independent contradictions. Record a
                     // sole missing-name cause only when this is the entire environment.
                     this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -591,28 +591,8 @@ public sealed partial class Binding
             return;
         }
 
-        if (source is null)
-        {
-            environment.DirectFacts.Add(fact);
-        }
-        else if (!environment.DerivedFacts.Contains((fact, source)))
-        {
-            environment.DerivedFacts.Add((fact, source));
-        }
-
-        var added = environment.Facts.Add(fact);
-        if (!added && fact.Kind != ConstraintKind.And)
-        {
-            return;
-        }
-
-        environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
-        environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
-        if (fact.Kind == ConstraintKind.Error)
-        {
-            environment.Invalid = true;
-        }
-        else if (fact.Kind == ConstraintKind.And)
+        environment.Add(fact, source);
+        if (fact.Kind == ConstraintKind.And)
         {
             this.AddConstraintFact(environment, fact.Left!, source);
             this.AddConstraintFact(environment, fact.Right!, source);
