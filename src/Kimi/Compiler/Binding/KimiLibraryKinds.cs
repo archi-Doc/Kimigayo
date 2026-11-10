@@ -61,22 +61,14 @@ public enum CompilerFunctionKind : byte
 {
     None,
     WriteLine,
+    ConsoleWriteStdout,
     Abort,
     MakeObj,
     MakeRc,
     MakeArc,
     Clone,
     TestTempDirectory,
-    TextFixed,
-    TextHeap,
     TextWriter,
-    TextUtf8,
-    TextValidateUtf8,
-    TextToString,
-    TextTryFormat,
-    TextRelease,
-    WriterWrite,
-    WriteLineUtf8,
     BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
@@ -170,9 +162,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or
-            CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
-            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.WriterWrite => default,
+        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -181,6 +171,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.Clone => Intrinsic(IntrinsicId.Clone),
         CompilerFunctionKind.TestTempDirectory => Intrinsic(IntrinsicId.TestTempDirectory),
         CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
+        CompilerFunctionKind.ConsoleWriteStdout => Intrinsic(IntrinsicId.WriteStdout),
         CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
         CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
@@ -200,14 +191,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. The formatting entries are
-    // unclassified: A4 composes their published rows (Formats) first.
+    // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
+    // built-in items (BuiltinFormat alone formats) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.TextValidateUtf8 =>
-            CompilerFunctionEffect.Inputs,
-        CompilerFunctionKind.TextRelease or
+        CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
             >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,

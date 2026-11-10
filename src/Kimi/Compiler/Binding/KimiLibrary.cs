@@ -42,11 +42,11 @@ public sealed partial class KimiLibrary
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
-        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
         {
             if (this.FormattingContainer(kind) is { } container)
             {
-                this.formattingScopes.Add(kind, new(container) { Parent = kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer ? this.TextScope : this.Scope });
+                this.formattingScopes.Add(kind, new(container) { Parent = this.TextScope });
             }
         }
 

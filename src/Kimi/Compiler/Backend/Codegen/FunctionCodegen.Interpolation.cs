@@ -16,7 +16,7 @@ namespace Kimi.Compiler.Backend;
 // - FormatSegment, one step per write position: __kimi_format_hint of the adapter and the hint its estimate of the later writes gives;
 //   then the position's literal text when not empty (a literal segment's; a value's write follows its step in MIR): deferred to the
 //   adapter's next reservation when a value follows, its Types token not empty (__kimi_format_literal: the size checked at once, the static
-//   bytes kept until then or flushed by the end), else written (WriterWrite's built-in routine), the string's kind given, and the adapter
+//   bytes kept until then or flushed by the end), else written (the built-in write, LegacyRuntimeHelpers.WriteBuiltin), the string's kind given, and the adapter
 //   checked (__kimi_format_check: KIMI_E_FORMAT at the interpolation). Its slots are the frame walk's (TextSlots). Whether to defer is
 //   fixed by the template; only the hint depends on the instance. Allocations and bytes are the old generator's (DECISIONS R5-M133).
 // - FormatFinish: __kimi_format_finish over the moved adapter and its buffer, the adapter's destination (Utf8Writer's Field 0), at the
@@ -62,8 +62,7 @@ internal sealed partial class FunctionCodegen
         this.module.Request(HelperNeeds.FormattingRuntime);
         if (call.Place is { Root: >= 0, Projection: 0 } && this.slots[call.Place.Root] is { Home: Home.Region, Bytes: var size })
         {
-            var region = LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextFixed)!.Abi;
-            _ = this.WriteCall(region, [buffer, new('r', call.Place.Root), new('\0', size)]);
+            _ = this.WriteCall(LegacyRuntimeHelpers.FormatFixed, [buffer, new('r', call.Place.Root), new('\0', size)]);
         }
         else if (this.Location(call.Source, out var site))
         {
@@ -122,7 +121,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var routine = this.Constant(call, 3).Type.Components.Count > 0 ? LegacyRuntimeHelpers.FormatLiteral
-            : LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi;
+            : LegacyRuntimeHelpers.WriteBuiltin;
         var kind = new Value('\0', LegacyRuntimeHelpers.FormatKind(BoundType.String));
         _ = this.WriteCall(routine, [new('s', this.CalleeCopy()), adapter, record, kind, site.Text, site.Length]);
         _ = this.WriteCall(LegacyRuntimeHelpers.FormatCheck, [adapter, site.Text, site.Length]);
