@@ -59,6 +59,13 @@ group DictionaryStorage
         let alignment = alignmentOf<V>()
         return (slot + (16 + Storage.stride<K>() + alignment - 1) / alignment * alignment)@raw/V
 
+    /// Returns the byte offset of the slot `link` names, a nonzero link of slot storage whose stride is `stride`. A
+    /// link is a slot index + 1 and names a slot below `used`, and the allocation holds `used * stride` bytes (the
+    /// slot invariant), so neither step overflows.
+    internal func slotOffset(link: isize, stride: isize) -> isize
+        let index = (link@Wrapping<isize> - 1@Wrapping<isize>)@isize
+        return (index@Wrapping<isize> * stride@Wrapping<isize>)@isize
+
     /// Reads a Dictionary's `capacity` (SPEC 4.9.5).
     internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize
         K is Equatable
@@ -79,7 +86,8 @@ group DictionaryStorage
             var slot = buffer
             var remaining = (*handle).used
             while remaining > 0
-                remaining -= 1
+                // The guard bounds the step.
+                remaining = (remaining@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 _ = (*(slot@raw/Links))@move
                 slot += stride
             clearLinks(handle)
@@ -92,7 +100,7 @@ group DictionaryStorage
         unsafe
             let handle = value@follow@raw@raw/Handle
             let stride = slotStride<K, V>()
-            let slot = (*handle).buffer + (link - 1) * stride
+            let slot = (*handle).buffer + slotOffset(link, stride)
             unlink(handle, stride, link)
             return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
@@ -103,7 +111,7 @@ group DictionaryStorage
     internal unsafe func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
         K is Equatable
         unsafe
-            let slot = (*(value@follow@raw@raw/Handle)).buffer + (link - 1) * slotStride<K, V>()
+            let slot = (*(value@follow@raw@raw/Handle)).buffer + slotOffset(link, slotStride<K, V>())
             let previous = (*valueAt<K, V>(slot))@move
             Raw.initialize(valueAt<K, V>(slot), replacement@move)
             return previous@move
@@ -125,9 +133,11 @@ group DictionaryStorage
                 Storage.argumentOutOfRange()
             let maximumSize: isize = 9223372036854775807
             let length = (*handle).length
-            if additional > maximumSize - length
+            // `0 <= length` bounds the difference, and the guard below the sum.
+            let room = (maximumSize@Wrapping<isize> - length@Wrapping<isize>)@isize
+            if additional > room
                 Storage.countOverflow()
-            let minimum = length + additional
+            let minimum = (length@Wrapping<isize> + additional@Wrapping<isize>)@isize
             grow(handle, stride, minimum)
             return minimum
 
@@ -144,7 +154,8 @@ group DictionaryStorage
             // Optional geometric rounding must never reject a representable minimum.
             var target = maximum
             if capacity <= maximum / 2
-                target = capacity * 2
+                // The guard bounds the product.
+                target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
             if target < 4
                 target = 4
             if target < minimum
@@ -152,11 +163,12 @@ group DictionaryStorage
             if target > maximum
                 target = maximum
             // The allocator aligns every block to 16 bytes (SPEC 21.4.3), which covers the entry layout.
-            let memory = Raw.allocate<u8>(target * stride)
+            // `target <= maximum` bounds the new size, and `used <= capacity < target` the bytes transferred.
+            let memory = Raw.allocate<u8>((target@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             let buffer = (*handle).buffer
             let used = (*handle).used
             if used != 0
-                Storage.transferBytes(memory, buffer, used * stride)
+                Storage.transferBytes(memory, buffer, (used@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             Raw.release(buffer)
             (*handle).buffer = memory
             (*handle).capacity = target
@@ -187,7 +199,7 @@ group DictionaryStorage
                 initialize(handle)
                 return
             // Existing capacity guarantees that length * stride is representable; failure keeps the storage.
-            let memory = Storage.tryAllocateBytes(length * stride)
+            let memory = Storage.tryAllocateBytes((length@Wrapping<isize> * stride@Wrapping<isize>)@isize)
             if memory == null
                 return
             let old = compact(handle, memory, stride)
@@ -201,18 +213,20 @@ group DictionaryStorage
             let length = (*handle).length
             var link = (*handle).head
             var position: isize = 0
+            // The chain from `head` has `length` links, so `position < length` where a pass starts: `memory` holds
+            // `length * stride` bytes, and no step of `position` overflows.
             while link != 0
-                let slot = buffer + (link - 1) * stride
+                let slot = buffer + slotOffset(link, stride)
                 let next = (*(slot@raw/Links)).next
-                let destination = memory + position * stride
+                let destination = memory + (position@Wrapping<isize> * stride@Wrapping<isize>)@isize
                 Storage.transferBytes(destination, slot, stride)
                 let links = destination@raw/Links
                 (*links).previous = position
-                position += 1
+                position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 if position == length
                     (*links).next = 0
                 else
-                    (*links).next = position + 1
+                    (*links).next = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 link = next
             (*handle).buffer = memory
             (*handle).used = length
@@ -236,16 +250,16 @@ group DictionaryStorage
         unsafe
             let buffer = (*handle).buffer
             let free = (*handle).free
-            var index: isize = 0
+            var link = free
             if free == 0
-                index = (*handle).used
-                (*handle).used = index + 1
+                // The caller secured capacity for this slot, so `used < capacity`.
+                let used = (*handle).used
+                link = (used@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                (*handle).used = link
             else
-                index = free - 1
-                let recycled = (buffer + index * stride)@raw/Links
+                let recycled = (buffer + slotOffset(free, stride))@raw/Links
                 (*handle).free = (*recycled).next
-            let link = index + 1
-            let slot = buffer + index * stride
+            let slot = buffer + slotOffset(link, stride)
             let links = slot@raw/Links
             let tail = (*handle).tail
             // A fresh slot holds no value, so its links are placed; a free slot's links from unlink are replaced.
@@ -257,7 +271,7 @@ group DictionaryStorage
             if tail == 0
                 (*handle).head = link
             else
-                let previous = (buffer + (tail - 1) * stride)@raw/Links
+                let previous = (buffer + slotOffset(tail, stride))@raw/Links
                 (*previous).next = link
             (*handle).tail = link
             (*handle).length = needed
@@ -280,19 +294,21 @@ group DictionaryStorage
     unsafe func unlink(handle: raw/Handle, stride: isize, link: isize)
         unsafe
             let buffer = (*handle).buffer
-            let slot = (buffer + (link - 1) * stride)@raw/Links
+            let slot = (buffer + slotOffset(link, stride))@raw/Links
             let previous = (*slot).previous
             let next = (*slot).next
             if previous == 0
                 (*handle).head = next
             else
-                let left = (buffer + (previous - 1) * stride)@raw/Links
+                let left = (buffer + slotOffset(previous, stride))@raw/Links
                 (*left).next = next
             if next == 0
                 (*handle).tail = previous
             else
-                let right = (buffer + (next - 1) * stride)@raw/Links
+                let right = (buffer + slotOffset(next, stride))@raw/Links
                 (*right).previous = previous
             (*slot).next = (*handle).free
             (*handle).free = link
-            (*handle).length = (*handle).length - 1
+            // `link` named a live entry, so `length >= 1`.
+            let length = (*handle).length
+            (*handle).length = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize

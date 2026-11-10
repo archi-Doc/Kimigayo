@@ -173,9 +173,10 @@ internal group Storage
         var link = tail
         var remaining = count
         while remaining > 0
-            remaining -= 1
+            // The guard bounds the step.
+            remaining = (remaining@Wrapping<isize> - 1@Wrapping<isize>)@isize
             unsafe
-                let slot = storage + (link - 1) * stride
+                let slot = storage + DictionaryStorage.slotOffset(link, stride)
                 link = (slot@raw/isize)[0]
                 _ = (*DictionaryStorage.valueAt<K, V>(slot))@move
                 _ = (*DictionaryStorage.keyAt<K, V>(slot))@move
@@ -211,9 +212,10 @@ internal group Storage
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
         require state.count > 0 else => return .None
-        state.count -= 1
+        // `count > 0` bounds the step.
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
+            let slot = state.storage + DictionaryStorage.slotOffset(state.link, DictionaryStorage.slotStride<K, V>())
             // Each slot starts with its previous and next links.
             state.link = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@ref))
@@ -221,18 +223,21 @@ internal group Storage
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
     internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
         require state.count > 0 else => return .None
-        state.count -= 1
+        // `count > 0` bounds the step.
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
+            let slot = state.storage + DictionaryStorage.slotOffset(state.link, DictionaryStorage.slotStride<K, V>())
             state.link = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
         require state.handle.length > 0 else => return .None
-        state.handle.length -= 1
+        // `length > 0` bounds the step.
+        state.handle.length = (state.handle.length@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.handle.buffer + (state.handle.head - 1) * DictionaryStorage.slotStride<K, V>()
+            let stride = DictionaryStorage.slotStride<K, V>()
+            let slot = state.handle.buffer + DictionaryStorage.slotOffset(state.handle.head, stride)
             state.handle.head = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@move, (*DictionaryStorage.valueAt<K, V>(slot))@move))
 
