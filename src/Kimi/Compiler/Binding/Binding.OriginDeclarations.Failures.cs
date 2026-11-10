@@ -34,9 +34,9 @@ public sealed partial class Binding
     // alias target or payload operand (path c). No State change: a later bind in State 1 keeps the same pending atom.
     private static void RestPendingOn(OriginDeclaration? declaration, Koto part)
     {
-        if (declaration is { State: 1 })
+        if (declaration is { Forming.State: 1 })
         {
-            declaration.PendingFailure ??= part;
+            declaration.Forming.PendingFailure ??= part;
         }
     }
 
@@ -44,13 +44,13 @@ public sealed partial class Binding
     // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
     private Koto UnboundCause(BoundOrigin atom)
         => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
-            declaration.PendingFailure is { } failure ? failure : atom.Binder!;
+            declaration.PendingCause is { } failure ? failure : atom.Binder!;
 
     // A clause with a guessed operator or an unavailable operand (`left`, `right`: its operands' Origins, null when unavailable) supplies
     // no equality, outlives edge or elision evidence; the Origins it does name are kept (FailedClauses).
     private void FailOriginClause(OriginDeclaration declaration, OriginRelationKoto clause, BoundOrigin? left, BoundOrigin? right)
     {
-        (declaration.FailedClauses ??= new(1)).Add((clause, left, right));
+        (declaration.Forming.FailedClauses ??= new(1)).Add((clause, left, right));
         if (IsRecovery(clause, out _))
         {
             this.Fail(clause, BindingFailure.InvalidOrigin);
@@ -66,7 +66,7 @@ public sealed partial class Binding
             this.AddPrerequisite(declaration.Owner, clause);
         }
 
-        declaration.Failure ??= clause;
+        declaration.Forming.Failure ??= clause;
     }
 
     // The failed clause an owner's InvalidOrigin failure rests on (FailOriginClause), or null: such an owner failed only by that clause. It
@@ -82,13 +82,7 @@ public sealed partial class Binding
     private bool FailOriginDeclaration(OriginDeclaration declaration, Koto failure)
     {
         RestPendingOn(declaration, failure);
-        var scoped = declaration.IsLocal;
-        foreach (var (_, left, right) in declaration.FailedClauses!)
-        {
-            scoped &= left is not null || right is not null;
-        }
-
-        if (scoped)
+        if (!declaration.Unavailable)
         {
             return false;
         }
@@ -96,11 +90,11 @@ public sealed partial class Binding
         // The contract is unavailable. In particular, its missing relations cannot justify defaulting a result to
         // static, or supply premises through the valid-looking subset of the same rejected declaration; only the
         // declaration judge reads that subset (RejectedRelations).
-        (declaration.RejectedRelations ??= new(declaration.Relations.Count)).AddRange(declaration.Relations);
-        declaration.Relations.Clear();
-        declaration.State = 3;
+        (declaration.Forming.RejectedRelations ??= new(declaration.Forming.Relations.Count)).AddRange(declaration.Forming.Relations);
+        declaration.Forming.Relations.Clear();
+        declaration.Forming.State = 3;
         this.originStateVersion++;
-        foreach (var pending in declaration.Pending)
+        foreach (var pending in declaration.Forming.Pending)
         {
             this.CompleteDependent(pending.Use, failure);
         }
@@ -112,7 +106,7 @@ public sealed partial class Binding
     // equalities. The atom then stays Unbound, resting on PendingFailure (path a).
     private bool RestsOnFailedClause(OriginDeclaration declaration, BoundOrigin atom)
     {
-        if (declaration.FailedClauses is { } failed)
+        if (declaration.Forming.FailedClauses is { } failed)
         {
             foreach (var (_, left, right) in failed)
             {

@@ -5935,6 +5935,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rejected.** One loop at each entry (four copies of one rule, C-172 N5); per-key selection with the call's Types (O-109 (b));
     entering a specialization at no substitution (design revision 0: every Container case, review 1 F1).
 
+  - Its Open sentence (a requirement call on a closed Self records no own Type arguments) is closed by R4-M197.
 - **R4-M190 A5's must-facts: a body's direct store of an input's own part where its contract refuses it (PLAN G581-1)** (2026-11-09;
   Middle; Major, an acceptance mover; design review 2 ACCEPT, implementation review ACCEPT after REVISE; the owner's O-110 (a), verbatim
   「O-110 (a)」, approving the vocabulary, and O-103 (a), verbatim 「どちらもaでお願いします」; O-72 (a), O-58 (a), O-62 (a), O-56 (a); commits 45e713ed3
@@ -6001,6 +6002,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
     second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
     the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
+  - Amended by R4-M196: `Width` left `ScalarTypes` too; an integer Type's width is `BoundType.Width`, decided with the category by
+    one table. `ScalarTypes` keeps the Scalar predicate, `SizeWidth`, `Normalize` and the literal predicates.
 - **R4-M193 G673: the own-step Warning carries no Loan fact** (2026-11-09; Middle, record content under Q13; implementation review
   ACCEPT, N3 and N4 applied; supersedes in part R4-M116 OQ-2's fact list and R4-M124's Record facts; the owner's OQ-2 (a), the code
   and requirement, stands) SPEC 5.2.1 condition 3, 5.4, 5.7.
@@ -6061,6 +6064,58 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G583 deletes); a walk of the Type's syntax; LayerMembers over the whole written Type (it conflates unstated layers); a per-layer
     covering that ignores an unstated element ("a null writes nothing" at an unstated store: G598-2b, after G339).
   - Open (N8'): G599's `WritesScalar` reads `TyCtxt.OwnLayers` when it lands (O-105), not a walk of its own.
+- **R4-M196 One table of an integer Core's row: its category and width are the Type's own** (2026-11-10; PLAN G625, G678; plan
+  R7-T2, `ScalarTypes`' width part; under R5-M148; amends R4-M192, BU-130 and R7-M14; design review 1 REVISE, repeated review
+  ACCEPT; the Front's C-214 and the Back's C-215; commit 64c510256 on `claude/m-g678`) SPEC 3.1 gives an integer Core one row, its
+  signedness and its storage size, the N of every range rule; `Wrapping<T>` has T's (SPEC 3.1.1), and validity reads `isize` and
+  `usize` at the profile's width on every target (SPEC 22). `BoundType.Row` is the one table of a numeric Core's category and an
+  integer Core's width, read once at construction (a wrapping integer Type copies its argument's) and published as `IsSigned`
+  (R4-M192) and `Width`, 0 for every other Type, among them one whose instance decides its width (SPEC 8.7.4). `ScalarTypes.Width`,
+  a second table over the same names re-derived from `Underlying.Name` at each call, is deleted, and every reader in Binding, the
+  MIR builder, `MirValidator`, the Backend and the root Type predicates reads `Width`. No reader pairs the profile's constant with
+  `isize`: `Binding.Lengths.TryLengthArithmetic` takes the Type alone (G625), and a position's bound (`MirBuilder.Selections`) and a
+  literal position's limit (`Binding.PositionWarnings`) read `BoundType.ISize.Width`. `BitWidth` (SPEC 13.5.4) excludes `isize` and
+  `usize` by identity, so no reader of the row names a Core by string outside `Row`. The split's reason ended with BU-130: `Width`
+  took the Compilation's `pointerWidth`, which an interned Type could not hold. Behavior-preserving: the 12 integer rows are
+  `Categorize`'s and `Width`'s arms joined by name.
+  - With the row in one table an integer Type's width is never 0, so the conditions that asked it are deleted
+    (`Binding.Conversions`' truncated-literal and integer-and-floating-point tests, `Binding.PositionWarnings.TryLiteralBits`), and
+    `ComparisonTypes.OperatorTableRuns` asks `HasIntegerArithmetic`, the same predicate under its own name.
+  - What remains of `ScalarTypes` for R7-T2: `SizeWidth` (the profile's constant from `IrTarget`'s row; its one reader is `Row`),
+    `Supports` (SPEC 3.1's Scalar predicate, which reads `IsNumeric`; PLAN G289 (1)'s rename), `Normalize`, `TryLiteral` and
+    `TryFloatLiteral`. R5-M148's rejected (b) stands until T2 moves the predicate.
+  - `BoundType` does not grow: `width` is a byte beside `numeric`, 96 data bytes and 112-byte objects before and after (measured by
+    the design reviewer). It takes the last padding byte: a later one-byte field costs 8 bytes per instance and should pack the row
+    then.
+  - Other contracts keep their tables: `Layout.Rows` is IMPL 21.1.3's storage of the executable profile (size, alignment, stride and
+    LLVM types of every Scalar), tied to `Width` by a test (`Width` is eight times the row's size); `Binding.Attributes.ScalarCode`
+    is SPEC 22.6's whitelist of C-exchangeable scalars and its codes; `BitWidth` is SPEC 13.5.4's 32- or 64-bit rule over `Width`.
+  - Rejected: closing the row as two facts (after BU-130 only the two switches differ, and `Wrapping<T>` was answered two ways);
+    `ScalarTypes.Width` kept as a forwarder; the width switch beside `Categorize`; rows that also create the primitives (the
+    dictionary's order is observable); the width or category from the name's text (G659); one byte encoding both the category and
+    the width (each of six category readers would decode it, and the padding absorbs the byte); Layout's integer rows or
+    `ScalarCode` derived from `Width`.
+- **R4-M197 A4: a requirement call on a closed Self enters its witness at the call's own Types and lengths (PLAN G663)**
+  (2026-11-10; Middle; Major, records only; design review ACCEPT, implementation reviews ACCEPT; the Front's C-213, the Back's
+  C-216) SPEC 7.2.3, 8.6.3, 15.6.4. A4's Requires item keeps the call's substitution (`MirEffects.Atom.Call`, replacing
+  `Atom.Reference`): its Contract reference, read in the selected view, and the requirement's own Types and lengths.
+  `TyCtxt.Witnesses` (`Binding.Witnesses`) takes the call's substitution (A4 passes it in the view, `TyCtxt.InView`, built in
+  `MirEffects.Terminator`; a requirement no call names passes `Synthesized(requirement, self, reference)`); a Conformance target's
+  instance is the witness under its declaring instance at them, as `TyCtxt.Witness`'s `Conformance` binds them; a built-in target, a
+  library witness, an accessor and a comparison leaf bind no own slot of the requirement and are unchanged. `TyCtxt.Synthesized`'s
+  span form takes the lengths as a required parameter (the Front's C-213; one form with R8-W2 a2's). A summary's atom and a
+  published row's item keep no call: their requirement has no own slot (no library Contract declares a generic requirement); one
+  that had would end in the Limit, never an empty effect.
+  - **Reason.** The witness's parameter-dependent atoms over its own slots composed to null at an instance that bound none: a Limit
+    (`Unsupported_Kd` at the conformance) on valid programs and instead of the conflict on invalid ones.
+  - **Two producers.** The Conformance row builds what `TyCtxt.Witness`'s `Conformance` builds, without Origins (the analyses relate
+    them); `TyCtxtTest.AConformanceWitnessIsGivenItsCallsOwnTypesAndLengths` holds the two equal but for Origins, and A-12 (PLAN
+    G186), which reads `TyCtxt.Witness` with the item's substitution, removes the row with its reader.
+  - **Rejected.** A4 reading `TyCtxt.Witness` now (A-12's unit, not before H11; this entry's item is its input); A4 building the
+    instance from the call's Types itself (Binding's 8.6.3 correspondence decided in a consumer); the MIR builder resolving the
+    witness in the copy (a responsibility moved between phases for one consumer).
+  - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
+    parameter-dependent atom ...").
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10055,6 +10110,8 @@ resumed by R4-M86 (2026-10-20).
 
   - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
     superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`).
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
   third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
@@ -10648,6 +10705,10 @@ resumed by R4-M86 (2026-10-20).
     proof (`:246`: `isize << 40` becomes proven) move too. Evidence: the Front's `F\Lit\mir-dumps\` and the Middle's C-142 R11-R14.
   - Amends R5-M174: "what the phases share is `PointerWidth`" now means `ScalarTypes.SizeWidth`. `IrTarget` keeps the target's width
     for the Condition, and its 0 for no IR target.
+  - Amended by R4-M196: `SizeWidth` stays the profile's one constant, but its only reader is `BoundType.Row`'s rows of `isize` and
+    `usize`; Binding and the MIR builder read the width of either Core, like any integer Type's, as `BoundType.Width`.
+    `ScalarTypes.Width` is deleted; `TryLiteral` stays the one literal-fit predicate. R5-M174's "what the phases share" is now the
+    Type's `Width`.
 - **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
   review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
   - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
@@ -10670,6 +10731,8 @@ resumed by R4-M86 (2026-10-20).
     publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
   - Amended by BU-144: `LookupRole` and `PathEnd` are file-level types of ResolvePath.cs (`PathEnd.None`: not looked up); the Value
     row is untouched.
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`).
 - **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
   compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
   BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
@@ -10967,6 +11030,9 @@ resumed by R4-M86 (2026-10-20).
     (N1e2-2 replaces `UseRow`'s rows by SPEC 9.2's roles).
   - Not verified: review 4's R4-N5. (R4-N1 is verified by the implementation review: a Type slot whose Type reading needs a
     qualifier gives the same record on all six builds.)
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`). Its whitelist's exception "Constraints' Container question" is gone: f1 removed the only evaluation there
+    (implementation review 2).
 - **BU-145 The pun rule's Type facts are Binding's published readers (PLAN G667, C-189)** (2026-11-10; Major; the Front's design,
   the Middle's implementation under Q18; design reviews 1-3 and the re-check under the owner's O-126 (a); the Front's implementation review ACCEPT; the Middle's consent on
   C-189) SPEC 3.8, 5.2, 5.6, 5.7, 15.6.1, 22.1.
@@ -11091,6 +11157,101 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
     check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
     restore changed; recorded under G525).
+- **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
+  design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
+  owner's O-101 (1)(a), O-122 (a), O-128 (a).
+  - Rule: `LookupRole` is SPEC 9.2's roles: `Qualifier` (every Type-namespace declaration but a pair binder; the only row reaching
+    stage 4), `Core`, `ObjectViewTarget`, `TypeSemantics`, `Requirement` (every declaration but a group: 8.2.1), `ContractReference`
+    (Contracts) and `Value`. `HasLookupRole` alone decides eligibility. `UseRow(use)` maps a use's position to its row: a Contract
+    parent, a `(C)` selector or `.(C).` suffix, a parenthesized left of a Type path and a conditional conformance's Contract are
+    Contract Reference; any other member-access position, `effect A.r`'s and `associate C.E`'s path selector and an alias target are
+    Qualifier (9.6); an object form's target is Object View Target; a subject or requirement is Requirement; a bare adaptation
+    target is Core compared with Type Semantics; every other Type position is Core. `NamePath` and `TypeName` take no row; the
+    walk's left and `ResolveRootPath`'s left ask `UseRow`; a new form adds a `UseRow` row.
+  - Object View Target (O-128 (a), review 2's R1): the row is 9.2's "Cores and Contracts (§8.12)" (D-259, fadfe771f): every Contract
+    is eligible; ObjectViewCompatible checks after selection and never resumes lookup. So n06 (a nearer Contract before a Core at
+    `obj/X`) stays InvalidTypeFormation_Kd. Every row has 9.2's eligible set.
+  - Alias targets (N6): an alias target resolves from the Compilation root without source or default aliases, and there are no alias
+    chains (18.2.1), so no named alias is a candidate there and Qualifier's set equals Declaration Container's set at every
+    alias-target lookup; 2a adds no Declaration Container row.
+  - The column: no reader of the published row is left (no caller passes a row, so a published use's row is `UseRow`'s by
+    construction), so `UseLookup` and its `Role` are removed and `HirTables.Lookups` is `PathEnd[]`, 1 byte a node (was 2). A
+    publication is still written once: a different end, or another selection over a Selected use, is InternalInvariant.
+    `EarlyRead.Role` stays: the early-read check's `ProbePath` reads it.
+  - Moves, valid newly accepted: G575 (q1 and its siblings: p03, p04, p05, w05, n12, n13, r08, r09; e02, e04; p11), G576 (stage 4 at
+    a parent or projection Contract: n10, n11), the Contract Reference positions past a nearer group, struct or Type Parameter (p19,
+    p21, p23, p27, n02c, n04, n04s, a11, a12), n01 (a pair binder is no Qualifier), b02 (Core past a pair binder), g05. G575 holds
+    at every Core position, not only the listed ones: a runtime `is` target (x04), a Type argument inside a requirement (x07) and a
+    parent's Type argument (x08) pass a nearer Contract too (implementation review 1, N3).
+  - Calls' length-or-Type question (BU-144's U6) asks Core (`UseRow(argumentName)`) instead of NoContainer, so a Contract no longer
+    gives the spelling a Type reading: x03 (two opened `f<T>` and `f<length N>`, a `contract Size` and a `let Size`; valid) moves
+    Unsupported_Kd -> accepted, and x02 (the same at `func f<T>` alone; invalid) records NoApplicableOverload_Kd at the call instead
+    of InvalidTypeFormation_Kd at `Size` (Q13: a record at another node, no Type reading of `Size` exists by 9.2; review 1, N2).
+  - Provisional mode (R7-N1e2-2a-f1, implementation review 1's B1; ruling 2): a role filters candidates by kind and lookup stops
+    only at a stage with an eligible declaration (9.2, 9.5), so a declaration of the name that the role excludes, of any kind,
+    decides nothing: the name is missing, pending in Provisional mode and rejected at the final pass with a missing name's records.
+    The constraint visitor's Container question (`ProbePath(node, Scope, Qualifier, 0)?.Kind == Container`, dev's NoContainer
+    exclusion: a second lookup without the use's role, "an available group is a definite non-Type") is removed, with the visitor's
+    scope (NameEvaluationSites loses `Binding.Constraints.cs=1`). Provisional verdicts that move, final records unchanged: a parent
+    named by a struct (`Target`, a supplied `struct Future`; c0d3ea7f3) or by a group (`Api`), and a group at a subject or a
+    requirement (`i32 is Future`, `Invalid is Copy`, `T is Future or Invalid` with `group Future`/`group Invalid`): Invalid ->
+    pending. A parent past a nearer group whose Contract a later source supplies (v07) is no longer Invalid before the append; a
+    Contract at a Core position inside a requirement (v11, `T is Box<C>`) is pending where dev was Invalid. Rows:
+    `UnresolvedRefinementBindingTest.ADeclarationTheRoleExcludesLeavesTheNameMissing`,
+    `UnresolvedConstraintBindingTest.FinalBindingRejectsNamesThatRemainMissing`. The Unit's class selection gains the twelve classes
+    that bind in Provisional mode (`e2-2a\classes.txt`, 240).
+  - Moves, invalid newly rejected: h01, h02 (`(P).(C).Item` with a struct `P`: accepted on dev by G496's D1, now
+    UnresolvedBinding_Kd; guard rows in `UseLookupTest.ARoleFollowsItsPosition` with h03).
+  - Records by code (Q13): a Contract or a pair binder alone at a Core position is UnresolvedBinding_Kd at the name instead of
+    InvalidTypeFormation_Kd (9.2: no eligible Core; p06, b03, e03, d02 and 16 test rows: ErasureOwnedDiagnosticTest 12,
+    TypeArityBindingTest 1, GenericTypeArgumentBindingTest 3); n02bx (4 records for 2). g02 (valid; a nearer struct before a
+    library Contract in `[4 of u8].(Indexable<isize>).Element`) now passes the struct and shows g01's two records
+    (UnprovenConstraint_Kd, TypeMismatch_Kd): g01, SPEC F.5's own example, is rejected on dev (pre-existing; PLAN G715).
+  - Keeps (O-122 (a)): `ProjectionQualifier` reads `T.C.X` as `T.(C).X` (its `C` in the Qualifier row); 8.5.2 makes it an ordinary
+    path; R7-N1e2-2b removes the reading. No test became invalid: the refinement and constraint rows above changed a Provisional
+    expectation, not a program's validity.
+  - Removes `Any`, `NoContainer`, `Type`, `Semantics`; the row argument at every `NamePath`/`TypeName` call and
+    `LookupAdaptationTarget`; `ResolveAdaptationTarget`'s fallback lookup (NameEvaluationSites ResolvePath.cs 18 -> 17);
+    `UseLookup`.
+  - Supersedes BU-122's "They are today's filters, not SPEC 9.2's roles, and `Any` alone reaches stage 4" and its rejected "SPEC's
+    names on the rows (they are not its contracts)" (no longer holds: each row has 9.2's eligible set, Object View Target by the
+    reading above); BU-131's "the Type rows stay today's filters"; BU-144's "`BindNamedType` asks its position's row, `UseRow`: ...
+    a Contract parent Any, every other Type position NoContainer" (now SPEC's roles and the only source of rows), its "A read in
+    another row than the published one is InternalInvariant" (no longer holds: no caller passes a row, so the row is `UseRow`'s by
+    construction) and its `UseLookup(End, Role)` (the column is the end alone).
+  - Rejected: callers keeping explicit rows (two sources); keeping `Role` in the column (no reader); a `Subject` row (8.2.1);
+    Qualifier with pair binders (9.2); keeping the adaptation fallback (try-then-fallback); a temporary `UseRow` arm for `T.C.X`
+    (the position's role is Qualifier either way).
+  - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
+    published reads skip it. RP8 owed (with BU-144's).
+- **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
+  `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
+  15.3.1-15.3.6, 23.1.2.
+  - **Rule.** `OriginDeclaration` (`Binding.Origins.Model.cs`) keeps its state private. Another component reads a declaration only
+    through its read members: `Resolves`, `Substitution`, `Substitutions`, `SubstitutionPairs`; `Completed`, `Relations`, `Body`;
+    `Failure`, `Unavailable`, `PendingCause`, `RejectedRelations`, `FailedClauses`; `Set`; `InferredVariance`; `Owner`, `IsLocal`.
+    They hand out values and spans, never a collection. The formation writes through the `Forming` view, in four files only:
+    `Binding.OriginDeclarations.cs`, `Binding.OriginDeclarations.Failures.cs`, `Binding.LocalOrigins.cs`,
+    `Binding.OriginInheritance.cs`. A `Forming` occurrence forms the declaration it names: it reads no other declaration and answers
+    no other component.
+  - **What it guards.** The members BU-62 and BU-69 gave a meaning: `PendingFailure` (BU-62; read as `PendingCause` by
+    `UnboundCause`), `RejectedRelations` and `FailedClauses` (BU-62, BU-69; read by `ReadFailedContract`), and the question "is the
+    contract unavailable" (`Unavailable`, the rule `FailOriginDeclaration` applies; its four readers were `Failure is not null`
+    tests on non-local owners, where the answers are equal). The type's contract states what a failed declaration answers today;
+    this entry changes none of it.
+  - **Enforcement.** The compiler (a state member is private) and `ArchitectureRulesTest.SourcePatternStaysAtItsSites`, row
+    "Formation of an Origin declaration" (`\bForming\b` per file). A new reader is a new caller of a read member; a new formation
+    site moves a count and is reviewed.
+  - **Reason.** The state had 14 internal members read and written at 153 sites in 18 files, with no reader's contract, so a census
+    of the readers of a failed contract chose member names by hand; three design rounds of H11b-0 missed readers (review 4: the
+    substitutions). The readers are now the read members' callers, which the compiler lists.
+  - **Rejected:** a text census by member name (the cause); a ratchet without private state (a new member escapes it); moving the
+    formation into the type (it needs `Binding`'s `Meet`, `BindOrigin` and `Fail`); a second "unavailable" rule beside
+    `FailOriginDeclaration`'s (it reads `Unavailable` instead); naming `State`'s four values (only `Resolves` and `Completed` leave
+    the type).
+  - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
+    inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
+    inference (`InferLocalOrigins`), stated from the code and not probed.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -15423,6 +15584,7 @@ structure is recorded here by the unit that first implements it.
     publication and profile files until R9 moves the toolchain out of the compiler.
   - Amended by R5-M174 (the owner's 「(b) 分割を認める」): the profile file's target half left `C/Emission` for `Core/WindowsProfile.cs`;
     `C/Emission` keeps the toolchain identity (`ToolchainIdentity.cs`) with the toolchain and publication files until R9.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, plan §4.9 row G9, R5-M18's G9a/G9b split; design
   `draft/Sketches/R6-gen/G9-design.md` with rulings Q1-Q10; under R5-M162; G:R6-gen-del)
   - Rule: a member goes with its last reader (S7). Deleted, each without a reader in `src`, `tests` or `src/Benchmark` since G7:
@@ -15555,6 +15717,7 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M174 (row 15; the owner's 「(b) 分割を認める」, 2026-11-01): the profile file's target half moved to Core
     (`Core/WindowsProfile.cs`), since P2-P12 read it and R9's move cannot take it; the toolchain identity (`Emission/ToolchainIdentity.cs`)
     stays with the toolchain and publication files until R9.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, PLAN G337; the owner's G337 acceptance 「(a) 受け入れる」;
   under R4-M1, R4-M2a and R5-M156)
   - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's; A3 and
@@ -15841,6 +16004,7 @@ structure is recorded here by the unit that first implements it.
     `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
   - Amended by BU-130: what the phases share is `ScalarTypes.SizeWidth`, the profile's width of `isize` and `usize`; `IrTarget` keeps the target's width for the `pointerWidth` Condition and its 0 for no IR target.
+  - Amended by R9-M6: the toolchain and publication files are `src/Kimi/Build`'s (namespace `Kimi.Build`).
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
@@ -16747,6 +16911,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - G658 kept the row: a folded wrap to a Type whose instance decides its width is a Wrap Cast of its i128 payload (`MirBuilder.Convert`),
     so the generic row stays 0..127. No open limit remains (N5, N6/F4 and the family's second copy closed by G643-G645; the generic row's
     question by G658).
+  - Amended by R4-M196: rule 1's width is `BoundType.Width` (`constant.Type.Width != 0`); the rule is unchanged.
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
@@ -16872,6 +17037,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     bound stated in a comment; an operation with no such bound stays checked and keeps its Abort (SPEC 22.5.1). A caller's input is
     not special: under a dominating guard it wraps. Every guard and every Abort stays where it is. `Formatting.kimi` follows it; the
     remaining sites are PLAN G693.
+  - **Scope (PLAN G693, 2026-11-10; the Back; Q-270):** R8-M2's rule, as R8-M18 amended it, now governs every library body over a
+    runtime representation: the Storage remainders and splits with `Slice.kimi`, the Dictionary slots and growth, `Array.kimi` and
+    `Core.kimi`'s `StringBytes.equal` and `order` write bounded steps in `Wrapping<isize>` with the bound stated (the remainder
+    invariant `position + count`, the slot invariant of `DictionaryStorage`, a closed `Position`/`PositionRange` resolution, `0 <=
+    length <= capacity`, or a dominating guard), in `Formatting.kimi`'s form; a step no invariant or guard bounds keeps its Abort
+    with its reason (the slot stride from the Types' strides). `DictionaryStorage.slotOffset(link, stride)` is the slot rule's one
+    statement beside `slotStride`, `keyAt` and `valueAt` (R8-M8); `compact`'s `position * stride` is its by-index form over packed
+    slots. Bodies that are not over a runtime representation (the range iterators, `FromEnd`, `ClosedRange.tryResolve`,
+    `ResolvedRange.length`) are outside the rule's scope. An RP8 exception until R8-L1 (the owner's O-150 (a), verbatim 「(a) 例外で着地」,
+    2026-11-11): about 935 library nodes raise warm Bind B/A' to 1.034 (Hello), 1.040 (Milestone26) and 1.026 (Strings) against an
+    A'/A spread of 0.996-1.010, the per-compilation rebinding of the library (PLAN G337) that R8-L1 removes; the unit's purpose, the
+    Dictionary kernel at O2, runs 0.61x.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -17432,6 +17609,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
 
+  - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
+    O-150 (a)).
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
@@ -17696,3 +17875,101 @@ R8-M* and R9-M* by the stage of the recording unit.
     switch checked against the table by a test (a second statement); a hash (it hashes every identifier); `Constants` as the table.
   - **Candidates.** `SemanticsMask.ToText`'s single-kind rows, the Name check in `Compilation`/`DependencyConfiguration`, `HoverBuilder`'s
     `& 7` access mask.
+- **R9-M6 The toolchain is `Kimi.Build`, outside the compiler** (Middle, 2026-11-11; R9-M2, the R7-R9 plan's §5.3 unit M2; Major,
+  behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review ACCEPT after the commit messages' fix; the Back's
+  consent C-220)
+  - Rule: `src/Kimi/Build` (namespace `Kimi.Build`) is P13: publication of the IR/manifest pair (`EmissionArtifacts`); the build
+    record, the native build, the built Application's run and toolchain verification (`NativeToolchain`, with `.Build` and
+    `.Verification`); the toolchain's identity and resolution (`ToolchainIdentity`, `ToolchainResolver`); kernel32's import identity
+    (`Kernel32Imports`); the artifact paths and files (`ArtifactPaths`, `ArtifactFiles`).
+  - Dependency rule (ARCH "Dependency rules", the Build row; the code's statement is the header of `Build/NativeToolchain.cs`).
+    Build reads, of the compiler, exactly: the generation entry `Compilation.Generate`, with `Compilation.Project` and
+    `Compilation.Diagnostics`; `Binding.Startup.OutputKind` and `Binding.LibraryImports` (an import's `Library` and `Kind`); the
+    enum `OutputKind`, which project configuration states too (`ProjectFile.OutputKind`); the target profile `WindowsProfile`;
+    `CompilerRelease`; `CompilationBuildMetadata`, through `Project.BuildMetadata`; the Backend's `LlvmModuleText.SymbolFromName`;
+    and of `Kimi.Diagnostics` the record writer `DiagnosticOwner.Report`, `DiagnosticCode`, `DiagnosticPartition` and
+    `DiagnosticSeverity`. Beside the compiler it reads project configuration (`Project` with its `KimiOptions`, `ProjectFile`,
+    `NativeConfiguration`, `NativeLibraryInput`). It writes the artifacts and, from publication only, records in the compiler's
+    Emission partition (`ArtifactPublicationFailed_Kd`, `InternalInvariant_Kd`; R5-M165). It reads no other compiler state.
+  - Temporary, with its removal condition: the two reads of Binding (`Startup.OutputKind`, `LibraryImports`) and
+    `LlvmModuleText.SymbolFromName` end with R9-B1, when the generation result carries the output kind, the required libraries and
+    the external declarations. The enum `OutputKind` stays: `RunProject` compares `ProjectFile.OutputKind` with it and the
+    manifest's output section takes it.
+  - No file of `Compiler/`, `Checking/`, `Lsp/`, `Testing/` or `Diagnostics/` reads a Build type. Build's readers are `Project`
+    (`Build`, `Run`, `PublishArtifacts`) and the commands, the hosts that call it, and `DependencyLock` (`ArtifactFiles.Replace`
+    only, as R5-M174 recorded). `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the reader set by file: a reader
+    names a type the folder declares, imports the namespace or declares it (Roslyn; comments do not count; the folder's own files
+    are not readers). It does not see a type reached without its name (a `var` over a member's result, reflection), a delegate type
+    the folder declares, or an attribute class used by its short name (`[Foo]` for `FooAttribute`): review reads those. Build
+    declares neither a delegate nor an attribute.
+  - No reference turned around: since R5-M64/M65 (`Compilation.Generate`) and R5-M174 (`WindowsProfile` to Core) the compiler read
+    no type of the folder; the unit moves the files and pins the direction.
+  - The structure-limit exemption of the toolchain and publication files ends (ARCH "Structure limits"): `NativeBuild` (a private
+    nested class of `NativeToolchain`, in `NativeToolchain.Build.cs` with the build's entries `Build` and `BuildManifest`, its
+    manifest check and its staging) holds one native build's state and steps in place of `BuildCore`'s nine parameters and 108
+    statements; its constructor takes the build's fixed inputs and `Run` the toolchain selection, resolved after the pair's check.
+    `VerifyKernel32`; the manifest's four section writers, composed in `Publish`; `ArtifactFiles.States` and `SequenceEqual`, the
+    one owner of "a JSON value restates expected strings"; the three nested failure predicates (`IsOutputFailure`,
+    `IsPublicationFailure`, `IsToolchainFailure`). No member, file or line of `src/Kimi/Build` is over a limit.
+  - Behavior preserved: every read, write and failure keeps its order but eight evaluation-order changes, none observable in a
+    compiler whose embedded backend record is valid (the list is the unit's commit message's; a base-against-prototype probe found
+    63 command results and 21 published files identical).
+  - Rejected: moving `Project.Build`, `Run` and `PublishArtifacts` into Build (Project owns the target loop and the finalization
+    points of the Input, front-end and Emission results, SPEC 23.3; R9-B2 names `Project.Build` as the boundary); a second assembly
+    (the embedded resources, `InternalsVisibleTo` and the CLI's packaging would change for no reader); a parameter record for
+    `BuildCore` (an argument bag); a top-level `NativeBuild` (a second component name for one concern, and several private members
+    of `NativeToolchain` raised to internal); `States` beside `ToolchainIdentity.SequenceEqual` in `ToolchainIdentity` (its type
+    initializer would run the embedded record's read before a manifest's first comparison) or in `NativeToolchain` (a second owner,
+    and a cycle with `Kernel32Imports`); one row table for the manifest's writer and reader in this unit (their orders differ, so it
+    changes either the manifest's bytes or a failure: R9-B1's, with its manifest revision); a text-pattern ratchet row (it counted
+    Build's own imports and missed aliases and a namespace declared outside the folder).
+  - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
+  - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
+    type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+- **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
+  part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
+  ACCEPT; the Front's consent C-224 and the Back's C-225)
+  - Rule: `src/Kimi/Documentation` (namespace `Kimi.Documentation`) is the documentation model: the limited-profile Markdown parser
+    and its immutable document (SPEC 2.3), item classification against a declaration's parameters (`DocumentationMarkdown`), HTML
+    rendering and link resolution (`DocumentationLinks`), the Unicode punctuation table and its generator.
+  - Dependency rule (ARCH "Dependency rules", the Documentation row; the code's statement is the header of
+    `Documentation/DocumentationMarkdown.cs`). Documentation reads, of the compiler, exactly: Core's association
+    (`DocumentationComment` with its `DocumentationText`, `DocumentationSource.LogicalName` (a comment's `Owner`),
+    `DocumentationDiagnostic`); Core's `SourceDocument`, the comment's and the text's `Source` (its `SourceText`, to map an original
+    CRLF; passed into `DocumentationDiagnostic`); a declaration's syntax (`Koto`, `FunctionKoto`, `DeclarationContainerKoto`,
+    `PropertyAccessorKoto`: generic parameters, origins, parameters, modifiers with `ModifierKind`); its Binding facts only through
+    `HirTables.Symbol` (R5-M193); its `Kotonoha`, the default project identity; `SourceSpan`; Helper's `IntegerTable`. It writes no
+    compiler state, starts no Binding and reads no Koto semantic slot.
+  - The association (`DocumentationSource` with `.Transfer`, `DocumentationComment`, `DocumentationText`, `DocumentationDiagnostic`)
+    is the compiler's own input record: `Compiler/Core`, namespace `Kimi.Compiler`, beside `Kotonoha.Documentation` and
+    `CodeContext.Documentation`. The Tokenizer and the Parser write it, Binding selects fragments from it (`GetDocumentation`), the
+    library sources share its candidates, Documentation reads it.
+  - No file of `Compiler/`, `Testing/` or `Diagnostics/` reads a Documentation type; its readers are hover's projection in check
+    (`HoverBuilder`, `HoverFacts`, `HoverPlacement`) and the LSP's rendering (`HoverRenderer`), plus benchmarks and tests.
+    `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the set; its type set is a folder's top-level types (a nested
+    type is named through its containing type; nested helper names such as `Container` and `Bracket` are spelled by 58 other files
+    for their own members). Its stated blind spots stand (a type reached without its name, a delegate, a short-name attribute;
+    Documentation declares neither).
+  - No reference turned around: the census found the compiler reading only the association; ordinary compilation never parses
+    Markdown.
+  - Responsibility moved: the association leaves the Middle's `Compiler/Documentation` for Core (any session under a board hold, the
+    Middle reviews; WORKFLOW's areas); `src/Kimi/Documentation` stays the Middle's.
+  - Behavior preserved: the Release `Kimi.dll` is identical to its base's at the IL level once the namespaces are mapped, but for
+    the informational version, the Regex generator's file-local class hash (from the build folder) and one generated difference:
+    Tinyhand's `TinyhandStaticRegistration_Kimi.Initialize` registers formatters in full-name order, so the moved types'
+    registrations change position and the `__TinyhandRegisterN` helpers are renumbered; the registered set is the same, each
+    registration keyed by its type, none twice, so the order has no effect (the IL comparison of dev 21d414f87 against the
+    implementation's commit, design review 1's dumper). No parser method body changed (design review 2's N7).
+  - The benchmark's paired mode finds the baseline's parser by the current full name, so a paired run needs a post-move baseline
+    (`src/Benchmark/DocumentationMarkdown.md`); a lookup falling back to the old namespace was rejected (a try-then-fallback).
+  - Rejected: the association in Core under namespace `Kimi.Compiler.Documentation` (no Lexing/Parsing/Binding hunk, but a folder
+    disagreeing with its namespace and two "Documentation" namespaces); the association in `Kimi.Documentation` (the compiler would
+    read Documentation); `DocumentationText`/`DocumentationDiagnostic` in Documentation (the association's `GetText` and
+    `GetDiagnostics` produce them); a semantic-slot row for the association's two files (one row over Core states R5-M193 for Core's
+    owner); the structure-limit splits in the move (pre-existing, none worse: parts 2 and 3, the plan's §5.3 rows).
+  - Amends: R5-M193's "the documentation model" now names `Kimi.Documentation`. R9-M6's description of
+    `ComponentIsReadOnlyByItsReaders` ("a reader names a type the folder declares"): the types are the folder's top-level ones,
+    since a nested type is named through its containing type and 58 files of `src/Kimi` spell nested Documentation helper names
+    (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
+    type, `NativeToolchain.NativeBuild`, is private).
+  - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).

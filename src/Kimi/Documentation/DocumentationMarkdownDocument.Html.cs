@@ -4,7 +4,7 @@ using System.Buffers;
 using System.Globalization;
 using System.Text;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1600 // Iterative renderer helpers.
 

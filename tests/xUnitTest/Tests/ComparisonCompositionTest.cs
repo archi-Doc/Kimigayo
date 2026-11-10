@@ -600,7 +600,9 @@ public class ComparisonCompositionTest
             var contract = c.Library.GetSymbol(call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
             var expected = new List<(BindingSymbol Target, Subst Instance)>();
             var leaves = new List<(BindingSymbol Target, Subst Instance)>();
-            return c.Types.Witnesses(contract.Contract!.OwnRequirement()!, call.ConformingType!, contract, null, null, expected) && Leaves(node, leaves) &&
+            var requirement = contract.Contract!.OwnRequirement()!;
+            var on = c.Types.Synthesized(requirement, call.ConformingType!, contract.Type!);
+            return c.Types.Witnesses(requirement, contract, on, null, expected) && Leaves(node, leaves) &&
                 expected.Count == leaves.Count && expected.Zip(leaves).All(static x => ReferenceEquals(x.First.Target, x.Second.Target) &&
                     ReferenceEquals(x.First.Instance, x.Second.Instance));
         }

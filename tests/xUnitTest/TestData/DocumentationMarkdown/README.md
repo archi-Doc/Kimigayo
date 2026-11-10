@@ -63,7 +63,7 @@ product URL policy intentionally differs from CommonMark serialization; link
 expectations are tested explicitly in the output suite. The structural renderer
 remains test-only. This is bounded coverage, not exhaustive conformance or
 cross-OS/runtime certification. Culture variation uses the current Windows/.NET
-environment. [Product API](../../../../src/Kimi/Compiler/Documentation/README.md),
+environment. [Product API](../../../../src/Kimi/Documentation/README.md),
 [measurements](../../../../src/Benchmark/DocumentationMarkdown.md), and
 [execution evidence](../../../../docs/dev/PLAN_HISTORY.md#documentation-markdown-product-switch-20260920)
 record conditions and limits; current next actions belong in
