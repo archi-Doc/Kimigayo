@@ -2,7 +2,7 @@
 
 The product now uses the independent parser and renderer; see
 [DM5 product output](#dm5-product-output-and-switch-2026-09-20) and the
-[product API guide](../Kimi/Compiler/Documentation/README.md). The DM3/DM4 sections
+[product API guide](../Kimi/Documentation/README.md). The DM3/DM4 sections
 below preserve measurements taken before that switch.
 
 DM4 compares the independent parser with Markdig and measures improvements against
@@ -342,6 +342,11 @@ Build it in a separate checkout before comparing with the current harness. The
 baseline directory is a local ignored artifact, not supplied by the result JSON.
 The harness isolates baseline dependencies in an `AssemblyLoadContext`; sharing
 Tinyhand between the two product assemblies causes duplicate registration.
+The harness finds the baseline's parser by the current type's full name. Since
+the parser moved from `Kimi.Compiler.Documentation` to `Kimi.Documentation` (the
+R7-R9 plan's unit M1), a paired run needs a baseline built after that move; a
+build of `4c53331` or of any commit before the move fails at that lookup. A pair
+from before the move is measured with the harness of a pre-move commit.
 
 ## Verification and remaining scope
 
@@ -428,7 +433,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown 
 The switch retains all prior conformance/difference tests, adds 320 exact official
 non-link product-output cases and explicit structured-URL/facade/concurrency tests,
 and migrates obsolete product expectations to the adopted limited profile.
-[API changes and placement rules](../Kimi/Compiler/Documentation/README.md) are
+[API changes and placement rules](../Kimi/Documentation/README.md) are
 explicit: no Markdig public types, lowercase standard items, current Binding roles,
 root-relative default source placement, and configurable structured mapping.
 NativeAOT and native fixture execution were not run in DM5; managed integration

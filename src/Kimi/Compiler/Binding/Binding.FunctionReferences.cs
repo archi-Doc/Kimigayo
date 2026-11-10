@@ -452,8 +452,7 @@ public sealed partial class Binding
     {
         if (written is { Kind: OriginKind.Inference } atom && binding is not null && !ReferenceEquals(atom, binding) && this.OpenInitializerInference(atom, use) is { } pending)
         {
-            pending.Replacements[atom] = pending.Replacements.TryGetValue(atom, out var previous) ? this.Meet(previous, binding) : binding;
-            this.originStateVersion++;
+            this.MeetInitializerBound(pending, atom, binding);
         }
     }
 

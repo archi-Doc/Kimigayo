@@ -151,7 +151,7 @@ public sealed partial class Binding
             try
             {
                 var originDeclaration = this.BeginOriginDeclaration(alias, scope);
-                var symbol = this.TypeName(targetSyntax, scope, LookupRole.Any);
+                var symbol = this.TypeName(targetSyntax, scope);
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
