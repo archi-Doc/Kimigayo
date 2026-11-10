@@ -40,7 +40,7 @@ internal static class KimiLibrarySize
 
     /// <summary>The library's entries in each sized table; a library-only table starts at its count here.</summary>
     internal static readonly Tables Stated = new(
-        Nodes: 14336,
+        Nodes: 15360,
         Declarations: 2048,
         Scopes: 2048,
         TypeKeys: 2048,
