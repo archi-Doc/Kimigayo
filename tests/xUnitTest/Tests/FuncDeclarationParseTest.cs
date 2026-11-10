@@ -41,24 +41,25 @@ public class FuncDeclarationParseTest
         var context = kotonoha.CreateCodeContext();
 
         var source = """
-            private func find<s/T, T2>(
-                value: T = fallback,
-                owned: owner/T,
-                sharedValue: ref/T,
-                exclusiveValue: uniq/T,
-                object: obj/T,
-                sharedObject: rc/T,
-                atomicObject: arc/T,
-                sharedObjectBorrow: objref/T,
-                exclusiveObjectBorrow: objuniq/T,
-                raw: raw/T !
-                in => collection: Collection<s/T>,
-                using => comparer: (s/T, T2) -> ref/Bool
-                ) -> owner/i32
-                return 0
+            group Functions
+                private func find<s/T, T2>(
+                    value: T = fallback,
+                    owned: owner/T,
+                    sharedValue: ref/T,
+                    exclusiveValue: uniq/T,
+                    object: obj/T,
+                    sharedObject: rc/T,
+                    atomicObject: arc/T,
+                    sharedObjectBorrow: objref/T,
+                    exclusiveObjectBorrow: objuniq/T,
+                    raw: raw/T !
+                    in => collection: Collection<s/T>,
+                    using => comparer: (s/T, T2) -> ref/Bool
+                    ) -> owner/i32
+                    return 0
 
-            public func Main() -> ()
-                return
+                public func Main() -> ()
+                    return
             """;
         context.Parse(kotonoha.RootKoto, source);
 

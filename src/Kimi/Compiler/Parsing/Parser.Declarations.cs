@@ -110,6 +110,8 @@ Exit:
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
     private static FieldKoto? ParseField(ref TokenReader reader, Token token)
     {
+        // A local binding takes no access word, at the root and in a body alike (SPEC F.6.3 LocalBinding).
+        RejectAccessWord(ref reader);
         var variableContext = reader.TakeContext();
         if (ParseDeclarationName(ref reader) is not { } nameKoto)
         {

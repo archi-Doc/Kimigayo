@@ -42,9 +42,9 @@ public partial class ModuleBindingTest
     }
 
     [Theory]
-    [InlineData("public func unused() => missing()", false, true)]
-    [InlineData("public func unused()\n    let text = \"moved\"\n    _ = text@move\n    ::Kimi.Console.writeLine(text)", true, false)]
-    [InlineData("public func unused() => ()", true, true)]
+    [InlineData("func unused() => missing()", false, true)]
+    [InlineData("func unused()\n    let text = \"moved\"\n    _ = text@move\n    ::Kimi.Console.writeLine(text)", true, false)]
+    [InlineData("func unused() => ()", true, true)]
     public void UnusedDependencyBodiesAreChecked(string library, bool bound, bool owned)
     {
         var compilation = Create("public func main() => ()", library);
@@ -72,7 +72,7 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Lib.Api.test()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => Lib.Api.test()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -80,7 +80,7 @@ public partial class ModuleBindingTest
     public void AliasesDoNotLeakBetweenDocumentsOrModules()
     {
         var compilation = Create("alias Lib.Api\npublic func main() => value()", "public group Api\n    public func value() => ()");
-        compilation.Kotonoha.AddSource(new SourceDocument("other.kimi", "public func other() => value()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("other.kimi", "func other() => value()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -91,7 +91,7 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Child.Api.value()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => Child.Api.value()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -106,7 +106,7 @@ public partial class ModuleBindingTest
         Assert.False(compilation.Analysis.IsVerified);
         compilation.Binding.CheckStartup(OutputKind.Application);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func broken() => missing()"));
+        compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "func broken() => missing()"));
         Assert.False(compilation.Bind().IsComplete);
         compilation.Analyze();
         Assert.False(compilation.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
@@ -116,7 +116,7 @@ public partial class ModuleBindingTest
     [Fact]
     public void CompileTimeSettingsBelongToEachModule()
     {
-        var compilation = Create("#if feature\npublic func main() => Lib.Api.value()", "#if feature\npublic func broken() => missing()\n#if not feature\npublic group Api\n    public func value() => ()", configure: (root, library) =>
+        var compilation = Create("#if feature\npublic func main() => Lib.Api.value()", "#if feature\nfunc broken() => missing()\n#if not feature\npublic group Api\n    public func value() => ()", configure: (root, library) =>
         {
             root.CompileTimeSettings.Add("feature", new() { Bool = true });
             library.CompileTimeSettings.Add("feature", new() { Bool = false });
@@ -141,7 +141,7 @@ public partial class ModuleBindingTest
     public void ADefaultAliasOpensNoFormalParameter()
     {
         // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters.
-        var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\npublic func f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
+        var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
         Assert.False(compilation.Bind().IsComplete);
         var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
@@ -153,7 +153,7 @@ public partial class ModuleBindingTest
     {
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => helper()\nprivate group Implementation\n    public func helper() => ()", configure: (_, library) => library.Alias = ["Implementation"]);
         Assert.True(compilation.Bind().IsComplete);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => helper()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => helper()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -184,7 +184,7 @@ public partial class ModuleBindingTest
     {
         var compilation = Create("alias Local\npublic group Local\n    public func value() -> i32 => 1\npublic func main()\n    let x: i32 = value()", "public group Api\n    public func value() -> bool => true", configure: (root, _) => root.Alias = ["Lib.Api"]);
         Assert.True(compilation.Bind().IsComplete);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "alias Api\npublic func bad() => ()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "alias Api\nfunc bad() => ()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -222,7 +222,7 @@ public partial class ModuleBindingTest
     [Fact]
     public void AliasTargetAccessIsCheckedAtItsDeclaration()
     {
-        var compilation = Create("alias Outer.Hidden\npublic group Outer\n    private group Hidden\n        public func value() => ()\n    public func use() => value()\npublic func main() => Outer.use()", "public func unused() => ()");
+        var compilation = Create("alias Outer.Hidden\npublic group Outer\n    private group Hidden\n        public func value() => ()\n    public func use() => value()\npublic func main() => Outer.use()", "func unused() => ()");
         Assert.False(compilation.Bind().IsComplete);
     }
 

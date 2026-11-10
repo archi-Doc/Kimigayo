@@ -15,7 +15,7 @@ public partial class ModuleBindingTest
     {
         var c = Create(
             "public func main() => ()\nfunc moved() => ()\n" + (recipientHasTarget ? "func target() => ()" : string.Empty),
-            "func target() => ()\npublic func moved() => target()");
+            "func target() => ()\nfunc moved() => target()");
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var old = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), node => node.Name == "moved");
         var donor = c.SourceModules[1];

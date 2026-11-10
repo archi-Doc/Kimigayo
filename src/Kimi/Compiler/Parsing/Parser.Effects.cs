@@ -134,6 +134,7 @@ public static partial class Parser
     internal static DiagnosticKey? ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
     {
         ReportPendingAttributes(ref reader);
+        RejectAccessWord(ref reader);
         var effect = ParseEffectBound(ref reader);
         if (leading is null)
         {

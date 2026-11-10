@@ -231,6 +231,7 @@ public static partial class Parser
         if (IsOriginRelationStart(ref reader))
         {
             ReportPendingAttributes(ref reader);
+            RejectAccessWord(ref reader);
             var relation = ParseOriginRelation(ref reader);
             if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true })
             {
@@ -265,6 +266,7 @@ public static partial class Parser
             if (!state.SeenExecutableItem || isGenericParameter)
             {
                 ReportPendingAttributes(ref reader);
+                RejectAccessWord(ref reader);
                 var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
                 var constraint = ParseTypeConstraint(ref reader);
                 if (constraint is not null && function is { IsDestructor: false } && !excluded)
@@ -335,8 +337,31 @@ public static partial class Parser
     private static bool IntroducesDeclaration(ref TokenReader reader)
         => IsContainerDeclarationStart(ref reader) ||
             reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
-            (reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket)) ||
+            IsFunctionDefinitionStart(ref reader) ||
             (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
+
+    /// <summary>Whether a named function definition starts here (Appendix F.6.1 FunctionDeclaration, F.10 LocalFunction): <c>func</c>
+    /// before a Name. <c>func</c> before a parameter or generic parameter list is an anonymous function, an expression (SPEC 9.4).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> at a named function definition.</returns>
+    internal static bool IsFunctionDefinitionStart(ref TokenReader reader)
+        => reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket);
+
+    /// <summary>Parses a named function definition of the execution scope or of a body, with its Body.</summary>
+    /// <param name="reader">The token reader at <c>func</c> (<see cref="IsFunctionDefinitionStart"/>).</param>
+    /// <returns>The function, or <see langword="null"/> when its header failed.</returns>
+    internal static FunctionKoto? ParseFunctionItem(ref TokenReader reader)
+    {
+        reader.Advance();
+        var function = ParseFuncDeclaration(ref reader);
+        if (function is null)
+        {
+            return null;
+        }
+
+        ParseNamedFunctionBody(ref reader, function);
+        return function;
+    }
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)
     {
@@ -354,7 +379,7 @@ public static partial class Parser
             return null;
         }
 
-        if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        if (reader.AttributeKoto is { } attribute && !IsFunctionDefinitionStart(ref reader))
         {
             // Only a named function among executable items takes attributes (SPEC 6.7, F.10); a misplaced one attaches to nothing,
             // so the item it precedes is checked on its own.
@@ -439,20 +464,14 @@ public static partial class Parser
                 return ParseField(ref reader, token);
 
             case TokenKind.Func:
-                if (reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket)
+                if (!IsFunctionDefinitionStart(ref reader))
                 {
                     return ParseExpression(ref reader);
                 }
 
-                reader.Advance();
-                var function = ParseFuncDeclaration(ref reader);
-                if (function is null)
-                {
-                    return null;
-                }
-
-                ParseNamedFunctionBody(ref reader, function);
-                return function;
+                // A local function takes no access word (SPEC 9.3, F.10 LocalFunction).
+                RejectAccessWord(ref reader);
+                return ParseFunctionItem(ref reader);
 
             default:
                 return ParseExpression(ref reader);
