@@ -299,8 +299,9 @@ public sealed partial class Binding
             !(bare == HirAcquire.Move && proof == ConstraintProof.Error) ? bare : HirAcquire.Failed;
     }
 
-    // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2), a static, or the storage a formatting plan prepared (its buffer, its writer).
-    private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawRooted(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
+    // A bare Place (SPEC 3.5; a raw Place and its parts included, SPEC 3.4.1, 5.2), a static, or the storage a formatting plan prepared
+    // (its buffer, its writer).
+    private bool IsPlace(Koto child) => IsBarePlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
         IsStatic(KotoHelper.UnwrapParentheses(child).BoundSymbol);
 
     // What a take needs of what it takes, a Place storing the Type, acquired at the node (SPEC 10.2, 4.7.2, 8.14, 7.7.2): a pair-case
