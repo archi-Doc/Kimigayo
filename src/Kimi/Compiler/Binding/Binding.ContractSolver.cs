@@ -54,6 +54,20 @@ public sealed partial class Binding
     private static (BindingSymbol? Symbol, BoundType Type) SubjectKey(BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
 
+    // SPEC 8.3.2's refinement row over Enumerate's rows: one of them is a refinement of `contract`.
+    private static bool RowsRefine(List<BindingSymbol>? rows, BindingSymbol contract)
+    {
+        for (var i = 0; rows is not null && i < rows.Count; i++)
+        {
+            if (IsRefinement(rows[i], contract))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
     // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only under the presence gate.
@@ -100,7 +114,10 @@ public sealed partial class Binding
     // chain in a view (null while the link is open), the view's Contract facts by subject key (IndexWritten, IndexNormalized), the views
     // indexed, a Contract's head depth, and the pooled lists.
     private readonly Dictionary<(BoundType, BindingScope), List<BindingSymbol>?> enumerateMemo = new();
-    private readonly Dictionary<(BindingScope, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>> enumerateIndex = new();
+
+    private readonly Dictionary<(BindingScope, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>>
+        enumerateIndex = new();
+
     private readonly HashSet<BindingScope> enumeratePrepared = new(ReferenceEqualityComparer.Instance);
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
@@ -141,18 +158,7 @@ public sealed partial class Binding
             this.enumerateWalking++;
             try
             {
-                if (this.Enumerate(subject, this.ViewOf(scope)) is { } rows)
-                {
-                    for (var i = 0; i < rows.Count; i++)
-                    {
-                        if (IsRefinement(rows[i], contract))
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
+                return RowsRefine(this.Enumerate(subject, this.ViewOf(scope)), contract);
             }
             finally
             {

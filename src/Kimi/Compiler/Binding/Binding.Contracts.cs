@@ -468,7 +468,8 @@ public sealed partial class Binding
         // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
         // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
         // conformances of its argument but is never a Position (SPEC 3.1.1).
-        var premise = contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
+        var premise = contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format
+            or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
 
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).

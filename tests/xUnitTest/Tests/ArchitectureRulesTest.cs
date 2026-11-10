@@ -315,16 +315,11 @@ public class ArchitectureRulesTest
             .Where(x => (x is MethodDeclarationSyntax method && walk.Contains(method.Identifier.Text)) || (x is StructDeclarationSyntax type && walk.Contains(type.Identifier.Text))).ToArray();
         Assert.Equal(walk.Length, members.Length);
         var calls = members.SelectMany(static x => x.DescendantNodes().OfType<InvocationExpressionSyntax>()).ToArray();
-        var actual = calls.Select(Name).Distinct().Order(StringComparer.Ordinal).ToArray();
-        Assert.True(allowed.SequenceEqual(actual), $"Enumerate's walk calls: {string.Join(", ", actual)}.");
-        Assert.All(calls.Where(static x => Name(x) is "InstantiatedContract" or "ContractConstraint"), static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
-
-        static string Name(InvocationExpressionSyntax call) => call.Expression switch
-        {
-            MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
-            IdentifierNameSyntax name => name.Identifier.Text,
-            _ => call.Expression.ToString(),
-        };
+        var actual = calls.Select(static x => CalledName(x.Expression)).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(allowed.SequenceEqual<string?>(actual), $"Enumerate's walk calls: {string.Join(", ", actual)}.");
+        Assert.All(
+            calls.Where(static x => CalledName(x.Expression) is "InstantiatedContract" or "ContractConstraint"),
+            static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
     }
 
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
