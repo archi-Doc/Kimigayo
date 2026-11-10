@@ -16932,6 +16932,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     bound stated in a comment; an operation with no such bound stays checked and keeps its Abort (SPEC 22.5.1). A caller's input is
     not special: under a dominating guard it wraps. Every guard and every Abort stays where it is. `Formatting.kimi` follows it; the
     remaining sites are PLAN G693.
+  - **Scope (PLAN G693, 2026-11-10; the Back; Q-270):** R8-M2's rule, as R8-M18 amended it, now governs every library body over a
+    runtime representation: the Storage remainders and splits with `Slice.kimi`, the Dictionary slots and growth, `Array.kimi` and
+    `Core.kimi`'s `StringBytes.equal` and `order` write bounded steps in `Wrapping<isize>` with the bound stated (the remainder
+    invariant `position + count`, the slot invariant of `DictionaryStorage`, a closed `Position`/`PositionRange` resolution, `0 <=
+    length <= capacity`, or a dominating guard), in `Formatting.kimi`'s form; a step no invariant or guard bounds keeps its Abort
+    with its reason (the slot stride from the Types' strides). `DictionaryStorage.slotOffset(link, stride)` is the slot rule's one
+    statement beside `slotStride`, `keyAt` and `valueAt` (R8-M8); `compact`'s `position * stride` is its by-index form over packed
+    slots. Bodies that are not over a runtime representation (the range iterators, `FromEnd`, `ClosedRange.tryResolve`,
+    `ResolvedRange.length`) are outside the rule's scope. An RP8 exception until R8-L1 (the owner's O-150 (a), verbatim 「(a) 例外で着地」,
+    2026-11-11): about 935 library nodes raise warm Bind B/A' to 1.034 (Hello), 1.040 (Milestone26) and 1.026 (Strings) against an
+    A'/A spread of 0.996-1.010, the per-compilation rebinding of the library (PLAN G337) that R8-L1 removes; the unit's purpose, the
+    Dictionary kernel at O2, runs 0.61x.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -17492,6 +17504,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
 
+  - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
+    O-150 (a)).
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
