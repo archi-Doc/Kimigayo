@@ -57,11 +57,11 @@ public class CoreModelTest
     public void PointerSizedIntegersKeepTheProfileWidth(string target, long width)
     {
         var compilation = Compilation.CreateForTest();
-        Assert.Equal(64, ScalarTypes.Width(BoundType.ISize));
+        Assert.Equal(64, BoundType.ISize.Width);
         Assert.True(compilation.Prepare(target));
         Assert.Equal(width, compilation.IrTarget.PointerWidth);
         Assert.Equal(width, compilation.Variables["pointerWidth"].I64);
-        Assert.Equal(64, ScalarTypes.Width(BoundType.USize));
+        Assert.Equal(64, BoundType.USize.Width);
     }
 
     // An unknown architecture, and one without an LLVM backend (LLVM's pointer width 32 or 64), has no IR target (DECISIONS R5-M174).

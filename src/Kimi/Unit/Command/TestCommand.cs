@@ -3,6 +3,7 @@
 using System.Collections;
 using System.Text;
 using System.Text.Json;
+using Kimi.Build;
 using Kimi.Compiler;
 using Kimi.Testing;
 using SimpleCommandLine;

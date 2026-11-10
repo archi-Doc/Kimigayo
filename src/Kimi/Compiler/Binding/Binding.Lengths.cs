@@ -92,7 +92,7 @@ public sealed partial class Binding
             return left.Value == long.MinValue ? null : this.InternLength(LengthOperation.Constant, -left.Value);
         }
 
-        return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
             ? this.InternLength(LengthOperation.Constant, unchecked((long)value)) : null;
     }
 
@@ -169,10 +169,10 @@ public sealed partial class Binding
         return SameLengthSignature(a.Left, b.Left, aBinder, bBinder) && SameLengthSignature(a.Right, b.Right, aBinder, bBinder);
     }
 
-    private static bool TryLengthArithmetic(LengthOperation operation, BoundType type, int width, UInt128 left, UInt128 right, out UInt128 value)
+    private static bool TryLengthArithmetic(LengthOperation operation, BoundType type, UInt128 left, UInt128 right, out UInt128 value)
     {
         value = 0;
-        var signed = type.IsSigned;
+        var (signed, width) = (type.IsSigned, type.Width);
         var minimum = unchecked(-(Int128)((UInt128)1 << (width - 1)));
         if (operation is LengthOperation.Div or LengthOperation.Rem && right == 0)
         {
@@ -551,7 +551,7 @@ public sealed partial class Binding
     {
         value = 0;
         symbolic = null;
-        var width = ScalarTypes.Width(type);
+        var width = type.Width;
         var signed = type.IsSigned;
         if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
         {
@@ -671,7 +671,7 @@ public sealed partial class Binding
                     left: leftSymbolic ?? this.InternLength(LengthOperation.Constant, unchecked((long)left)),
                     right: rightSymbolic ?? this.InternLength(LengthOperation.Constant, unchecked((long)right)));
             }
-            else if (!TryLengthArithmetic(LengthOperationOf(binary.Akind), type, width, left, right, out value))
+            else if (!TryLengthArithmetic(LengthOperationOf(binary.Akind), type, left, right, out value))
             {
                 return false;
             }
@@ -711,7 +711,7 @@ public sealed partial class Binding
 
     private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
-        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: GroupKoto } qualifier ||
+        if (this.TypeName(member.Left, scope) is not { Declaration: GroupKoto } qualifier ||
             !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
         {
             return null;

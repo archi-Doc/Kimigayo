@@ -101,7 +101,7 @@ internal sealed partial class InstanceCollector
             else if (applies.Value)
             {
                 var implementation = table.Implementations[slot];
-                this.Target(item, this.Implementation(program, item, site, implementation, this.types.Synthesized(implementation, layer!, [])));
+                this.Target(item, this.Implementation(program, item, site, implementation, this.types.Synthesized(implementation, layer!, [], [])));
             }
         }
     }
