@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Call slots (SPEC 10.8, 8.1.2): a callee's structural slots and their inference.
 // - Responsibility: the declaration owning a callee's slots (CallSlotOwner: a function its own, a constructor its structure's, an enum
 //   constructing a Case its own), their count and the binder's Origin count; a member pattern as a call reads it (CallMemberPattern); a
-//   constructor's fixed enclosing slots (InitializeCallSlots) and its constructed Type (ConstructionType); the structural matching of a
+//   candidate's slot bindings fixed before any evidence (FixCallSlots, FixedSlots: a function's explicit Type arguments, a constructor's
+//   fixed enclosing slots and fixed own ones) and a constructor's constructed Type (ConstructionType); the structural matching of a
 //   pattern over the owner's slots against an actual Type, binding each slot it reaches (Infer), and an s/U whose s is bound, matched as
 //   the Type it forms (FormedApplication).
 // - Inputs: the callee's declaration and declaring Type; a pattern, the actual Type at its position and one solution's slot and length
@@ -33,6 +34,25 @@ public sealed partial class Binding
     // The Origin slots a binder binds: a function's, or a declaration's.
     private static int CallOriginCount(Koto binder) => binder is FunctionKoto function ? function.Origins.Count : binder.BoundSymbol!.Schema!.Origins.Count;
 
+    // SPEC 10.8.1: the slots a constructor's declaring Type fixes: its components, an open own slot as its own parameter; also read before
+    // its candidate's frame is seeded (ConstructorType).
+    private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType, bool inferred)
+    {
+        var ownFixed = true;
+        for (var i = 0; i < CallOwnSlots(constructor).Count; i++)
+        {
+            ownFixed &= !OpenConstructionSlot(constructor, declaringType, inferred, i);
+        }
+
+        return new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default, ownFixed);
+    }
+
+    // An inferred construction leaves open each own slot that its declaring Type gives as its own parameter; an outer slot is always a fixed
+    // binding, even when it is itself a parameter.
+    private static bool OpenConstructionSlot(FunctionKoto constructor, BoundType declaringType, bool inferred, int slot)
+        => inferred && slot < CallOwnSlots(constructor).Count && declaringType.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
+            ReferenceEquals(open.Symbol?.Scope.Owner, CallSlotOwner(constructor));
+
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
     private BoundType? CallMemberPattern(BoundType type, Koto binder, BoundType? declaringType)
@@ -54,28 +74,58 @@ public sealed partial class Binding
         return this.types.Rebuild(template, slots[..count]!, template.Origin, (BoundOrigin[])template.OriginArguments);
     }
 
-    private void InitializeCallSlots(InvocationKoto call, FunctionKoto function, BoundType? declaringType, SlotFrame slots, bool fixedConstruction = false)
+    // SPEC 10.8, 10.8.1, 8.1.3: seeds a candidate's frame with the slot bindings fixed before any evidence and returns them (FixedSlots):
+    // a function's explicit Type arguments and lengths, which supply every own slot, or a constructor's declaring Type, whose enclosing
+    // slots are always fixed and whose own slots are open only where an inferred construction leaves them its own parameters.
+    private FixedSlots FixCallSlots(
+        InvocationKoto call,
+        FunctionKoto function,
+        BoundType? declaringType,
+        ReadOnlySpan<BoundType?> explicitTypes,
+        ReadOnlySpan<BoundLength?> explicitLengths,
+        SlotFrame slots,
+        bool fixedConstruction = false)
     {
         var count = CallSlotCount(function);
         slots.ClearTypes(count);
-        if (!function.IsConstructor || declaringType is null)
+        slots.ClearLengths(count);
+        if (!function.IsConstructor)
         {
-            return;
+            for (var i = 0; i < Math.Min(count, explicitTypes.Length); i++)
+            {
+                if (explicitLengths[i] is { } length)
+                {
+                    slots.SetLength(i, length);
+                }
+                else
+                {
+                    slots.SetType(i, explicitTypes[i]);
+                }
+            }
+
+            return new(function, explicitTypes, explicitLengths, !explicitTypes.IsEmpty);
         }
 
-        var infer = !fixedConstruction && call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left);
-        var own = CallOwnSlots(function).Count;
-        var owner = CallSlotOwner(function);
+        if (declaringType is null)
+        {
+            return default;
+        }
+
+        var inferred = !fixedConstruction && this.InfersConstruction(call);
         for (var i = 0; i < count; i++)
         {
-            var fixedType = declaringType.Components[i];
-            // An outer slot is always a fixed binding, even when it is itself a parameter.
-            if (!infer || i >= own || fixedType.Kind != BoundTypeKind.Parameter || !ReferenceEquals(fixedType.Symbol?.Scope.Owner, owner))
+            if (!OpenConstructionSlot(function, declaringType, inferred, i))
             {
-                slots.SetType(i, fixedType);
+                slots.SetType(i, declaringType.Components[i]);
             }
         }
+
+        return ConstructionSlots(function, declaringType, inferred);
     }
+
+    // Whether a constructor call infers its construction's Type (SPEC 10.8.1): its qualifier names the Type without its arguments.
+    private bool InfersConstruction(InvocationKoto call)
+        => call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left);
 
     // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
     // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
@@ -311,5 +361,38 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // SPEC 10.8, 10.8.1, 6.5.2 step 2 (DECISIONS: the fixed bindings): a solution's slot bindings fixed before any evidence, over the slot
+    // owner's slots (FixCallSlots for a candidate, ConstructionSlots for a construction Type, a Case construction's seeding): each slot's
+    // binding, an open slot as its own parameter (only an inferred construction leaves one beside fixed ones), and the lengths, null where
+    // none is fixed; no Types when no slot is fixed. Own tells whether every own slot is fixed: evidence then keeps every binding (Infer's
+    // commonOrigins off); otherwise the open slots' covariant bindings meet. Its spans live as long as the call's explicit Types, the
+    // declaring Type or the Case's scratch.
+    private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, bool own)
+    {
+        internal Koto? Owner { get; } = owner;
+
+        internal ReadOnlySpan<BoundType?> Types { get; } = types;
+
+        internal ReadOnlySpan<BoundLength?> Lengths { get; } = lengths;
+
+        internal bool Own { get; } = own;
+    }
+
+    // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: the only input of the adaptation entry (AdaptInput): a pattern under the slot bindings fixed
+    // before any evidence. Of substitutes a solution's FixedSlots (a slot still open stays a slot); Open states that its reader fixes no
+    // slot: a completed parameter Type, or a conversion's, a property's, a receiver's or a value call's pattern, which holds none.
+    private readonly struct FixedPattern
+    {
+        private FixedPattern(BoundType type) => this.Type = type;
+
+        internal BoundType Type { get; }
+
+        internal static FixedPattern Of(Binding binding, BoundType pattern, in FixedSlots fixedSlots)
+            => new(fixedSlots.Types.IsEmpty ? pattern
+                : binding.SubstituteType(pattern, fixedSlots.Owner!, fixedSlots.Types, fixedSlots.Lengths) ?? pattern);
+
+        internal static FixedPattern Open(BoundType pattern) => new(pattern);
     }
 }

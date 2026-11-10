@@ -163,7 +163,7 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
+        if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
             !this.FitsStructuralPartAt(adapted, expected, node))
         {
             return null;
@@ -235,8 +235,10 @@ public sealed partial class Binding
     /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
     /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
     /// </summary>
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool fixedExpectation = false, bool recordPair = true, bool deferAcquisition = false)
+    private bool AdaptInput(Koto source, FixedPattern fixedPattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool fixedExpectation = false, bool recordPair = true, bool deferAcquisition = false)
     {
+        var pattern = fixedPattern.Type;
+
         // Rule W (DECISIONS BU-79): a Receiver Expression whose whole use its special receiver's row refuses carries BindCall's record,
         // so its lending and bare acquisition are not judged again; its Types are formed as for a lent Place (SPEC 7.3.2).
         var judged = !(receiver && RefusedReceiver(source));

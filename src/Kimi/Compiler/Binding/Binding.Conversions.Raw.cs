@@ -38,7 +38,7 @@ public sealed partial class Binding
             borrowed = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
         }
         else if (!BorrowsWrittenSlot(stored) ||
-            !this.AdaptInput(conversion.Left, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
+            !this.AdaptInput(conversion.Left, FixedPattern.Open(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored])), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
         {
             return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
         }
