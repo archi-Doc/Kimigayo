@@ -17595,6 +17595,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
+- **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a, board C-210 (A), the
+  Front's design reviews, re-check and implementation review; the owner's O-136 (a) and O-139 (a)). Every compilation's tables hold
+  the library's entries beside the program's and grew by doubling from small capacities, so each library unit moved a table's
+  doubling into a cold scaling row's window. `KimiLibrarySize` states the library's entry count, rounded up to a Granule of 1,024,
+  in each per-compilation table it sizes, and three kinds of room: `NodeRoom` (8,192) in the node table, `KeyedRoom` (1,024) in a
+  keyed table, and none in a library-only table (member selections, capability nodes), which starts at its stated count. A table
+  with a room starts at its stated count plus that room, so after a Bind of the library alone it keeps the room free;
+  `KimiLibraryShapeTest` checks the statement (`TheStatedSizeIsTheLibrarys`) and the room of the tables that have one
+  (`TheLibraryLeavesEachSizedTableItsRoom`). Selection is by bytes, not by entries: a table is sized when, grown by doubling from
+  empty, the doubling that follows the library's fill would allocate more than 64 KB, of which three fit inside the smallest margin
+  of the cold scaling rows (nine tables). The rooms are sizing facts, not contracts: a program past a room, or one that fills a
+  library-only table's free slots, may double that table.
+  - **The library-only kind, a known limit (the Front's R1; the owner's O-139 (a), verbatim 「(a) e のまま着地する」):** the kind was chosen
+    because no cold scaling row's program adds an entry to either table; that is its reason and no guarantee. Programs fill both: a
+    member access adds one member selection, a Copy struct declaration two capability nodes. So each table's next doubling (139,980
+    B and 102,652 B, above the selection rule's 64 KB) sits where the library's fill puts it, and the unit moves it: a member-read
+    row of the tests' shape (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on dev 53cf29caf and 3.118 on this
+    unit. No row of the suite reads a member or declares a Copy struct. The RP8 exception below covers this limit until the removal
+    condition holds.
+  - Supersedes `DeclarationTableCapacity` (b7488ebfe, board C-124): its reason, one fixed size reviewed when the library grows, no
+    longer holds, since each library unit moved a table's doubling into a scaling row.
+  - **RP8 exception (the owner's O-136 (a), verbatim "(a) Land as exception", and O-139 (a)):** the unit lands although Hello's cold
+    Bind median is slower than RP8 allows. B's T-100, 12 pinned rounds: Hello cold Bind median +4.5% against an A'/A spread up to
+    +1.7%; cold min and warm Bind equal; cold bytes -3.0%, large-object bytes -5.3%, gen2 collections 16 against 17 per 60 Binds;
+    retained bytes +4.8%. By the trace's reading (B's trace; the median's attribution in milliseconds was not measured), the slower
+    cold median is the collector's cadence in a multi-compilation loop, not Bind work: blocking gen1 collections that fall before
+    the next large-object gen2 promote the dropped compilations' graphs, 12-21 MB against 3 MB.
+  - **Removal condition:** R8-L1 (a frozen library: no compilation rebuilds tables holding the library's entries), if RQ13 adopts it
+    (the plan's RQ13 thresholds). Until R8-L1 removes it, this statement, its two tests and the RP8 exception stand.
+  - Rejected: counts measured at run time (a library Bind per process, order-dependent cold allocation); exact counts (restated by
+    every library unit); a capacity or a room per table; one room for every table (U) and two rooms over six tables (H); `KeyedRoom`
+    2,048 with or without the library-only kind (revision 2, d: more large-object bytes and gen2 collections); selection by entry
+    count (it admitted a table whose step is smaller than an excluded table's).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
