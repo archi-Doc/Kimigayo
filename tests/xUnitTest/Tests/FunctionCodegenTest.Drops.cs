@@ -59,6 +59,10 @@ public sealed partial class FunctionCodegenTest
         "    return pair.0@move\nfunc use(a: string, b: string, x: string, y: string, k: string)\n    give(true, (1, 2))\n" +
         "    give(true, (a@move, b@move))\n    let one = view((x@move, y@move))\n    let two = view((k@ref, k@ref))\n";
 
+    // A value destroyed in place through a raw Place (SPEC 5.2.3; R8-U1 review).
+    private const string RawDestruction =
+        "struct Res\n    public init() => ()\n    drop => Console.writeLine(\"res\")\nfunc discard(p: raw/Res)\n    unsafe\n        _ = (*p)@move\n";
+
     // A whole fixed array's indices after one element moved out, which A1 rejects (MovedPlace_Kd at a.indices) and the old analysis
     // accepts: MIR difference row a1-whole-incomplete.
     private const string WholeIncomplete =
@@ -334,11 +338,12 @@ public sealed partial class FunctionCodegenTest
 
     // Package C 3.2 I8 (PLAN G157 (17), (44)): the collector targets a destroyed value's glue exactly when its instance Type may need a drop
     // (MirTypes.MayNeedDrop), so a destruction without that target is a broken contract, InternalInvariant_Kd at its site: a Keep Drop of a
-    // string temporary, a replace's old string and a property witness's Set of a Resource Field. The subject item (named by its definition
+    // string temporary, an in-place destruction through a raw Place (`_ = (*p)@move`, SPEC 5.2.3) and a property
+    // witness's Set of a Resource Field. The subject item (named by its definition
     // or Field) loses its DropGlue targets in the checked set to make it so.
     [Theory]
     [InlineData("Console.writeLine(\"a\")\n", OutputKind.Application, null, "\"a\"")]
-    [InlineData(Updates, OutputKind.Library, "replaceText", "Kimi.Intrinsics.replace(t, with: \"new\")")]
+    [InlineData(RawDestruction, OutputKind.Library, "discard", "(*p)@move")]
     [InlineData(Witnesses, OutputKind.Library, "item", "x.item = value@move")]
     public void ADestructionWithoutItsGlueTargetIsABrokenContract(string source, OutputKind output, string? subject, string site)
     {

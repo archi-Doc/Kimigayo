@@ -1073,27 +1073,47 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
-    // SPEC 13.4: a string comparison is its library witness's call, so a BinaryOp comparing strings, as they are, below their ref, uniq or
-    // pair layers (s/string) or as the right operand after a Never left, is a broken contract, and one comparing i32 is not, after a Never
-    // left either; nor is one comparing raw pointers to strings, directly or below a pair layer (SPEC 5.1: their addresses), since the walk
-    // stops at a raw layer (R8-S1e-b).
+    // SPEC 13.4, 13.4.1, 5.1, 3.1.3, 8.7.4 (PLAN G662; R8-M15's family): a comparison BinaryOp stands only in the operator table's domain
+    // (ComparisonTypes.OperatorCompares, the whitelist the Backend's Column reads) at its operands' terminals: every comparison at an integer,
+    // a wrapping integer, a floating-point Type, char and a Never terminal (below ref or uniq: it has no value), equality alone at bool, Unit
+    // and a raw pointer (SPEC 5.1: its address; to a string too, directly or below a pair layer, since the walk stops at a raw layer), and
+    // any at an abstract operand, a Type parameter here, whose instance Binding proves (MIR reads the shape). A string's comparison is its
+    // library witness's call (R8-S1e-b), a struct's, an enum's and a Tuple's a Contract call, so a BinaryOp at one, as it is, below ref, uniq
+    // or pair layers (s/string) or as the right operand after a Never left, is a broken contract, as is an ordering at bool, Unit or a raw
+    // pointer; one at i32 is not, after a Never left either.
     [Theory]
-    [InlineData("string", true)]
-    [InlineData("ref", true)]
-    [InlineData("uniq", true)]
-    [InlineData("pair", true)]
-    [InlineData("never ref", true)]
-    [InlineData("i32", false)]
-    [InlineData("never i32", false)]
-    [InlineData("raw", false)]
-    [InlineData("pair raw", false)]
-    public void AStringComparisonIsNoBinaryOp(string operand, bool reported)
+    [InlineData("string", "==", true)]
+    [InlineData("ref", "==", true)]
+    [InlineData("uniq", "==", true)]
+    [InlineData("pair", "==", true)]
+    [InlineData("never ref", "==", true)]
+    [InlineData("struct", "==", true)]
+    [InlineData("never struct", "==", true)]
+    [InlineData("enum", "==", true)]
+    [InlineData("tuple", "==", true)]
+    [InlineData("unit", "<", true)]
+    [InlineData("bool", "<=", true)]
+    [InlineData("raw", ">", true)]
+    [InlineData("i32", "==", false)]
+    [InlineData("never i32", "==", false)]
+    [InlineData("raw", "==", false)]
+    [InlineData("pair raw", "!=", false)]
+    [InlineData("unit", "==", false)]
+    [InlineData("bool", "!=", false)]
+    [InlineData("char", "<", false)]
+    [InlineData("f64", ">=", false)]
+    [InlineData("wrapping", ">", false)]
+    [InlineData("parameter", "<=", false)]
+    [InlineData("refNever", "==", false)]
+    [InlineData("refNever", "<", false)]
+    [InlineData("uniqNever", "!=", false)]
+    public void AComparisonBinaryOpIsInTheOperatorTablesDomain(string operand, string op, bool reported)
     {
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
         var (c, types) = Fixture.Value;
-        _ = TyCtxt.Layer(types.Pair, out _, out var binder); // s of s/T.
+        _ = TyCtxt.Layer(types.Pair, out var parameter, out var binder); // T and s of s/T.
         var type = operand.Replace("never ", string.Empty, StringComparison.Ordinal) switch
         {
             "string" => BoundType.String,
@@ -1102,17 +1122,56 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "pair" => c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [BoundType.String]),
             "raw" => c.Types.Pointer(BoundType.String),
             "pair raw" => c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [c.Types.Pointer(BoundType.String)]),
+            "struct" => types.Point,
+            "enum" => types.Shape,
+            "tuple" => c.Types.Tuple([BoundType.I32, BoundType.I32]),
+            "unit" => BoundType.Unit,
+            "bool" => BoundType.Boolean,
+            "char" => BoundType.Char,
+            "f64" => BoundType.F64,
+            "wrapping" => BoundType.WrappingOf(BoundType.I32),
+            "parameter" => parameter!,
+            "refNever" => c.Types.Reference(SemanticsKind.Ref, BoundType.Never),
+            "uniqNever" => c.Types.Reference(SemanticsKind.Uniq, BoundType.Never),
             _ => BoundType.I32,
         };
         var left = MirModelTest.Local(body, operand.StartsWith("never", StringComparison.Ordinal) ? BoundType.Never : type);
         var (right, result, block) = (MirModelTest.Local(body, type), MirModelTest.Local(body, BoundType.Boolean), body.AddBlock());
         var operands = AddOperands(body, [Read(left), Read(right)]);
-        body.Push(block, MirStatement.Assign(result, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), At));
+        body.Push(block, MirStatement.Assign(result, MirRvalue.Binary(Op(op), operands, proven: true), At));
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Equal(reported, Validate(body).Any(static x => x.Rule == MirViolation.Operation));
 
-        // A value of a Type that is not Copy (string, uniq/string, a pair layer) is moved, since its Copy is an Operation finding of its own.
-        MirOperand Read(MirPlace place) => operand is "string" or "uniq" or "pair" or "pair raw" ? MirOperand.Move(place) : MirOperand.Copy(place);
+        // A value of a Type that is not Copy here (string, uniq/string, a pair layer, a struct or enum without the Contract, a parameter in a
+        // body without its definition's premises) is moved, since its Copy is an Operation finding of its own (DECISIONS BU-88).
+        MirOperand Read(MirPlace place)
+            => operand is "string" or "uniq" or "pair" or "pair raw" or "struct" or "never struct" or "enum" or "parameter" or "uniqNever"
+            ? MirOperand.Move(place) : MirOperand.Copy(place);
+
+        static MirBinaryOp Op(string op) => op switch
+        {
+            "==" => MirBinaryOp.Eq,
+            "!=" => MirBinaryOp.Ne,
+            "<" => MirBinaryOp.Lt,
+            "<=" => MirBinaryOp.Le,
+            ">" => MirBinaryOp.Gt,
+            _ => MirBinaryOp.Ge,
+        };
+    }
+
+    // SPEC 3.1.3, 13.4 (PLAN G662, design review 1's B1): Binding builds a comparison at a Never terminal below ref or uniq layers as a
+    // BinaryOp (ComparisonApplicability admits every comparison at Never, a Primitive), and the whitelist's Never row admits it: each body
+    // validates and holds the BinaryOp.
+    [Theory]
+    [InlineData("func g(a: ref/Never, b: ref/Never) -> bool\n    return a == b\n")]
+    [InlineData("func g(a: uniq/Never, b: ref/Never) -> bool\n    return a == b\n")]
+    [InlineData("func g(a: ref/Never, b: ref/Never) -> bool\n    return a < b\n")]
+    public void ANeverTerminalComparisonIsABinaryOpThatValidates(string source)
+    {
+        var program = MirBuildTest.Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        var built = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "g" });
+        Assert.Contains(built.Statements.ToArray(), static x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: >= (byte)MirBinaryOp.Eq });
     }
 
     // SPEC 8.2.3, 13.4 (PLAN G646; C-158, C-159): the validator reads an operand at its premised terminal (MirTypes.Premised, the premising
