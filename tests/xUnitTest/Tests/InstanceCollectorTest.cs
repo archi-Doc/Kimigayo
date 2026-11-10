@@ -1256,17 +1256,15 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Fn f"));
     }
 
-    // K 4.5 rows 2, 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, the requirement its
-    // published row runs (Text.toString's format witness) or what its intrinsic's row names (Text.writer's destination's reserve witness).
+    // K 4.5 rows 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, what its intrinsic's row names
+    // (Text.writer's destination's reserve witness).
     [Fact]
     public void ABodylessFunctionsItemIsWhatItsCallRuns()
     {
         var source = FormatSource
-            .Replace("let one = show(Box.init(1))", "let print = Text.toString<Box>\nlet box = Box.init(1)\nlet one = print(box@ref)", StringComparison.Ordinal)
             .Replace("var writer = Text.writer(sink@uniq)", "let make = Text.writer<Sink>\n    var writer = make(sink@uniq)", StringComparison.Ordinal);
         var (program, set) = Collect(source);
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["Fn format", "Fn format"], Calls(program, set, "Fn top").Where(static x => x == "Fn format"));
         Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
     }
 
@@ -1464,25 +1462,37 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,
-    // Text.tryFormat, Utf8Writer.write) is the item of its Type's Utf8Format witness in the instance: a user Type's format body, a built-in
-    // Type's BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness.
+    // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: Utf8Writer.write is a body (R8-W1b-4): one instance per value Type, shared by its
+    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
+    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Text.toString and Text.tryFormat are
+    // bodies (R8-W1c-2): one instance per value Type, whose interpolation or write calls that write instance.
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
         var (program, set) = Collect(FormatSource);
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn show [Box]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn show [i32]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn format"));
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn fill [Box]"));
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn emit [Box]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn emit [i32]"));
+        const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
+        const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
+        const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
+        const string ShowI32 = "library Fn toString in group Text [Text, i32]";
+        const string ShowBox = "library Fn toString in group Text [Text, Box]";
+        const string FillBox = "library Fn tryFormat in group Text [Text, Box, ]";
+        Assert.Equal([ShowBox], Calls(program, set, "Fn show [Box]"));
+        Assert.Equal([ShowI32], Calls(program, set, "Fn show [i32]"));
+        Assert.Equal([WriteBox], Calls(program, set, ShowBox));
+        Assert.Equal([WriteI32], Calls(program, set, ShowI32));
+        Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
+        Assert.Equal(["Builtin i32 BuiltinFormat", Failure, Failure], Calls(program, set, WriteI32));
+        Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
+        Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
+        Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
+        Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 
-    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; a fixed
-    // buffer's reserve, a compiler function without a body, has none (its legacy row's, C8*).
+    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a
+    // fixed buffer has none, though its reserve is a body: the runtime's standard-buffer arm reserves for it (R8-W1a, until W2).
     [Fact]
     public void AnErasedWriterIsItsDestinationsReserveWitness()
     {
@@ -1490,7 +1500,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
         var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
         Assert.Equal("struct Sink", $"{program.Bodies[reserve.BodyOrdinal].Key.Decl!.Scope.Owner}");
-        Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
     }
 
     // K 4.3, F package 4.6, DECISIONS R5-M166: a built-in comparison of a composite Self, a generic instance's comparison over its Type
@@ -1647,7 +1657,7 @@ public sealed partial class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue Plain");
     }
 
-    // PLAN G157 (6), K 4.5 "DropGlue" (X27; DECISIONS R5-M95): DropGlue.Parts, which the collector targets and code generation writes from,
+    // PLAN G157 (6), K 4.5 "DropGlue" (X27; DECISIONS R5-M95): DropGlue.Level, which the collector targets and code generation writes from,
     // and MirTypes.Destruction, which drop elaboration and the effects walk, decompose a Type alike. Over a glue Type of each kind (a struct
     // with a base, its base, a Tuple, an enum, a struct that declares a drop, a nested generic struct, a fixed array, an Array, a Dictionary, a
     // Sealed rc handle and a Closure environment) the walk's direct descents are the parts in reverse, a struct's base last and an enum's Case
@@ -1674,7 +1684,9 @@ public sealed partial class InstanceCollectorTest
         {
             parts.Clear();
             descents.Clear();
-            DropGlue.Parts(c.Types, type, parts);
+            List<DropStep> steps = [];
+            DropGlue.Level(c.Types, type, [], [], steps); // A glue function's level: Mir's level of an aggregate, the Backend's own parts.
+            parts.AddRange(steps.Where(static x => x.Kind is MirDropStepKind.Whole or MirDropStepKind.Run).Select(static x => x.Part));
             var walk = new Descents(descents);
             _ = MirTypes.Destruction(type, ref walk);
             Assert.Equal(Expected(c.Types, type, descents), parts.Select(static x => x.Type));

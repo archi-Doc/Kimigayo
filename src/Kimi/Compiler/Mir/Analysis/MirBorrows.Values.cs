@@ -19,7 +19,8 @@ internal sealed partial class MirBorrows
     {
         if (this.Keeps(rvalue))
         {
-            return (this.Operand(state, rvalue.Start), 0);
+            var kept = this.Operand(state, rvalue.Start);
+            return (rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, this.TypeOf(rvalue.Start)) : kept, 0); // Δ off a grid (MirBorrows.Puns).
         }
 
         switch (rvalue.Kind)
@@ -82,7 +83,8 @@ internal sealed partial class MirBorrows
     // element step, AddressWalk) with the address entry its location issued, formed (Φ_E where untracked).
     private int RawAddress(ulong[] state, MirPlace place, int location)
     {
-        var parents = this.Prefix(state, place.Root, this.AddressWalk(place, location)).Parents;
+        var count = this.AddressWalk(place, location);
+        var parents = this.Interior(this.Prefix(state, place.Root, count).Parents, place, count); // Δ past a raw Deref (MirBorrows.Puns).
         return this.Formed(this.loanAt[location] >= 0 ? this.sets.Add(parents, this.loanBase + this.loanAt[location]) : parents);
     }
 
@@ -90,7 +92,8 @@ internal sealed partial class MirBorrows
     // step walk's parents).
     private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
     {
-        var parents = this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow, ref this.walk)).Parents;
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
+        var parents = this.Interior(this.Prefix(state, place.Root, count).Parents, place, count); // Δ past a raw Deref (MirBorrows.Puns).
         return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
     }
 

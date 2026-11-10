@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: Judge's Refs and its problems with the indices MirReport.Add returned; the C1-F4 view's atoms (TyCtxt.OriginAtom).
 // - Outputs: Causes, indices in MirReport.All; Refutes; Fixed.
 // - Invariants: two Refs of one root share an atom and so share causes; a body judged with no view or over the arena limit has none;
-//   Fixed walks each distinct part of a Type once and fails closed on a raw layer, a Type parameter, a projection or a Callable.
+//   Fixed walks each distinct part of a Type once and fails closed on a raw layer, an abstract part (BoundType.IsAbstract) or a Callable.
 // - Prohibitions: no Loan set read; no fact of a body other than the one judged.
 internal sealed partial class MirOrigins
 {
@@ -65,14 +65,13 @@ internal sealed partial class MirOrigins
         return this.FixedOrigins(type, site) > 0;
     }
 
-    // The Origins a part holds, each Fixed, or -1 where one is not or the part is one the body does not know (a raw layer, a Type an
-    // instance decides: a Type parameter or a projection, or a Callable: a Function, Closure or Function Item Type); a part met before
-    // counts none.
+    // The Origins a part holds, each Fixed, or -1 where one is not or the part is one the body does not know: a raw layer, a Type an
+    // instance decides (BoundType.IsAbstract; in a case Type a Type parameter or a projection, its pair layers being replaced) or a
+    // Callable (a Function, Closure or Function Item Type); a part met before counts none.
     private int FixedOrigins(BoundType? type, SourceRef site)
     {
-        var dependent = type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection;
         var callable = type?.Kind is BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem;
-        if (type is null || type.Semantics == SemanticsKind.Raw || dependent || callable)
+        if (type is null || type.Semantics == SemanticsKind.Raw || type.IsAbstract || callable)
         {
             return -1;
         }

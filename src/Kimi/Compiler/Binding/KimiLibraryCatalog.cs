@@ -13,8 +13,6 @@ internal enum KimiLibraryContainer : byte
     Text,
     FixedBuffer,
     HeapBuffer,
-    WriteWindow,
-    Utf8Writer,
     Storage,
     Raw,
     FixedArray,

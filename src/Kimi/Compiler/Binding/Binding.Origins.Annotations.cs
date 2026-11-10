@@ -237,7 +237,7 @@ public sealed partial class Binding
         repeated = null;
         var owner = OriginOwner(use);
         if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
-            this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
+            this.originDeclarations.GetValueOrDefault(owner)?.Set(name) is { } localSet)
         {
             carrier = this.BindOriginSetType(localSet, scope);
             repeated = RepeatedSet(localSet) ? localSet : null;
@@ -249,14 +249,14 @@ public sealed partial class Binding
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
                 competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                 (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
-            var sets = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets;
-            if (visibleValue && (current.Origins?.ContainsKey(name) == true || sets?.ContainsKey(name) == true))
+            var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+            if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
                 return true;
             }
 
-            if (sets?.TryGetValue(name, out var set) == true)
+            if (set is not null)
             {
                 carrier = this.BindOriginSetType(set, current);
                 repeated = RepeatedSet(set) ? set : null;

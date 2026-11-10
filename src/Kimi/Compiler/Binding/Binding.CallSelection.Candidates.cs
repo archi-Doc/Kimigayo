@@ -638,7 +638,7 @@ public sealed partial class Binding
         this.CollectPositionPremises(ref solution);
         try
         {
-            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function) is { Relations.Length: > 0 })
             {
                 solution.OriginInference = this.BeginOriginInference(call, function);
             }

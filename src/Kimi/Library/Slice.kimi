@@ -96,5 +96,6 @@ public struct SliceIterator<T> {source}
     public func next(self: uniq/Self) -> Option<ref/T during source>
         require self.position < self.values.length else => return .None
         let index = self.position
-        self.position = self.position + 1
+        // `position < values.length` bounds the step.
+        self.position = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
         return .Some(self.values[index]@ref/T)

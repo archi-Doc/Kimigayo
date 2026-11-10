@@ -66,9 +66,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (binder is DeclarationContainerKoto &&
-                constraint.Left.BoundSymbol?.Kind is not
-                    (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter) &&
+            if (binder is DeclarationContainerKoto && constraint.Left.BoundSymbol is not { IsGenericInput: true } &&
                 constraint.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !this.IsDependentConstraint(constraint))
             {
                 continue;

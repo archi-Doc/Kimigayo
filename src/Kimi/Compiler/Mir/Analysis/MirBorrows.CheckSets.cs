@@ -78,6 +78,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.markSeen, this.loanBase);
         MirDataflow.Grow(ref this.markVia, this.loanBase);
         MirDataflow.Grow(ref this.markKept, this.loanBase);
+        MirDataflow.Grow(ref this.markRested, this.loanBase);
         MirDataflow.Grow(ref this.listed, this.holderCount + 1);
         MirDataflow.Grow(ref this.entryFirst, this.holderCount + 1);
         MirDataflow.Grow(ref this.takenFirst, this.holderCount + 1);
@@ -86,6 +87,7 @@ internal sealed partial class MirBorrows
         this.rootMarks.AsSpan(0, keys).Clear();
         this.markSeen.AsSpan(0, this.loanBase).Clear();
         this.markKept.AsSpan(0, this.loanBase).Clear();
+        this.markRested.AsSpan(0, this.loanBase).Clear();
         this.listed.AsSpan(0, this.holderCount + 1).Clear();
         this.Work += (2 * this.holderCount) + 1 + (2 * this.loanCount) + keys + (2 * this.loanBase);
         if (this.ownEntries > 0)

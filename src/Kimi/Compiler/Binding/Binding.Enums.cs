@@ -655,7 +655,7 @@ public sealed partial class Binding
 
         void Apply(OriginDeclaration declaration)
         {
-            if (declaration.State < 2 || declaration.Replacements.Count == 0)
+            if (!declaration.Resolves || declaration.Substitutions == 0)
             {
                 return;
             }
