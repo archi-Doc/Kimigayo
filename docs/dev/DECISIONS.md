@@ -11224,6 +11224,34 @@ resumed by R4-M86 (2026-10-20).
     (the position's role is Qualifier either way).
   - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
     published reads skip it. RP8 owed (with BU-144's).
+- **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
+  `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
+  15.3.1-15.3.6, 23.1.2.
+  - **Rule.** `OriginDeclaration` (`Binding.Origins.Model.cs`) keeps its state private. Another component reads a declaration only
+    through its read members: `Resolves`, `Substitution`, `Substitutions`, `SubstitutionPairs`; `Completed`, `Relations`, `Body`;
+    `Failure`, `Unavailable`, `PendingCause`, `RejectedRelations`, `FailedClauses`; `Set`; `InferredVariance`; `Owner`, `IsLocal`.
+    They hand out values and spans, never a collection. The formation writes through the `Forming` view, in four files only:
+    `Binding.OriginDeclarations.cs`, `Binding.OriginDeclarations.Failures.cs`, `Binding.LocalOrigins.cs`,
+    `Binding.OriginInheritance.cs`. A `Forming` occurrence forms the declaration it names: it reads no other declaration and answers
+    no other component.
+  - **What it guards.** The members BU-62 and BU-69 gave a meaning: `PendingFailure` (BU-62; read as `PendingCause` by
+    `UnboundCause`), `RejectedRelations` and `FailedClauses` (BU-62, BU-69; read by `ReadFailedContract`), and the question "is the
+    contract unavailable" (`Unavailable`, the rule `FailOriginDeclaration` applies; its four readers were `Failure is not null`
+    tests on non-local owners, where the answers are equal). The type's contract states what a failed declaration answers today;
+    this entry changes none of it.
+  - **Enforcement.** The compiler (a state member is private) and `ArchitectureRulesTest.SourcePatternStaysAtItsSites`, row
+    "Formation of an Origin declaration" (`\bForming\b` per file). A new reader is a new caller of a read member; a new formation
+    site moves a count and is reviewed.
+  - **Reason.** The state had 14 internal members read and written at 153 sites in 18 files, with no reader's contract, so a census
+    of the readers of a failed contract chose member names by hand; three design rounds of H11b-0 missed readers (review 4: the
+    substitutions). The readers are now the read members' callers, which the compiler lists.
+  - **Rejected:** a text census by member name (the cause); a ratchet without private state (a new member escapes it); moving the
+    formation into the type (it needs `Binding`'s `Meet`, `BindOrigin` and `Fail`); a second "unavailable" rule beside
+    `FailOriginDeclaration`'s (it reads `Unavailable` instead); naming `State`'s four values (only `Resolves` and `Completed` leave
+    the type).
+  - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
+    inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
+    inference (`InferLocalOrigins`), stated from the code and not probed.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -17896,3 +17924,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     changes either the manifest's bytes or a failure: R9-B1's, with its manifest revision); a text-pattern ratchet row (it counted
     Build's own imports and missed aliases and a namespace declared outside the folder).
   - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
+  - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
+    type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+- **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
+  part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
+  ACCEPT; the Front's consent C-224 and the Back's C-225)
+  - Rule: `src/Kimi/Documentation` (namespace `Kimi.Documentation`) is the documentation model: the limited-profile Markdown parser
+    and its immutable document (SPEC 2.3), item classification against a declaration's parameters (`DocumentationMarkdown`), HTML
+    rendering and link resolution (`DocumentationLinks`), the Unicode punctuation table and its generator.
+  - Dependency rule (ARCH "Dependency rules", the Documentation row; the code's statement is the header of
+    `Documentation/DocumentationMarkdown.cs`). Documentation reads, of the compiler, exactly: Core's association
+    (`DocumentationComment` with its `DocumentationText`, `DocumentationSource.LogicalName` (a comment's `Owner`),
+    `DocumentationDiagnostic`); Core's `SourceDocument`, the comment's and the text's `Source` (its `SourceText`, to map an original
+    CRLF; passed into `DocumentationDiagnostic`); a declaration's syntax (`Koto`, `FunctionKoto`, `DeclarationContainerKoto`,
+    `PropertyAccessorKoto`: generic parameters, origins, parameters, modifiers with `ModifierKind`); its Binding facts only through
+    `HirTables.Symbol` (R5-M193); its `Kotonoha`, the default project identity; `SourceSpan`; Helper's `IntegerTable`. It writes no
+    compiler state, starts no Binding and reads no Koto semantic slot.
+  - The association (`DocumentationSource` with `.Transfer`, `DocumentationComment`, `DocumentationText`, `DocumentationDiagnostic`)
+    is the compiler's own input record: `Compiler/Core`, namespace `Kimi.Compiler`, beside `Kotonoha.Documentation` and
+    `CodeContext.Documentation`. The Tokenizer and the Parser write it, Binding selects fragments from it (`GetDocumentation`), the
+    library sources share its candidates, Documentation reads it.
+  - No file of `Compiler/`, `Testing/` or `Diagnostics/` reads a Documentation type; its readers are hover's projection in check
+    (`HoverBuilder`, `HoverFacts`, `HoverPlacement`) and the LSP's rendering (`HoverRenderer`), plus benchmarks and tests.
+    `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the set; its type set is a folder's top-level types (a nested
+    type is named through its containing type; nested helper names such as `Container` and `Bracket` are spelled by 58 other files
+    for their own members). Its stated blind spots stand (a type reached without its name, a delegate, a short-name attribute;
+    Documentation declares neither).
+  - No reference turned around: the census found the compiler reading only the association; ordinary compilation never parses
+    Markdown.
+  - Responsibility moved: the association leaves the Middle's `Compiler/Documentation` for Core (any session under a board hold, the
+    Middle reviews; WORKFLOW's areas); `src/Kimi/Documentation` stays the Middle's.
+  - Behavior preserved: the Release `Kimi.dll` is identical to its base's at the IL level once the namespaces are mapped, but for
+    the informational version, the Regex generator's file-local class hash (from the build folder) and one generated difference:
+    Tinyhand's `TinyhandStaticRegistration_Kimi.Initialize` registers formatters in full-name order, so the moved types'
+    registrations change position and the `__TinyhandRegisterN` helpers are renumbered; the registered set is the same, each
+    registration keyed by its type, none twice, so the order has no effect (the IL comparison of dev 21d414f87 against the
+    implementation's commit, design review 1's dumper). No parser method body changed (design review 2's N7).
+  - The benchmark's paired mode finds the baseline's parser by the current full name, so a paired run needs a post-move baseline
+    (`src/Benchmark/DocumentationMarkdown.md`); a lookup falling back to the old namespace was rejected (a try-then-fallback).
+  - Rejected: the association in Core under namespace `Kimi.Compiler.Documentation` (no Lexing/Parsing/Binding hunk, but a folder
+    disagreeing with its namespace and two "Documentation" namespaces); the association in `Kimi.Documentation` (the compiler would
+    read Documentation); `DocumentationText`/`DocumentationDiagnostic` in Documentation (the association's `GetText` and
+    `GetDiagnostics` produce them); a semantic-slot row for the association's two files (one row over Core states R5-M193 for Core's
+    owner); the structure-limit splits in the move (pre-existing, none worse: parts 2 and 3, the plan's §5.3 rows).
+  - Amends: R5-M193's "the documentation model" now names `Kimi.Documentation`. R9-M6's description of
+    `ComponentIsReadOnlyByItsReaders` ("a reader names a type the folder declares"): the types are the folder's top-level ones,
+    since a nested type is named through its containing type and 58 files of `src/Kimi` spell nested Documentation helper names
+    (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
+    type, `NativeToolchain.NativeBuild`, is private).
+  - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).

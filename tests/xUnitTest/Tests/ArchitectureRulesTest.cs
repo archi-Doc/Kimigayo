@@ -34,6 +34,10 @@ public class ArchitectureRulesTest
     private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
         "Unit/Command/CommandExecution.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
 
+    // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
+    // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
+    private const string DocumentationReaders = "Checking/Hover/HoverBuilder.cs;Checking/HoverFacts.cs;Checking/HoverPlacement.cs;Lsp/HoverRenderer.cs";
+
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
     private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
 
@@ -138,7 +142,8 @@ public class ArchitectureRulesTest
     [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
     [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
-    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Compiler/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Core reads of Koto semantic slots", "src/Kimi/Compiler/Core", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Testing reads of Koto semantic slots", "src/Kimi/Testing", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Benchmark reads of Koto semantic slots", "src/Benchmark", "*.cs", SemanticSlotReads, 0)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
@@ -213,6 +218,10 @@ public class ArchitectureRulesTest
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
     // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     [InlineData("Answers given Complete", "src/Kimi/Compiler", @"(?:(?<![=!<>])=|[:,])\s*Completion\.Complete\b", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=1;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.cs=2")]
+    // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
+    // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=11;Binding/Binding.OriginDeclarations.cs=30;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -230,9 +239,12 @@ public class ArchitectureRulesTest
     // files are not readers; build output (bin, obj) is not source. A further reader fails here until its row is reviewed. Not seen,
     // so review reads them (COMPILER_ARCHITECTURE, "Dependency rules"): a type reached without its name (a var over a member's result,
     // reflection); a delegate type the folder declares (the types are its class, struct, record, interface and enum declarations); an
-    // attribute class used by its short name ([Foo] for FooAttribute). Build declares neither today.
+    // attribute class used by its short name ([Foo] for FooAttribute). Build and Documentation declare neither today. The types are the
+    // folder's top-level ones (the plan's unit M1): a nested type is named through its containing type, so a nested name that another file
+    // spells for its own member (Container, Bracket, Parts) reads nothing.
     [Theory]
     [InlineData("src/Kimi/Build", "Kimi.Build", BuildReaders)]
+    [InlineData("src/Kimi/Documentation", "Kimi.Documentation", DocumentationReaders)]
     public void ComponentIsReadOnlyByItsReaders(string folder, string name, string readers)
     {
         var root = Path.Combine(Repository.Root, "src/Kimi");
@@ -243,6 +255,7 @@ public class ArchitectureRulesTest
             .ToArray();
         var types = files.Where(x => x.Name.StartsWith(inside, StringComparison.Ordinal))
             .SelectMany(static x => CSharpSyntaxTree.ParseText(File.ReadAllText(x.Path)).GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+            .Where(static x => x.Parent is BaseNamespaceDeclarationSyntax or CompilationUnitSyntax)
             .Select(static x => x.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
         Assert.NotEmpty(types);
 
