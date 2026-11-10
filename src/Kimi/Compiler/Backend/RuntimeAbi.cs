@@ -97,6 +97,16 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
+    // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
+    // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
+    internal static readonly FunctionAbi ErasedReserve = new(
+        "__kimi_erased_reserve",
+        "void",
+        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "writer", AbiParameterKind.Value, 0), new("i64", "amount", AbiParameterKind.Value, 1)])
+    {
+        ResultSlot = true,
+    };
+
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue

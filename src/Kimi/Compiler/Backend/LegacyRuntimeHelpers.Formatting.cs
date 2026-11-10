@@ -215,7 +215,6 @@ internal static partial class LegacyRuntimeHelpers
             CompilerFunctionKind.TextWriter,
             Slotted("__kimi_text_writer", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)]),
             Runtime);
-        Add(CompilerFunctionKind.WriterStatus, Slotted("__kimi_writer_status", [ret, reference]), Runtime);
         Add(
             CompilerFunctionKind.WriterWrite,
             Slotted("__kimi_writer_write_builtin", [ret, reference, new("ptr", "value", LogicalIndex: 1), builtin, location, length]),
@@ -234,10 +233,6 @@ internal static partial class LegacyRuntimeHelpers
         Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
         Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
         Add(CompilerFunctionKind.TextValidateUtf8, Slotted("__kimi_text_validate_utf8", [ret, owned]), Runtime);
-        Add(CompilerFunctionKind.WindowPush, Slotted("__kimi_window_push", [ret, reference, new("i8", "byte", LogicalIndex: 1)]), Runtime);
-        Add(CompilerFunctionKind.WindowAppend, Slotted("__kimi_window_append", [ret, reference, new("ptr", "bytes", AbiParameterKind.OwnedSlot, 1)]), Runtime);
-        Add(CompilerFunctionKind.WindowLimit, Slotted("__kimi_window_limit", [ret, owned, amount, location, length]), Runtime);
-        Add(CompilerFunctionKind.WindowCommit, new("__kimi_window_commit", "i64", [owned]), Runtime);
         Add(CompilerFunctionKind.WriteLineUtf8, new("__kimi_write_line_utf8", "void", [owned, location, length]), Runtime);
         return rows;
 
@@ -257,7 +252,8 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        // A routine the erased writer's kept runtime defines (Text.writer's) is not this text's.
+        var symbols = new HashSet<string>(StringComparer.Ordinal) { LlvmModuleText.ErasedWriterDefinitions[0].Name };
         var definitions = new List<FunctionAbi>(FormattingRows.Length);
         foreach (var row in FormattingRows)
         {

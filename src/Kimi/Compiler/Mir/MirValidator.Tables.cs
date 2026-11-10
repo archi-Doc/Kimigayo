@@ -71,9 +71,9 @@ internal sealed partial class MirValidator
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
                 var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type, parts); // Unstated marks kept parts only (DECISIONS BU-46).
                 var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
-                if (!typed || !placed || local.Kind > MirLocalKind.DropFlag ||
-                    (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))) ||
-                    (local.Role == MirLocalRole.Receiver) != (i == receiver))
+                var roled = (local.Role == MirLocalRole.Receiver) == (i == receiver) && // A Result is a temp of _0's Type (MirLocalRole).
+                    (local.Role != MirLocalRole.Result || (local.Kind == MirLocalKind.Temp && ReferenceEquals(local.Type, locals[0].Type)));
+                if (!typed || !placed || local.Kind > MirLocalKind.DropFlag || !roled)
                 {
                     this.Report(MirViolation.Local);
                 }
@@ -83,7 +83,8 @@ internal sealed partial class MirValidator
             foreach (var row in body.MustNotComplete)
             {
                 this.at = new(row.Subject, 0, StatementStart: false);
-                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length || !InRange(row.Start, row.Count, body.GuessedSites.Length) ||
+                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length ||
+                    !InRange(row.Start, row.Count, body.GuessedSites.Length) ||
                     blocks[row.End].Terminator is not { Kind: MirTerminatorKind.Unreachable, CheckTarget: -1 })
                 {
                     this.Report(MirViolation.TargetRange);
