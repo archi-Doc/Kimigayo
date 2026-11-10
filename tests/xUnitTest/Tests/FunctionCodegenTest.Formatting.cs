@@ -280,23 +280,26 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 22.9.2, 22.5.1 (R8-W1c): the conversions are bodies with CallerLocation rows: a direct call and an Item's Value call pass their own
-    // location and no kind, and each body forwards the location it received, its last two parameters, to its write (R8-W1b-4's CallerLocation
-    // row), so an Abort inside the write reports the user's conversion.
+    // SPEC 22.9.2, 22.5.1 (R8-W1c): the conversions are bodies with CallerLocation rows: a direct call and an Item's Value call pass their
+    // result slot, their operands (the value, tryFormat's array) and their own location, nothing else (no kind, no capacity), and each
+    // body forwards the location it received, its last two parameters, to its write (R8-W1b-4's CallerLocation row), so an Abort inside
+    // the write reports the user's conversion.
     [Fact]
     public void ConversionsAreBodiesAtTheirCallersLocation()
     {
         var c = Analyze(Formats, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
         var writes = FunctionsOf(ir, c, "write").ToArray();
-        foreach (var (name, body, site) in new[]
+        foreach (var (name, body, operands, site) in new[]
         {
-            ("ctText", "toString", "Text.toString(n)"), ("ctTry", "tryFormat", "Text.tryFormat(n, bytes)"), ("itText", "toString", "show(n)"),
+            ("ctText", "toString", "ptr %, ptr %", "Text.toString(n)"),
+            ("ctTry", "tryFormat", "ptr %, ptr %, ptr %", "Text.tryFormat(n, bytes)"),
+            ("itText", "toString", "ptr %, ptr %", "show(n)"),
         })
         {
             var bodies = FunctionsOf(ir, c, body).ToArray();
             var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => bodies.Contains(x.Callee!));
-            Assert.EndsWith($"ptr @, i64 {Located(Formats, site)})", call.Shape, StringComparison.Ordinal);
+            Assert.Equal($"call void @({operands}, ptr @, i64 {Located(Formats, site)})", call.Shape);
             var write = Assert.Single(CallsOf(call.Callee!), x => writes.Contains(x.Callee!));
             Assert.Equal(call.Callee!.Parameters.TakeLast(2), write.Operands.TakeLast(2));
         }
@@ -365,9 +368,10 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 22.10.1, 22.9.2, 7.7.4 (R8-W1b-4, W1c): a user formatter runs through the write body and the conversion bodies, a direct write, a
-    // conversion, an Item's Value call and an erased Item alike, each given the user's location (CallerLocation rows); the write instance
-    // alone calls the witness, once, with its result slot, the value and the adapter (no format witness is caller-location); the module
-    // writes no wrapper over it.
+    // conversion, an Item's Value call and an erased Item alike, each given its result slot, its operands (a write's adapter and value, a
+    // conversion's value, tryFormat's array) and the user's location (CallerLocation rows), nothing else; the write instance alone calls
+    // the witness, once, with its result slot, the value and the adapter (no format witness is caller-location); the module writes no
+    // wrapper over it.
     [Fact]
     public void AUserFormatterRunsThroughTheBodies()
     {
@@ -379,15 +383,17 @@ public sealed partial class FunctionCodegenTest
         var write = Assert.Single(FunctionsOf(ir, c, "write"));
         Assert.Same(write, Assert.Single(ir.Functions, x => CalleesOf(x).Contains(witness)));
         Assert.Equal("call void @(ptr %, ptr %, ptr %)", Assert.Single(CallsOf(write), x => x.Callee == witness).Shape);
-        foreach (var (name, body, site) in new[]
+        foreach (var (name, body, operands, site) in new[]
         {
-            ("usWrite", "write", "writer.write(s)"), ("usText", "toString", "Text.toString(s)"), ("usTry", "tryFormat", "Text.tryFormat(s, bytes)"),
-            ("usItem", "toString", "show(s)"),
+            ("usWrite", "write", "ptr %, ptr %, ptr %", "writer.write(s)"),
+            ("usText", "toString", "ptr %, ptr %", "Text.toString(s)"),
+            ("usTry", "tryFormat", "ptr %, ptr %, ptr %", "Text.tryFormat(s, bytes)"),
+            ("usItem", "toString", "ptr %, ptr %", "show(s)"),
         })
         {
             var bodies = FunctionsOf(ir, c, body).ToArray();
             var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => bodies.Contains(x.Callee!));
-            Assert.EndsWith($", ptr @, i64 {Located(UserFormats, site)})", call.Shape, StringComparison.Ordinal);
+            Assert.Equal($"call void @({operands}, ptr @, i64 {Located(UserFormats, site)})", call.Shape);
         }
 
         Assert.Contains(CalleesOf(ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "usErased"))).Entry)), FunctionsOf(ir, c, "toString").Contains);

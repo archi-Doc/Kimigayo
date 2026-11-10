@@ -6,8 +6,8 @@
 // argument's layout verdict, K 4.8), or for a #LibraryImport function its Import item (Imported; DECISIONS R8-M19); and the body of a
 // DictionaryStorage function the Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
-// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage, Bodyless); the
-// intrinsic dispositions and rows; the legacy rows' layout needs.
+// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, DictionaryStorage, Bodyless); the intrinsic dispositions and
+// rows.
 // Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs, an
 // intrinsic's row or an Import item), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a
 // compiler function without a row or a refused edge.

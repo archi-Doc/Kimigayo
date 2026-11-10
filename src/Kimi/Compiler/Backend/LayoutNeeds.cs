@@ -3,9 +3,9 @@
 // Owns the layout needs of the MIR forms and the comparison tree (SPEC 8.15.3; DECISIONS R5-M144, R5-M149): what a form's generated code
 // reads a layout of besides its by-value storage, the one fact the instance collector (K 4.8: a use of that Type) and code generation (the
 // Type it lays out, FunctionCodegen.Needed) both read. Rows: a projection step by its kind, an operator by its operator and operand, a
-// comparison node by its kind and Type; the intrinsic rows' and the legacy rows' Need columns (IntrinsicRow.Need, LegacyRow.Need) carry the
-// calls'. TypeOf is the one place that names the Type a form's need reads, as a Type of its body; each reader maps it into its item's
-// instance. A comparison node's is its own Type, which its reader takes in the instance Self it compares (InstanceCollector.Uses).
+// comparison node by its kind and Type; the intrinsic rows' Need column (IntrinsicRow.Need) carries the calls'. TypeOf is the one place
+// that names the Type a form's need reads, as a Type of its body; each reader maps it into its item's instance. A comparison node's is
+// its own Type, which its reader takes in the instance Self it compares (InstanceCollector.Uses).
 // Input: a projection kind, a MIR operator and its first operand's Type, a comparison node; a body Place, rvalue or substitution for TypeOf.
 // Output: a LayoutNeed; the Type (or the Types) it names.
 // Invariants: closed: a new form adds a row here or a Need on its table; every row's Type is TypeOf's but a comparison node's (its reader's

@@ -33,7 +33,7 @@ invalid:
   unreachable
 }
 
-; The committed bytes as a Slice, for the formatting adapter and the conversions until W1c and W2.
+; The committed bytes as a Slice, for the formatting adapter's end (__kimi_format_take_string) until W2.
 define internal void @__kimi_buffer_bytes(ptr %ret, ptr %self) #0 {
 entry:
   %data = load ptr, ptr %self, align 8

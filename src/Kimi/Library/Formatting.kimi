@@ -382,6 +382,8 @@ public group Text
 
     /// Formats `value` once into the array, without a pre-pass or retry (SPEC 22.9.2); on `BufferFull` the array may
     /// hold partial bytes.
+    ///
+    /// - return: The formatted text, a view of the array that keeps `destination`'s exclusive loan while it is used.
     public func tryFormat<T, length N>(
         value: ref/T, destination: uniq/[N of u8]
     ) -> Result<Utf8Slice during destination, BufferFull>
