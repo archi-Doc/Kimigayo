@@ -28,7 +28,7 @@ public sealed partial class Binding
     /// <param name="types">The Type arguments by slot.</param>
     /// <returns>The Origin in the instance.</returns>
     internal BoundOrigin ForwardOrigin(BoundOrigin origin, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, ReadOnlySpan<BoundType?> types)
-        => this.Substitute(origin, new CallSubstitution(target.Declaration, types, default, origins, inputs, declaring?.Symbol is null ? null : declaring));
+        => this.Substitute(origin, SubstitutionOf(target.Declaration, declaring, types, default, origins, inputs));
 
     /// <summary>Lists the verified specializations of a generic original (SPEC 8.13).</summary>
     /// <param name="original">The original generic function.</param>

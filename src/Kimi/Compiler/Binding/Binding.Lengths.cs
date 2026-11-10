@@ -58,43 +58,8 @@ public sealed partial class Binding
     // A length under a binder's substitution, its Type arguments `types` and length arguments `arguments`: a length slot's argument, an
     // interpolation-bound term over its substituted value Types, folded again (TyCtxt.InterpolationBound), arithmetic evaluated once its
     // operands are constant; null where a slot is unbound or the arithmetic fails (SPEC 4.2, 4.4.2).
-    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> arguments, BoundType? declaring = null)
-    {
-        if (expression.Parameter is { } parameter)
-        {
-            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
-        }
-
-        if (expression.IsConstant)
-        {
-            return expression;
-        }
-
-        if (expression.Values is { } values)
-        {
-            return this.SubstituteType(values, binder, types, arguments, declaring: declaring) is { } image ? this.types.InterpolationBound(image, expression.Value) : null;
-        }
-
-        var left = this.SubstituteLength(expression.Left!, binder, types, arguments, declaring);
-        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, types, arguments, declaring) : null;
-        if (left is null || (expression.Right is not null && right is null))
-        {
-            return null;
-        }
-
-        if (!left.IsConstant || right is { IsConstant: false })
-        {
-            return this.InternLength(expression.Operation, left: left, right: right);
-        }
-
-        if (expression.Operation == LengthOperation.Neg)
-        {
-            return left.Value == long.MinValue ? null : this.InternLength(LengthOperation.Constant, -left.Value);
-        }
-
-        return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
-            ? this.InternLength(LengthOperation.Constant, unchecked((long)value)) : null;
-    }
+    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> arguments)
+        => this.SubstituteLength(expression, new CallSubstitution(binder, types, arguments) { SlotOwner = binder });
 
     // A length in the instance a substitution makes, as StorageInstance makes a Type (TyCtxt.Compose's lengths): an interpolation-bound term
     // over its value Types' instance (declaring Type, slots, Self and normalization), folded again; any other length by its slots.
@@ -292,6 +257,47 @@ public sealed partial class Binding
         }
 
         return result;
+    }
+
+    // A length under a substitution (Binding.CallSubstitution): its slot owner's length arguments, and its value Types under the
+    // substitution's Type and length columns and its declaring occurrence.
+    private BoundLength? SubstituteLength(BoundLength expression, in CallSubstitution substitution)
+    {
+        if (expression.Parameter is { } parameter)
+        {
+            return ReferenceEquals(parameter.Scope.Owner, substitution.SlotOwner) ? substitution.Lengths[parameter.Slot] : expression;
+        }
+
+        if (expression.IsConstant)
+        {
+            return expression;
+        }
+
+        if (expression.Values is { } values)
+        {
+            var slots = new CallSubstitution(substitution.SlotOwner, substitution.Types, substitution.Lengths) { SlotOwner = substitution.SlotOwner, Declaring = substitution.Declaring };
+            return this.Substitute(values, slots) is { } image ? this.types.InterpolationBound(image, expression.Value) : null;
+        }
+
+        var left = this.SubstituteLength(expression.Left!, substitution);
+        var right = expression.Right is { } operand ? this.SubstituteLength(operand, substitution) : null;
+        if (left is null || (expression.Right is not null && right is null))
+        {
+            return null;
+        }
+
+        if (!left.IsConstant || right is { IsConstant: false })
+        {
+            return this.InternLength(expression.Operation, left: left, right: right);
+        }
+
+        if (expression.Operation == LengthOperation.Neg)
+        {
+            return left.Value == long.MinValue ? null : this.InternLength(LengthOperation.Constant, -left.Value);
+        }
+
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, ScalarTypes.SizeWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+            ? this.InternLength(LengthOperation.Constant, unchecked((long)value)) : null;
     }
 
     private bool IsLengthArgument(Koto syntax, BindingScope scope)

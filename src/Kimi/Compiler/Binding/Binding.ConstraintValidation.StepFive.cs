@@ -39,7 +39,7 @@ public sealed partial class Binding
             var bindings = new CandidateBindings(
                 function,
                 target,
-                SubstitutionOf(function, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins),
+                SubstitutionOf(function, call),
                 call.ConformingType,
                 call.DeclaringType,
                 call.DeclaringType,

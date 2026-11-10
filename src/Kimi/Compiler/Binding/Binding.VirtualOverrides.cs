@@ -185,7 +185,7 @@ public sealed partial class Binding
         var original = slot.Original;
         var scope = this.ModuleScope(original);
         return CombineProof(
-            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, []), scope),
+            this.CheckConstraints(original.TypeConstraints, SubstitutionOf(original, slot.DeclaringType, [], default), scope),
             this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope),
             true);
     }

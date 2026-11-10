@@ -93,7 +93,7 @@ public sealed partial class Binding
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
-        var result = this.SubstituteType(type, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder, subst.Declaring);
+        var result = this.Substitute(type, new CallSubstitution(originBinder, subst.Types, subst.Lengths, subst.Origins) { SlotOwner = binder, Images = subst.Inputs, Declaring = subst.Declaring });
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);

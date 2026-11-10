@@ -196,27 +196,22 @@ public sealed partial class Binding
         ReadOnlySpan<BoundLength?> lengths = default,
         ReadOnlySpan<BoundOrigin> origins = default,
         PerCallImages images = default,
-        Koto? originBinder = null,
-        BoundType? declaring = null)
-    {
-        var result = this.SubstitutePart(type, binder, arguments, lengths, originBinder ?? binder, origins, images, declaring?.Symbol is null ? null : declaring, this.substitutedParts.Begin(this.storageVersion));
-        return OverHeight(result) ? this.RefuseHeight() : result; // IMPL A.4: no Type higher than the limit is formed.
-    }
+        Koto? originBinder = null)
+        => this.Substitute(type, new CallSubstitution(originBinder ?? binder, arguments, lengths, origins) { SlotOwner = binder, Images = images });
 
     // An Origin of a declaration-terms Type under a substitution, each atom mapped once: its SlotImage under the Origin binder's images, else
     // a pair's `o` through its Type argument (PairOuterImage); a meet is rebuilt from its operands' images only when one of them changes.
-    private BoundOrigin SubstituteSlotOrigin(
-        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, BoundType? declaring)
+    private BoundOrigin SubstituteSlotOrigin(BoundOrigin origin, in CallSubstitution substitution)
     {
         if (origin.Kind != OriginKind.Intersection)
         {
-            return this.AtomImage(origin, binder, arguments, originBinder, origins, images, declaring) ?? origin;
+            return this.AtomImage(origin, substitution) ?? origin;
         }
 
         var changed = false;
         for (var i = 0; i < origin.Operands.Count && !changed; i++)
         {
-            changed = this.AtomImage(origin.Operands[i], binder, arguments, originBinder, origins, images, declaring) is { } image && !ReferenceEquals(image, origin.Operands[i]);
+            changed = this.AtomImage(origin.Operands[i], substitution) is { } image && !ReferenceEquals(image, origin.Operands[i]);
         }
 
         if (!changed)
@@ -224,20 +219,20 @@ public sealed partial class Binding
             return origin;
         }
 
-        var result = this.AtomImage(origin.Operands[0], binder, arguments, originBinder, origins, images, declaring) ?? origin.Operands[0];
+        var result = this.AtomImage(origin.Operands[0], substitution) ?? origin.Operands[0];
         for (var i = 1; i < origin.Operands.Count; i++)
         {
-            result = this.Meet(result, this.AtomImage(origin.Operands[i], binder, arguments, originBinder, origins, images, declaring) ?? origin.Operands[i]);
+            result = this.Meet(result, this.AtomImage(origin.Operands[i], substitution) ?? origin.Operands[i]);
         }
 
         return result;
     }
 
     // Without images no atom has a SlotImage, so the common substitution of Type slots alone reads the pair arm only.
-    private BoundOrigin? AtomImage(
-        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, BoundType? declaring)
-        => (origins.IsEmpty && images.IsEmpty ? null : this.SlotImage(origin, originBinder, origins, images, default)) ?? this.PairOuterImage(origin, binder, arguments) ??
-            (declaring is null ? null : this.DeclaringImage(origin, binder, declaring));
+    private BoundOrigin? AtomImage(BoundOrigin origin, in CallSubstitution substitution)
+        => (substitution.Origins.IsEmpty && substitution.Images.IsEmpty ? null : this.SlotImage(origin, substitution.Binder, substitution.Origins, substitution.Images, default)) ??
+            this.PairOuterImage(origin, substitution.SlotOwner, substitution.Types) ??
+            (substitution.Declaring is null ? null : this.DeclaringImage(origin, substitution.SlotOwner, substitution.Declaring));
 
     // SPEC 15.6.4 (PLAN G457, G707): an atom's image under the occurrence of the Type declaring the binder, the second binder of the one
     // pass: its Origin arguments' (OccurrenceOrigins) and, where the binder does not own its Type slots (a constructor's structure does),
@@ -254,53 +249,40 @@ public sealed partial class Binding
     // A part of a substitution query. Without length arguments a part with neither an abstract part nor an Origin is its own image: every
     // arm that changes a part substitutes a slot of an abstract kind, a length, an Origin or an interpolation-bound term's value Types (an
     // abstract part, BoundLength.HasAbstractPart).
-    private BoundType? SubstitutePart(
-        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, BoundType? declaring, uint query)
+    private BoundType? SubstitutePart(BoundType type, in CallSubstitution substitution, uint query)
     {
-        if (lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesAnyOrigin)
+        if (substitution.Lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesAnyOrigin)
         {
             return type;
         }
 
         if (type.Components.Count == 0)
         {
-            return this.SubstituteTypeCore(type, binder, arguments, lengths, originBinder, origins, images, declaring, query);
+            return this.SubstituteTypeCore(type, substitution, query);
         }
 
         if (!this.substitutedParts.TryGet(type, query, out var image))
         {
-            image = this.SubstituteTypeCore(type, binder, arguments, lengths, originBinder, origins, images, declaring, query);
+            image = this.SubstituteTypeCore(type, substitution, query);
             this.substitutedParts.Set(type, query, image);
         }
 
         return image;
     }
 
-    private BoundType? SubstituteTypeCore(
-        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, BoundType? declaring, uint query)
+    private BoundType? SubstituteTypeCore(BoundType type, in CallSubstitution substitution, uint query)
     {
-        // The slot's binder: `binder`, else the Type declaring it (the one pass over both binders; PLAN G457, G707). A constructor's slots are
-        // its structure's: a column without them (a plan keeps the callee's own) leaves them to the declaring occurrence.
-        var slot = type.Symbol is { } parameter ? ContainerSlot(binder, parameter) : -1;
-        var slotArguments = arguments;
-        var declared = false;
-        if ((slot < 0 || (uint)slot >= (uint)arguments.Length) && declaring is not null && type.Symbol is { } outerParameter && ContainerSlot(declaring.Symbol!.Declaration, outerParameter) is >= 0 and var outerSlot)
-        {
-            slot = outerSlot;
-            slotArguments = (BoundType[])declaring.Components;
-            declared = true;
-        }
-
+        var slot = substitution.Slot(type.Symbol, out var slotArguments);
         if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < slotArguments.Length && slotArguments[slot] is { } selection)
         {
             if (selection.Kind == BoundTypeKind.SemanticsAdaptation)
             {
-                return this.SubstituteFamilyArgument(type, binder, arguments, lengths, originBinder, origins, images, declaring, slot, selection, declared);
+                return this.SubstituteFamilyArgument(type, substitution, slot, selection);
             }
 
             if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
             {
-                return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, binder, arguments, lengths, originBinder, origins, images, declaring, query) : null;
+                return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, substitution, query) : null;
             }
         }
 
@@ -324,7 +306,7 @@ public sealed partial class Binding
             {
                 // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
                 // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, this.SubstituteSlotOrigin(replacement, binder, arguments, originBinder, origins, images, declaring), (BoundOrigin[])projected.OriginArguments);
+                projected = this.WithOrigins(projected, this.SubstituteSlotOrigin(replacement, substitution), (BoundOrigin[])projected.OriginArguments);
             }
 
             return projected;
@@ -334,7 +316,7 @@ public sealed partial class Binding
         var context = type.ClosureContext;
         if (TyCtxt.HeldType(type) is { } held)
         {
-            if (this.SubstitutePart(held, binder, arguments, lengths, originBinder, origins, images, declaring, query) is not { } image)
+            if (this.SubstitutePart(held, substitution, query) is not { } image)
             {
                 return null;
             }
@@ -354,9 +336,9 @@ public sealed partial class Binding
         {
             var length = type.Length;
             var expression = type.LengthExpression;
-            if (expression is not null && (!lengths.IsEmpty || expression.HasAbstractPart))
+            if (expression is not null && (!substitution.Lengths.IsEmpty || expression.HasAbstractPart))
             {
-                expression = this.SubstituteLength(expression, binder, arguments, lengths, declaring);
+                expression = this.SubstituteLength(expression, substitution);
                 if (expression is null || (expression.IsConstant && !ValidLength(expression.Value)))
                 {
                     return null;
@@ -373,7 +355,7 @@ public sealed partial class Binding
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
-                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, arguments, lengths, declaring);
+                itemLengths[i] = argument is null || substitution.Lengths.IsEmpty ? argument : this.SubstituteLength(argument, substitution);
                 if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !ValidLength(itemLengths[i]!.Value))))
                 {
                     return null;
@@ -384,7 +366,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                var substituted = this.SubstitutePart(type.Components[i], binder, arguments, lengths, originBinder, origins, images, declaring, query);
+                var substituted = this.SubstitutePart(type.Components[i], substitution, query);
                 if (substituted is null)
                 {
                     return null;
@@ -413,21 +395,21 @@ public sealed partial class Binding
                     return family.Kind == BoundTypeKind.SemanticsAdaptation ? this.SubstituteFamily(family, whole) : family;
                 }
 
-                return this.ApplySemantics(whole, scratch[0], type.Origin is { } slotOrigin ? this.SubstituteSlotOrigin(slotOrigin, binder, arguments, originBinder, origins, images, declaring) : null);
+                return this.ApplySemantics(whole, scratch[0], type.Origin is { } slotOrigin ? this.SubstituteSlotOrigin(slotOrigin, substitution) : null);
             }
 
             // SPEC 8.1.1, 8.1.2: every `o` of the binder's pairs, as an outer Origin, a meet operand or an Origin argument, is bound
             // through its Type argument.
-            var origin = type.Origin is { } outer ? this.SubstituteSlotOrigin(outer, binder, arguments, originBinder, origins, images, declaring) : null;
+            var origin = type.Origin is { } outer ? this.SubstituteSlotOrigin(outer, substitution) : null;
             if (type.RawOrigin is { } raw)
             {
-                origin = this.SubstituteSlotOrigin(raw, binder, arguments, originBinder, origins, images, declaring);
+                origin = this.SubstituteSlotOrigin(raw, substitution);
             }
 
             changed |= !ReferenceEquals(origin, type.Origin ?? type.RawOrigin);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                var argument = this.SubstituteSlotOrigin(type.OriginArguments[i], binder, arguments, originBinder, origins, images, declaring);
+                var argument = this.SubstituteSlotOrigin(type.OriginArguments[i], substitution);
                 if (rebuilt is null && !ReferenceEquals(argument, type.OriginArguments[i]))
                 {
                     rebuilt = this.originScratch.Rent(type.OriginArguments.Count);

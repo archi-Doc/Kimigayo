@@ -90,7 +90,7 @@ public sealed partial class Binding
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
-                this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins), call);
+                this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call), call);
             }
 
             if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&

@@ -178,13 +178,7 @@ public sealed partial class Binding
         ReadOnlySpan<BoundOrigin> origins,
         ReadOnlySpan<BoundOrigin> inputs,
         BoundType? declaringType)
-    {
-        var binder = selected.OriginBinder;
-        var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
-        return this.Substitute(
-            origin,
-            new CallSubstitution(binder, default, default, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))], declaringType?.Symbol is null ? null : declaringType));
-    }
+        => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
     // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
