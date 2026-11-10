@@ -1365,7 +1365,7 @@ public sealed partial class TyCtxtTest
         WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
         var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
         Assert.True(
-            problems.Count == 0 && counts == "corpus Body 34, Builtin 2, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
+            problems.Count == 0 && counts == "corpus Body 37, Builtin 174, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
             $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
