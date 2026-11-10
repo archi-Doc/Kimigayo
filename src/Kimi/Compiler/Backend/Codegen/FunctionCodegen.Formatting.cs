@@ -117,6 +117,7 @@ internal sealed partial class FunctionCodegen
         }
 
         this.module.Request(LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Needs);
+        this.module.Request(ModuleCodegen.Needs.ErasedWriter);
         (this.slotless[0], this.slotless[1]) = (new('\0', kind), entry);
         given = this.slotless.AsSpan(0, 2);
         return row.Routine;

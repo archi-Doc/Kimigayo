@@ -124,7 +124,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (type.Symbol is { } symbol && this.impls.OfType(symbol) is { } list)
+            if (type.Symbol is { } symbol && this.ConformancesOf(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
@@ -218,6 +218,11 @@ public sealed partial class Binding
         if (type is null || type.Semantics != SemanticsKind.Owner)
         {
             return null;
+        }
+
+        if (this.ProjectsThroughItsOwnClause(syntax, type, scope))
+        {
+            return this.Fail(syntax, BindingFailure.Cycle, true);
         }
 
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
@@ -585,7 +590,7 @@ public sealed partial class Binding
 
         binding.State = 1;
         var scope = path.Scope;
-        var self = this.SelfType(path.Type);
+        var self = this.ConformanceSelf(path);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
         for (var i = 0; i < binding.Candidates.Count; i++)
@@ -712,7 +717,7 @@ public sealed partial class Binding
     // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
     private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
     {
-        if (this.impls.OfType(owner) is not { } identities)
+        if (this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }

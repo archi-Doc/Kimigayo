@@ -137,8 +137,11 @@ public sealed partial class Binding
             ? constraint : this.InternConstraint(new(constraint.Kind, constraint.Subject, required, constraint.Contract, constraint.Mask, left, right));
     }
 
-    private BoundType? BindAssociatedRefinement(IsKoto clause, OriginApplicationKoto application, MemberAccessKoto member, BindingScope scope)
+    // SPEC 8.5.1 Qualification, 8.5.3: a Contract's associated specification `associate C.X is R`, with Origin arguments or without,
+    // constrains its Self's `Self.(C).X` for C a proper ancestor, with its Type arguments, that has the associated Type X.
+    private BoundType? BindAssociatedRefinement(IsKoto clause, MemberAccessKoto member, BindingScope scope)
     {
+        var application = AssociatedHead(clause) as OriginApplicationKoto;
         var owner = scope.Owner.BoundSymbol!;
         var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
         if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
@@ -153,18 +156,23 @@ public sealed partial class Binding
 
         var self = this.ContractSelfType(owner);
         var associated = this.FindAssociated(self, scope, name, qualifier, clause, out var reference);
-        if (associated is null || this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count)
+        if (associated is null || this.AssociatedParameters(associated.Declaration).Length != (application?.ArgumentNodes.Count ?? 0))
         {
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
-        clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = application.BoundSymbol = associated;
+        clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = associated;
         member.Left.BoundSymbol = qualifier;
         Complete(member.Left, BoundType.Unit);
         Complete(member.Right, projection);
         Complete(member, projection);
-        Complete(application, projection);
+        if (application is not null)
+        {
+            application.BoundSymbol = associated;
+            Complete(application, projection);
+        }
+
         return projection;
     }
 

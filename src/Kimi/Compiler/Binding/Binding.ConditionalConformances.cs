@@ -119,22 +119,12 @@ public sealed partial class Binding
                     this.conformanceOverlapScopes.Add((a, b), scope = new(a.Declaration));
                 }
 
+                // SPEC 8.9.2: the pair's intersection is a's conformance scope with every premise of b's, read along b's scope chain where
+                // b keeps them (a declared path's in its block, an inherited path's in its own scope), as the Contract agreement check
+                // reads them, so the judgment does not depend on which path is declared first.
                 scope.Reset();
                 scope.Parent = a.Scope;
-                var environment = scope.Constraints ??= new();
-                if (b.Scope.Parent?.Constraints is { } other)
-                {
-                    foreach (var fact in other.DirectFacts)
-                    {
-                        this.AddConstraintFact(environment, fact);
-                    }
-
-                    for (var f = 0; f < other.DerivedFacts.Count; f++)
-                    {
-                        var derived = other.DerivedFacts[f];
-                        this.AddConstraintFact(environment, derived.Fact, derived.Source);
-                    }
-                }
+                this.AddOverlapFacts(scope, b.Scope);
 
                 var same = a.WitnessStorage.Count == b.WitnessStorage.Count && a.AssociatedStorage.Count == b.AssociatedStorage.Count && a.PropertyWitnessStorage.Count == b.PropertyWitnessStorage.Count;
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
@@ -339,8 +329,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var identity = this.impls.Find(symbol, contract);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.impls.OfType(symbol) is { } bindings)
+        var identity = this.ConformanceOf(symbol, contract);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {

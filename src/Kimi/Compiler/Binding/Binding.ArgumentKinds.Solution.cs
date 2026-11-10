@@ -199,8 +199,9 @@ public sealed partial class Binding
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
+            var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
-                function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, unbound, constructor);
+                function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
             proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
