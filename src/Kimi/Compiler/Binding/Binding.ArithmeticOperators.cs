@@ -220,7 +220,7 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact))
                 {
-                    Add(this.AppliedAssociatedContract(fact, self), ArithmeticFactUse(fact, current));
+                    Add(this.AppliedAssociatedContract(fact, self), this.ArithmeticFactUse(fact, current));
                 }
             }
         }

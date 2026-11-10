@@ -493,7 +493,7 @@ public abstract partial class Koto
     public BindingSymbol? BoundSymbol
     {
         get => HirTables.Symbol(this);
-        internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
+        internal set => HirTables.WriteSymbol(this, value);
     }
 
     [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]

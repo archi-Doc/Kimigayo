@@ -461,7 +461,7 @@ public sealed partial class Binding
             return null;
         }
 
-        selector.BoundSymbol = ancestor;
+        CompleteQualifier(selector, named, ancestor);
         var name = effect.Name is IdentifierNameKoto identifier ? identifier.IdentifierName : null;
         BoundRequirement? target = null;
         var found = 0;

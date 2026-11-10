@@ -388,7 +388,7 @@ public sealed partial class Binding
         // Copy` specifies i32), or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`) fixes nothing
         // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
-            => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
+            => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.RootContract) &&
                 ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
                 (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
                     clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||

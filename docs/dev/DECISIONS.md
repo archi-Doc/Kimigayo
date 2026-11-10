@@ -10053,6 +10053,8 @@ resumed by R4-M86 (2026-10-20).
     which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
     filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
+  - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
+    superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
   third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
@@ -10666,6 +10668,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a second pure value walk (two copies of SPEC 9.5's stages); a namespace parameter beside the role; reading the Type
     path's import in the evaluation (BU-122's contract) or merging it at publication; part a's cut 2 (it reads table existence, a
     publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
+  - Amended by BU-144: `LookupRole` and `PathEnd` are file-level types of ResolvePath.cs (`PathEnd.None`: not looked up); the Value
+    row is untouched.
 - **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
   compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
   BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
@@ -10867,6 +10871,8 @@ resumed by R4-M86 (2026-10-20).
     beside the Language record (PLAN G631's remaining part).
   - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
     on P6); the record at `path.Use` before the base clause's checks (P5: independent records lost, design review 1's B1).
+  - Amended by BU-148 (PLAN G665): the inherited registrar composes an inherited path's declared path and its Self once, at
+    registration (`DeclaredPath`, `DeclaredSelf`); the scope's readers read them.
 - **BU-139 A fixed array's projection in a declaration position: the formation maps through a declared subject only, and the
   witness's Signature is demanded (PLAN G578)** (2026-11-09; G578-1; Major; design review 1 ACCEPT, implementation review ACCEPT; the
   Front's ruling 1) SPEC 8.5.2, 8.5.4, 22.1.
@@ -10912,6 +10918,55 @@ resumed by R4-M86 (2026-10-20).
     target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
     Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
+- **BU-144 A Type-name use is resolved once and its lookup published on the use: `HirTables.Lookups`, read through `NamePath`**
+  (2026-11-10; R7-N1e2-1R; Major; design reviews 1 REVISE, 2 ACCEPT, 3 REVISE, 4 ACCEPT; implementation review ACCEPT; the owner's
+  O-111 (a) and O-132 (a)) SPEC 4.4.1, 8.6.1, 9.2, 9.5, 9.6, 9.7.1, 13.5.1, 23.1.2. Supersedes in part BU-122 (its rejected "per-use
+  memo (a Koto-keyed table)").
+  - Rule: `NamePath(use, scope, row)` is the one lookup and the one read of a Type-name use. Its first call evaluates
+    (`ResolvePath`, pure as BU-122 says), publishes (`PublishPath`) and writes `UseLookup(End, Role)` on `UseNode(use)` (below
+    transparent wrappers and parentheses); every later call reads it. A path's walk publishes each qualifier it looks up. A
+    publication is written once: a later one (a walk evaluating a published qualifier again) must be equal, and a different end, row
+    or selection is InternalInvariant. A read in another row than the published one is InternalInvariant. `BindNamedType` asks its
+    position's row, `UseRow`: an adaptation target its Type row (13.5.1), a qualifier (9.6), an alias target (18.2.1) and a Contract
+    parent Any, every other Type position NoContainer.
+  - The selection is the use's `Symbols` entry, written once. `HirTables.WriteSymbol` is the Symbols column's one writer
+    (`Koto.BoundSymbol`'s setter) and keeps the column's contract: (a) a use whose published lookup selected keeps its selection, so
+    a later write must be equal; (b) no node's entry is a bound Contract reference. A broken contract is InternalInvariant.
+  - A Contract use's bound reference (SPEC 8.6.1, 9.7.1) is its Type (the Meaning column) at each level of the qualifier or
+    selector, Unit when the reference is the declaration itself: `CompleteQualifier(use, selection, reference)` writes both,
+    `QualifierReference` forms the reference, and readers take it through `ContractReferenceOf(use)`. Writers:
+    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Readers: `SpecifiesContract`,
+    `ArithmeticFactUse`.
+  - Records: a reader of a failed published lookup forms nothing from it, so B1's receiver gives one QualificationRequired_Kd (t09,
+    t12, v05). This holds at the readers that read; it is not general: MemberLookup still writes its own UnresolvedBinding_Kd over a
+    qualifier whose published lookup is ambiguous (t02/t02b: 3 records against base's 1, Q13 by code; open, PLAN G575/G576).
+  - Reason that no longer holds (BU-122's rejection): it rejected a Koto-keyed side table and a cache beside the evaluation; the
+    published lookup is a SyntaxId column of the base HIR row, written by the publication alone, and the evaluation stays pure.
+  - Whitelist: `ArchitectureRulesTest.LookupEntriesStayAtTheirSites` (Roslyn, any receiver): the evaluation entries only in
+    ResolvePath.cs and named exceptions, each publishing nothing: BaseLayers' DirectBase read of a clause not yet bound (R7-M9: a
+    read that saw a clause not ready stores nothing; removed at R7-D2 d3) and its second run's `knownBases` (R7-M9, d3); BaseLayers'
+    early-read check (it evaluates again by design); Qualification's repair probe of a Container's own name and Constraints'
+    Container question (questions, not the use's lookup); Types' semantics parameter name (a first lookup); Calls' length-or-Type
+    argument question (U6, below). The use entries (`NamePath`, `TypeName`, `LookupAdaptationTarget`) only at the census's sites.
+  - Removes `BindPathType`, the `head` parameter of `BindType`/`BindTypeStructure`/`BindNamedType`, `IsQualifierPosition`, the
+    second lookups at the receiver, the wrapper, MemberLookup's qualifier Type, ContainsProjection, the subject, U12 (the adaptation
+    target's second comparison), the nested Type's qualifier and the explanations; `UseLookup.Symbol`; the second writes of
+    `BindAssociatedProjection` and `BindRequirement` over a qualifier's entry; BindNode and OriginProof no longer bind a Contract's
+    parents (R7-N1e2-1).
+  - Remains: E1, E3 (until d3), E2, the probes, E5, the re-walks (pure, asserted equal), MemberLookup's dependent record (open), and
+    U6 as a named question: whether an explicit generic argument's spelling also names a Type (`ProbePath` in a Type position's row,
+    Calls.cs). It publishes nothing; the argument is then looked up once, as a length (a value) or by its `BindType`.
+  - Moves: valid p01, p07 and v-u1 accepted (v-u1: a length slot filled by a value whose spelling's Type reading is ambiguous, SPEC
+    4.4.1); invalid t01, p14, w02 and i-u2 rejected (unsound acceptances; i-u2: the same spelling at a Type slot,
+    NoApplicableOverload_Kd, SPEC 4.4.1, 9.5); records by code (Q13): TypeArity row 112 and t05 lose a dependent record, t09/t12/v05
+    two to one, u01 and w01 name the lookup's failure, t02/t02b as above.
+  - Cost: 2 bytes a node (`UseLookup[]` per module table).
+  - Rejected: the 16-byte column carrying its own Symbol (cold bytes; O-132); a sparse SyntaxId table of the use nodes; a PlanRow
+    field; per-site `head` threading (N1e2-1; the owner's O-111); a Koto-keyed memo (COMPILER_ARCHITECTURE "Syntax identity");
+    reading published qualifiers in the evaluation (breaks E2's re-evaluation); the row from the position inside `ResolvePath`
+    (N1e2-2 replaces `UseRow`'s rows by SPEC 9.2's roles).
+  - Not verified: review 4's R4-N5. (R4-N1 is verified by the implementation review: a Type slot whose Type reading needs a
+    qualifier gives the same record on all six builds.)
 - **BU-145 The pun rule's Type facts are Binding's published readers (PLAN G667, C-189)** (2026-11-10; Major; the Front's design,
   the Middle's implementation under Q18; design reviews 1-3 and the re-check under the owner's O-126 (a); the Front's implementation review ACCEPT; the Middle's consent on
   C-189) SPEC 3.8, 5.2, 5.6, 5.7, 15.6.1, 22.1.
@@ -10990,6 +11045,33 @@ resumed by R4-M86 (2026-10-20).
     d3; the query deciding a reading's finality from the clause's own state (a second copy of BaseLayers' rule; the prototype read a
     failed clause in progress as final and accepted rx2m: B inherited A's declared HasBase); `InvalidTypeFormation_Kd` at the
     projection (SPEC 9.5 calls the case a cycle).
+- **BU-148 An inherited path's declared path and Self are composed once, at registration (PLAN G665)** (2026-11-10; Front, Binding,
+  the Back's implementer under Q18; Major, behavior-preserving; design review 3 ACCEPT, implementation review 1 REVISE then re-check
+  ACCEPT) SPEC 8.6.2, 8.8.2. Amends BU-141's "Scope" bullet (who composes the premises' Self).
+  - Rule (SPEC 8.8.2): an inherited path's conformance scope and its conditions at a use are its declared path's premises, stated at
+    the declared path's Self in the heir's parameters (the declaring layer).
+  - Representation: `BoundConformancePath.DeclaredPath` (the end of the `InheritedFrom` chain) and `DeclaredSelf` (that layer), read
+    only on an inherited path; `ImplTable.Register` resets them with `InheritedBase`. The rule is stated once, at the field.
+  - Owner: the inherited registrar (`Binding.InheritedConformances`) composes both from the path's first source when it registers
+    the path, telling a declared source by its kind (no `InheritedFrom`): a declared source gives itself and the base clause's
+    instance; an inherited source gives its `DeclaredPath` and `StoredType(source.DeclaredSelf, InheritedBase)`. Every source of one
+    path has the path's declaration (ImplTable's key), so the same declaring Type, premises and declaring scope.
+  - Refused composition (design reviews 1-2, B1 and B2; the Front's ruling on B2): where the generic substitution is refused
+    (SubstituteType's siteless record, PLAN G651's) the path has no generic layer (null), and so has every heir below it: never a
+    fallback layer. The generic layer caches the instances' layers and never refuses one: at an instance, the conditions form its
+    layer one base clause at a time inside the use's frame, so an instance within H is judged and one past H is refused at the use's
+    site (`TypeHeightLimit_Kd`). A path with premises states P at the generic layer at definition, so its scope is a conformance the
+    limit refused, read through `Binding.TypeHeight`'s one reader rule (`RefusedConformance`): a reader at a site is refused there.
+  - Readers, one step each within H: `PrepareInheritedScopes` (the scope, once per pass), `ProveConformanceConditions`' inherited
+    arm (the conditions at a use) and `VerifyInheritedConformance` (through `RefusedConformance`). `AddInheritedPremises`' recursion
+    and the arm's recursion over the sources go.
+  - Measure: `InheritedPremiseWork`, linear in a deep-heir chain (`TypeDagScalingTest.InheritedPremiseStepsAreLinearInTheChain`); a
+    warm rebind of that chain allocates nothing (`AWarmRebindOfAnInheritanceChainAllocatesNothing`); the cold Bind of an inheritance
+    chain (G631's allocation row) no longer depends on `TyCtxt.types`' resize schedule.
+  - Rejected: a per-pass memo beside ImplTable (a side table for one feature); building the heir's scope from its source's built
+    scope (expanded facts under substitution not shown equal; the conditions still walk); composing only the Self and reaching the
+    declaring scope by syntax (a consumer deciding by syntax); presizing `TyCtxt.types` or relaxing the row (moves the resize; the
+    factor is never relaxed).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -16712,6 +16794,17 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** frames as exposed arrays with a ratchet (missed two sites); an undo log inside `SlotSolution` (the other frame
     owners have none); variables beyond frames in the core (each lands with its consumer).
   - **Temporary:** none.
+- **R7-M19 ClosureEffects' store is by the nodes met** (Middle, 2026-11-10; PLAN G622 U1b; Major, behavior-preserving; the Front's
+  implementation review ACCEPT and consent C-209; the owner's O-81 (a)).
+  - **Rule.** What a Classify knows of a node (its Op, its children's takes recorded, its own takes: `Facts`) is one row of one
+    table keyed by the node's value identity (`SourceRef`), emptied at each Classify's start and sized by the nodes it meets; the
+    key is `SourceRef.Of`, which numbers no node there. It replaces R7-Y2a's three tables keyed by the Koto reference (about seven
+    hash operations per capture use; four remain, over a value key).
+  - **Rejected:** a column over the module's syntax ids (U1's first form, C-209: cold and retained bytes by the module); the
+    published Ops column (empty until the Final publication); a table per body's id range (ids past ParsedCount); the three tables
+    with value keys (nothing removed).
+  - **Cost named:** one table holds the union of the nodes met, so its capacity step can come where the three did not (Milestone12,
+    +232 B cold). RP8 (T-99): the Literal per-use slope -106 ns, about 41% of Y2a's step.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi

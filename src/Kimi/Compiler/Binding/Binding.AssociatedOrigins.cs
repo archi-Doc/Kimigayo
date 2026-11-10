@@ -143,13 +143,8 @@ public sealed partial class Binding
     {
         var application = AssociatedHead(clause) as OriginApplicationKoto;
         var owner = scope.Owner.BoundSymbol!;
-        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-        if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
-        {
-            qualifier = this.BindContractReference(member.Left, qualifier, scope);
-        }
-
-        if (qualifier?.Declaration is not ContractKoto || ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
+        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
+            ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
         {
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
         }
@@ -163,8 +158,7 @@ public sealed partial class Binding
 
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
         clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = associated;
-        member.Left.BoundSymbol = qualifier;
-        Complete(member.Left, BoundType.Unit);
+        CompleteQualifier(member.Left, selection, qualifier);
         Complete(member.Right, projection);
         Complete(member, projection);
         if (application is not null)

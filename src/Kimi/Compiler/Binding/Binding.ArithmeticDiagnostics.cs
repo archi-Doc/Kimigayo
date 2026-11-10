@@ -35,7 +35,21 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
-    private static Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
+    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
+    // Contract declaration is related.
+    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
+    {
+        var note = failure.Cause switch
+        {
+            ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
+            ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
+            ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
+            _ => throw new UnreachableException(),
+        };
+        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
+    }
+
+    private Koto ArithmeticFactUse(BoundConstraint fact, BindingScope scope)
     {
         var clauses = scope.Owner is FunctionKoto function ? function.TypeConstraints : scope.Owner is DeclarationContainerKoto container ? container.ConstraintNodes : [];
         for (var i = 0; i < clauses.Count; i++)
@@ -51,24 +65,11 @@ public sealed partial class Binding
         static bool Contains(BoundConstraint? root, BoundConstraint fact)
             => ReferenceEquals(root, fact) || (root?.Kind == ConstraintKind.And && (Contains(root.Left, fact) || Contains(root.Right, fact)));
 
-        static Koto? ContractUse(Koto node, BindingSymbol? contract)
-            => ReferenceEquals(node.BoundSymbol, contract) ? node
+        // The requirement naming the premise's bound Contract reference (ContractReferenceOf: its Type, else its selection).
+        Koto? ContractUse(Koto node, BindingSymbol? contract)
+            => ReferenceEquals(this.ContractReferenceOf(node), contract) ? node
             : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
-    }
-
-    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
-    // Contract declaration is related.
-    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
-    {
-        var note = failure.Cause switch
-        {
-            ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
-            ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
-            ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
-            _ => throw new UnreachableException(),
-        };
-        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
     }
 
     private bool ValidateArithmeticDirections(BindingScope scope, ConstraintEnvironment environment)
@@ -97,8 +98,8 @@ public sealed partial class Binding
                         ArithmeticContractSyntax.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) &&
                         AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
                     {
-                        var here = ArithmeticFactUse(fact, scope);
-                        var there = ArithmeticFactUse(oppositeFact, current);
+                        var here = this.ArithmeticFactUse(fact, scope);
+                        var there = this.ArithmeticFactUse(oppositeFact, current);
                         this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
                         return false;
                     }

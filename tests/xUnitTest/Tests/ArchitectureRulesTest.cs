@@ -29,6 +29,19 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
+    // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
+    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
+
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Constraints.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=18;" +
+        "Binding.Types.cs=2";
+
+    private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
+
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
+        "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
+        "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
+        "Binding.Structs.cs=1;Binding.Types.cs=3";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE. R6-check H14 (D7): the names
     // of the Koto semantic slots, except Formatting, Adaptation, Mode, Iteration and BasePath, whose names live members of other types share.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
@@ -198,6 +211,27 @@ public class ArchitectureRulesTest
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
+    // R7-N1e2-1R (the owner's O-111 (a)): a written Type name is evaluated only by name resolution's own file (ResolvePath) and named
+    // exceptions, each publishing nothing: BaseLayers' DirectBase read of a clause not yet bound and its second run's knownBases (R7-M9: a
+    // read that saw a clause not ready stores nothing; both go at R7-D2 d3), BaseLayers' early-read check (it evaluates again by design),
+    // Qualification's repair probe of a Container's own name, Constraints' Container question and Calls' question whether a length
+    // argument's spelling also names a Type (questions about another reading, not the use's lookup), and Types' semantics parameter name
+    // (a first lookup). A use is looked up only through NamePath, at the census's
+    // sites: its first call resolves and publishes the use, every later one reads it in the same row (HirTables.Lookups). A further site
+    // fails here until its row is reviewed. Roslyn reads the invocations on any receiver, so comments and strings do not count.
+    [Theory]
+    [InlineData("Evaluations of a written name", NameEvaluations, NameEvaluationSites)]
+    [InlineData("Lookups of a Type-name use", UseLookups, UseLookupSites)]
+    public void LookupEntriesStayAtTheirSites(string rule, string entries, string sites)
+    {
+        var names = entries.Split('|');
+        var actual = SourceFiles("src/Kimi/Compiler/Binding", "*.cs")
+            .Select(x => (Name: Path.GetFileName(x), Count: CSharpSyntaxTree.ParseText(File.ReadAllText(x)).GetRoot().DescendantNodes()
+                .OfType<InvocationExpressionSyntax>().Count(i => CalledName(i.Expression) is { } name && names.Contains(name))))
+            .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
     // R9-F4 (the owner's O-98, O-99, O-100 and O-106, (a)): TokenHelper's spelling table is the one statement of an F.3 keyword, so no
     // other Lexing or Parsing literal starts with one, alone or after '#' (SPEC F.11 writes "#" "if" and "#" "switch" with the keyword
     // tokens). Roslyn reads every literal token, those in interpolation holes included: string, UTF-8 string, char, raw string and the
@@ -259,6 +293,14 @@ public class ArchitectureRulesTest
             _ => null,
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
+
+    // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
+    private static string? CalledName(ExpressionSyntax called) => called switch
+    {
+        MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+        IdentifierNameSyntax name => name.Identifier.Text,
+        _ => null,
+    };
 
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)
