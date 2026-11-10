@@ -17276,6 +17276,36 @@ R8-M* and R9-M* by the stage of the recording unit.
     room, both buffers' `reserve`, one internal `Text.validSuffix(data, validated, length)` for the six validated-suffix copies,
     `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
+
+- **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
+  2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
+  programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
+  8.15.3.
+  - **Rule.** `DropGlue.Destroyed` (beside `DropGlue.Parts`, in destruction order) is the one statement of what destroying a value
+    by a drop group's row destroys, as steps: a Keep, a Flag or (until U2b) an Elide row the value Whole; an Open row an Open step,
+    each direct part by its governing row (`Governing`, moved from `FunctionCodegen.Drops` into `DropGlue`'s private walker of one
+    group, `Walker`), so an Open part by its own level and any other part Whole, a fixed array's elements from the last as Run steps
+    (each run without a row) and element-row steps (`Highest`, likewise), then End. A row of -1 is a glue function's level, which no
+    row governs.
+  - **The collector** (`InstanceCollector.Destroys`, reading the steps at the template's site, its location and runtime bit) targets
+    each Whole and Run step's part (`PartTarget`): at a Drop's site with the site's runtime bit (`DropTargets`; a Drop without a
+    group, check-only or of an inexact body, destroys its Type whole), and at a DropGlue item's default site (`DestructionTargets`).
+    The `InstanceCollector.Edges` invariant "one target per site" now excepts a Drop's (one per destroyed part, in walk order)
+    beside an owner Value call's `Rest`.
+  - **Code generation** (`FunctionCodegen.Glue`'s `Destroys`, `Step`, `Opened`) writes a Drop and a glue function's level from the
+    same steps, each Whole or Run step reading the destruction's next target (a Drop's site range, checked consumed; a glue
+    function's own item's); its former per-level traversal (`DestroyParts`, `Cases`, `Part`, `Elements`, `DestroyByRow`) is gone.
+  - **Why.** The collector requested an Open Drop's whole-Type glue, whose admission requests every part's glue, while codegen
+    destroys only what the group leaves (the cause of G641 kind 4, with U1's check-only groups); one walk read by both makes U2b's
+    "skip Elide rows" a change of one statement.
+  - **Moves.** No acceptance move; records move on four rejected programs (+`InvalidCLayout_Kd` x4, DECISIONS Q13; the Back's
+    revision 3): `T_deadRet`, `T_deadFlag` and `T_deadRetAll` at 12:5, `I_deadOpenU` at 8:18 (an Open Drop now requests its parts'
+    glues, and a refused item reports where it is first requested); `T_deadRetAll` is valid and already rejected on dev by this
+    row's cause, and U2b accepts it. Snapshot 0 and natives equal. Generated IR: a partly moved value's whole-Type
+    `__kimi_drop<item>` leaves the module where nothing else requests it, and item indices renumber.
+  - **Rejected:** the prototype's collector-only walk (a third copy of A4's walk, out of destruction order, with a 64-part bit set);
+    codegen restating the walk's composition (implementation review 1's U1); moving the part order to Mir so A4 shares the walk (a
+    larger unit; recorded in the design).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
