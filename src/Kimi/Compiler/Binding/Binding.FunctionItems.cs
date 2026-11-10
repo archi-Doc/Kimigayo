@@ -157,7 +157,7 @@ public sealed partial class Binding
 
     private static int ItemTypeArgumentCount(FunctionKoto function) => ItemComponent(function, function.GenericArguments.Count);
 
-    private static bool ReferenceSlotsComplete(FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths)
+    private static bool ReferenceSlotsComplete(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths)
     {
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {

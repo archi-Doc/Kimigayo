@@ -318,7 +318,7 @@ public sealed partial class Binding
         return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
-    private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
+    private bool InferLength(BoundType pattern, BoundType actual, Koto binder, SlotFrame frame)
     {
         if (actual.Length < 0)
         {
@@ -326,24 +326,24 @@ public sealed partial class Binding
         }
 
         var supplied = actual.LengthExpression ?? this.InternLength(LengthOperation.Constant, actual.Length);
-        return this.InferLength(pattern.LengthExpression ?? this.InternLength(LengthOperation.Constant, pattern.Length), supplied, binder, arguments);
+        return this.InferLength(pattern.LengthExpression ?? this.InternLength(LengthOperation.Constant, pattern.Length), supplied, binder, frame);
     }
 
-    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, BoundLength?[] arguments)
+    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, SlotFrame frame)
     {
         if (pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
         {
-            var previous = arguments[parameter.Slot];
+            var previous = frame.Lengths[parameter.Slot];
             if (previous is null)
             {
-                arguments[parameter.Slot] = supplied;
+                frame.SetLength(parameter.Slot, supplied);
                 return true;
             }
 
             return ReferenceEquals(previous, supplied);
         }
 
-        var required = this.SubstituteLength(pattern, binder, default, arguments); // A declared length holds no interpolation-bound term.
+        var required = this.SubstituteLength(pattern, binder, default, frame.Lengths); // A declared length holds no interpolation-bound term.
         // A later input may establish slots used by a compound expression. The
         // completed signature is checked after all direct-slot evidence is known.
         return required is null || ReferenceEquals(required, supplied);
