@@ -18,7 +18,9 @@ namespace Kimi.Compiler;
 // Must not carry an answer past its query, or serve two walks with different inputs under one stamp.
 public sealed partial class Binding
 {
-    private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.SubstitutedParts)); // SubstituteType's images.
+    private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.SubstitutedParts)); // SubstituteType's images.
+
     private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseClosureTypes' images.
 
     // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins and PublishedResult

@@ -22,8 +22,12 @@ public sealed partial class Binding
 {
     private readonly Compilation compilation;
     private readonly List<Koto> nodes = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
-    private readonly Dictionary<object, BindingScope> scopes = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<object, BindingSymbol> symbols = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Declarations), ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, BindingScope> scopes = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<object, BindingSymbol> symbols = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Declarations), ReferenceEqualityComparer.Instance);
+
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
     private readonly TyCtxt types;
