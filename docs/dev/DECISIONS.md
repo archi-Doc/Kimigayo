@@ -11224,6 +11224,34 @@ resumed by R4-M86 (2026-10-20).
     (the position's role is Qualifier either way).
   - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
     published reads skip it. RP8 owed (with BU-144's).
+- **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
+  `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
+  15.3.1-15.3.6, 23.1.2.
+  - **Rule.** `OriginDeclaration` (`Binding.Origins.Model.cs`) keeps its state private. Another component reads a declaration only
+    through its read members: `Resolves`, `Substitution`, `Substitutions`, `SubstitutionPairs`; `Completed`, `Relations`, `Body`;
+    `Failure`, `Unavailable`, `PendingCause`, `RejectedRelations`, `FailedClauses`; `Set`; `InferredVariance`; `Owner`, `IsLocal`.
+    They hand out values and spans, never a collection. The formation writes through the `Forming` view, in four files only:
+    `Binding.OriginDeclarations.cs`, `Binding.OriginDeclarations.Failures.cs`, `Binding.LocalOrigins.cs`,
+    `Binding.OriginInheritance.cs`. A `Forming` occurrence forms the declaration it names: it reads no other declaration and answers
+    no other component.
+  - **What it guards.** The members BU-62 and BU-69 gave a meaning: `PendingFailure` (BU-62; read as `PendingCause` by
+    `UnboundCause`), `RejectedRelations` and `FailedClauses` (BU-62, BU-69; read by `ReadFailedContract`), and the question "is the
+    contract unavailable" (`Unavailable`, the rule `FailOriginDeclaration` applies; its four readers were `Failure is not null`
+    tests on non-local owners, where the answers are equal). The type's contract states what a failed declaration answers today;
+    this entry changes none of it.
+  - **Enforcement.** The compiler (a state member is private) and `ArchitectureRulesTest.SourcePatternStaysAtItsSites`, row
+    "Formation of an Origin declaration" (`\bForming\b` per file). A new reader is a new caller of a read member; a new formation
+    site moves a count and is reviewed.
+  - **Reason.** The state had 14 internal members read and written at 153 sites in 18 files, with no reader's contract, so a census
+    of the readers of a failed contract chose member names by hand; three design rounds of H11b-0 missed readers (review 4: the
+    substitutions). The readers are now the read members' callers, which the compiler lists.
+  - **Rejected:** a text census by member name (the cause); a ratchet without private state (a new member escapes it); moving the
+    formation into the type (it needs `Binding`'s `Meet`, `BindOrigin` and `Fail`); a second "unavailable" rule beside
+    `FailOriginDeclaration`'s (it reads `Unavailable` instead); naming `State`'s four values (only `Resolves` and `Completed` leave
+    the type).
+  - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
+    inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
+    inference (`InferLocalOrigins`), stated from the code and not probed.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -13410,6 +13438,10 @@ structure is recorded here by the unit that first implements it.
     walking a Type itself beside `Parts` (a second enumeration, X27); glue text in `DropGlue` (its contract; R5-M86 confirmed the writer
     in FunctionCodegen); inlining a part's glue into its parent's (no function per Type, X3, and text growing with nesting); writing the
     collection and handle rows through the legacy helpers here (C6b's and C8d's/C8e's rows).
+  - Superseded in part by R8-M29 (PLAN G702): its reading of `DropGlue.Parts` as the one enumeration the collector targets from and
+    the glue writer writes from: the one enumeration is `MirDropTable`'s walk, which `DropGlue.Destroyed` and `DropGlue.Level` map;
+    `DropGlue.Parts` keeps only the parts no move path names (a declared destructor, a collection's element Types, a Sealed
+    payload). Its one level per Type, its rows and its parameters stand.
 - **R5-M96 Gate step 2 of MIR code generation over A2's per-body fact (C4a-2)** (2026-10-22; under R5-M4 and R5-M18 form 1)
   - Rule (PD12): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so MIR code generation writes no body A1 or A2 left inexact.
     The fact is `MirDropTable.Incomplete(body)` (ask A-2b, R4-M102): A1's or A2's first problem in the body, an inline copy's included,
@@ -17658,6 +17690,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       IR: 119 of 6,151 `.ll` move, all classified (77 no longer switch to an Open enum's Case holding only Elide parts, one also
       losing a glue function; 2 lose Elide-only glue functions; 40 renumber items); natives equal.
     - **Rejected:** keeping `Elided` beside the walk (two statements of one rule).
+  - Superseded in part by R8-M29 (PLAN G702): its Rule's statement that `DropGlue.Destroyed` is the one statement of what destroying
+    a value by a drop group's row destroys (its `Walker`, `Governing`, `Highest`), and its Rejected option "moving the part order to
+    Mir so A4 shares the walk (a larger unit)": the one walk is Mir's, `MirDropTable.Destroyed` and `MirDropTable.Level` over SPEC
+    16.3.2's level order (`MirTypes.LevelCount`, `MirTypes.LevelPart`), whose steps `DropGlue.Destroyed` and `DropGlue.Level` map to
+    glue parts.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -17779,6 +17816,57 @@ R8-M* and R9-M* by the stage of the recording unit.
     every library unit); a capacity or a room per table; one room for every table (U) and two rooms over six tables (H); `KeyedRoom`
     2,048 with or without the library-only kind (revision 2, d: more large-object bytes and gen2 collections); selection by entry
     count (it admitted a table whose step is smaller than an excluded table's).
+- **R8-M29 SPEC 16.3.2's order of a level's parts is one Mir Type fact (`MirTypes.LevelCount`, `MirTypes.LevelPart`); A2's
+  destruction walk composes it with a group's rows, and the builder and the Backend read it (PLAN G702)** (Back with the Middle's
+  consent, board C-212; Major: a contract across phases; no acceptance, record or IR move).
+  - **Supersedes in part.** R8-M23's rule that "`DropGlue.Destroyed` … is the one statement of what destroying a value by a drop
+    group's row destroys" (its `Walker`, `Governing`, `Highest`) and its rejected option "moving the part order to Mir so A4 shares
+    the walk (a larger unit)"; **R5-M95's reading of `DropGlue.Parts` as "the one enumeration the collector's DropGlue items target
+    and FunctionCodegen.Glue writes from"**: the one enumeration is now `MirDropTable`'s walk, which `DropGlue.Destroyed` and
+    `DropGlue.Level` map; `DropGlue.Parts` keeps only the parts no move path names (a declared destructor, a collection's element
+    Types, a Sealed payload). R5-M95's one level per Type, its rows and its parameters stand; R5-M60 stands; R4-M6b's Field cleanup
+    of a destructor body stands and now reads the fact.
+  - **Rule.**
+    - **The fact and its owner.** `MirTypes.LevelCount(type)` and `MirTypes.LevelPart(type, rank)` (`Mir/MirTypes.Destruction.cs`,
+      the Type facts' owner) are the one statement of SPEC 16.3.2's level order: a Type's direct parts in destruction order, by
+      rank, as move-path steps (a Tuple's elements and a Closure's captures from the last; a fixed array's elements from the last;
+      an enum's Case payloads by ordinal; a struct's Fields in reverse declaration order, then its direct base). Body-independent:
+      no body, row or verdict is read. A rank no part has is a broken contract (`InvalidOperationException`, InternalInvariant).
+      `MirBody.PartType` gives a part's Type.
+    - **Its readers.** `MirDropTable.Destroyed` (a group's walk: the level composed with the group's rows) and `MirDropTable.Level`
+      (the level no row governs, a glue function's) in `Mir/Analysis/MirDrops.Destroyed.cs`, as `MirDropStep`s (built only by
+      `MirDropStep.Whole`, `Run`, `Open`, `End`; no optional parameter, CR-R2); a fixed array's elements are walked down from the
+      first rank's position to the last rank's, both read from the fact, each run of elements without a row one Run step.
+      `MirBuilder.FieldCleanup` (a destructor body's cleanup of its layer's parts) reads the fact and keeps only its own filter
+      (`MirTypes.MayNeedDrop`) and its `DropAt`: the builder reads no analysis. A4 (`MirEffects.Dropped`) reads each Whole and Run
+      step's Type, as a set. The Backend maps: `DropGlue.Destroyed` and `DropGlue.Level` map each step to its glue part (the
+      aggregate writer's position, a Case's ordinal) and state no order of any aggregate's parts; a Case payload destroyed whole is
+      mapped through `MirDropTable.Level` of the payload Tuple under the payload's rows.
+    - **The census by search.** Every iteration over a Type's parts in `Mir/**` and `Backend/**` (every reverse loop, every loop
+      over a Type's components, Case payloads, captures, Fields or length) is classified: the fact; reads the fact; not a
+      destruction order, with its rule; kept with its reason. No copy of SPEC 16.3.2's level order remains. Kept: `DropGlue.Parts`'
+      collection element Types (not a level; read as a set); a Run's direction (`MirDropStepKind.Run`'s definition, which cites the
+      fact, and the Backend's Run loop that realizes it).
+    - **The walk's cost.** A walk reads the rows below its row in two passes (their count; their index, each row under its parent
+      row and its part's key, sorted once), then searches the index once per part of an Open level: linear in the group's rows at
+      any width and depth but for the sort and the searches' logarithm (bounded by `MirDropTest`'s width and depth rows). A row with
+      nothing below builds no index.
+    - **The child-row contract.** A child row of an Open row names a direct part of that row's Type: `MirDropTable`'s contract, met
+      by A2's writer by construction; the walk and `MirValidator` check nothing (an assertion, if ever wanted, belongs at A2's row
+      creation as `InternalInvariant_Kd`).
+  - **Why.** A4 and the Backend each derived the destroyed parts from the Type and the rows, a glue function's level restated the
+    same order, and the builder's Field cleanup stated the struct level a third time; the order is a language rule about a Type, so
+    it is a Type fact, and Mir is the only place every reader reaches.
+  - **Rejected:** keeping `DropGlue.Parts`' aggregate arm for glue functions beside Mir's walk for groups; the Backend's own loop
+    over a whole Case payload's elements; the order written in the walk with the builder's loop beside it; the builder reading A2's
+    walk (Mir/Build would read an analysis); a level scanning its whole subtree for its child rows; an index keyed by a rank (the
+    order stated again as a sort key); a walk with an ascending arm no Type has; A2 publishing the destroyed parts as rows; an
+    unordered Mir walk; a walk parameterized by a part enumerator; a check of the child-row invariant in the walk or in
+    `MirValidator`.
+  - **Temporary, with its removal condition.** `MirDropTable.Level` gives a fixed array without an element one empty Run: a need of
+    the Backend's stated in Mir's level, not of the order. The instance collector requests the element's glue from that Run and code
+    generation reads that target for `[0 of T]`; it writes no loop (the Run has no element), so the checked set and generated code
+    are as before G702. It goes with the unit that stops requesting and reading that target (a candidate B holds).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
@@ -17896,3 +17984,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     changes either the manifest's bytes or a failure: R9-B1's, with its manifest revision); a text-pattern ratchet row (it counted
     Build's own imports and missed aliases and a namespace declared outside the folder).
   - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
+  - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
+    type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+- **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
+  part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
+  ACCEPT; the Front's consent C-224 and the Back's C-225)
+  - Rule: `src/Kimi/Documentation` (namespace `Kimi.Documentation`) is the documentation model: the limited-profile Markdown parser
+    and its immutable document (SPEC 2.3), item classification against a declaration's parameters (`DocumentationMarkdown`), HTML
+    rendering and link resolution (`DocumentationLinks`), the Unicode punctuation table and its generator.
+  - Dependency rule (ARCH "Dependency rules", the Documentation row; the code's statement is the header of
+    `Documentation/DocumentationMarkdown.cs`). Documentation reads, of the compiler, exactly: Core's association
+    (`DocumentationComment` with its `DocumentationText`, `DocumentationSource.LogicalName` (a comment's `Owner`),
+    `DocumentationDiagnostic`); Core's `SourceDocument`, the comment's and the text's `Source` (its `SourceText`, to map an original
+    CRLF; passed into `DocumentationDiagnostic`); a declaration's syntax (`Koto`, `FunctionKoto`, `DeclarationContainerKoto`,
+    `PropertyAccessorKoto`: generic parameters, origins, parameters, modifiers with `ModifierKind`); its Binding facts only through
+    `HirTables.Symbol` (R5-M193); its `Kotonoha`, the default project identity; `SourceSpan`; Helper's `IntegerTable`. It writes no
+    compiler state, starts no Binding and reads no Koto semantic slot.
+  - The association (`DocumentationSource` with `.Transfer`, `DocumentationComment`, `DocumentationText`, `DocumentationDiagnostic`)
+    is the compiler's own input record: `Compiler/Core`, namespace `Kimi.Compiler`, beside `Kotonoha.Documentation` and
+    `CodeContext.Documentation`. The Tokenizer and the Parser write it, Binding selects fragments from it (`GetDocumentation`), the
+    library sources share its candidates, Documentation reads it.
+  - No file of `Compiler/`, `Testing/` or `Diagnostics/` reads a Documentation type; its readers are hover's projection in check
+    (`HoverBuilder`, `HoverFacts`, `HoverPlacement`) and the LSP's rendering (`HoverRenderer`), plus benchmarks and tests.
+    `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the set; its type set is a folder's top-level types (a nested
+    type is named through its containing type; nested helper names such as `Container` and `Bracket` are spelled by 58 other files
+    for their own members). Its stated blind spots stand (a type reached without its name, a delegate, a short-name attribute;
+    Documentation declares neither).
+  - No reference turned around: the census found the compiler reading only the association; ordinary compilation never parses
+    Markdown.
+  - Responsibility moved: the association leaves the Middle's `Compiler/Documentation` for Core (any session under a board hold, the
+    Middle reviews; WORKFLOW's areas); `src/Kimi/Documentation` stays the Middle's.
+  - Behavior preserved: the Release `Kimi.dll` is identical to its base's at the IL level once the namespaces are mapped, but for
+    the informational version, the Regex generator's file-local class hash (from the build folder) and one generated difference:
+    Tinyhand's `TinyhandStaticRegistration_Kimi.Initialize` registers formatters in full-name order, so the moved types'
+    registrations change position and the `__TinyhandRegisterN` helpers are renumbered; the registered set is the same, each
+    registration keyed by its type, none twice, so the order has no effect (the IL comparison of dev 21d414f87 against the
+    implementation's commit, design review 1's dumper). No parser method body changed (design review 2's N7).
+  - The benchmark's paired mode finds the baseline's parser by the current full name, so a paired run needs a post-move baseline
+    (`src/Benchmark/DocumentationMarkdown.md`); a lookup falling back to the old namespace was rejected (a try-then-fallback).
+  - Rejected: the association in Core under namespace `Kimi.Compiler.Documentation` (no Lexing/Parsing/Binding hunk, but a folder
+    disagreeing with its namespace and two "Documentation" namespaces); the association in `Kimi.Documentation` (the compiler would
+    read Documentation); `DocumentationText`/`DocumentationDiagnostic` in Documentation (the association's `GetText` and
+    `GetDiagnostics` produce them); a semantic-slot row for the association's two files (one row over Core states R5-M193 for Core's
+    owner); the structure-limit splits in the move (pre-existing, none worse: parts 2 and 3, the plan's §5.3 rows).
+  - Amends: R5-M193's "the documentation model" now names `Kimi.Documentation`. R9-M6's description of
+    `ComponentIsReadOnlyByItsReaders` ("a reader names a type the folder declares"): the types are the folder's top-level ones,
+    since a nested type is named through its containing type and 58 files of `src/Kimi` spell nested Documentation helper names
+    (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
+    type, `NativeToolchain.NativeBuild`, is private).
+  - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).

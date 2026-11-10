@@ -2,7 +2,7 @@
 
 using System.Security.Cryptography;
 using System.Text;
-using Kimi.Compiler.Documentation;
+using Kimi.Documentation;
 using Xunit;
 
 namespace XunitTest;

@@ -3,8 +3,8 @@
 using System.Runtime.CompilerServices;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Diagnostics;
+using Kimi.Documentation;
 using Kimi.Lsp;
 using Verification;
 using Xunit;

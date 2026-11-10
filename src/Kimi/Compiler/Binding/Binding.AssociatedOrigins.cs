@@ -205,7 +205,7 @@ public sealed partial class Binding
                     if (enclosing.Origins?.ContainsKey(name.IdentifierName) == true ||
                         (enclosing.Values.TryGetValue(name.IdentifierName, out var value) && value.Kind is BindingSymbolKind.Parameter or BindingSymbolKind.Local or BindingSymbolKind.Capture) ||
                         enclosing.OriginSets?.ContainsKey(name.IdentifierName) == true ||
-                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Sets.ContainsKey(name.IdentifierName) == true)
+                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Set(name.IdentifierName) is not null)
                     {
                         this.Fail(node, BindingFailure.Duplicate);
                     }
