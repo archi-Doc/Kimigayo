@@ -215,7 +215,7 @@ public sealed partial class Binding
         }
 
         var receiverSymbol = receiverPath.Symbol;
-        if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol is { IsContract: true } && TypeSpelling(receiver) != "Self"))
+        if (receiverSymbol?.Kind == BindingSymbolKind.Container || receiverSymbol is { IsContract: true })
         {
             return null;
         }

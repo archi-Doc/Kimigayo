@@ -282,7 +282,8 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
         if (declaration is ContractKoto)
         {
-            return symbol?.Contract is not null ? new([this.Declaration(declaration)]) : null;
+            // A written Self in a Contract selects the Contract's Self Type parameter (SPEC 9.1), shown as its Contract (SelfOf).
+            return (symbol?.SelfOf ?? symbol)?.Contract is not null ? new([this.Declaration(declaration)]) : null;
         }
 
         if (symbol?.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property)
