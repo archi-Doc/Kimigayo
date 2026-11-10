@@ -147,6 +147,13 @@ public sealed class RecursiveContractTest
     [InlineData("guard", "p29n-unqualified", Copies + "group H\n    public func twice<T>(value: T.Child.Child) -> (T.Child.Child, T.Child.Child)\n        T is Tree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
     [InlineData("C2a1", "p30n-paramident", Copies + "group H\n    public func twice<T, U>(value: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n        T is Tree\n        T is U\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
 
+    // R7-C2a (design review 4, N2): a request drops the rows its preparation's demands left before its walk reads them. Normalizing the
+    // Output premise under `T is U` asks whether U.(Tree).Child is a PrimitiveInteger (the built-in Addable's Output), and that demand
+    // enumerates U and U.(Tree).Child from the written facts alone, which state T; kept, those empty rows would hide `U is CopyTree`
+    // from the walk of U.(Tree).Child.(Tree).Child, whose rows come only through its prefixes' clauses.
+    [InlineData("C2a1", "p33-prepmemo", Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    T is U\n    T.(Tree).Child is Addable<T.(Tree).Child>\n    T.(Tree).Child.(Addable<T.(Tree).Child>).Output is Copy\n    needs<U.(Tree).Child.(Tree).Child>(value)\n", "")]
+    [InlineData("C2a1", "p33n-prepmemo", Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is Tree\n    T is U\n    T.(Tree).Child is Addable<T.(Tree).Child>\n    T.(Tree).Child.(Addable<T.(Tree).Child>).Output is Copy\n    needs<U.(Tree).Child.(Tree).Child>(value)\n", "UnprovenConstraint_Kd: needs<U.(Tree).Child.(Tree).Child>(value)")]
+
     // Accepted before Enumerate and still: an identity written from the supplied subject, a clause whose normalization asks a capability
     // of the link being enumerated (the walk demands nothing, so it is never re-entered), a parameter identity over a refining Contract.
     [InlineData("guard", "p25r-headbound", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n        T is CopyTree\n        T.(Tree).Alias.(Tree).Alias is T.(Tree).Child\n        return (value, value)\n", "")]
