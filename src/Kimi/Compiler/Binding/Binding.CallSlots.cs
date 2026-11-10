@@ -40,7 +40,7 @@ public sealed partial class Binding
             ? this.SubstituteStoredOrigins(type, CallSlotOwner(binder), (BoundOrigin[])declaringType.OriginArguments)
             : this.MemberType(type, declaringType);
 
-    private BoundType? ConstructionType(FunctionKoto function, BoundType template, BoundType?[] slots)
+    private BoundType? ConstructionType(FunctionKoto function, BoundType template, ReadOnlySpan<BoundType?> slots)
     {
         var count = CallSlotCount(function);
         for (var i = 0; i < count; i++)
@@ -51,13 +51,13 @@ public sealed partial class Binding
             }
         }
 
-        return this.types.Rebuild(template, ((BoundType[])(object)slots).AsSpan(0, count), template.Origin, (BoundOrigin[])template.OriginArguments);
+        return this.types.Rebuild(template, slots[..count]!, template.Origin, (BoundOrigin[])template.OriginArguments);
     }
 
-    private void InitializeCallSlots(InvocationKoto call, FunctionKoto function, BoundType? declaringType, BoundType?[] slots, bool fixedConstruction = false)
+    private void InitializeCallSlots(InvocationKoto call, FunctionKoto function, BoundType? declaringType, SlotFrame slots, bool fixedConstruction = false)
     {
         var count = CallSlotCount(function);
-        slots.AsSpan(0, count).Clear();
+        slots.ClearTypes(count);
         if (!function.IsConstructor || declaringType is null)
         {
             return;
@@ -72,14 +72,14 @@ public sealed partial class Binding
             // An outer slot is always a fixed binding, even when it is itself a parameter.
             if (!infer || i >= own || fixedType.Kind != BoundTypeKind.Parameter || !ReferenceEquals(fixedType.Symbol?.Scope.Owner, owner))
             {
-                slots[i] = fixedType;
+                slots.SetType(i, fixedType);
             }
         }
     }
 
     // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
     // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
-    private BoundType FormedApplication(BoundType pattern, Koto function, BoundType?[] arguments)
+    private BoundType FormedApplication(BoundType pattern, Koto function, ReadOnlySpan<BoundType?> arguments)
     {
         for (var depth = 0; depth < 16; depth++)
         {
@@ -114,8 +114,9 @@ public sealed partial class Binding
     // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
     // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
     // invariant schema slot.
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
     {
+        var arguments = frame.Types;
         if (pattern.Kind == BoundTypeKind.AssociatedProjection)
         {
             // An associated Type is not an injective constructor: infer its receiver from
@@ -129,7 +130,7 @@ public sealed partial class Binding
             // The target alone does not determine a pair's Semantics. Once another input, an explicit argument or the
             // result fixes the whole Type, match its direct target; final candidate fitting checks a still-open projection.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                this.Infer(this.DirectTarget(whole), actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
+                this.Infer(this.DirectTarget(whole), actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
@@ -142,18 +143,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+                return this.Infer(pattern.Components[0], actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
+                this.Infer(pattern.Components[0], actual.Components[0], function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            return this.Infer(pattern.Components[0], actual.Underlying, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -215,16 +216,16 @@ public sealed partial class Binding
                     // bindings meet.
                     if (!commonOrigins || this.invariantSlots.Contains(slot))
                     {
-                        arguments[slot] = previous;
+                        frame.SetType(slot, previous);
                     }
                     else if (invariant)
                     {
-                        arguments[slot] = actual;
+                        frame.SetType(slot, actual);
                         this.invariantSlots.Add(slot);
                     }
                     else
                     {
-                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous;
+                        frame.SetType(slot, IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
                     }
 
                     return true;
@@ -236,20 +237,20 @@ public sealed partial class Binding
                     (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function &&
                     IsSubtype(actual, previous) && IsSubtype(previous, actual)))
                 {
-                    arguments[slot] = previous;
+                    frame.SetType(slot, previous);
                     return true;
                 }
 
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
-                    arguments[slot] = common;
+                    frame.SetType(slot, common);
                     return true;
                 }
 
                 return false;
             }
 
-            arguments[slot] = actual;
+            frame.SetType(slot, actual);
             if (relateLater && invariant)
             {
                 this.invariantSlots.Add(slot);
@@ -264,7 +265,7 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
-            !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
+            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0))
         {
             return false;
@@ -274,7 +275,7 @@ public sealed partial class Binding
         {
             var required = pattern.LengthArguments[i];
             var supplied = actual.LengthArguments[i];
-            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || lengths is null || !this.InferLength(required, supplied, function, lengths)))
+            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !this.InferLength(required, supplied, function, frame)))
             {
                 return false;
             }
@@ -296,7 +297,7 @@ public sealed partial class Binding
                 pattern.Components[i],
                 actual.Components[i],
                 function,
-                arguments,
+                frame,
                 inferOrigins,
                 lengths,
                 commonOrigins,

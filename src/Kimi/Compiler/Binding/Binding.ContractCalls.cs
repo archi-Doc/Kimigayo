@@ -187,7 +187,7 @@ public sealed partial class Binding
     private BoundType? CallType(
         BoundType type,
         Koto binder,
-        BoundType?[] arguments,
+        ReadOnlySpan<BoundType?> arguments,
         BindingScope scope,
         BoundType? self,
         BoundOrigin[] origins,
