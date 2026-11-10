@@ -6149,6 +6149,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     without an answer undecided).
   - One step function (`Step`: a displacement or element step keeps the Position where the stride's Type is a grid row; a C-layout
     first Field keeps it; any other step gives Off) serves the store, the call and the displacement.
+  - Reach (G667b's held rule, landed with this entry; the owner's O-105 (b), O-117 (a)): a raw write may reach every Place its
+    pointer's value carries a non-shared direct Loan or address of (SPEC 15.6's carrying; 5.2.1 condition 1 bounds it to that
+    Place); a pun gives the holder {Φ_E, Φ_W} (5.5) unless every raw layer there states an Origin other than `static` at the Place
+    (5.2, 5.7: `PunAt`'s typed answer).
+  - Calls (G667b): a call judges every input its contract may store through (`NoStore`): first step at its root key's write Types
+    (`OwnLayers`), then past each holder an entry names, at the entry's Place key (`CallWrite`; `UnknownWrite` past an abstract
+    part); each (holder state, key) is scanned once per run: Work ≤ Σ over distinct (state, key) of |state| + Σ over calls of the
+    pairs reached; one memo of key facts per program version; warm 0 B.
+  - The undecided class (G667b; the owner's O-135 (b)): an undecided write reports nothing by itself; it gives the holder {Φ_E, Φ_W,
+    Φ_M}; a value read through a Φ_M pointer carries Φ_U, and a check whose sets hold Φ_U gathers at `MirOutcome.Limit` (below
+    Decided, above the depth bound's Deep; R4-M153's path): a located `Unsupported_Kd` at the check's subject, only where a verdict
+    rests on the write; a valid program whose pun no verdict reads is accepted.
+  - Named limits of G667b: a callee that derives a raw pointer from a safe borrow and puns is not counted (the safe-borrow
+    convention); integer zero (pNullOk, O-60's residue, O-105 (b)); a constructor's or `drop`'s receiver root keeps Φ (C-189's N13);
+    Φ_U is set-level, so a decided conflict beside a rested store reports `Unsupported_Kd` (still rejected; eDecidedBesideRestedBad;
+    PLAN G599 (b)) and a read through a Φ_M pointer taints its whole value; the own-step Warning and Activations' scans do not read
+    the tier; A5 keeps one state for a struct an `init` made (as on dev).
+  - Rejected (G667b): per-part holder states (15.6 Holders); pointee-keyed pun entries with wildcards; A5's own Type walks and
+    identity (`Same`); a per-holder marker Π (G599 r1b); one `Classify` steering the store and call rules by bools. G667b's Δ and
+    its open B1/B2 are replaced by this entry's Position and judge.
   - Reason: reviews 1 and 4 (B1, B2), revision 1's R1 and design reviews 1-4 (F1, G1, B1, B2, B3) were one cause, a pun decided (or
     a write left undecided) where the write's overlap with a raw pointer of the Place is not established: by Type where its offset
     or size is not known, by the written Type's size read as the Place's layout, at a Place that has no pointer byte, or over a
