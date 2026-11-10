@@ -355,7 +355,7 @@ public sealed partial class Binding
         }
 
         this.AddResultPremises(environment, result);
-        if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.State == 3)
+        if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
             {

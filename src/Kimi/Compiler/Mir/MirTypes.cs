@@ -21,7 +21,9 @@
 // read, MirHoldingKey), so the answer is the same in every order of the parts; a reader asks the published answer and never ranks two
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
-// Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
+// Its concerns: the destruction walk and the facts over it, with the order of a level's parts (LevelCount, LevelPart: the direct parts
+// of a Type in destruction order, SPEC 16.3.2's one statement, which A2's walk and the builder's Field cleanup read)
+// (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
 // here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer, operator-domain, agreement and Never
 // facts.
 
