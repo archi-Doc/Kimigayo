@@ -155,6 +155,22 @@ internal sealed partial class TyCtxt
         return at with { Type = parent, Written = null, Holder = null, Case = -1 };
     }
 
+    // SPEC 4.1, 6.7.1, IMPL 21.1.2 (C-211, PLAN G667c): the key of the part the specification places at a Place's own address, the one
+    // step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset i * stride; `element`
+    // true), or a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), each as Select steps it, the path's
+    // dereference kept. The first written Field is MIR's Field 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and
+    // AdtDef keeps stored Fields in declaration order. Type null for every other Type (a Kimigayo-layout struct, a Tuple, an enum or its
+    // Case, a Closure: IMPL 21.1.2 promises no offset there), for an unbound key and for a first Field Binding did not bind. Reads no
+    // length: whether an array has an element is its reader's (A5's Sized). The answer's Type is a function of the key's Type, so a reader
+    // steps a Type that has no path (a written or stride Type, a chain row) as PlaceKey.Root of it. Total, a function of the key; allocates
+    // nothing warm. Must not decide a pun, a covering or a designation (A5's).
+    internal PlaceKey Leading(PlaceKey at, out bool element)
+    {
+        element = at is { Case: < 0, Type.Kind: BoundTypeKind.FixedArray };
+        return element || (at is { Case: < 0, Type: { } type } && AdtDef.IsStruct(type) && type.Symbol!.Adt is { IsCLayout: true })
+            ? binding.Select(at, 0) : at with { Type = null, Written = null, Holder = null, Case = -1 };
+    }
+
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal, raw Origins included: the structural part of a
     // fit (Binding's relation walk, every Origin binding equal, no Never root rule), symmetric; reads no premise. Total, O(size of the
     // smaller Type), allocates nothing. Must not stand for a fit (FitsStructuralPartAt keeps Never's root rule).
