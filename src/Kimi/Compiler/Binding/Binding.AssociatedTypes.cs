@@ -195,15 +195,10 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { Declaration: ContractKoto } contract)
+        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope) is { } contract)
         {
-            if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
-            {
-                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
-            }
-
             qualifier = contract;
-            receiver = baseSyntax!;
+            receiver = qualified.Left;
         }
 
         // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
@@ -305,27 +300,19 @@ public sealed partial class Binding
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
 
-    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
+    // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
+    // path (9.6, 9.7.3), never read as `T.(C).X`.
+    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope)
     {
-        if (syntax.Left is MemberAccessKoto left && this.ProjectionQualifier(left, scope, out receiver) is { Kind: BindingSymbolKind.Container } prefix && this.scopes.TryGetValue(prefix.Declaration, out var members) && TypeSpelling(syntax.Right) is { } name && MemberTypes(members, name) is { } target && this.Accessible(target, scope))
+        if (syntax.Right is not ParenthesizedTypeKoto || this.TypeName(syntax.Right, scope) is not { Declaration: ContractKoto } selection)
         {
-            syntax.Right.BoundSymbol = target;
-            Complete(syntax.Right, BoundType.Unit);
-            Complete(syntax.Left, BoundType.Unit);
-            return target;
+            return null;
         }
 
-        var selection = this.TypeName(syntax.Right, scope);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
             referenceSyntax = groupedReference.Type;
-        }
-
-        receiver = syntax.Left;
-        if (selection is null || (selection.Kind != BindingSymbolKind.Container && selection.Declaration is not ContractKoto))
-        {
-            return null;
         }
 
         var symbol = this.QualifierReference(referenceSyntax, selection, scope);
