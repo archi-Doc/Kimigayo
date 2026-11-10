@@ -20,8 +20,7 @@ namespace Kimi.Compiler.Backend;
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
 // witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
-// any other a broken contract at the adapter's site; an update Item's entry writes the update over its own parameters,
-// FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
+// any other a broken contract at the adapter's site); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
 // also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased, only in its glue function): its table's drop entry, when present, at the address of a copy
 // of its environment word in a slot of the glue's own, so the value's address does not escape into the call and an optimizer can drop
@@ -57,12 +56,6 @@ internal sealed partial class FunctionCodegen
         var key = collector.Set.Items[item].Key;
         var represented = collector.Set.Items[item].RepresentativeType!;
         var closure = key.Kind == MonoKind.ClosureErasure;
-        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
-        {
-            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
-            return;
-        }
-
         var given = default(ReadOnlySpan<Value>);
         Run? run;
         if (closure)

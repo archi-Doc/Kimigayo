@@ -7,9 +7,9 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, by MirTypes.Agrees: MirTypes.Agree, modulo Origins, or as the body's
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts; a comparison BinaryOp compares no string, OperandsCompare); every Semantics case view resolves each Adapt and PairAcquire
-//   (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose Type the tier reads
-//   as unknown (Unknown).
+//   Adapts; a comparison BinaryOp compares in the operator table's domain, OperandsCompare); every Semantics case view resolves each
+//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose
+//   Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
 //   and their Places; the body's case views (MirCases).
 // - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
@@ -140,14 +140,17 @@ internal sealed partial class MirValidator
         // which stops the walk; unknown (null) for the Never value. A check over Binding's decision, never a reader of it.
         private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(body, type));
 
-        // SPEC 13.4: a comparison BinaryOp's operands agree at what they compare (PremisedTerminal, one statement per operand), which is no
-        // string, since a library witness compares a string (R8-S1d2, R8-S1e-b). It covers only the string row of the open family "a
-        // comparison BinaryOp at a Type the operator table does not lower"; the family's closed form, a whitelist over that table's domain,
-        // is PLAN's (the Middle's open issue).
-        private readonly bool OperandsCompare(BoundType? first, BoundType? second)
+        // SPEC 13.4, 5.1, 3.1.3, 8.7.4: a comparison BinaryOp's operands agree at what they compare (PremisedTerminal, one statement per
+        // operand), a Type the operator table runs the operator on (ComparisonTypes.OperatorCompares, the whitelist the Backend's Column
+        // reads, a Never terminal's row included; a string's comparison is its library witness's, R8-S1e-b), or any abstract operand or
+        // Wrapping over one (MirTypes.IsArithmeticInteger: MIR reads the shape and trusts Binding's proof that the instance is an integer,
+        // PrimitiveInteger's); the Never value's unknown Type takes the other operand's.
+        private readonly bool OperandsCompare(MirBinaryOp op, BoundType? first, BoundType? second)
         {
             var (left, right) = (this.PremisedTerminal(first), this.PremisedTerminal(second));
-            return MirTypes.Agree(left, right) && !ReferenceEquals(left ?? right, BoundType.String);
+            var contract = op is MirBinaryOp.Eq or MirBinaryOp.Ne ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable;
+            return MirTypes.Agree(left, right) &&
+                ((left ?? right) is not { } type || ComparisonTypes.OperatorCompares(type, contract) || MirTypes.IsArithmeticInteger(type));
         }
 
         // An operand's Type, unknown (null) for a Place out of range or a local an Opaque value defines, and for the Never value, which
@@ -185,9 +188,9 @@ internal sealed partial class MirValidator
 
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
         // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator's operands agree (a
-        // comparison's at their premised terminals, at no string: OperandsCompare) but for a shift count, any integer, and a raw pointer's
-        // displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's reference to its Place; an
-        // aggregate's operands are its components; an Adapt gives its target Type.
+        // comparison's at their premised terminals, in the operator table's domain: OperandsCompare) but for a shift count, any integer, and a
+        // raw pointer's displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's reference to its
+        // Place; an aggregate's operands are its components; an Adapt gives its target Type.
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
             var operands = body.Operands.Slice(rvalue.Start, rvalue.Count);
@@ -201,7 +204,7 @@ internal sealed partial class MirValidator
                 MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, op switch
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
-                    >= MirBinaryOp.Eq => this.OperandsCompare(first, second),
+                    >= MirBinaryOp.Eq => this.OperandsCompare(op, first, second),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
                     _ => MirTypes.Agrees(body, first, second),
                 }),

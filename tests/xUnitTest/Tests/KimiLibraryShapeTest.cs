@@ -39,10 +39,8 @@ public partial class KimiLibraryShapeTest
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
         (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
+        (KimiDeclarationId.ConsoleWriteStdout, "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
-        (KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()"),
-        (KimiDeclarationId.Exchange, "public func exchange<T>(target: uniq/T ! with => value: T) -> T"),
-        (KimiDeclarationId.Swap, "public func swap<T>(first: uniq/T, second: uniq/T) -> ()"),
         (KimiDeclarationId.MakeObj, "public func makeObj<T>(value: T) -> obj/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeArc, "public func makeArc<T>(value: T) -> arc/T\nT is ObjectPayload"),
@@ -50,7 +48,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
         (KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter"),
-        (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
@@ -102,7 +99,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(177, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(178, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -291,7 +288,7 @@ public partial class KimiLibraryShapeTest
             .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace} {x.Row.Calls}");
         Assert.Equal(
             [
-                "Replace  -1 0 True -1", "ArrayReserve  -1 -1 False -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
+                "Replace  -1 0 True -1", "Exchange  -1 -1 False -1", "Swap  -1 -1 False -1", "ArrayReserve  -1 -1 False -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
                 "ArrayClear  -1 0 False -1", "ArrayShrinkToFit  -1 -1 False -1", "ArraySwap  -1 -1 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
                 "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
                 "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
@@ -381,8 +378,11 @@ public partial class KimiLibraryShapeTest
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Library.Value.Library.GetSymbol(id)!.Declaration));
 
-    // SPEC 4.9.3, 4.9.5, 22.2 (R8-A1a, A1b): the operations that became bodies keep the headers their compiler function rows held.
+    // SPEC 4.9.3, 4.9.5, 15.7, 22.2 (R8-A1a, A1b, U1): the operations that became bodies keep the headers their compiler function rows held.
     [Theory]
+    [InlineData(KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()")]
+    [InlineData(KimiDeclarationId.Exchange, "public func exchange<T>(target: uniq/T ! with => value: T) -> T")]
+    [InlineData(KimiDeclarationId.Swap, "public func swap<T>(first: uniq/T, second: uniq/T) -> ()")]
     [InlineData(KimiDeclarationId.ArrayReserve, "public func reserve(self: uniq/Self, additional: isize)")]
     [InlineData(KimiDeclarationId.ArrayAppend, "public func append(self: uniq/Self, value: T)")]
     [InlineData(KimiDeclarationId.StorageGrowArray, "internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)")]
@@ -402,6 +402,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
     [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
+    [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, HeaderLines(Library.Value.Library.GetSymbol(id)!.Declaration, header));
 

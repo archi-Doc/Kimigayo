@@ -10,6 +10,7 @@ public enum KimiDeclarationId : byte
     Owned,
     Callable,
     WriteLine,
+    ConsoleWriteStdout,
     Option,
     Result,
     Array,

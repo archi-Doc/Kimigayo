@@ -1,6 +1,6 @@
 // UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation
-// (Text.kimi); the buffers, windows and the other Text operations are bodies here, each raw Field's storage where its
-// Origin states (SPEC 5.7).
+// (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine of a view are bodies here, each
+// raw Field's storage where its Origin states (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -36,8 +36,7 @@ public struct WriteWindow {source}
     public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>
         if self.remaining == 0 => return .Err(BufferFull.init())
         unsafe => *self.next() = byte
-        self.written += 1
-        self.remaining -= 1
+        self.advance(1)
         return .Ok(())
 
     /// Writes `bytes` after the written bytes; `BufferFull`, changing nothing, unless all of them fit (SPEC 22.9.4).
@@ -47,8 +46,7 @@ public struct WriteWindow {source}
         if length != 0
             // The source is readable bytes, never this window's unwritten capacity, so the two ranges do not overlap.
             unsafe => Storage.transferBytes(self.next(), (*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, length)
-        self.written += length
-        self.remaining -= length
+        self.advance(length)
         return .Ok(())
 
     /// The window with capacity `min(capacity, maximum)` (SPEC 22.9.4).
@@ -58,12 +56,14 @@ public struct WriteWindow {source}
         origin r.source == self.source
         if maximum < self.written => Storage.argumentOutOfRange()
         var window = self@move
-        if maximum - window.written < window.remaining => window.remaining = maximum - window.written
+        // `0 <= written <= maximum` bounds the difference.
+        let room = (maximum@Wrapping<isize> - window.written@Wrapping<isize>)@isize
+        if room < window.remaining => window.remaining = room
         return window@move
 
     /// Commits the written prefix and returns its length (SPEC 22.9.4).
     public func commit(self: owner/Self) -> isize
-        unsafe => (*(self.state@raw/Storage.BufferRepr)).length = self.start + self.written
+        unsafe => (*(self.state@raw/Storage.BufferRepr)).length = self.end()
         return self.written
 
     /// Commits the written prefix as an adapter commit: the validated length follows when the buffer was fully
@@ -72,12 +72,22 @@ public struct WriteWindow {source}
         unsafe
             let buffer = self.state@raw/Storage.BufferRepr
             let complete = (*buffer).length == (*buffer).validated
-            (*buffer).length = self.start + self.written
+            (*buffer).length = self.end()
             if complete => (*buffer).validated = (*buffer).length
+
+    // Records `count` more written bytes, `0 <= count <= remaining`. The window keeps `0 <= written`, `0 <= remaining`
+    // and `start + written + remaining <= capacity`, so neither step overflows.
+    func advance(self: uniq/Self, count: isize)
+        self.written = (self.written@Wrapping<isize> + count@Wrapping<isize>)@isize
+        self.remaining = (self.remaining@Wrapping<isize> - count@Wrapping<isize>)@isize
+
+    // The buffer's length after the written bytes; the capacity bounds the sum.
+    func end(self: ref/Self) -> isize
+        return (self.start@Wrapping<isize> + self.written@Wrapping<isize>)@isize
 
     // The first unwritten byte: the buffer's data past `start + written`.
     func next(self: ref/Self) -> raw/u8
-        unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.start + self.written
+        unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.end()
 
 public struct Utf8Writer {target}
     Self is not ObjectPayload
@@ -98,10 +108,11 @@ public struct Utf8Writer {target}
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
-    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a nested write
-    /// recorded being recorded and returned (SPEC 22.10.1).
+    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
+    /// nested write recorded being recorded and returned (SPEC 22.10.1).
     ///
-    /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller (SPEC 22.5.1).
+    /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
+    ///   (SPEC 22.5.1).
     public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
         T is Utf8Format
         if self.failed => return .Err(BufferFull.init())
@@ -139,8 +150,11 @@ public struct Utf8Writer {target}
     internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
         if self.failed => return .Err(BufferFull.init())
         let largest: isize = 9223372036854775807
-        if amount > largest - self.pendingLength => Storage.allocationSizeExceeded()
-        var minimum = amount + self.pendingLength
+        // The adapter keeps `0 <= pendingLength`, which bounds the difference; the guard `amount <= available`
+        // bounds the sum.
+        let available = (largest@Wrapping<isize> - self.pendingLength@Wrapping<isize>)@isize
+        if amount > available => Storage.allocationSizeExceeded()
+        var minimum = (amount@Wrapping<isize> + self.pendingLength@Wrapping<isize>)@isize
         unsafe
             if self.kind == 0
                 let fixed = self.destination@raw/(Text.FixedBuffer during target)
@@ -148,8 +162,13 @@ public struct Utf8Writer {target}
             if self.kind == 1
                 let heap = self.destination@raw/Text.HeapBuffer
                 let length = (*heap).length
-                if minimum > (*heap).capacity - length and minimum <= largest - length
-                    if self.hint <= largest - length - minimum => minimum += self.hint
+                // The buffer keeps `0 <= length <= capacity`, which bounds both differences.
+                let unused = ((*heap).capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
+                let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
+                if minimum > unused and minimum <= room
+                    // The guard `unused < minimum <= room` bounds the difference, and `hint <= spare` the sum.
+                    let spare = (room@Wrapping<isize> - minimum@Wrapping<isize>)@isize
+                    if self.hint <= spare => minimum = (minimum@Wrapping<isize> + self.hint@Wrapping<isize>)@isize
                 return self.settled(((*heap)@uniq).reserve(minimum))
         if self.kind == 2
             let reserved = Storage.erasedReserve(self, minimum)
@@ -204,13 +223,13 @@ public group Text
         /// Validates the unvalidated suffix and views the committed bytes; records nothing (SPEC 22.9.3).
         public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
             unsafe
-                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
                 return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
 
         /// Records the committed bytes as validated, only on complete success (SPEC 22.9.3).
         public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>
             unsafe
-                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
             self.validated = self.length
             return .Ok(())
 
@@ -224,14 +243,15 @@ public group Text
         /// - abort: `minimum` is negative.
         public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
             if minimum < 0 => Storage.argumentOutOfRange()
-            let remaining = self.capacity - self.length
+            // The buffer keeps `0 <= length <= capacity`, which bounds the difference.
+            let remaining = (self.capacity@Wrapping<isize> - self.length@Wrapping<isize>)@isize
             if minimum > remaining => return .Err(BufferFull.init())
             return .Ok(WriteWindow.init(self@follow@raw@raw/u8, self.length, remaining))
 
         /// Validates the unvalidated suffix and views the committed bytes under the array's exclusive Loan (SPEC 22.9.3).
         public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>
             unsafe
-                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
                 return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
 
     public struct HeapBuffer
@@ -260,13 +280,13 @@ public group Text
         /// Validates the unvalidated suffix and views the committed bytes; records nothing (SPEC 22.9.3).
         public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
             unsafe
-                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
                 return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
 
         /// Records the committed bytes as validated, only on complete success (SPEC 22.9.3).
         public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>
             unsafe
-                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
             self.validated = self.length
             return .Ok(())
 
@@ -284,13 +304,17 @@ public group Text
             if minimum < 0 => Storage.argumentOutOfRange()
             let length = self.length
             let capacity = self.capacity
-            if minimum > capacity - length
+            // The buffer keeps `0 <= length <= capacity`, which bounds the differences, and the guards
+            // `0 <= minimum <= room` the sum.
+            if minimum > (capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
                 let largest: isize = 9223372036854775807
-                if minimum > largest - length => Storage.allocationSizeExceeded()
-                var target = length + minimum
-                // `capacity <= largest / 2` bounds the product.
+                let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
+                if minimum > room => Storage.allocationSizeExceeded()
+                var target = (length@Wrapping<isize> + minimum@Wrapping<isize>)@isize
+                // `0 <= capacity <= largest / 2` bounds the product.
                 if capacity <= largest / 2
-                    if capacity * 2 > target => target = capacity * 2
+                    let doubled = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
+                    if doubled > target => target = doubled
                 let memory = Raw.allocate<u8>(target)
                 unsafe
                     if length != 0 => Storage.transferBytes(memory, self.data, length)
@@ -298,7 +322,8 @@ public group Text
                     // A claim: the new allocation is storage the buffer owns, as its old one was (SPEC 5.7).
                     self.data = memory@(raw/u8 during self)
                 self.capacity = target
-            return .Ok(WriteWindow.init(self@follow@raw@raw/u8, length, self.capacity - length))
+            let remaining = (self.capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
+            return .Ok(WriteWindow.init(self@follow@raw@raw/u8, length, remaining))
 
         /// Validates the unvalidated suffix and transfers the allocation to the string without copying; on failure it releases
         /// the allocation (SPEC 22.9.3). An allocated empty buffer keeps its pointer and the Heap release kind.
@@ -309,7 +334,7 @@ public group Text
             let length = held.value.length
             let validated = held.value.validated
             unsafe
-                if not Text.validUtf8(data + validated, length - validated)
+                if not Text.validSuffix(data, validated, length)
                     Raw.release(data)
                     return .Err(Text.InvalidUtf8.init())
             var kind: u8 = 0
@@ -374,9 +399,18 @@ public group Text
             if not Text.validUtf8((*repr).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
         return .Ok(Text.Utf8Slice.init(bytes))
 
+    /// Whether a buffer's unvalidated suffix, the bytes from `validated` to `length` at `data`, is UTF-8
+    /// (`validUtf8`). The buffer keeps `0 <= validated <= length`, which bounds the difference.
+    ///
+    /// - safety: `0 <= validated <= length`, and the `length` bytes at `data` lie within its provenance and are
+    ///   readable.
+    internal unsafe func validSuffix(data: raw/u8, validated: isize, length: isize) -> bool
+        unsafe => return Text.validUtf8(data + validated, (length@Wrapping<isize> - validated@Wrapping<isize>)@isize)
+
     /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a
     /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. A bound
-    /// precedes each read, and the index only steps by one under it, so no step can overflow.
+    /// precedes each read: the index steps by one only under `index < length`, and `rest` down only under `rest > 0`,
+    /// so no step can overflow.
     ///
     /// - safety: `length >= 0`, and the `length` bytes at `data` lie within its provenance and are readable.
     internal unsafe func validUtf8(data: raw/u8, length: isize) -> bool
@@ -384,7 +418,7 @@ public group Text
             var index: isize = 0
             while index < length
                 let lead = *(data + index)
-                index += 1
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 if lead >= 128
                     if lead < 194 or lead > 244 => return false
                     var rest: isize = 3
@@ -404,8 +438,20 @@ public group Text
                         let byte = *(data + index)
                         if (byte & 192) != 128 => return false
                         scalar = (scalar << 6) | (byte & 63)@u32
-                        index += 1
-                        rest -= 1
+                        index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                        rest = (rest@Wrapping<isize> - 1@Wrapping<isize>)@isize
                     if scalar < minimum or scalar > 1114111 => return false
                     if scalar >= 55296 and scalar < 57344 => return false
             return true
+
+// SPEC 22.7: the view overload of Console.writeLine; the string overload is a compiler function until W2.
+public group Console
+    /// Writes the view's bytes and one LF to standard output (SPEC 22.7).
+    ///
+    /// - abort: the host does not accept the bytes (`KIMI_E_STDOUT`); the output may be partial.
+    public func writeLine(text: Text.Utf8Slice)
+        let bytes = text.bytes()
+        var feed: u8 = 10
+        unsafe
+            Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
+            Console.writeStdout(feed@raw, 1)

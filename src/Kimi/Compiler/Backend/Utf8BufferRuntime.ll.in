@@ -2,16 +2,6 @@
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
 ; The adapter's routine __kimi_text_writer is the kept ErasedWriterRuntime.ll.in's.
 
-{{__kimi_write_line_utf8}}
-entry:
-  %data = load ptr, ptr %self, align 8
-  %len = getelementptr i8, ptr %self, i64 8
-  %length = load i64, ptr %len, align 8
-  call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
-  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
-  ret void
-}
-
 {{__kimi_text_fixed}}
 entry:
   store ptr %self, ptr %ret, align 8

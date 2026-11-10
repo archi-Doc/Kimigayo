@@ -144,16 +144,17 @@ public partial class EffectBoundImplementationTest
             var expected = kind switch
             {
                 CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
                 _ => CompilerFunctionEffect.Inputs,
             };
             Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());
         }
     }
 
-    // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
-    // helper, every specialization the call may still select (by Type, length or a compound key), the accessor or indexer a Place's use
-    // selects, and a destructor ownership analysis plans; a member no call reaches is not judged. (These forms were preserves results
+    // SPEC 8.11.3, 8.11.2, 15.6.4: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive
+    // generic helper, a called function's one summary per declaration over its whole closed specialization set, whatever its key (by Type,
+    // length or a compound key, matching or not), the accessor or indexer a Place's use selects, and a destructor ownership analysis plans;
+    // a member no call reaches is not judged. (These forms were preserves results
     // checks of Iterator conformances before the adopted proposal Abstract Calls Reach by Paths removed that bound.)
     [Theory]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self)\n        Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update()\n", false)]
@@ -163,12 +164,12 @@ public partial class EffectBoundImplementationTest
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count += 1\n", true)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<T>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => self.count += 1\n    public func step(self: uniq/Self) => self.update<T>()\n", true)]
-    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<bool>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<bool>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<i32>()\n", false)]
-    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<2>()\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<2>()\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<3>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, bool)>()\n", false)]
-    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, i32)>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, i32)>()\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count = 1\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => storage = value\n    public func step(self: uniq/Self) => self.count = 1\n", true)]
     [InlineData(Box + "struct Cursor\n    Self is Step\n    var box: Box\n    public func step(self: uniq/Self) => self.box[0] += 1\n", false)]

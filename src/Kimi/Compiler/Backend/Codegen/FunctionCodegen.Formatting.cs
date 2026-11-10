@@ -4,12 +4,12 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The formatting rows of FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): a call of
-// writeLine(Utf8Slice), the one Body-disposition kind whose legacy row's writer is Formatting (LegacyRuntimeHelpers.Row) until W1c-3, is
-// the call of its row's routine in the formatting runtime through the one call writer, the module requesting the formatting runtime its row
-// declares (Formatting). Text.writer, the ErasedWriter intrinsic's row (K package 4.5 row 6), calls P1d's TextWriter routine with the writer
-// kind of its destination and the dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window and the
-// adapter's write are bodies (R8-W1a, W1b, W1c).
+// The formatting rows of FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): a call of a
+// Body-disposition kind whose legacy row's writer is Formatting (LegacyRuntimeHelpers.Row) is the call of its row's routine in the formatting
+// runtime through the one call writer, the module requesting the formatting runtime its row declares (Formatting); no kind has that row
+// after W1c-2 and W1c-3. Text.writer, the ErasedWriter intrinsic's row (K package 4.5 row 6), calls P1d's TextWriter routine with the writer
+// kind of its destination and the dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the
+// adapter's write and Console.writeLine of a view are bodies (R8-W1a, W1b, W1c).
 internal sealed partial class FunctionCodegen
 {
     // A Formatting row's routine (above), the formatting runtime its row declares requested; null after a record at the source: no

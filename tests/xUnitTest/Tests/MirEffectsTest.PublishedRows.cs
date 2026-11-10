@@ -57,7 +57,7 @@ public sealed partial class MirEffectsTest
         }
 
         Assert.Equal([AppendAllDropsItsEmptiedSource], outside);
-        Assert.Equal(33, bodies); // Utf8Writer.write's FormatsValue row joined at R8-W1b-4, Text.toString's and tryFormat's Formats rows at W1c-2.
+        Assert.Equal(36, bodies); // Utf8Writer.write's FormatsValue row joined at R8-W1b-4, Text.toString's and tryFormat's Formats rows at W1c-2.
 
         void Check(string name, BindingSymbol operation, MirBody body)
         {

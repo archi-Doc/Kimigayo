@@ -232,12 +232,7 @@ internal sealed partial class MirEffects
                     break;
                 }
 
-                for (var i = 0; types.Implementation(function, item, i) is { } implementation; i++)
-                {
-                    var own = ReferenceEquals(implementation, function);
-                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, implementation)), own ? item : null, implementation);
-                }
-
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, function)), item, function); // Its declaration (SPEC 15.6.4, Local).
                 break;
             default:
                 this.found |= type.Kind == BoundTypeKind.Function ? Unknown : Limit;
@@ -287,8 +282,8 @@ internal sealed partial class MirEffects
     // target Binding resolves under that reference and those premises, at the instance Binding gives it (TyCtxt.Witnesses: a compiler
     // function, a composite comparison's leaf witnesses, a witness body, a library witness at the Self's arguments among them, or an
     // accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in target keeps its requirement's
-    // declaration), each implementation that instance selects entered as a call enters it (SPEC 8.13.3, TyCtxt.Implementation), and none
-    // resolving (a composite with an abstract part, a standard Property witness) is a limit.
+    // declaration), each entered at that instance as a call enters it (its declaration's summary, specializations included: SPEC 15.6.4),
+    // and none resolving (a composite with an abstract part, a standard Property witness) is a limit.
     private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
     {
         if (type.IsAbstract)
@@ -312,11 +307,7 @@ internal sealed partial class MirEffects
             }
             else
             {
-                for (var j = 0; types.Implementation(target, instance, j) is { } implementation; j++)
-                {
-                    var own = ReferenceEquals(implementation, target); // SPEC 8.13.3: what the instance's key selects, as a call enters it.
-                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, implementation)), own ? instance : null, implementation);
-                }
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), instance, target); // As a call enters it (SPEC 15.6.4, Local).
             }
         }
 
@@ -378,9 +369,8 @@ internal sealed partial class MirEffects
 
     // R4-M22: each obligation Binding published. A Callable binding is a call through its subject with the selected receiver, judged in
     // every view under the use's premises with no caller view (its open pair layers admit every case), and an owner acquisition also
-    // destroys the remaining environment; a failure the premises decide is reported in every view. Every implementation of an owing
-    // definition owes (SPEC 8.4: specializations included): its own body per view; a specialization, closed, and a function without a
-    // body (what Binding classifies) in every view at once.
+    // destroys the remaining environment; a failure the premises decide is reported in every view. An owing definition owes with every
+    // implementation (SPEC 8.4), which its summary includes (Owe).
     private void Obligations(MirReport report)
     {
         this.rows.Clear();
@@ -407,32 +397,28 @@ internal sealed partial class MirEffects
             }
             else
             {
-                for (var i = 0; types.Implementation(target, null, i) is { } implementation; i++)
-                {
-                    this.Owe(report, row, implementation, own: i == 0);
-                }
+                this.Owe(report, row, target);
             }
         }
     }
 
-    // An implementation an owing row judges (SPEC 8.4): the definition's own body per view; a specialization, which is closed, and a
-    // function without a body in every view at once.
-    private void Owe(MirReport report, in EffectObligation row, BindingSymbol implementation, bool own)
+    // An owing definition (SPEC 8.4: every implementation, which its summary includes, SPEC 15.6.4, Local): its body per view; a function
+    // without a body in every view at once.
+    private void Owe(MirReport report, in EffectObligation row, BindingSymbol definition)
     {
-        var body = this.program.Callee(new(MirCalleeKind.Fn, implementation));
-        var perView = own && body is not null;
-        for (var mask = perView ? this.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
+        var body = this.program.Callee(new(MirCalleeKind.Fn, definition));
+        for (var mask = body is null ? 1UL : this.Views(body, null); mask != 0; mask &= mask - 1)
         {
-            var view = perView ? 1UL << BitOperations.TrailingZeroCount(mask) : ulong.MaxValue;
+            var view = body is null ? ulong.MaxValue : 1UL << BitOperations.TrailingZeroCount(mask);
             (this.found, this.scratchCount) = (0, 0);
             this.glued.Clear();
-            if (perView)
+            if (body is null)
             {
-                this.Compose(body!.Ordinal, view, null);
+                this.Enter(null, null, definition);
             }
             else
             {
-                this.Enter(body, null, implementation);
+                this.Compose(body.Ordinal, view, null);
             }
 
             Verdict(report, row, this.Found, view);

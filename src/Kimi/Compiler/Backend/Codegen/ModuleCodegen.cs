@@ -141,7 +141,7 @@ internal sealed partial class ModuleCodegen
     }
 
     // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a Builtin or PropertyWitness shim, a descriptor
-    // through ObjectRuntime, a VTable as its descriptor's table; MonoKind has no other member.
+    // through ObjectRuntime, a VTable as its descriptor's table, an Import as its callers' declaration; MonoKind has no other member.
     private void Item(MirProgram program, InstanceCollector collector, int item)
     {
         var entry = collector.Set.Items[item];
@@ -164,6 +164,8 @@ internal sealed partial class ModuleCodegen
                 return;
             case MonoKind.VTable:
                 return; // Its text is its descriptor's virtual table (ModuleCodegen.Objects' Table; R5-M114).
+            case MonoKind.Import:
+                return; // Its text is the declaration its first call requests (ModuleCodegen.Import; R5-M89).
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }

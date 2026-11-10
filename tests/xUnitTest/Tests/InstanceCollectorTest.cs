@@ -636,22 +636,6 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, a #LibraryImport function, is the
-    // BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a requirement call, and a requirement
-    // Item where it is formed and where it is called, whether or not the output calls the function (code generation runs a witness only as a
-    // body or shim item).
-    [Fact]
-    public void ABodylessWitnessIsAGapAtTheCall()
-    {
-        var c = MirBuildTest.Compile(
-            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
-            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
-            "public func main() -> () => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-    }
-
     // SPEC 22.9.4 (R8-W1a, ending R5-M146's buffer half): FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies, so a requirement call
     // and a requirement Item of BufferWriter.reserve at either buffer admit that body as their target and record nothing.
     [Theory]
@@ -672,18 +656,26 @@ public sealed partial class InstanceCollectorTest
         Assert.Contains(buffer["Text.".Length..], body, StringComparison.Ordinal);
     }
 
-    // SPEC 23.1.2 (DECISIONS R5-M146, X2 review B1): the gap is the witness's own (TyCtxt.Bodyless: a compiler or foreign function), so an
-    // independent Binding error elsewhere leaves an import witness's record beside it.
-    [Fact]
-    public void ABodylessWitnessIsAGapBesideAnUnrelatedError()
+    // SPEC 22.6, 8.6.4 (DECISIONS R8-M19, ending R5-M146's BodylessWitness gap): a #LibraryImport function that is a requirement's witness
+    // is the Import item a requirement call and a requirement Item target, where the Item is formed and where it is called, with no record:
+    // the one item of the import, which its direct call targets too.
+    [Theory]
+    [InlineData("    return C.now()\n", 2)]
+    [InlineData("    let now = C.now\n    return now()\n", 3)]
+    public void AnImportWitnessIsItsCallsTarget(string body, int sites)
     {
         var c = MirBuildTest.Compile(
             "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
-            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
-            "func broken() -> i32\n    let text: string = 1\n    return 0\npublic func main() -> () => ()\n");
-        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd);
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n" + body +
+            "func use() -> u32 => tick<Win>() + Win.now()\npublic func main() -> () => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var import = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.Import);
+        Assert.Equal("now", set.Items[import].Key.Symbol!.Name);
+        Assert.Empty(set.Targets(import).ToArray());
+        Assert.Equal(sites, Enumerable.Range(0, set.Items.Length).Sum(x => set.Targets(x).ToArray().Count(t => t.Item == import)));
     }
 
     // DECISIONS BU-11 (PLAN G153 (2)): the storage bound is a property of each instance, whatever was prepared before it and in whatever
@@ -1155,11 +1147,11 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 4.9.6 (DECISIONS R5-M116): replace destroys its target's old value in place, Binding's published row, so its call
-    // targets the glue of that Type when it may need a drop, as its Item's Value call and its adapter do; an i32 needs none, and exchange
-    // and swap destroy nothing.
+    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
+    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
+    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
     [Fact]
-    public void AReplaceTargetsTheGlueOfTheValueItDestroysInPlace()
+    public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             "func r(t: uniq/Res, v: Res) => Kimi.Intrinsics.replace(t, with: v@move)\nfunc n(t: uniq/i32) => Kimi.Intrinsics.replace(t, with: 2)\n" +
@@ -1168,13 +1160,19 @@ public sealed partial class InstanceCollectorTest
             "func v(t: uniq/Res, w: Res)\n    let f = Kimi.Intrinsics.replace<Res>\n    f(t, w@move)\n" +
             "func a() -> (uniq/Res, Res) -> () => Kimi.Intrinsics.replace\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn r"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn n"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn e"));
-        Assert.Equal([string.Empty], AtCalls(program, set, "Fn s"));
-        Assert.Equal(["DropGlue Res"], AtCalls(program, set, "Fn v"));
-        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
-        Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
+        var replaces = Instances("replace");
+        Assert.Contains(replaces, static x => x.Label.EndsWith("i32]", StringComparison.Ordinal));
+        Assert.Contains(replaces, static x => x.Label.EndsWith("Res]", StringComparison.Ordinal));
+        Assert.All(replaces, static x => Assert.Equal(x.Label.EndsWith("Res]", StringComparison.Ordinal) ? "DropGlue Res" : string.Empty, x.Glue));
+        var others = Instances("exchange").Concat(Instances("swap")).ToArray();
+        Assert.Equal(2, others.Length);
+        Assert.All(others, static x => Assert.Empty(x.Glue));
+
+        // Each instance of a library function by its label, with the glue items it targets.
+        (string Label, string Glue)[] Instances(string name) => [.. Enumerable.Range(0, set.Items.Length)
+            .Select(x => (Label: Label(program, set.Items[x]), Item: x))
+            .Where(x => x.Label.StartsWith($"library Fn {name} in ", StringComparison.Ordinal))
+            .Select(x => (x.Label, string.Join(", ", set.Targets(x.Item).ToArray().Select(y => Label(program, set.Items[y.Item])).Where(static y => y.StartsWith("DropGlue", StringComparison.Ordinal)))))];
     }
 
     // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call; an Array<isize> is
@@ -1712,6 +1710,32 @@ public sealed partial class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue [2 of i32]");
         Assert.Equal(["DropGlue string", "DropGlue Res"], Targets(program, set, "DropGlue Derived"));
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+    }
+
+    // PLAN G641 kind 4 (R3-U2a), SPEC 16.3.2: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's order, the walk
+    // code generation writes it by, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an Open Field by its
+    // own rows (a Tuple's elements from the last, an Elide one whole until R3-U2b), a Flag Field whole; a fixed array's elements from the
+    // last, each run without a row through the element's glue, an Open element by its rows; an Open base by its rows after the Fields; an
+    // enum's Case payload elements by their Case's rows. No whole glue is requested.
+    [Fact]
+    public void AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder()
+    {
+        var (program, set) = Collect("struct Pair\n    public var a: string\n    public var b: (string, Array<i32>)\n    public var n: i32\n" +
+            "    public init(a: string, b: (string, Array<i32>), n: i32)\n        self.a = a@move\n        self.b = b@move\n        self.n = n\n" +
+            "open struct Base\n    public var p: string\n    public var q: Array<i32>\n    protected init(p: string, q: Array<i32>)\n" +
+            "        self.p = p@move\n        self.q = q@move\nstruct Leaf : Base\n    public var x: string\n" +
+            "    public init(x: string, p: string, q: Array<i32>) : base(p@move, q@move)\n        self.x = x@move\n" +
+            "enum Two\n    A(string, Array<i32>)\n    B(string)\n" +
+            "func take(s: string) => ()\nfunc partly(c: bool, p: Pair)\n    if c => take(p.a@move)\n    take(p.b.0@move)\n" +
+            "func elements(a: [3 of (string, string)])\n    take(a[1].0@move)\nfunc based(l: Leaf)\n    take(l.p@move)\n" +
+            "func cases(t: Two)\n    match t@move\n        .A(let r, _) => take(r@move)\n        .B(let s) => take(s@move)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        string[] Glues(string label) => [.. Targets(program, set, label).Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal))];
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn partly"));
+        Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue string", "DropGlue (string, string)"], Glues("Fn elements"));
+        Assert.Equal(["DropGlue string", "DropGlue Array<i32>", "DropGlue string"], Glues("Fn based"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn cases"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue Pair" or "DropGlue [3 of (string, string)]" or "DropGlue Two");
     }
 
     // K 4.5 "DropGlue", R4-M6b, SPEC 16.3.2: a struct that declares a drop is destroyed by its destructor alone, the Body of the struct's
@@ -2599,6 +2623,11 @@ public sealed partial class InstanceCollectorTest
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
     private static string Label(MirProgram program, in MonoItem item)
     {
+        if (item.Key.Kind == MonoKind.Import)
+        {
+            return "Import " + item.Key.Symbol!.Name;
+        }
+
         if (item.BodyOrdinal < 0)
         {
             var variant = item.Key.Kind switch

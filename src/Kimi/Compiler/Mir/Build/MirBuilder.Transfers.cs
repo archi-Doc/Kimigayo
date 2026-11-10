@@ -70,12 +70,13 @@ internal sealed partial class MirBuilder
         }
 
         var assumed = operand is not null && !Completes(operand);
-        value = continues || assumed ? value : this.Secure(value, operand ?? jump);
+        var secures = !continues && !assumed; // Whether it has a result to secure (SPEC 16.2.2): an assumed delivery secures none.
+        value = secures ? this.Secure(value, operand ?? jump) : value;
         var info = this.Info(jump);
         ref var target = ref this.Reach(index);
         target.Joined |= !continues;
         var inner = info with { StatementStart = false };
-        if (!continues && !assumed && !target.Delivers && this.Departs(target.At.Depth))
+        if (secures && !target.Delivers && this.Departs(target.At.Depth))
         {
             // SPEC 16.2.2: the secured result is delivered after the Scope Exit of the scopes left: the target's Destination becomes a
             // result temp in the target's scope, with no storage of its own, and its Break the block that delivers that temp to the old
@@ -114,7 +115,7 @@ internal sealed partial class MirBuilder
             this.Set(place, MirRvalue.Use(this.body.AddOperand(value)), jump);
             this.current = at;
         }
-        else if (!continues)
+        else if (secures)
         {
             this.body.Push(runtime, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), inner));
             if (index == 0 && this.constructed is not null)
@@ -132,7 +133,7 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
-        if (!continues && !assumed && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
+        if (secures && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
             MirTypes.MayNeedDrop(secured.Type, this.walked))
         {
             // SPEC 14.10.3, 16.2.2: on the assumed path the transfer completes after its operand is evaluated and before any cleanup, so
@@ -166,7 +167,9 @@ internal sealed partial class MirBuilder
         ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
         if (target.Break < 0)
         {
-            this.body.Terminate(target.Break = target.Join = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
+            this.body.Terminate(
+                target.Break = target.Join = this.body.AddBlock(),
+                MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
         }
 
         return ref target;
@@ -177,7 +180,8 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
+        this.targets.Add(new(
+            node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
         return after;
     }
 
