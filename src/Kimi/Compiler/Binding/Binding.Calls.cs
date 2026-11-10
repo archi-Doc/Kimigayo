@@ -156,8 +156,7 @@ public sealed partial class Binding
         var originSlots = solveOrigins ? shape.Origins : 0;
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var scratch = this.typeScratch.Rent(Math.Max(1, maxGenerics));
-        var lengthArguments = this.lengthScratch.Rent(maxGenerics);
+        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics));
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
         var used = this.flagScratch.Rent(Math.Max(1, maxParameters));
@@ -235,8 +234,7 @@ public sealed partial class Binding
                 Expected = expected,
                 Self = self,
                 Requirements = requirementGroup,
-                Scratch = scratch,
-                LengthArguments = lengthArguments,
+                Frame = solveFrame,
                 ExplicitLengths = explicitLengths,
                 Mapping = mapping,
                 Used = used,
@@ -376,8 +374,8 @@ public sealed partial class Binding
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
-                allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)).CopyTo(scratch);
-                allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)).CopyTo(lengthArguments);
+                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
+                solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
@@ -435,7 +433,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < CallOwnSlots(selected).Count; i++)
             {
-                if (CallOwnSlots(selected)[i] is LengthParameterKoto ? lengthArguments[i] is null : scratch[i] is null)
+                if (CallOwnSlots(selected)[i] is LengthParameterKoto ? solveFrame.Lengths[i] is null : solveFrame.Types[i] is null)
                 {
                     return this.Fail(call, BindingFailure.MissingType, true);
                 }
@@ -443,11 +441,11 @@ public sealed partial class Binding
 
             if (selected.IsConstructor && selectedType is not null)
             {
-                selectedType = this.ConstructionType(selected, selectedType, scratch);
+                selectedType = this.ConstructionType(selected, selectedType, solveFrame.Types);
             }
 
             if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
@@ -457,7 +455,7 @@ public sealed partial class Binding
                 Complete(constructedMember.Left, selectedType);
             }
 
-            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
+            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -489,7 +487,7 @@ public sealed partial class Binding
                 if (selectedOperations[i].MissingOrigin)
                 {
                     // SPEC 15.3.6, 10.8: judged after selection; it never made the candidate inapplicable.
-                    return this.FailPerCallOrigin(call, selected, scratch, call.ArgumentNodes[i]);
+                    return this.FailPerCallOrigin(call, selected, solveFrame.Types, call.ArgumentNodes[i]);
                 }
             }
 
@@ -543,7 +541,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -571,7 +569,6 @@ public sealed partial class Binding
             this.typeScratch.Return(allTypes, clearArray: true);
             this.lengthScratch.Return(allLengths, clearArray: true);
             this.lengthScratch.Return(explicitLengths, clearArray: true);
-            this.lengthScratch.Return(lengthArguments, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
@@ -579,7 +576,7 @@ public sealed partial class Binding
             this.flagScratch.Return(completedWaiting);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
-            this.typeScratch.Return(scratch, clearArray: true);
+            this.infer.Return(solveFrame);
         }
     }
 

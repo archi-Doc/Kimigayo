@@ -110,9 +110,8 @@ internal static partial class MirTypes
             return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
         }
 
-        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
         var destructor = AdtDef.Destructor(type) is not null;
-        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
+        if ((Collection(type) || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
         {
             return true;
         }
@@ -143,7 +142,8 @@ internal static partial class MirTypes
     internal static bool Parts<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
         where TVisitor : struct, IMirDestruction
     {
-        var parts = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+        // A collection's elements or a Tuple's, fixed array's or Closure's inline components, else an enum's Case payloads.
+        var parts = Collection(type) || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
             ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
@@ -164,6 +164,9 @@ internal static partial class MirTypes
         return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
     }
 
+    // An Array or a Dictionary: a collection, whose elements live in managed storage (the drop glue's DropGlueRow.Collection).
+    private static bool Collection(BoundType type) => type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
+
     // MayNeedDrop's visitor: any reported part, each Type once per query, past the bound too (a Type met before reports nothing).
     private readonly struct AnyPart(HashSet<BoundType> seen) : IMirDestruction
     {
@@ -176,7 +179,7 @@ internal static partial class MirTypes
 
     // Observation's visitor: the Join of the reported parts' outcomes, a part that may observe decided (the walk stops), an abstract part
     // not proven Copy Limit, after which the walk goes on, since another part may decide, and Deep where a part past the walk's depth
-    // bound has a Type the walk never enters within it (MirDepths). A string's or a sequence's own release observes nothing; its elements
+    // bound has a Type the walk never enters within it (MirDepths). A string's or a collection's own release observes nothing; its elements
     // are parts of their own.
     private struct Observer(TyCtxt types, BindingSymbol? definition, Dictionary<BoundType, byte> entered) : IMirDestruction
     {

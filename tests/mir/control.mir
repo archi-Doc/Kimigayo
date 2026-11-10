@@ -606,7 +606,7 @@ fn deadTail @160
       unreachable check bb1 @173 s1
   bb12:
       StorageDead(_12) @182 s1
-      drop _11 -> bb13 @182 s1
+      drop _11 -> bb13 [keep] @182 s1
   bb13:
       StorageDead(_11) @182 s1
       StorageDead(_10) @178 s1

@@ -575,7 +575,7 @@ public sealed partial class Binding
 
         binding.State = 1;
         var scope = path.Scope;
-        var self = this.SelfType(path.Type);
+        var self = this.ConformanceSelf(path);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
         for (var i = 0; i < binding.Candidates.Count; i++)

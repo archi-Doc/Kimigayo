@@ -152,26 +152,22 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextFixed, CompilerFunctionKind.WindowPush,
-                CompilerFunctionKind.WindowAppend, CompilerFunctionKind.WindowLimit, CompilerFunctionKind.WindowCommit,
+                CompilerFunctionKind.TextFixed,
             ]),
             FormattingCalls(ir, c, "fxRun"));
         Assert.Equal(
             Routines(
             [
-                CompilerFunctionKind.TextHeap, CompilerFunctionKind.WindowPush,
-                CompilerFunctionKind.WindowCommit,
+                CompilerFunctionKind.TextHeap,
             ]),
             FormattingCalls(ir, c, "hpRun"));
         foreach (var (name, kind, shape) in new[]
         {
             ("fxRun", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 8)"),
-            ("fxRun", CompilerFunctionKind.WindowPush, "call void @(ptr %, ptr %, i8 65)"),
             ("hpRun", CompilerFunctionKind.TextHeap, $"call void @(ptr %, i64 %, ptr @, i64 {Located(Buffers, "Text.heap(n)")})"),
             ("vwLength", CompilerFunctionKind.TextUtf8, "call void @(ptr %, ptr noundef nonnull align 8 dereferenceable(24) %)"),
             ("vwCheck", CompilerFunctionKind.TextValidateUtf8, "call void @(ptr %, ptr %)"),
             ("vwShow", CompilerFunctionKind.WriteLineUtf8, $"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})"),
-            ("wrStatus", CompilerFunctionKind.WriterStatus, "call void @(ptr %, ptr %)"),
             ("itFixed", CompilerFunctionKind.TextFixed, "call void @(ptr %, ptr %, i64 4)"),
         })
         {
@@ -187,9 +183,31 @@ public sealed partial class FunctionCodegenTest
             Assert.Equal($"call void @(ptr %, ptr %, i64 {minimum}, ptr @, i64 {Located(Buffers, site)})", call.Shape);
         }
 
+        // SPEC 22.5.1, 22.9.4 (R8-W1b): the window operations are bodies; limit has a CallerLocation row, so the user's call passes its own
+        // location, and the status test is a body without a routine.
+        var limit = Assert.Single(FunctionsOf(ir, c, "limit"));
+        var cut = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "fxRun"))), x => x.Callee == limit);
+        Assert.Equal($"call void @(ptr %, ptr %, i64 4, ptr @, i64 {Located(Buffers, "(window@move).limit(4)")})", cut.Shape);
+        Assert.Single(FunctionsOf(ir, c, "status"));
+
         var validate = ir.Function(Routines(CompilerFunctionKind.TextValidateUtf8)[0]);
         var check = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwCheck"))), x => x.Callee == validate);
         Assert.Equal("alloca", check.Operands[1].Opcode); // The Copy Slice's own slot, which the routine owns from the call on (R5-M89).
+    }
+
+    // DECISIONS R8-M2 (RP8; T-81, T-88): the buffer and window bodies write arithmetic that an invariant or a dominating guard bounds in
+    // Wrapping<isize>, so no instance of them checks for overflow; checked steps there cost the O2 Buffers kernel twice. commitUtf8 and
+    // next compute only through end, which is here.
+    [Fact]
+    public void BufferAndWindowBodiesCheckNoBoundedArithmetic()
+    {
+        var c = Analyze(Buffers, OutputKind.Library);
+        foreach (var name in new[] { "push", "append", "limit", "commit", "advance", "end", "next", "reserve", "validSuffix", "validUtf8" })
+        {
+            var texts = ItemTexts(c, name);
+            Assert.NotEmpty(texts);
+            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
+        }
     }
 
     // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128): an erased Text.fixed Item's adapter measures its capacity from its entry's own input Type, the
@@ -378,6 +396,54 @@ public sealed partial class FunctionCodegenTest
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
         Assert.DoesNotContain("@" + Routines(CompilerFunctionKind.TextFixed)[0] + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+    }
+
+    // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
+    // own, written once in a module that calls Text.writer and in none without formatting; the formatting runtime defines neither routine.
+    [Fact]
+    public void TheErasedWriterRuntimeIsWrittenOnRequest()
+    {
+        using var formatting = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
+        string[] definitions = ["define internal void @" + Routines(CompilerFunctionKind.TextWriter)[0] + "(", "define internal void @__kimi_erased_reserve("];
+        var text = Generate(Analyze(Writers, OutputKind.Library));
+        var at = text.IndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal);
+        Assert.True(at >= 0);
+        Assert.Equal(at, text.LastIndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal));
+        var none = Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library));
+        foreach (var definition in definitions)
+        {
+            Assert.Equal(at, text.IndexOf(definition, StringComparison.Ordinal) - LlvmModuleText.ErasedWriterRuntime.IndexOf(definition, StringComparison.Ordinal));
+            Assert.Equal(text.IndexOf(definition, StringComparison.Ordinal), text.LastIndexOf(definition, StringComparison.Ordinal));
+            Assert.DoesNotContain(definition, formatting.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(definition, none, StringComparison.Ordinal);
+        }
+    }
+
+    // R8-W1b-3: a Requested row's call requests its own routine's module part (IntrinsicRow.Requests): ErasedReserve's routine is the kept
+    // runtime's, defined there once, so its call needs no other requester; the storage byte primitives keep their pair; every other row
+    // requests nothing. A module without formatting writes neither the kept runtime nor its reserve routine.
+    [Fact]
+    public void ARequestedRowRequestsItsRoutinesModulePart()
+    {
+        var reserve = IntrinsicRows.Of(IntrinsicId.ErasedReserve);
+        Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.ErasedWriter), (reserve.Writer, reserve.Requests));
+        Assert.Contains(reserve.Routine!, LlvmModuleText.ErasedWriterDefinitions);
+        Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
+        Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
+        foreach (var id in Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None))
+        {
+            var row = IntrinsicRows.Of(id);
+            var expected = id switch
+            {
+                IntrinsicId.ErasedReserve => ModuleCodegen.Needs.ErasedWriter,
+                IntrinsicId.TryAllocateBytes or IntrinsicId.MoveBytes => ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory,
+                _ => ModuleCodegen.Needs.None,
+            };
+            Assert.True(row.Requests == expected && (row.Writer == IntrinsicWriter.Requested) == (expected != ModuleCodegen.Needs.None), id.ToString());
+        }
+
+        Assert.DoesNotContain("@__kimi_erased_reserve(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,

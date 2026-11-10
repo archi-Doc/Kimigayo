@@ -429,8 +429,9 @@ public sealed partial class Binding
         var bindingScope = this.NodeScope(clause, scope);
         var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.NoContainer); // The subject's one lookup, the row that forms its Type.
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapTransparentType(application.Type) is MemberAccessKoto associatedMember
-            ? this.BindAssociatedRefinement(clause, application, associatedMember, scope)
+        var head = AssociatedHead(clause);
+        var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
+            ? this.BindAssociatedRefinement(clause, associatedMember, scope)
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
