@@ -60,8 +60,9 @@ public static partial class Parser
             end = returnType.Span.End;
         }
 
-        // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (SpecializationHeader
-        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
+        // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (its access word is
+        // rejected before this header, Parser.RejectAccessWord; unsafe, virtual and override are SpecializationHeader below; then
+        // StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
         var header = specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context;
         var functionKoto = new FunctionKoto(
             ref reader,

@@ -214,6 +214,18 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal BoundType? InheritedBase { get; set; }
 
+    // SPEC 8.8.2 (PLAN G665), the one statement of the rule: an inherited path's conformance scope and its conditions at a use are its
+    // declared path's premises at its declared Self. DeclaredPath is the end of the InheritedFrom chain (every source's has this path's
+    // declaration, Premises and declaring scope); DeclaredSelf is that path's Self in this path's Type's parameters (the declaring layer).
+    // The inherited registrar (Binding.InheritedConformances) composes both once, from the first source's, telling a declared source by
+    // its kind (no InheritedFrom); no reader walks the chain. Read only on an inherited path. DeclaredSelf is null where this generic
+    // composition was refused (SubstituteType's record) and then on every heir below; an instance is never refused for it: the conditions
+    // at an instance form its declared Self one base clause at a time, refused at the use's site only if that instance's passes the limit,
+    // and only a path with premises, whose generic scope cannot state them, is refused at its reader's site (Binding.TypeHeight).
+    internal BoundConformancePath? DeclaredPath { get; set; }
+
+    internal BoundType? DeclaredSelf { get; set; }
+
     // SPEC 12.7, 23.1.1: the last completed verification's only unproven part is a witness whose ObjectCallCompatible status
     // is not computed (OCC-X); a check that needs this conformance rests on its location-only Unsupported_Kd at Use.
     internal bool Unsupported { get; set; }

@@ -21,6 +21,8 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 
     internal int PendingExclusionStart { get; init; }
 
+    internal SourceSpan AccessModifierSpan { get; init; }
+
     internal int DocumentationExcludedStart { get; init; }
 }
 
@@ -118,6 +120,9 @@ public ref partial struct TokenReader
     private ParseRegion region;
 
     internal SourceSpan DispatchModifierSpan { get; set; }
+
+    /// <summary>Gets or sets the first access word of the pending item prefix, when one is written (Appendix F.6 Access).</summary>
+    internal SourceSpan AccessModifierSpan { get; set; }
 
     /// <summary>Gets a value indicating whether the position lies in an expression body after <c>=&gt;</c>, where a nested arrow body is misplaced.</summary>
     internal readonly bool SingleBodyRegion => this.region.SingleBody;
@@ -322,6 +327,7 @@ public ref partial struct TokenReader
         {
             PendingExclusion = this.PendingExclusion,
             PendingExclusionStart = this.PendingExclusionStart,
+            AccessModifierSpan = this.AccessModifierSpan,
             DocumentationExcludedStart = this.DocumentationExcludedStart,
         };
         this.ResetContext();
@@ -338,6 +344,7 @@ public ref partial struct TokenReader
         this.AttributeKoto = context.AttributeKoto;
         this.ModifierKind = context.ModifierKind;
         this.DispatchModifierSpan = context.DispatchModifierSpan;
+        this.AccessModifierSpan = context.AccessModifierSpan;
         this.IsExcluded = context.IsExcluded;
         this.PendingExclusion = context.PendingExclusion;
         this.PendingExclusionStart = context.PendingExclusionStart;
@@ -927,6 +934,7 @@ public ref partial struct TokenReader
         this.AttributeKoto = default;
         this.ModifierKind = default;
         this.DispatchModifierSpan = default;
+        this.AccessModifierSpan = default;
         this.IsExcluded = false;
         this.HasCompileTimeIfPrefix = false;
     }

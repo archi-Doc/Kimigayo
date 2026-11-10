@@ -12,7 +12,8 @@ namespace XunitTest;
 // SPEC 9.4: protected, protected internal and private protected apply only to members of a struct, including Containers
 // declared directly in it, and to their accessors; they are invalid on root and group declarations, group members and
 // Contract requirements. Binding reports each misplaced form once at the declaration's signature, naming what declares it;
-// a Contract requirement takes no modifier at all, which the parser reports alone.
+// a declaration that takes no access word at all (a Contract requirement; a root or local function, SPEC 6.1.1 and 9.3) is
+// reported by the parser alone, at the word.
 public sealed class ProtectedPlacementTest(ITestOutputHelper output)
 {
     [Fact]
@@ -23,13 +24,22 @@ public sealed class ProtectedPlacementTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("protected func f() -> i32 => 1\n", "the source root", "f() -> i32")]
-    [InlineData("protected internal func f() -> i32 => 1\n", "the source root", "f() -> i32")]
+    [InlineData("protected func f() -> i32 => 1\n")]
+    [InlineData("protected internal func f() -> i32 => 1\n")]
+    [InlineData("func g()\n    protected func h() => ()\n    h()\n")]
+    public void AnAccessWordOnAFunctionThatTakesNoneIsReportedByTheParserAlone(string declarations)
+    {
+        var source = declarations + "public func main() => ()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), record.Code);
+        Assert.Equal(new SourceSpan(source.IndexOf("protected", StringComparison.Ordinal), "protected".Length), record.Span);
+    }
+
+    [Theory]
     [InlineData("protected struct S\n", "the source root", null)]
     [InlineData("group G\n    protected func f() => ()\n", "group G", "f()")]
     [InlineData("group G\n    private protected struct Hidden\n", "group G", null)]
     [InlineData("enum E\n    A\n    protected func f(self: ref/Self) -> i32 => 1\n", "enum E", "f(self: ref/Self) -> i32")]
-    [InlineData("func g()\n    protected func h() => ()\n    h()\n", "a function body", "h()")]
     public void AProtectedFormOutsideAStructIsReportedOnce(string declarations, string container, string? at)
     {
         var source = declarations + "public func main() => ()\n";

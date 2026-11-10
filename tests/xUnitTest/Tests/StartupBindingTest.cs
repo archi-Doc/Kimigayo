@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -45,10 +46,8 @@ public class StartupBindingTest
     [InlineData("")]
     [InlineData("func helper() => ()")]
     [InlineData("func main() => ()")]
-    [InlineData("public func Main() => ()")]
     [InlineData("group G\n    public func main() => ()")]
     [InlineData("struct S\n    public func main() => ()")]
-    [InlineData("func outer()\n    public func main() => ()")]
     [InlineData("#if false\nConsole.writeLine(\"excluded\")")]
     public void DeclarationFragmentsBindWithoutBecomingApplications(string source)
     {
@@ -59,6 +58,22 @@ public class StartupBindingTest
         Assert.True(c.Binding.CheckStartup(OutputKind.Library).IsComplete, Describe(c));
         Assert.Equal(StartupKind.None, c.Binding.Startup.Kind);
         Assert.Empty(c.Binding.Issues);
+    }
+
+    // SPEC 6.1.1, 9.3, 22.4: only the root's `public func main` keeps an access word; every near miss is a root or local function,
+    // which takes none: it is reported at the word and selects no startup function. The valid twins are the `public func main`
+    // rows above and the fragments theory's `func main` and member rows.
+    [Theory]
+    [InlineData("public func Main() => ()", "public")]
+    [InlineData("private func main() => ()", "private")]
+    [InlineData("internal func main() => ()", "internal")]
+    [InlineData("protected internal func main() => ()", "protected")]
+    [InlineData("func outer()\n    public func main() => ()", "public")]
+    public void OnlyTheRootsPublicMainKeepsItsAccessWord(string source, string word)
+    {
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.MisplacedSyntax_Kd), nameof(DiagnosticCode.MissingStartupBody_Kd)], records.Select(static x => x.Code));
+        Assert.Equal(new SourceSpan(source.IndexOf(word, StringComparison.Ordinal), word.Length), records[0].Span);
     }
 
     [Theory]
@@ -291,7 +306,7 @@ public class StartupBindingTest
     [Fact]
     public void LocalHelpersRemainSourceLocal()
     {
-        var c = Parse("public func helper() => ()", "public func main() => helper()");
+        var c = Parse("func helper() => ()", "public func main() => helper()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }

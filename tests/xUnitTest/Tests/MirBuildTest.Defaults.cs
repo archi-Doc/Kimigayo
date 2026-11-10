@@ -54,6 +54,39 @@ public sealed partial class MirBuildTest
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // SPEC 8.15.3, plan 5.6.2 (PLAN G597): a default's keyed view is decided again in each copy, by its key in the call's instance
+    // (Refirst; MirBuilder.First): at a key that starts at the storage the Storage alone; at one that displaces the Storage in a temp of
+    // the copy, at the view's location and live for its two statements, and the proven Add; at a generic caller's own key the Storage
+    // keyed by that key; the receiver is the copy's parameter, a borrow of the argument (Frame), so its Place has one more Deref. None
+    // is a validator finding (fail-before: the copy kept its template's statement, a keyed Storage whose closed token the validator
+    // rejects).
+    [Fact]
+    public void ACopysKeyedViewIsDecidedByItsFoldedKey()
+    {
+        var program = Compile(
+            "func h<R>(v: ref/Array<i32>, r: R, n: isize = v[r].length) -> isize\n    R is PositionRange\n    return n\n" +
+            "func whole(v: ref/Array<i32>) -> isize => h(v, ..)\nfunc tail(v: ref/Array<i32>) -> isize => h(v, 1..)\n" +
+            "func forward<Q>(v: ref/Array<i32>, q: Q) -> isize\n    Q is PositionRange\n    return h(v, q)\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal("_ = storage((*(*_)))", Views(program, "whole"));
+        Assert.Equal("_ = storage((*(*_)))|_ = Add(copy _, copy _) proven", Views(program, "tail"));
+        Assert.Equal("_ = storage((*(*_)), copy _, const type Q)", Views(program, "forward"));
+        var tail = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "tail" });
+        var statements = tail.Statements.ToArray();
+        var at = Array.FindIndex(statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Storage });
+        var (view, temp) = (statements[at], tail.Locals[statements[at].Place.Root]);
+        Assert.Equal((MirLocalKind.Temp, view.Source.Syntax, view.Source.Scope), (temp.Kind, temp.Source.Syntax, temp.Source.Scope));
+        Assert.Equal(MirScopeKind.Inlined, tail.Scopes[view.Source.Scope].Kind);
+        Assert.Equal(
+            [
+                (MirStatementKind.StorageLive, view.Place),
+                (MirStatementKind.Assign, view.Place),
+                (MirStatementKind.Assign, statements[at + 1].Place),
+                (MirStatementKind.StorageDead, view.Place),
+            ],
+            statements[(at - 1)..(at + 3)].Select(static x => (x.Kind, x.Place)));
+    }
+
     // Plan 5.6.2, SPEC 23.1.2 (DECISIONS R5-M79): the defaults a template omits are those of the calls it builds. A closure Binding failed
     // to define, here after binding its body, is published Error and its body replaced (Syntax), so the call in that body is no edge: the
     // default is no call of its own template, and the call that omits it takes an Opaque value built at the call.
