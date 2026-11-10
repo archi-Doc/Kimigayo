@@ -369,8 +369,9 @@ public sealed partial class MirOriginsTest
 
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
     // chain that starts or ends at it needs the unresolved Origin and records nothing, Binding's failure explaining the rejection: a
-    // repeated binding set and the meet of its slots, a `var`'s binding set with no initializer, a containment edge into a Dependent
-    // layer, and a Dependent meet at the shorter end whose slot's Type occurrence a later pass resolves.
+    // `var`'s binding set with no initializer, a containment edge into a Dependent layer, and a Dependent meet at the shorter end whose
+    // slot's Type occurrence a later pass resolves. RepeatedSet stays as the control: since H11b-0 B1 its local's failed clause rests
+    // nothing (SPEC 15.3.3), so it has no Dependent end, and its chain still records nothing.
     [Theory]
     [InlineData(RepeatedSet)]
     [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n" +

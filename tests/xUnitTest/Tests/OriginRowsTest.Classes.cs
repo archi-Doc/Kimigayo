@@ -104,6 +104,15 @@ public sealed partial class OriginRowsTest
         Assert.Equal(kind, slice.Atoms[row.Shorter].Kind.ToString());
     }
 
+    // SPEC 15.3.3 (H11b-0 B1): a local's clause assumes nothing, so RepeatedSet's `k`, whose failed clause names no bound Origin, rests on
+    // nothing and `run` has no row at `k` (before B1 its slot was a Dependent end).
+    [Fact]
+    public void ALocalsFailedClauseNamingNoBoundOriginFormsNoRow()
+    {
+        var c = MirBuildTest.Compile(MirOriginsTest.RepeatedSet + Main);
+        Assert.False(Has(c, Bodies(c).First(static x => x.Key.Decl?.Name == "run").Key, "k"));
+    }
+
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
     // operands and their order, so the limit stays when the failure is repaired. No program forms such a meet: it is built in one
     // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, taken from its
