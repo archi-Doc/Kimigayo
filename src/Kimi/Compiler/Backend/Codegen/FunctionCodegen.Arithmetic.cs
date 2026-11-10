@@ -162,7 +162,8 @@ internal sealed partial class FunctionCodegen
 
         if (rvalue.Kind == MirRvalueKind.BinaryOp && LayoutNeeds.Of((MirBinaryOp)rvalue.Op, left.Type) == LayoutNeed.Element)
         {
-            this.Displace(statement, left, right); // A raw pointer, never zero-sized; its entry is its own unchecked one.
+            // A raw pointer, never zero-sized; its entry is its own unchecked one.
+            this.Displace(statement, left.Value, right, (MirBinaryOp)rvalue.Op == MirBinaryOp.Sub ? -1 : 1);
             return;
         }
 
@@ -253,17 +254,16 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance (the operator's Element need,
     // Needed), unchecked (overflow is undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place
-    // writer's Offset.
-    private void Displace(in MirStatement statement, in Computed pointer, in Computed count)
+    // writer's Offset. A keyed Storage's start displaces its first element's address the same way, by its element's stride (LayoutNeeds;
+    // PLAN G597). The sign is the caller's: -1 for p - n, else 1.
+    private void Displace(in MirStatement statement, Value pointer, in Computed count, int sign)
     {
         if (this.Needed(statement.Rvalue) is not { } element)
         {
             return; // A broken contract, recorded.
         }
 
-        var sign = (MirBinaryOp)statement.Rvalue.Op == MirBinaryOp.Sub ? -1 : 1;
-
-        var result = pointer.Value;
+        var result = pointer;
         if (element.Layout.Stride != 0)
         {
             var bytes = new Value('t', this.next++);
@@ -277,7 +277,7 @@ internal sealed partial class FunctionCodegen
             output.Write(", ");
             WriteNumber(output, sign * element.Layout.Stride);
             output.Write('\n');
-            result = this.Offset(pointer.Value, bytes);
+            result = this.Offset(pointer, bytes);
         }
 
         this.Store(statement, result);
