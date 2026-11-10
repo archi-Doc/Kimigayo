@@ -339,8 +339,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var identity = this.impls.Find(symbol, contract);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.impls.OfType(symbol) is { } bindings)
+        var identity = this.ConformanceOf(symbol, contract);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {
