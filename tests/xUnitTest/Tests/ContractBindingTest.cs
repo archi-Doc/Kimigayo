@@ -135,6 +135,76 @@ public class ContractBindingTest
         }
     }
 
+    // SPEC 8.5.1 Qualification, 8.5.2, 9.7 (PLAN G705): a Contract qualifier is a bound Contract reference, so a Contract with Type
+    // parameters is named with its Type arguments in every associated selector and projection; without them it names no reference,
+    // whether one bound reference of it is available or several.
+    [Theory]
+    [InlineData("contract D: C<i32>\n    associate C.Item is i32", false)]
+    [InlineData("contract D: C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("    func f(self: ref/Self) -> Self.(C).Item", false)]
+    [InlineData("    func f(self: ref/Self) -> Self.(C<T>).Item", true)]
+    [InlineData("contract A: C<i32>\ncontract B: C<i64>\ncontract D: A, B\n    associate C.Item is i32", false)]
+    [InlineData("contract A: C<i32>\ncontract B: C<i64>\ncontract D: A, B\n    associate C<i32>.Item is i32\n    associate C<i64>.Item is i64", true)]
+    [InlineData("func f<U>(x: U.(::C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", true)]
+    [InlineData("contract D<T>: C<T>\n    associate C.Item is T", false)]
+    [InlineData("contract B: C<i32>\ncontract D: B\n    associate C.Item is i32", false)]
+    [InlineData("contract B: C<i32>\ncontract D: B\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract D: C<i32>\n    Self.(C).Item is i32", false)]
+    [InlineData("contract D: C<i32>\n    Self.(C<i32>).Item is i32", true)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C.Item is i32", false)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract B: C<i32>\nstruct S\n    Self is B\n    associate C.Item is i32", false)]
+    [InlineData("contract B: C<i32>\nstruct S\n    Self is B\n    associate C<i32>.Item is i32", true)]
+    [InlineData("struct S<U>\n    Self is C<i32> when U is Copy\n        associate C.Item is i32", false)]
+    [InlineData("struct S<U>\n    Self is C<i32> when U is Copy\n        associate C<i32>.Item is i32", true)]
+    [InlineData("func f<U>(x: U.(C).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", false)]
+    [InlineData("func f<U>(x: U.(C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C).Item is i32\n    return x", false)]
+    [InlineData("func f<U>(x: U.(C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", true)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32\nfunc g(x: S.(C).Item) -> i32\n    return x", false)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32\nfunc g(x: S.(C<i32>).Item) -> i32\n    return x", true)]
+    [InlineData("func f<U>(x: i32) -> i64\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    return x@(U.(C).Item)", false)]
+    [InlineData("func f<U>(x: i32) -> i64\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    return x@(U.(C<i32>).Item)", true)]
+    [InlineData("func apply<U, F>(f: ref/F, x: i64) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    F is Callable<(U.(C).Item) -> i32>\n    return f(x)", false)]
+    [InlineData("func apply<U, F>(f: ref/F, x: i64) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    F is Callable<(U.(C<i32>).Item) -> i32>\n    return f(x)", true)]
+    [InlineData("struct W<U>\n    U is C<i32>\n    public let e: U.(C).Item", false)]
+    [InlineData("struct W<U>\n    U is C<i32>\n    public let e: U.(C<i32>).Item", true)]
+    [InlineData("    associate View(a)\ncontract D: C<i32>\n    associate C<i32>.View(a) is i32\nfunc f<U>(x: U.(C).View(static)) -> i32\n    U is D\n    return x", false)]
+    [InlineData("    associate View(a)\ncontract D: C<i32>\n    associate C<i32>.View(a) is i32\nfunc f<U>(x: U.(C<i32>).View(static)) -> i32\n    U is D\n    return x", true)]
+    public void AGenericContractQualifierTakesItsTypeArguments(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract C<T>\n    associate Item\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd && x.Node.ToString() == "C");
+            Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        }
+    }
+
+    // SPEC 8.4.3, 9.7.1 (PLAN G705): a Contract nested in a generic Container is named with its outer Type arguments outside that
+    // Container in every written position: a parent, an associate selector, a projection qualifier and an effect target. Every one is
+    // formed by the one former, whose rule this is, so the effect rows are here and not with the effect owner's records.
+    [Theory]
+    [InlineData("struct X\n    Self is Outer<i32>.C\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("struct X\n    Self is Outer<i32>.C\n    associate Outer.C.Item is i32", false)]
+    [InlineData("func f<U>(x: U.(Outer<i32>.C).Item) -> i32\n    U is Outer<i32>.C\n    U.(Outer<i32>.C).Item is i32\n    return x", true)]
+    [InlineData("contract D: Outer<i32>.C", true)]
+    [InlineData("contract D: Outer.C", false)]
+    [InlineData("contract D: Outer<i32>.C\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("contract D: Outer.C\n    associate Outer.C.Item is i32", false)]
+    [InlineData("contract D: Outer<i32>.C\nstruct S\n    Self is D\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("contract D: Outer<i32>.C\nstruct S\n    Self is D\n    associate Outer.C.Item is i32", false)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer<i32>.G<i64>", true)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer.G<i64>", false)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer<i32>.G<i64>\n    associate Outer<i32>.G<i64>.Item is i32", true)]
+    [InlineData("        func f(self: ref/Self) -> i32\ncontract D: Outer<i32>.C\n    effect Outer<i32>.C.f confined", true)]
+    [InlineData("        func f(self: ref/Self) -> i32\ncontract D: Outer<i32>.C\n    effect Outer.C.f confined", false)]
+    public void ANestedContractReferenceTakesItsOuterTypeArguments(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("struct Outer<T>\n    public contract C\n        associate Item\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+    }
+
     [Theory]
     [InlineData("associate Element is i32", "i32", true)]
     [InlineData("associate C.Element is i32", "i32", true)]
