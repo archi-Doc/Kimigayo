@@ -88,6 +88,36 @@ public class NormalizedConstraintProofBindingTest
         AssertProof(c, ConstraintProof.Proven);
     }
 
+    // DECISIONS R7-C2e1 (F5): a requirement's signature is formed in its declaration's view under the call's reference (SPEC 8.6.4), so
+    // P's clause reads `A.(Src).Item is not Marker` under P<A> and `B.(Src).Item is not Marker` under P<B>, and each call's candidate is
+    // refuted under its own reference (SPEC 8.3.2): a reading is one per requirement Contract. Both orders.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AReadingIsOnePerRequirementReference(bool reversed)
+    {
+        const string Declarations = "contract Marker\ncontract Src\n    associate Item\nstruct Box<T>\n    T is Marker\n    public init() => ()\n" +
+            "contract P<E>\n    E is Src\n    E.(Src).Item is not Marker\n    func read(self: ref/Self) -> Box<E.(Src).Item>\n";
+        var (first, second) = (Use("via", "A"), Use("via2", "B"));
+        var source = Declarations + (reversed ? second + first : first + second);
+        Assert.Equal("2*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+
+        static string Use(string name, string slot)
+            => $"func {name}<T, {slot}>(t: ref/T)\n    T is P<{slot}>\n    {slot} is Src\n    {slot}.(Src).Item is not Marker\n    t.read()\n";
+    }
+
+    // DECISIONS R7-C2e1 (F6): the builtin specification of `T.(Addable<T>).Output` proves T's arithmetic conditions in f's view, where
+    // both premises naming the projection meet the open normalization and stay unreduced. Those readings are not the view's: `g<V>()`
+    // reads the second premise as `V is Marker` (SPEC 8.2.3). Both orders; without that premise `V is Marker` is unproven.
+    [Theory]
+    [InlineData("T.(Addable<T>).Output is V\n    T.(Addable<T>).Output is Marker\n", "clean")]
+    [InlineData("T.(Addable<T>).Output is Marker\n    T.(Addable<T>).Output is V\n", "clean")]
+    [InlineData("T.(Addable<T>).Output is V\n", "1*UnprovenConstraint_Kd")]
+    public void AReadingFormedUnderANormalizationIsNotKept(string premises, string records)
+        => Assert.Equal(
+            records,
+            DiagnosticCorpus.RecordProfile("contract Marker\nfunc g<X>()\n    X is Marker\n    ()\nfunc f<T, V>()\n    T is Addable<T>\n    " + premises + "    g<V>()\n"));
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNormalizedProofsAndCallsAllocateNothing()
