@@ -387,12 +387,12 @@ internal sealed partial class MirBuilder
 
     // The one assignment: a node's own value or a part of it, made where it is built from the operands evaluated before it, also where
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
-    // has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never value, or a value assigned
-    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
+    // has an input (an operand, or the Place of a kind that has one, MirDescriptor.HasPlace) whose every input is the Never value (never
+    // an Adapt, whose token is a constant), or a value assigned to the Never value, since a node of Type Never makes none (but its Opaque
+    // value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Storage or MirRvalueKind.Discriminant
-            ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
