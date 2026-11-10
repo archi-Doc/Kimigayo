@@ -32,7 +32,6 @@ public class UnresolvedRefinementBindingTest
     [Theory]
     [InlineData("i32")]
     [InlineData("Api")]
-    [InlineData("Target")]
     [InlineData("Future<i32>")]
     public void AvailableNonContractOrGenericParentsRemainInvalid(string parent)
     {
@@ -75,7 +74,6 @@ public class UnresolvedRefinementBindingTest
     }
 
     [Theory]
-    [InlineData("public struct Future")]
     [InlineData("public contract Future: Child")]
     public void SuppliedInvalidParentsAreRechecked(string declaration)
     {
@@ -84,6 +82,28 @@ public class UnresolvedRefinementBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", declaration));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
+    }
+
+    // A parent is a Contract Reference (SPEC 9.2, 9.5): its lookup sees Contracts only, so a struct of the parent's name, declared
+    // beside it or supplied later, is no candidate and the parent is missing: pending while Provisional, a missing parent's records
+    // at the final Bind.
+    [Theory]
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "Target")]
+    [InlineData("public contract Child: Future", "public struct Future", "Future")]
+    public void ANonContractOfTheParentsNameLeavesTheParentMissing(string source, string? supplied, string parent)
+    {
+        var c = Parse(source);
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        if (supplied is not null)
+        {
+            c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", supplied));
+            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        }
+
+        Assert.Equal(BindingState.Unresolved, Container(c, "Child").StateOf());
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
+        Assert.Equal($"InvalidConstraint_Kd {parent}|InvalidConstraint_Kd contract Child", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
     [Fact]
