@@ -236,6 +236,7 @@ public static partial class Parser
 
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
+            reader.AccessModifierSpan = default;
         }
 
         reader.Advance();
@@ -265,6 +266,7 @@ public static partial class Parser
 
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
+            reader.AccessModifierSpan = default;
         }
 
         if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
@@ -326,6 +328,7 @@ public static partial class Parser
         if (acc == default)
         {
             reader.ModifierKind |= kind;
+            reader.AccessModifierSpan = reader.CurrentTokenRange;
         }
         else if ((acc == ModifierKind.Protected && kind == ModifierKind.Internal) || (acc == ModifierKind.Private && kind == ModifierKind.Protected))
         {

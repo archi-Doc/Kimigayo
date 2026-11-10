@@ -156,8 +156,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
             return;
         }
 
+        // A root function declaration is the root's own item (SPEC 6.1.1, F.6.1); every other item is the execution scope's.
         var oldPosition = reader.Position;
-        var item = Parser.ParseBlockItem(ref reader);
+        var item = Parser.IsFunctionDefinitionStart(ref reader) ? Parser.ParseFunctionItem(ref reader) : Parser.ParseBlockItem(ref reader);
         reader.ExpectLineEnd();
 
         if (item is not null && !reader.InExcludedSyntax)
