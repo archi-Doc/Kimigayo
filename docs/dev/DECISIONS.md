@@ -10053,6 +10053,8 @@ resumed by R4-M86 (2026-10-20).
     which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
     filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
+  - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
+    superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
   third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
@@ -10666,6 +10668,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a second pure value walk (two copies of SPEC 9.5's stages); a namespace parameter beside the role; reading the Type
     path's import in the evaluation (BU-122's contract) or merging it at publication; part a's cut 2 (it reads table existence, a
     publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
+  - Amended by BU-144: `LookupRole` and `PathEnd` are file-level types of ResolvePath.cs (`PathEnd.None`: not looked up); the Value
+    row is untouched.
 - **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
   compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
   BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
@@ -10912,6 +10916,55 @@ resumed by R4-M86 (2026-10-20).
     target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
     Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
+- **BU-144 A Type-name use is resolved once and its lookup published on the use: `HirTables.Lookups`, read through `NamePath`**
+  (2026-11-10; R7-N1e2-1R; Major; design reviews 1 REVISE, 2 ACCEPT, 3 REVISE, 4 ACCEPT; implementation review ACCEPT; the owner's
+  O-111 (a) and O-132 (a)) SPEC 4.4.1, 8.6.1, 9.2, 9.5, 9.6, 9.7.1, 13.5.1, 23.1.2. Supersedes in part BU-122 (its rejected "per-use
+  memo (a Koto-keyed table)").
+  - Rule: `NamePath(use, scope, row)` is the one lookup and the one read of a Type-name use. Its first call evaluates
+    (`ResolvePath`, pure as BU-122 says), publishes (`PublishPath`) and writes `UseLookup(End, Role)` on `UseNode(use)` (below
+    transparent wrappers and parentheses); every later call reads it. A path's walk publishes each qualifier it looks up. A
+    publication is written once: a later one (a walk evaluating a published qualifier again) must be equal, and a different end, row
+    or selection is InternalInvariant. A read in another row than the published one is InternalInvariant. `BindNamedType` asks its
+    position's row, `UseRow`: an adaptation target its Type row (13.5.1), a qualifier (9.6), an alias target (18.2.1) and a Contract
+    parent Any, every other Type position NoContainer.
+  - The selection is the use's `Symbols` entry, written once. `HirTables.WriteSymbol` is the Symbols column's one writer
+    (`Koto.BoundSymbol`'s setter) and keeps the column's contract: (a) a use whose published lookup selected keeps its selection, so
+    a later write must be equal; (b) no node's entry is a bound Contract reference. A broken contract is InternalInvariant.
+  - A Contract use's bound reference (SPEC 8.6.1, 9.7.1) is its Type (the Meaning column) at each level of the qualifier or
+    selector, Unit when the reference is the declaration itself: `CompleteQualifier(use, selection, reference)` writes both,
+    `QualifierReference` forms the reference, and readers take it through `ContractReferenceOf(use)`. Writers:
+    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Readers: `SpecifiesContract`,
+    `ArithmeticFactUse`.
+  - Records: a reader of a failed published lookup forms nothing from it, so B1's receiver gives one QualificationRequired_Kd (t09,
+    t12, v05). This holds at the readers that read; it is not general: MemberLookup still writes its own UnresolvedBinding_Kd over a
+    qualifier whose published lookup is ambiguous (t02/t02b: 3 records against base's 1, Q13 by code; open, PLAN G575/G576).
+  - Reason that no longer holds (BU-122's rejection): it rejected a Koto-keyed side table and a cache beside the evaluation; the
+    published lookup is a SyntaxId column of the base HIR row, written by the publication alone, and the evaluation stays pure.
+  - Whitelist: `ArchitectureRulesTest.LookupEntriesStayAtTheirSites` (Roslyn, any receiver): the evaluation entries only in
+    ResolvePath.cs and named exceptions, each publishing nothing: BaseLayers' DirectBase read of a clause not yet bound (R7-M9: a
+    read that saw a clause not ready stores nothing; removed at R7-D2 d3) and its second run's `knownBases` (R7-M9, d3); BaseLayers'
+    early-read check (it evaluates again by design); Qualification's repair probe of a Container's own name and Constraints'
+    Container question (questions, not the use's lookup); Types' semantics parameter name (a first lookup); Calls' length-or-Type
+    argument question (U6, below). The use entries (`NamePath`, `TypeName`, `LookupAdaptationTarget`) only at the census's sites.
+  - Removes `BindPathType`, the `head` parameter of `BindType`/`BindTypeStructure`/`BindNamedType`, `IsQualifierPosition`, the
+    second lookups at the receiver, the wrapper, MemberLookup's qualifier Type, ContainsProjection, the subject, U12 (the adaptation
+    target's second comparison), the nested Type's qualifier and the explanations; `UseLookup.Symbol`; the second writes of
+    `BindAssociatedProjection` and `BindRequirement` over a qualifier's entry; BindNode and OriginProof no longer bind a Contract's
+    parents (R7-N1e2-1).
+  - Remains: E1, E3 (until d3), E2, the probes, E5, the re-walks (pure, asserted equal), MemberLookup's dependent record (open), and
+    U6 as a named question: whether an explicit generic argument's spelling also names a Type (`ProbePath` in a Type position's row,
+    Calls.cs). It publishes nothing; the argument is then looked up once, as a length (a value) or by its `BindType`.
+  - Moves: valid p01, p07 and v-u1 accepted (v-u1: a length slot filled by a value whose spelling's Type reading is ambiguous, SPEC
+    4.4.1); invalid t01, p14, w02 and i-u2 rejected (unsound acceptances; i-u2: the same spelling at a Type slot,
+    NoApplicableOverload_Kd, SPEC 4.4.1, 9.5); records by code (Q13): TypeArity row 112 and t05 lose a dependent record, t09/t12/v05
+    two to one, u01 and w01 name the lookup's failure, t02/t02b as above.
+  - Cost: 2 bytes a node (`UseLookup[]` per module table).
+  - Rejected: the 16-byte column carrying its own Symbol (cold bytes; O-132); a sparse SyntaxId table of the use nodes; a PlanRow
+    field; per-site `head` threading (N1e2-1; the owner's O-111); a Koto-keyed memo (COMPILER_ARCHITECTURE "Syntax identity");
+    reading published qualifiers in the evaluation (breaks E2's re-evaluation); the row from the position inside `ResolvePath`
+    (N1e2-2 replaces `UseRow`'s rows by SPEC 9.2's roles).
+  - Not verified: review 4's R4-N5. (R4-N1 is verified by the implementation review: a Type slot whose Type reading needs a
+    qualifier gives the same record on all six builds.)
 - **BU-145 The pun rule's Type facts are Binding's published readers (PLAN G667, C-189)** (2026-11-10; Major; the Front's design,
   the Middle's implementation under Q18; design reviews 1-3 and the re-check under the owner's O-126 (a); the Front's implementation review ACCEPT; the Middle's consent on
   C-189) SPEC 3.8, 5.2, 5.6, 5.7, 15.6.1, 22.1.

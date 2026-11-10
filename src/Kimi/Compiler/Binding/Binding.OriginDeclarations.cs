@@ -375,9 +375,10 @@ public sealed partial class Binding
             return known;
         }
 
-        var symbol = this.TypeName(syntax, scope, LookupRole.Any);
-        return symbol?.Declaration is GroupKoto
-            ? this.BindContainerQualifier(syntax, symbol, scope, this.TypeContext(syntax, scope))
+        // SPEC 9.2, 9.7.2: `(Outer<T>.G{o}).f` puts the set's Type at a qualifier position; elsewhere it is a Type occurrence (15.3.1).
+        var path = this.NamePath(syntax, scope, UseRow(UseNode(syntax)));
+        return path.Symbol?.Declaration is GroupKoto
+            ? this.BindContainerQualifier(syntax, path.Symbol, scope, this.TypeContext(syntax, scope))
             : this.BindType(syntax, scope);
     }
 
