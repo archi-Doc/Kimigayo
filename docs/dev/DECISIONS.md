@@ -11288,7 +11288,9 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a second failure kind and code for one requirement (DIAGNOSTICS §2 rule 2; `ImportFunctionValue`, the design's
     prototype); the check inside `CompleteFunctionItem` (a value use that selects nothing, `f == f` or a branch value, never reaches
     it, and a group is selected first); a second check in the collector or code generation (a consumer re-deciding Binding's rule).
-  - Open: two valid forms rejected, pre-existing (design review 1, N3): PLAN G731.
+  - Open: design review 1's N3, triaged 2026-11-11: c01 `keep<() -> u32>(zero)` has G719's cause and joins PLAN G719; c02 is invalid
+    as written (SPEC 6.1.1, 9.5: a root function is not visible from a group), so its `UnresolvedBinding_Kd` is correct and its two
+    `Unsupported_Kd` are the existing P42 limits (R5-M82).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
