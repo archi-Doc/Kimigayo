@@ -291,6 +291,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
     }
 
+    // SPEC 4.8.1, 8.15.3 (PLAN G597): a keyed Storage has two operands, its start position, an isize, and the token of its key's Type,
+    // whose start is open in the body (R; the S of Range<S, End> and Range<S, E>, keys whose own IsAbstract is false): no finding. A key
+    // that decides its start takes the unkeyed form, so its token is an Operation finding either way: one that starts at the storage
+    // (Range<Start, End>, Range<Start, E>) and one that displaces (Range<i32, E>, which holds a parameter; Range<FromEnd<i32>, End>;
+    // ResolvedRange). So are a start that is no isize (flag) and a second operand that is no Type token (value); one operand or three is
+    // an Arity finding (fail-before: a Storage with any operand was an Arity finding).
+    [Theory]
+    [InlineData("r", 2, null)]
+    [InlineData("from", 2, null)]
+    [InlineData("both", 2, null)]
+    [InlineData("full", 2, "Operation")]
+    [InlineData("to", 2, "Operation")]
+    [InlineData("at", 2, "Operation")]
+    [InlineData("back", 2, "Operation")]
+    [InlineData("resolved", 2, "Operation")]
+    [InlineData("flag", 2, "Operation")]
+    [InlineData("value", 2, "Operation")]
+    [InlineData("r", 1, "Arity")]
+    [InlineData("r", 3, "Arity")]
+    public void AKeyedStorageTakesAStartAndAnOpenKey(string form, int count, string? rule)
+    {
+        var (body, types) = KeyedStorage(form, count);
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
     // its kind's row, the effects the reserve and append calls it replaces had; `[]` allocates nothing and reports none, and a fixed array is
     // placed in its own storage (fail-before: no aggregate kind had a row).
@@ -2081,6 +2107,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         return body;
+    }
+
+    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597): its key the named
+    // parameter's Type of a generic k; "flag" a bool start under the key R and "value" an Integer constant for the token; of its three
+    // operands (the token twice) the count given.
+    internal static (MirBody Body, TyCtxt Types) KeyedStorage(string form, int count)
+    {
+        var c = MirBuildTest.Compile(
+            "func k<R, S, E>(v: Array<i32>, r: R, from: Range<S, End>, both: Range<S, E>, full: Range<Start, End>, to: Range<Start, E>, " +
+            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange) -> ()\n" +
+            "    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
+        Assert.True(c.Binding.Result.IsComplete);
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "k");
+        BoundType Of(string name) => function.Parameters.Single(x => x.InternalName == name).Type.TypeOf()!;
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (array, pointer) = (MirModelTest.Local(body, Of("v")), MirModelTest.Local(body, c.Types.Pointer(BoundType.I32)));
+        var start = MirOperand.Copy(MirModelTest.Local(body, form == "flag" ? BoundType.Boolean : BoundType.ISize));
+        MirConst key = form == "value" ? new(MirConstKind.Integer, BoundType.ISize, 0) : new(MirConstKind.TypeToken, Of(form == "flag" ? "r" : form));
+        var token = MirOperand.Const(body.Const(key));
+        var block = body.AddBlock();
+        var keyed = MirRvalue.Storage(array, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
+        body.Push(block, MirStatement.Assign(pointer, keyed, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        return (body, c.Types);
     }
 
     // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,
