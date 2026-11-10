@@ -6294,6 +6294,7 @@ resumed by R4-M86 (2026-10-20).
     function-reference argument on its own when no candidate takes a callable there (`PrepareArgument`'s `TakesCallableContext`), so
     `wrap(identity)` reports the reference's `UnboundTypeArgument_Kd` even at `let o: Option<(i64) -> i64> = wrap(identity)`, while a
     payload's waits (`Option.Some(identity)` there is valid).
+  - Amended by R7-M18 (R7-I2-core's store): U1/U7a's `SlotSolution` keeps its operations; the writer of its frames is `InferCtxt`.
 - **BU-3** (2026-10-18; found by R4's E13 implementer; amends R4-M51's Kind rule and narrows its Open note) A pair-layer input in call
   retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits only borrows (ref, uniq, objref, objuniq) is a borrowed input
   in every admitted case, so `BorrowReferent`, the one predicate for a borrowed input, returns its target: its slot (`OuterOrigin`)
@@ -16685,6 +16686,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a root file (not readable by MIR analyses; R7-T2); conditions in the core's bitsets (A5's Work changes); the copy's
     per-source search as the core (A5's Work and order change); one graph per OR-closed candidate condition (revision 0: 2^k graphs
     for k independent rows, measured 51 s at k = 13); views for declarations (no MirCases).
+- **R7-M18 `InferCtxt` owns every solve's slot frames (R7-I2-core's store)** (Front, 2026-11-10; the owner's O-123 (a), and O-129
+  (a): the store lands alone; design review 3, no blocking finding for the store; implementation review ACCEPT; Major,
+  behavior-preserving) SPEC 10.8.
+  - **Representation.** `InferCtxt` (`Binding.InferCtxt.cs`), one per Binding, holds the Type and length slot frames of every solve
+    that infers, privately in pooled arrays. `SlotFrame` is a handle (store, id) with read-only views (`ReadOnlySpan`) and logged
+    writes (`SetType`, `SetLength`, `ClearTypes`, `ClearLengths`, `CopyTypes`, `CopyLengths`); an undo log is written while a
+    snapshot is open; `Snapshot` and `Rollback`. `SlotSolution` reads its frame (G130 U1/U7a amended: its operations stay, the
+    writer moves).
+  - **Rule.** A frame is written only through the store: no array or mutable span of a frame leaves the store's file, so the
+    compiler enforces the one write path (31 write sites through 9 rent sites). The store decides no rule (no fit, meet,
+    applicability, formation, membership or Origin relation) and reads no syntax. `ArchitectureRulesTest`'s RP6 trial-copy row stays
+    at 1 until part c.
+  - **Reason.** Two design reviews found frame writes outside the store (B2, C1); a name-matching ratchet cannot see them, and the
+    type system can.
+  - **Parts c and d1** are their own Major units (O-129 (a)): c from design review 3's E1 (its rollback before `CloseTrial`), d1
+    from E2 (it starts from `ResultContext.Expected`, one representation); d2 later, with G159 (2); parts e-i as the plan lists
+    them.
+  - **Rejected:** frames as exposed arrays with a ratchet (missed two sites); an undo log inside `SlotSolution` (the other frame
+    owners have none); variables beyond frames in the core (each lands with its consumer).
+  - **Temporary:** none.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
