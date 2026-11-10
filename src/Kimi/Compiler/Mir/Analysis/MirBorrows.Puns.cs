@@ -356,8 +356,8 @@ internal sealed partial class MirBorrows
     }
 
     // An address or borrow formed past a raw Deref (SPEC 5.2, 5.3, IMPL 21.1), its steps in the walk buffer: each component step past
-    // the Deref (an element, a Field, Base or Downcast: every step that is no dereference and no pair layer) moves its pointer's value
-    // (Stepped).
+    // the Deref (an element: Index or ConstIndex; a Field, Base or Downcast) moves its pointer's value (Stepped). The five kinds are
+    // named: a new projection kind is no component step until it is listed here.
     private int Interior(int value, MirPlace place, int count)
     {
         var deref = -1;
@@ -368,7 +368,9 @@ internal sealed partial class MirBorrows
 
         for (var i = deref + 1; deref >= 0 && i < count; i++)
         {
-            if (this.walk[i].Kind is not (MirProjectionKind.Deref or MirProjectionKind.PairLayer))
+            var kind = this.walk[i].Kind;
+            var element = kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
+            if (element || kind is MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.Downcast)
             {
                 value = this.Stepped(value, this.CaseType(place with { Projection = this.walk[i].Prefix }), this.Field(i));
             }

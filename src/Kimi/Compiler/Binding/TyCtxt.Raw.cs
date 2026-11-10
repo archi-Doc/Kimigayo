@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 // storage (Binding.Storage.cs; SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint 2): the authority such a
 // layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), the parts a
 // written input holds at its own address (OwnLayers) and the borrows each stated layer there belongs to among a call's inputs
-// (LayerMembers), which A5's Cover reads, whether a declaration states a
+// (LayerMembers), which A5's Cover reads, a Place's key (PlaceKey) one step along its path (Select, Base) or to the part at its own
+// address (Leading; C-189, C-211), which A5's pun rule reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
 // addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
@@ -160,10 +161,12 @@ internal sealed partial class TyCtxt
     // true), or a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), each as Select steps it, the path's
     // dereference kept. The first written Field is MIR's Field 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and
     // AdtDef keeps stored Fields in declaration order. Type null for every other Type (a Kimigayo-layout struct, a Tuple, an enum or its
-    // Case, a Closure: IMPL 21.1.2 promises no offset there), for an unbound key and for a first Field Binding did not bind. Reads no
-    // length: whether an array has an element is its reader's (A5's Sized). The answer's Type is a function of the key's Type, so a reader
-    // steps a Type that has no path (a written or stride Type, a chain row) as PlaceKey.Root of it. Total, a function of the key; allocates
-    // nothing warm. Must not decide a pun, a covering or a designation (A5's).
+    // Case, a Closure: IMPL 21.1.2 promises no offset there), for an unbound key and for a first Field Binding did not bind. `element` true
+    // always comes with a part (a fixed array's Type states its element at any length), so a reader takes the part of an element step
+    // without a null test; a null Type has `element` false. Reads no length: whether an array has an element is its reader's (A5's
+    // Sized). The answer's Type is a function of the key's Type, so a reader steps a Type that has no path (a written or stride Type, a
+    // chain row) as PlaceKey.Root of it. Total, a function of the key; allocates nothing warm. Must not decide a pun, a covering or a
+    // designation (A5's).
     internal PlaceKey Leading(PlaceKey at, out bool element)
     {
         element = at is { Case: < 0, Type.Kind: BoundTypeKind.FixedArray };

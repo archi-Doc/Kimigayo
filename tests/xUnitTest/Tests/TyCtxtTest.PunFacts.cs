@@ -133,12 +133,14 @@ public sealed partial class TyCtxtTest
         }
 
         var rows = new List<string>();
-        for (var part = c.Types.Leading(key, out var element); part.Type is not null; part = c.Types.Leading(part, out element))
+        var part = c.Types.Leading(key, out var element);
+        for (; part.Type is not null; part = c.Types.Leading(part, out element))
         {
             Assert.Same(key.Through, part.Through);
             rows.Add($"{(element ? "E" : "F")} {Binding.DiagnosticTypeName(part.Type)}");
         }
 
+        Assert.False(element); // `element` true always comes with a part: the chain's end, a null Type, is no element step.
         Assert.Equal(expected, string.Join("; ", rows));
     }
 
