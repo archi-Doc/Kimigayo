@@ -108,7 +108,9 @@ public sealed partial class InstanceCollectorTest
             $"    R is PositionRange\n    return v[r].length\nfunc f(v: ref/Array<S>) -> isize => {calls}\nlet zz = 1\n");
         var program = c.BuildMir();
         _ = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal(records, string.Join("|", program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal(
+            records,
+            string.Join("|", program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "h");
         var keyed = body.Statements.ToArray().Single(static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Storage, Count: 2 } });
         Assert.Equal("S", TyCtxt.Name(LayoutNeeds.TypeOf(body, keyed.Rvalue)));

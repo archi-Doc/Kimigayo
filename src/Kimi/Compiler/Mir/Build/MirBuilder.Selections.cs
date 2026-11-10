@@ -205,7 +205,10 @@ internal sealed partial class MirBuilder
         this.First(some, view, MirOperand.Copy(start), starts, key, through);
         this.body.Push(
             empty,
-            MirStatement.Assign(pointer, MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))))), this.Info(index)));
+            MirStatement.Assign(
+            pointer,
+            MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))))),
+            this.Info(index)));
         this.body.Terminate(some, MirTerminator.Goto(join, this.Info(index)));
         this.body.Terminate(empty, MirTerminator.Goto(join, this.Info(index)));
         var at = this.arguments.Count;
@@ -221,7 +224,8 @@ internal sealed partial class MirBuilder
     // MirTypes.StartsAtStorage; a written range's by its start): at the storage, the view; at a position, the view in a temp its caller
     // holds in its own region (`through`; else the view's Place), displaced by the start, a proven Add at the view's location; open, the
     // Storage keyed by the start and the key's Type, which each instance decides (LayoutNeeds). The selection builder and a default
-    // copy's fold, whose folded key decides again (Refirst), build by it.
+    // copy's fold, whose folded key decides again (Refirst), build by it. Only a Storage is keyed: an Opaque view (it exists only
+    // after a failed Binding) at an open start is the Opaque value alone, and at a position it keeps the Add.
     private void First(int block, in MirStatement view, in MirOperand start, bool? starts, BoundType? key, MirPlace through)
     {
         if (starts is null && view.Rvalue.Kind == MirRvalueKind.Storage)

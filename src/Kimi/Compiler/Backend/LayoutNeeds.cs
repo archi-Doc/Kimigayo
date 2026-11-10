@@ -9,7 +9,7 @@
 // compares (InstanceCollector.Uses).
 // Input: a projection kind, a MIR operator and its first operand's Type, a keyed Storage's key Type in its reader's instance, a comparison
 // node; a body Place, rvalue or substitution for TypeOf.
-// Output: a LayoutNeed; the Type (or the Types) it names.
+// Output: a LayoutNeed, a keyed Storage's a LayoutNeed? (null: its key is still open in the instance); the Type (or the Types) it names.
 // Invariants: closed: a new form adds a row here or a Need on its table; every row's Type is TypeOf's but a comparison node's (its reader's
 // instance Type, DECISIONS R5-M166); a need past its root's storage is a
 // use (Layout.Indirect states the boundary), a call's Type arguments always (the size SPEC 8.15.3 names: raw allocation, a whole value's

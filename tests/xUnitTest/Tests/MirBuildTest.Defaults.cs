@@ -78,7 +78,12 @@ public sealed partial class MirBuildTest
         Assert.Equal((MirLocalKind.Temp, view.Source.Syntax, view.Source.Scope), (temp.Kind, temp.Source.Syntax, temp.Source.Scope));
         Assert.Equal(MirScopeKind.Inlined, tail.Scopes[view.Source.Scope].Kind);
         Assert.Equal(
-            [(MirStatementKind.StorageLive, view.Place), (MirStatementKind.Assign, view.Place), (MirStatementKind.Assign, statements[at + 1].Place), (MirStatementKind.StorageDead, view.Place)],
+            [
+                (MirStatementKind.StorageLive, view.Place),
+                (MirStatementKind.Assign, view.Place),
+                (MirStatementKind.Assign, statements[at + 1].Place),
+                (MirStatementKind.StorageDead, view.Place),
+            ],
             statements[(at - 1)..(at + 3)].Select(static x => (x.Kind, x.Place)));
     }
 
