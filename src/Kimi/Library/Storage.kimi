@@ -383,6 +383,16 @@ internal group Storage
         internal var data: raw/T
         internal var length: isize
 
+    /// The words a `WriteWindow` reaches through its `state`: the Fields `Text.FixedBuffer` and `Text.HeapBuffer` both
+    /// begin with, in their order (`KimiLibraryShapeTest.RuntimeLayoutsAreFixed` pins them). A window owns no bytes, so
+    /// `data` states no `self`.
+    #Layout("C")
+    internal struct BufferRepr
+        internal var data: raw/u8
+        internal var capacity: isize
+        internal var length: isize
+        internal var validated: isize
+
     /// The one component of a `string`, under IMPL 21.1.3's Handles. A string owns its bytes only for release kind 1,
     /// and a literal's are owned by no value (SPEC 3.1.2), so `data` states no `self`. This struct and the runtime's
     /// `RuntimeAbi.String`, whose hand-written IR reads the same words, are a lasting pair.

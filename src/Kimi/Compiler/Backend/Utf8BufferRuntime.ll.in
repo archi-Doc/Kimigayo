@@ -1,26 +1,6 @@
 ; Checked buffer runtime: {data, capacity, length, validated}, Window: {state, start, written, remaining}.
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
-declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
-
-{{__kimi_text_writer}}
-entry:
-  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 64, i1 false)
-  store ptr %self, ptr %ret, align 8
-  %dispatchp = getelementptr i8, ptr %ret, i64 8
-  %kindp = getelementptr i8, ptr %ret, i64 16
-  store ptr %dispatch, ptr %dispatchp, align 8
-  store i64 %kind, ptr %kindp, align 8
-  ret void
-}
-
-{{__kimi_writer_status}}
-entry:
-  %failedp = getelementptr i8, ptr %self, i64 56
-  %failed = load i8, ptr %failedp, align 1
-  %tag = zext i8 %failed to i32
-  store i32 %tag, ptr %ret, align 4
-  ret void
-}
+; The adapter's routine __kimi_text_writer is the kept ErasedWriterRuntime.ll.in's.
 
 {{__kimi_write_line_utf8}}
 entry:
@@ -263,80 +243,4 @@ entry:
   store i64 %newwritten, ptr %writtenptr, align 8
   store i64 %newrest, ptr %restptr, align 8
   ret void
-}
-
-{{__kimi_window_push}}
-entry:
-  %restptr = getelementptr i8, ptr %self, i64 24
-  %rest = load i64, ptr %restptr, align 8
-  %full = icmp eq i64 %rest, 0
-  br i1 %full, label %failure, label %success
-success:
-  %address = call ptr @__kimi_window_address(ptr %self)
-  store i8 %byte, ptr %address, align 1
-  call void @__kimi_window_advance(ptr %self, i64 1)
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-{{__kimi_window_append}}
-entry:
-  %restptr = getelementptr i8, ptr %self, i64 24
-  %rest = load i64, ptr %restptr, align 8
-  %lenptr = getelementptr i8, ptr %bytes, i64 8
-  %length = load i64, ptr %lenptr, align 8
-  %fits = icmp ule i64 %length, %rest
-  br i1 %fits, label %check, label %failure
-check:
-  %empty = icmp eq i64 %length, 0
-  br i1 %empty, label %success, label %copy
-copy:
-  %address = call ptr @__kimi_window_address(ptr %self)
-  %source = load ptr, ptr %bytes, align 8
-  call void @llvm.memmove.p0.p0.i64(ptr %address, ptr %source, i64 %length, i1 false)
-  call void @__kimi_window_advance(ptr %self, i64 %length)
-  br label %success
-success:
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-{{__kimi_window_limit}}
-entry:
-  %writtenptr = getelementptr i8, ptr %self, i64 16
-  %restptr = getelementptr i8, ptr %self, i64 24
-  %written = load i64, ptr %writtenptr, align 8
-  %rest = load i64, ptr %restptr, align 8
-  %invalid = icmp slt i64 %amount, %written
-  br i1 %invalid, label %failure, label %success
-success:
-  %room = sub i64 %amount, %written
-  %less = icmp ult i64 %room, %rest
-  %limited = select i1 %less, i64 %room, i64 %rest
-  call void @llvm.memcpy.p0.p0.i64(ptr %ret, ptr %self, i64 32, i1 false)
-  %outrest = getelementptr i8, ptr %ret, i64 24
-  store i64 %limited, ptr %outrest, align 8
-  ret void
-failure:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-  unreachable
-}
-
-{{__kimi_window_commit}}
-entry:
-  %state = load ptr, ptr %self, align 8
-  %startptr = getelementptr i8, ptr %self, i64 8
-  %writtenptr = getelementptr i8, ptr %self, i64 16
-  %start = load i64, ptr %startptr, align 8
-  %written = load i64, ptr %writtenptr, align 8
-  %length = add i64 %start, %written
-  %lenptr = getelementptr i8, ptr %state, i64 16
-  store i64 %length, ptr %lenptr, align 8
-  ret i64 %written
 }
