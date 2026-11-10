@@ -12,26 +12,15 @@ internal static class ScalarTypes
 {
     /// <summary>The width in bits of <c>isize</c> and <c>usize</c> for every Compilation, with or without a target: the profile's
     /// (SPEC 22, O-79 (a); IMPL 21.1.3), from <see cref="IrTarget"/>'s row for its triple. A target's own width is only the
-    /// <c>pointerWidth</c> Condition's (SPEC 19.2).</summary>
+    /// <c>pointerWidth</c> Condition's (SPEC 19.2). Read once, by <see cref="BoundType"/>'s rows of the two Cores; every reader of
+    /// their width asks the Type (<see cref="BoundType.Width"/>).</summary>
     internal static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
 
     /// <summary>Gets whether a Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a wrapping integer Core; no
     /// layer is followed. The one definition the MIR builder's recorded values and MirValidator's testRecordValue row read.</summary>
     /// <param name="type">The Type, or null.</param>
     /// <returns>Whether it is a Scalar.</returns>
-    internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsFloatingPoint: true } || Width(type) != 0;
-
-    // A wrapping integer Type answers every width query by its integer argument (SPEC 3.1.1); its signedness is BoundType.IsSigned.
-    internal static int Width(BoundType? type) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch
-    {
-        "i8" or "u8" => 8,
-        "i16" or "u16" => 16,
-        "i32" or "u32" => 32,
-        "i64" or "u64" => 64,
-        "i128" or "u128" => 128,
-        "isize" or "usize" => SizeWidth,
-        _ => 0,
-    };
+    internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsNumeric: true };
 
     // Canonical signed extension of the N-bit payload, also for unsigned language Types (DECISIONS BU-133). Width 0 is for an integer or
     // wrapping integer Type whose instance decides its width (a proven-PrimitiveInteger parameter or projection, Wrapping<T> over one; SPEC
@@ -42,13 +31,12 @@ internal static class ScalarTypes
     internal static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, out Int128 bits)
     {
         bits = 0;
-        var width = Width(type);
-        if (width == 0)
+        if (type is not { Width: > 0 and var width })
         {
             return false;
         }
 
-        var signed = type!.IsSigned;
+        var signed = type.IsSigned;
         var limit = signed ? ((UInt128)1 << (width - 1)) - (negative ? 0U : 1U) : width == 128 ? UInt128.MaxValue : ((UInt128)1 << width) - 1;
         if (magnitude > limit || (negative && !signed && magnitude != 0))
         {

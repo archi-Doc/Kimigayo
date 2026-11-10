@@ -18,7 +18,9 @@ namespace Kimi.Compiler;
 // Must not carry an answer past its query, or serve two walks with different inputs under one stamp.
 public sealed partial class Binding
 {
-    private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(); // SubstituteType's images.
+    private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.SubstitutedParts)); // SubstituteType's images.
+
     private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseClosureTypes' images.
 
     // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins and PublishedResult
@@ -32,12 +34,16 @@ public sealed partial class Binding
     // and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
-    private sealed class TypeMemo<TKey, T>
+    private sealed class TypeMemo<TKey, T>(int capacity = 0)
         where TKey : notnull
     {
-        private readonly Dictionary<TKey, (uint Query, T Answer)> answers = new();
+        private readonly Dictionary<TKey, (uint Query, T Answer)> answers = new(capacity);
         private ulong pass;
         private uint query;
+
+        internal int Count => this.answers.Count;
+
+        internal int Free => this.answers.Capacity - this.answers.Count;
 
         // Begins a query of a Binding pass: its unique stamp.
         internal uint Begin(ulong pass)

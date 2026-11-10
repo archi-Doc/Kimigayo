@@ -153,7 +153,7 @@ internal sealed partial class InstanceCollector
         if (collection.Kind == BoundTypeKind.Array)
         {
             var array = this.types.Declaration(KimiDeclarationId.StorageDestroyArray)!;
-            return this.Declared(program, item, site, array, this.types.Synthesized(array, null, [components[0]]));
+            return this.Declared(program, item, site, array, this.types.Synthesized(array, null, [components[0]], []));
         }
 
         if (!MirTypes.MayNeedDrop(components[0], this.seen) && !MirTypes.MayNeedDrop(components[1], this.seen))
@@ -162,7 +162,7 @@ internal sealed partial class InstanceCollector
         }
 
         var dictionary = this.types.Declaration(KimiDeclarationId.StorageDestroyDictionary)!;
-        return this.Declared(program, item, site, dictionary, this.types.Synthesized(dictionary, null, [components[0], components[1]]));
+        return this.Declared(program, item, site, dictionary, this.types.Synthesized(dictionary, null, [components[0], components[1]], []));
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the
@@ -170,6 +170,6 @@ internal sealed partial class InstanceCollector
     private int Destructor(MirProgram program, int item, SourceRef site, BoundType type)
     {
         var destructor = AdtDef.DestructorSymbol(type)!;
-        return program[new(destructor, MirBodyKind.Fn)] is { } body ? this.Admit(item, site, body, this.types.Synthesized(destructor, type, [])) : -1;
+        return program[new(destructor, MirBodyKind.Fn)] is { } body ? this.Admit(item, site, body, this.types.Synthesized(destructor, type, [], [])) : -1;
     }
 }
