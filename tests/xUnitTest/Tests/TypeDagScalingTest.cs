@@ -74,6 +74,42 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 8.6.2 (PLAN G602): a reversed chain of clauses through inherited conformances (L_i: S_i.HasBase.Parent, S_i's Parent L_(i-1),
+    // declared from the far end) binds with no stack failure, and the InheritedConformances query's clause readings beyond those of the
+    // same chain written nominally are linear in its length.
+    [Fact]
+    public void InheritedConformanceDemandsAreLinearInTheChain()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static levels => Work(levels, true) - Work(levels, false)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 64, string.Join(' ', work));
+
+        static int Work(int levels, bool projected)
+        {
+            var chain = string.Concat(Enumerable.Range(1, levels).Reverse().Select(i => (projected ? $"open struct L{i}: S{i}.HasBase.Parent\n" : $"open struct L{i}: L{i - 1}\n") + $"    public init(): base() => ()\nstruct S{i}\n    Self is HasBase\n    associate HasBase.Parent is L{i - 1}\n"));
+            var c = CompilationTestHelper.ParseSuccess($"contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\nstruct D: L{levels}.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n{chain}open struct L0\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init() => ()\n");
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.InheritedConformanceWork;
+        }
+    }
+
+    // SPEC 6.2.2 (PLAN G602, design review N2): on a base cycle every member's InheritedConformances query stays NotStarted for the pass,
+    // so each conformance read of a member walks the cycle again: the query's clause readings for ten more reads are linear in its length.
+    [Fact]
+    public void AConformanceReadOfABaseCycleIsLinearInTheCycle()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static length => Work(length, 20) - Work(length, 10)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 64, string.Join(' ', work));
+
+        static int Work(int length, int reads)
+        {
+            var ring = string.Concat(Enumerable.Range(0, length).Select(i => $"open struct A{i}: A{(i + 1) % length}\n    public init(): base() => ()\n"));
+            var uses = string.Concat(Enumerable.Range(0, reads).Select(static i => $"func g{i}(a: ref/A0.HasBase.Parent) => ()\n"));
+            var c = CompilationTestHelper.ParseSuccess($"contract HasBase\n    associate Parent\n{ring}{uses}");
+            Assert.False(c.Bind().IsComplete);
+            return c.Binding.InheritedConformanceWork;
+        }
+    }
+
     // SPEC 9.4, 9.6 (R7-N2d): a protected read tests its derivation over BaseLayers, so the walks' steps per read are linear in the layers.
     [Fact]
     public void ProtectedReadsAreLinearInTheLayers()

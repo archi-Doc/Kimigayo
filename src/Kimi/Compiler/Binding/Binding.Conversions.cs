@@ -82,7 +82,7 @@ public sealed partial class Binding
     // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
     // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
     private static bool IsNeverValue(Koto operand, BoundType type)
-        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawPlace(operand);
+        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawRooted(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -291,7 +291,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawPlace(conversion.Left))
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
@@ -404,7 +404,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawPlace(conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }

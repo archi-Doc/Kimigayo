@@ -256,6 +256,18 @@ public class InheritedConformanceTest
 
         """;
 
+    // PLAN G602: Middle conforms to HasBase with Parent Root; S0's Parent is Middle, so Source: S0.HasBase.Parent inherits Middle's HasBase.
+    private const string ProjectedHeir = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init() => ()\nstruct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n";
+    private const string ProjectedSource = "open struct Source: S0.HasBase.Parent\n    public init(): base() => ()\n";
+    private const string ProjectedSource2 = "struct S1\n    Self is HasBase\n    associate HasBase.Parent is Source\nopen struct Source2: S1.HasBase.Parent\n    public init(): base() => ()\n";
+    private const string ProjectedUse = "struct D: Source.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n";
+    private const string ProjectedUse2 = "struct D: Source2.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n";
+    private const string MissingHeir = "contract HasBase\n    associate Parent\nopen struct Root\n    public init() => ()\nopen struct Middle\n    public init() => ()\nstruct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n";
+    private const string CycleHead = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\n";
+    private const string CycleA = "open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n";
+    private const string CycleB = "open struct B: A\n    public init(): base() => ()\n";
+    private const string GenericHeir = "contract HasBase\n    associate Parent\nopen struct Root<T>\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle<T>\n    Self is HasBase\n    associate HasBase.Parent is Root<T>\n    public init() => ()\nstruct S0<T>\n    Self is HasBase\n    associate HasBase.Parent is Middle<T>\nopen struct Source<T>: S0<T>.HasBase.Parent\n    public init(): base() => ()\n";
+
     // PLAN G375: a failed signature is computed at each read, so the channel's cause (SPEC 23.1.1) reaches every reader, a call or a reference.
     // An explicit Constraint's proof names the failed conformance it read, so its readers rest on the Unsupported_Kd too (DECISIONS Q13,
     // rule W; R7-C8 U-D2 fix 2: LimitExplicit's three InvalidConstraint_Kd at Box<Leaf> are dependents).
@@ -421,6 +433,62 @@ public class InheritedConformanceTest
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
+    // SPEC 8.6.2 (PLAN G602): a base clause reads a conformance inherited across a projected base, its source declared before or after it,
+    // through two projected levels in both orders, a generic heir, a generic use and a specification hop. Each was rejected before: the
+    // heir's inherited paths were registered after the clauses read them.
+    [Theory]
+    [InlineData(ProjectedHeir + ProjectedSource + ProjectedUse)]
+    [InlineData(ProjectedHeir + ProjectedUse + ProjectedSource)]
+    [InlineData(ProjectedHeir + ProjectedSource + ProjectedSource2 + ProjectedUse2)]
+    [InlineData(ProjectedHeir + ProjectedUse2 + ProjectedSource2 + ProjectedSource)]
+    [InlineData(GenericHeir + "struct D: Source<i32>.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n")]
+    [InlineData(GenericHeir + "func h<U>(x: ref/Source<U>.HasBase.Parent) -> i32 => x.r()\nstruct D<U>: Source<U>.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D<i32>) -> i32 => d.r()\n")]
+    [InlineData(ProjectedHeir + ProjectedSource + "struct S3\n    Self is HasBase\n    associate HasBase.Parent is Source.HasBase.Parent\nstruct E: S3.HasBase.Parent\n    public init(): base() => ()\nfunc f(e: ref/E) -> i32 => e.r()\n")]
+    public void AClauseReadsAConformanceInheritedAcrossAProjectedBase(string source)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+    }
+
+    // SPEC 8.5.2, 8.6.2 (PLAN G602): the invalid twins keep their records at the clause that has no evidence: the far end lacks HasBase,
+    // through one or two projected levels, or the projection names a Type without it.
+    [Theory]
+    [InlineData(MissingHeir + ProjectedSource + "struct D: Source.HasBase.Parent\n    public init(): base() => ()\n", "Source")]
+    [InlineData(MissingHeir + ProjectedSource + ProjectedSource2 + "struct D: Source2.HasBase.Parent\n    public init(): base() => ()\n", "Source2")]
+    [InlineData(ProjectedHeir + "open struct Other\n    public init() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Other\nopen struct Source: S2.HasBase.Parent\n    public init(): base() => ()\nstruct D: Source.HasBase.Parent\n    public init(): base() => ()\n", "Source")]
+    public void AClauseWithoutTheInheritedConformanceKeepsItsRecords(string source, string heir)
+        => Assert.Equal(
+            $"InvalidTypeFormation_Kd struct|InvalidTypeFormation_Kd {heir}.HasBase.Parent|UnsatisfiedConstraint_Kd {heir}.HasBase.Parent|InvalidTypeFormation_Kd base",
+            Records(source));
+
+    // SPEC 8.6.2 (PLAN G602): a conformance whose requirement returns Self is not inherited, through a projected base as through a nominal
+    // one: the two programs have the same records.
+    [Fact]
+    public void AConformanceReturningSelfIsNotInheritedAcrossAProjectedBase()
+    {
+        const string Make = "contract HasBase\n    associate Parent\n    func make() -> Self\nopen struct Root\n    public init() => ()\nopen struct Middle\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public func make() -> Self => Self.init()\n    public init() => ()\n";
+        const string Use = "struct D: Source.HasBase.Parent\n    public init(): base() => ()\n";
+        var projected = Records(Make + "struct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n    public func make() -> Self => Self.init()\n" + ProjectedSource + Use);
+        Assert.Equal("InvalidTypeFormation_Kd struct|UnsatisfiedConstraint_Kd Source.HasBase.Parent|UnsatisfiedConstraint_Kd Source.HasBase.Parent", projected);
+        Assert.Equal(Records(Make + "open struct Source: Middle\n    public init(): base() => ()\n" + Use), projected);
+    }
+
+    // SPEC 9.5 (PLAN G602; the owner's O-120 (a)): a projection T.(C).X in a struct's base clause is an unresolvable dependency cycle when
+    // T is the struct or derives from it, with any Type arguments: B: A, B with its own HasBase, A itself, B<T>: A<i32>, and A's own Parent
+    // B, each in both declaration orders. CyclicBinding_Kd at the projection; its count is not pinned (DECISIONS Q13: the member walk's
+    // second record at the same span is PLAN G602b's).
+    [Theory]
+    [InlineData(CycleA, CycleB + "func f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    [InlineData(CycleA, "open struct B: A\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\nfunc f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    [InlineData("open struct A: A.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n", "func f(a: ref/A) -> i32 => a.r()\n", "A.HasBase.Parent")]
+    [InlineData("open struct A<T>: B<T>.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n", "open struct B<T>: A<i32>\n    public init(): base() => ()\nfunc f(b: ref/B<u8>) -> i32 => b.r()\n", "B<T>.HasBase.Parent")]
+    [InlineData("open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is B\n    public init(): base() => ()\n", CycleB + "func f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    public void AProjectionInABaseClauseWhoseSubjectDerivesFromTheStructIsACycle(string first, string second, string projection)
+    {
+        Assert.Contains($"CyclicBinding_Kd {projection}", Records(CycleHead + first + second).Split('|'));
+        Assert.Contains($"CyclicBinding_Kd {projection}", Records(CycleHead + second + first).Split('|'));
+    }
+
     // SPEC 8.6.2, 8.9.2: a derived Type inherits every path of its base, also a refinement path the base declares after the refined
     // Contract's own conformance (registration read its root path before registering it); it gives the base's verdict.
     [Theory]
@@ -478,4 +546,9 @@ public class InheritedConformanceTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
         Assert.False(c.Generate(TextWriter.Null));
     }
+
+    // A program's records as a Library, by position: the code and the first line of the span's text.
+    private static string Records(string source)
+        => string.Join('|', DiagnosticCorpus.Check(source, "Library").Diagnostics.OrderBy(static x => x.Span!.Value.Start).ThenBy(static x => x.Code, StringComparer.Ordinal)
+            .Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}"));
 }
