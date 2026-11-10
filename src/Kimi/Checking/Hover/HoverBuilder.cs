@@ -2,10 +2,10 @@
 
 using System.Text;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
+using Kimi.Documentation;
 
 namespace Kimi.Checking;
 

@@ -1,11 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Checking;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Compiler;
 
 #pragma warning disable SA1202 // Keep source collection and extraction responsibilities together.
 

@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1401, SA1513, SA1600 // Delimiter algorithm and compact scratch records.
 

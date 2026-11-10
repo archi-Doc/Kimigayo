@@ -207,16 +207,16 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     private string[]? nameFailures;
 
-    private List<Documentation.DocumentationSource>? documentationSources;
+    private List<DocumentationSource>? documentationSources;
 
     [IgnoreMember]
     private List<DiagnosticKey>? omittedDeclarations;
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
-    public IEnumerable<Documentation.DocumentationSource> DocumentationSources => this.documentationSources ?? Enumerable.Empty<Documentation.DocumentationSource>();
+    public IEnumerable<DocumentationSource> DocumentationSources => this.documentationSources ?? Enumerable.Empty<DocumentationSource>();
 
-    internal void RecordDocumentation(Documentation.DocumentationSource? documentation)
+    internal void RecordDocumentation(DocumentationSource? documentation)
     {
         if (documentation is not null)
         {
