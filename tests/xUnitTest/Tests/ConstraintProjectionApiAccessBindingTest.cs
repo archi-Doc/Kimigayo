@@ -64,13 +64,16 @@ public class ConstraintProjectionApiAccessBindingTest
     }
 
     [Theory]
-    [InlineData("T.C.Element")]
+    [InlineData("T.(C).Element")]
     [InlineData("T.Element")]
     public void SubjectProjectionsRetainTheirDefiningRequirement(string subject)
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic group Api\n    public func expose<T>(value: T)\n        T is C\n        {subject} is i32\n        ()");
         Check(c, false);
-        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto { Left: MemberAccessKoto } && x.Node.FailureOf() == BindingFailure.Access);
+
+        // The subject projection: `T.Element` is a simple subject, `T.(C).Element` a Type whose node wraps the member access.
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto { Left: MemberAccessKoto or TypeSemanticsKoto { Type: MemberAccessKoto } } &&
+            x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Theory]
