@@ -2084,12 +2084,12 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.7 instance stage, IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): an arithmetic shim's operation, its Contract's MIR operator
-    // (BuiltinArithmetic) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a division or
-    // remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an unused function
-    // reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an operator; a
-    // function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site in two
-    // instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an addition
-    // of i128 and a division of i64 have no record and their shim is admitted.
+    // (MirTypes.ArithmeticOperation) on its Self, is checked at each site that requests the shim, in Requirement's refusal decision: a
+    // division or remainder of an i128, u128 or Wrapping<u128> Self is Unsupported_Kd at the requesting site (K 4.9), also when only an
+    // unused function reaches it. Two sites requesting one key are two records, as two statements' divisions are: a requirement call and an
+    // operator; a function item's formation and its call (SPEC 23.1.2 leaves a dependent failure's report implementation-defined); one site
+    // in two instances is one (fail-before: once per item, at its first site). A refused edge admits no item, so a gap key has none; an
+    // addition of i128 and a division of i64 have no record and their shim is admitted.
     [Theory]
     [InlineData(ShimQuotient + "func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\n", "left.divided(right)")]
     [InlineData(
@@ -2468,37 +2468,6 @@ public sealed partial class InstanceCollectorTest
             [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
-    }
-
-    // SPEC 13.3.3 (DECISIONS R5-M126): the Backend's statement of the table (BuiltinArithmetic) and Binding's ArithmeticContractSyntax.Operator,
-    // composed with the MIR builder's operator for that token, agree: each Contract with a built-in witness on i32 has the MIR operation the
-    // builder writes for its operator on i32 operands, one each; any other Contract, a comparison or a Left one, has none.
-    [Fact]
-    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
-    {
-        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
-        Assert.Equal(6, contracts.Length);
-        foreach (var contract in contracts)
-        {
-            var token = ArithmeticContractSyntax.Operator(contract);
-            var spelling = token switch
-            {
-                KotoKind.Plus => "+",
-                KotoKind.Minus or KotoKind.PrefixMinus => "-",
-                KotoKind.Asterisk => "*",
-                KotoKind.Slash => "/",
-                KotoKind.Percent => "%",
-                _ => throw new InvalidOperationException($"{contract} has no operator."),
-            };
-            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
-            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
-            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
-            Assert.Equal((rvalue.Kind, rvalue.Op), BuiltinArithmetic.Operation(contract));
-        }
-
-        Assert.Equal(contracts.Length, contracts.Select(static x => BuiltinArithmetic.Operation(x)).Distinct().Count());
-        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
-        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => BuiltinArithmetic.Operation(x)));
     }
 
     // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are

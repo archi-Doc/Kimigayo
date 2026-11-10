@@ -114,7 +114,7 @@ internal enum MirBinaryOp : byte
 internal enum MirUnaryOp : byte
 {
     Neg,
-    Not, // Logical on bool, bitwise on an integer.
+    Not, // Logical on bool (SPEC 13.2; MirTypes.Operates).
 }
 
 internal enum MirRefKind : byte
