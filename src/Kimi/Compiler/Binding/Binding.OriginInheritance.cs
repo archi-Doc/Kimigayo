@@ -199,16 +199,16 @@ public sealed partial class Binding
             if (originalDeclaration is not null || inheritedDeclaration is not null)
             {
                 inheritedDeclaration ??= this.OriginDeclarationFor(function);
-                inheritedDeclaration.Scope = scope;
-                inheritedDeclaration.State = 3;
+                inheritedDeclaration.Forming.Scope = scope;
+                inheritedDeclaration.Forming.State = 3;
                 this.originStateVersion++;
                 // A written implementation clause is a claim to check, never its own premise.
                 // Rebuild the environment solely from the original before rebinding the header.
-                inheritedDeclaration.Replacements.Clear();
-                inheritedDeclaration.Relations.Clear();
+                inheritedDeclaration.Forming.Replacements.Clear();
+                inheritedDeclaration.Forming.Relations.Clear();
                 if (originalDeclaration is not null)
                 {
-                    foreach (var replacement in originalDeclaration.Replacements)
+                    foreach (var replacement in originalDeclaration.SubstitutionPairs)
                     {
                         if (ReferenceEquals(replacement.Key.Binder, definition) && replacement.Key.Kind is OriginKind.Parameter or OriginKind.Input)
                         {
@@ -216,7 +216,7 @@ public sealed partial class Binding
                             var to = BindContractOrigin(this.ResolveOrigin(replacement.Value, originalDeclaration));
                             if (!ReferenceEquals(from, to))
                             {
-                                inheritedDeclaration.Replacements[from] = to;
+                                inheritedDeclaration.Forming.Replacements[from] = to;
                                 this.originStateVersion++;
                             }
                         }
@@ -224,7 +224,7 @@ public sealed partial class Binding
 
                     foreach (var relation in originalDeclaration.Relations)
                     {
-                        inheritedDeclaration.Relations.Add(new(BindContractOrigin(relation.Longer), BindContractOrigin(relation.Shorter), relation.Equality, relation.Syntax));
+                        inheritedDeclaration.Forming.Relations.Add(new(BindContractOrigin(relation.Longer), BindContractOrigin(relation.Shorter), relation.Equality, relation.Syntax));
                     }
                 }
             }

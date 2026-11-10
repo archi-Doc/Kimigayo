@@ -143,7 +143,7 @@ public sealed partial class Binding
     {
         var application = AssociatedHead(clause) as OriginApplicationKoto;
         var owner = scope.Owner.BoundSymbol!;
-        if (this.TypeName(member.Left, scope) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
+        if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
             ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
         {
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
@@ -205,7 +205,7 @@ public sealed partial class Binding
                     if (enclosing.Origins?.ContainsKey(name.IdentifierName) == true ||
                         (enclosing.Values.TryGetValue(name.IdentifierName, out var value) && value.Kind is BindingSymbolKind.Parameter or BindingSymbolKind.Local or BindingSymbolKind.Capture) ||
                         enclosing.OriginSets?.ContainsKey(name.IdentifierName) == true ||
-                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Sets.ContainsKey(name.IdentifierName) == true)
+                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Set(name.IdentifierName) is not null)
                     {
                         this.Fail(node, BindingFailure.Duplicate);
                     }

@@ -322,7 +322,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter))
+            if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol is not { IsGenericInput: true })
             {
                 this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
             }

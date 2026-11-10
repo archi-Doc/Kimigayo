@@ -40,7 +40,7 @@ public sealed class CodeContext
     public SourceDocument? SourceDocument { get; }
 
     /// <summary>Gets optional documentation for this source snapshot.</summary>
-    public Documentation.DocumentationSource? Documentation { get; internal set; }
+    public DocumentationSource? Documentation { get; internal set; }
 
     /// <summary>
     /// Gets the current compilation.

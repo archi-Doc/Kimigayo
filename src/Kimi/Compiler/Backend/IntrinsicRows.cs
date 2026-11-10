@@ -89,7 +89,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LayoutNeed.TypeArguments, IntrinsicWriter.Destroy, null),
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Fail, RuntimeAbi.Abort),
-        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Stdout),
         new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
         new(
             IntrinsicId.ErasedWriter,
@@ -122,7 +122,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.None,
             LayoutNeed.None,
             IntrinsicWriter.Buffer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextHeap)!.Abi),
+            LegacyRuntimeHelpers.FormatHeap),
         new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
         new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);

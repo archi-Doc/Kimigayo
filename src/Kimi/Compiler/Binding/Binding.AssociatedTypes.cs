@@ -175,7 +175,7 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { Declaration: ContractKoto } contract)
+        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { IsContract: true } contract)
         {
             if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
             {
@@ -195,7 +195,7 @@ public sealed partial class Binding
         }
 
         var receiverSymbol = receiverPath.Symbol;
-        if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol?.Declaration is ContractKoto && TypeSpelling(receiver) != "Self"))
+        if (receiverSymbol?.Kind == BindingSymbolKind.Container || receiverSymbol is { IsContract: true })
         {
             return null;
         }
@@ -303,7 +303,7 @@ public sealed partial class Binding
         }
 
         receiver = syntax.Left;
-        if (selection is null || (selection.Kind != BindingSymbolKind.Container && selection.Declaration is not ContractKoto))
+        if (selection is null || (selection.Kind != BindingSymbolKind.Container && !selection.IsContract))
         {
             return null;
         }
@@ -336,7 +336,7 @@ public sealed partial class Binding
             name = member.Right;
 
             // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
-            if (this.TypeName(member.Left, scope) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
+            if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
             {
                 this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;

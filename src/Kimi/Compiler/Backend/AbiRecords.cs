@@ -33,9 +33,7 @@ internal enum AbiParameterKind : byte
     Context,
 }
 
-/// <summary>A parameter of a physical signature: its LLVM type, its name, its kind and the logical parameter it passes (-1: none). A Context
-/// with a logical index is a measured capacity: the length of the fixed array that index's parameter receives, which a call writer measures
-/// from that parameter's Type rather than being given it (DECISIONS R5-M128).</summary>
+/// <summary>A parameter of a physical signature: its LLVM type, its name, its kind and the logical parameter it passes (-1: none).</summary>
 internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1)
 {
     internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : string.Empty;

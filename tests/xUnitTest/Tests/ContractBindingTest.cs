@@ -29,6 +29,7 @@ public class ContractBindingTest
     private const string PutAtE = PutOfT + "struct Box<E>\n    Self is Put<E>\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
     private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
     private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
+    private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
 
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
@@ -637,7 +638,31 @@ public class ContractBindingTest
     [InlineData(PutUW + "\n        U is i32\n        return", "UnprovenConstraint_Kd")]
     [InlineData(GetU + "i32 => 0", "")]
     [InlineData(GetU + "bool => true", "IncompatibleContractImplementation_Kd")]
-    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes)
+    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.4.1: `Self` in a Contract's requirement denotes the conforming Type, never the Contract, so `U is Self` is an identity
+    // premise (PLAN G701); a conformance supplies no evidence before its implementations are compatible (8.3.2, 8.3.3). A bound
+    // Contract's requirement reads the same (`Put<X>`), and so do a Contract-wide identity of an associated Type and a Contract nested
+    // in a struct, whose `Self` is the conformer and not the struct (6.1.4). A call through the requirement proves `U is Self` for the
+    // receiver's Type only (8.2.3; the last rows).
+    [Theory]
+    [InlineData(PutSelf + "S\n        return", "")]
+    [InlineData(PutSelf + "Self\n        return", "")]
+    [InlineData(PutSelf + "i32\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("struct R\n" + PutSelf + "R\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract Q\n" + PutSelf + "Q\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData(PutSelf + "Put\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is S", "")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is i32", "InvalidAssociatedType_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Self\n        return", "")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Put<i32>\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("struct S\n    contract C\n        func put<U>(self: ref/Self, u: U)\n            U is Self\n    Self is C\n    public func put<U>(self: ref/Self, u: U)\n        U is S\n        return", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T>(a: ref/T, b: T) -> i32\n    T is Put\n    return a.put(b@move)", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
+    public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
+    private static void AssertBindingCodes(string source, string codes)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(codes.Length == 0, c.Bind().IsComplete);

@@ -11157,6 +11157,30 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
     check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
     restore changed; recorded under G525).
+- **BU-150 What a written `Self` selects is decided by `ResolvePath`** (2026-11-11; Front, Binding; Major; PLAN G701; design review
+  3 ACCEPT with conditions C1-C4, implementation review ACCEPT) SPEC 6.1.5, 8.4, 9.1, 9.3, 9.7. In a Contract a written `Self`
+  selects the Contract's Self Type parameter (`ContractSelfType(contract).Symbol`, SPEC 9.1's conforming-Type binder), in a struct
+  or enum the declaration, and written with Type arguments it has no candidate (`PathEnd.Unresolved`, reported
+  `UnresolvedBinding_Kd`). `BindingSymbol` publishes the two classifications readers of a selection need, with `SelfOf` as the one
+  mark of a Contract's Self.
+  - `IsContract` (`Declaration is ContractKoto` and `SelfOf` is null): "this selection names a Contract". Its twelve readers are the
+    name-selection readers (a requirement's Contract, a projection's Contract, a qualifier's reference, a specification's and a
+    refinement's Contract, a Contract's parents, an effect bound, a qualified access, `HasLookupRole`, `BindNamedType`).
+  - `IsGenericInput` (Kind `TypeParameter`, `SemanticsTarget` or `SemanticsParameter`, and `SelfOf` is null): "this subject is a
+    generic input of its declaration" (SPEC 8.1.1, 8.2.3, 9.1). A Contract's Self is none: a condition on it is an implementation
+    requirement checked at the conformance (SPEC 6.1.4, 8.7.1), never a reference input condition. Its three readers:
+    `BindConstraint`'s `input`, `CheckConstraints`' skip of a non-input clause, `ValidateConstraintUses`' closed-clause test.
+  - A reader whose question is "a Type-namespace symbol" (scopes, resolution, access, display) keeps its Kind test, and the Self
+    parameter takes its Kind's answer. Hover shows the Self parameter's Contract through `SelfOf`.
+  - Reason: `ResolvePath` answered "the enclosing declaration", so each reader that knew the spelling corrected the meaning and the
+    readers that did not accepted invalid programs (`U is Self<i32>`, `Self.(Self).E`, `contract C: Self`, an implementation's
+    `U is <the Contract>` under `U is Self`) and rejected valid ones (`U is Self` against `U is S`).
+  - Rejected: a predicate per reader keyed on the spelling (the held fix, review 1 B1); a "written as Self" fact in the lookup row;
+    a Self parameter with another `Declaration` (`Self.Element` needs the Contract's member scope); a `SelfOf` test at each reader
+    (review 2: the per-reader exclusion again); a symbol Kind of its own for a Contract's Self (a closed-vocabulary entry, not
+    needed).
+  - Open: the struct side (PLAN G701's remaining item); one record kind for every arity mismatch would need a `PathEnd` entry (owner
+    approval), not taken: `Self<...>` reports `UnresolvedBinding_Kd` (the planning session's record selection, Q13).
 - **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
   design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
   owner's O-101 (1)(a), O-122 (a), O-128 (a).
@@ -11224,6 +11248,34 @@ resumed by R4-M86 (2026-10-20).
     (the position's role is Qualifier either way).
   - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
     published reads skip it. RP8 owed (with BU-144's).
+- **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
+  `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
+  15.3.1-15.3.6, 23.1.2.
+  - **Rule.** `OriginDeclaration` (`Binding.Origins.Model.cs`) keeps its state private. Another component reads a declaration only
+    through its read members: `Resolves`, `Substitution`, `Substitutions`, `SubstitutionPairs`; `Completed`, `Relations`, `Body`;
+    `Failure`, `Unavailable`, `PendingCause`, `RejectedRelations`, `FailedClauses`; `Set`; `InferredVariance`; `Owner`, `IsLocal`.
+    They hand out values and spans, never a collection. The formation writes through the `Forming` view, in four files only:
+    `Binding.OriginDeclarations.cs`, `Binding.OriginDeclarations.Failures.cs`, `Binding.LocalOrigins.cs`,
+    `Binding.OriginInheritance.cs`. A `Forming` occurrence forms the declaration it names: it reads no other declaration and answers
+    no other component.
+  - **What it guards.** The members BU-62 and BU-69 gave a meaning: `PendingFailure` (BU-62; read as `PendingCause` by
+    `UnboundCause`), `RejectedRelations` and `FailedClauses` (BU-62, BU-69; read by `ReadFailedContract`), and the question "is the
+    contract unavailable" (`Unavailable`, the rule `FailOriginDeclaration` applies; its four readers were `Failure is not null`
+    tests on non-local owners, where the answers are equal). The type's contract states what a failed declaration answers today;
+    this entry changes none of it.
+  - **Enforcement.** The compiler (a state member is private) and `ArchitectureRulesTest.SourcePatternStaysAtItsSites`, row
+    "Formation of an Origin declaration" (`\bForming\b` per file). A new reader is a new caller of a read member; a new formation
+    site moves a count and is reviewed.
+  - **Reason.** The state had 14 internal members read and written at 153 sites in 18 files, with no reader's contract, so a census
+    of the readers of a failed contract chose member names by hand; three design rounds of H11b-0 missed readers (review 4: the
+    substitutions). The readers are now the read members' callers, which the compiler lists.
+  - **Rejected:** a text census by member name (the cause); a ratchet without private state (a new member escapes it); moving the
+    formation into the type (it needs `Binding`'s `Meet`, `BindOrigin` and `Fail`); a second "unavailable" rule beside
+    `FailOriginDeclaration`'s (it reads `Unavailable` instead); naming `State`'s four values (only `Resolves` and `Completed` leave
+    the type).
+  - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
+    inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
+    inference (`InferLocalOrigins`), stated from the code and not probed.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -13410,6 +13462,10 @@ structure is recorded here by the unit that first implements it.
     walking a Type itself beside `Parts` (a second enumeration, X27); glue text in `DropGlue` (its contract; R5-M86 confirmed the writer
     in FunctionCodegen); inlining a part's glue into its parent's (no function per Type, X3, and text growing with nesting); writing the
     collection and handle rows through the legacy helpers here (C6b's and C8d's/C8e's rows).
+  - Superseded in part by R8-M29 (PLAN G702): its reading of `DropGlue.Parts` as the one enumeration the collector targets from and
+    the glue writer writes from: the one enumeration is `MirDropTable`'s walk, which `DropGlue.Destroyed` and `DropGlue.Level` map;
+    `DropGlue.Parts` keeps only the parts no move path names (a declared destructor, a collection's element Types, a Sealed
+    payload). Its one level per Type, its rows and its parameters stand.
 - **R5-M96 Gate step 2 of MIR code generation over A2's per-body fact (C4a-2)** (2026-10-22; under R5-M4 and R5-M18 form 1)
   - Rule (PD12): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so MIR code generation writes no body A1 or A2 left inexact.
     The fact is `MirDropTable.Incomplete(body)` (ask A-2b, R4-M102): A1's or A2's first problem in the body, an inline copy's included,
@@ -13930,6 +13986,8 @@ structure is recorded here by the unit that first implements it.
     in C8b).
   - Superseded in part by R8-M17 (R8-U1): `replace`, `exchange` and `swap` are Kimigayo bodies; the Updates paragraph, the update rows of
     the legacy map (`LegacyWriter.Replace/Exchange/Swap`, `LegacyRow.Updates`) and `FunctionCodegen.Updates` are gone.
+  - Superseded in part by R8-M22 (R8-W1c-2b): the map's writer column is gone: `LegacyWriter` and `LegacyRow.Writer` are deleted,
+    and `LegacyRow` is `LegacyRow(FunctionAbi Routine)`, `writeLine`'s routine alone.
 - **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, after C8b's design and before its behavior commit; verbatim
   「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two (R5-M115) and C8b's two) The two departures R5-M116
   records are confirmed: an inline Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no
@@ -14292,6 +14350,8 @@ structure is recorded here by the unit that first implements it.
     - the collector skipping the Builtin target (K row 2: the target decides the user-formatter case and names the Self);
     - bringing C9b's BuiltinFormat shim forward (the plan's boundary);
     - re-pointing the old lowering to the map (D5).
+  - Superseded in part by R8-M22 (R8-W1c-1 to W1c-2b): its formatting rows are Kimigayo bodies or gone, and the `Formatting` writer,
+    `LegacyRow.Needs`, the measured capacity Context (`Measure`) and `WitnessKind` are deleted.
 - **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26; the owner's 「a) 設計して直す お願いします」 (2026-10-26, on G:library-2's held
   review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類 MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; partly
   supersedes R5-M121 and R3-5's interim mapping for the Array literal)
@@ -14425,6 +14485,9 @@ structure is recorded here by the unit that first implements it.
   - Amendment (2026-11-01, PLAN G157 (40)): the two runtime ABIs stated twice are each stated once: `StatusFormatting` went with C9c's
     bp1 (R5-M131) and the old planner's wrapper ABI with the old generator at G7 (R5-M162), so `LegacyRuntimeHelpers.FormatHealthy` and
     `ModuleCodegen.WriteParameters` are the only copies, read by the write wrapper; SPEC 22.10.1's user-formatter frame is that wrapper alone.
+  - Superseded in part by R8-M22 (R8-W1c-2, after R8-M18's W1b-4): its Wrappers bullet: the write wrapper,
+    `WriteFormattingConversion`, `FormatHealthy` and `ModuleCodegen.Formatting` are deleted; a Body formatter is called by the
+    `write<T>` body's instance, and `toString` and `tryFormat` are bodies.
 - **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27; under R3-10, R5-M18 form 2
   (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
   - Estimate: code generation writes R3-10's three temporary intrinsics from each call's own operands, the literal bytes, the values'
@@ -17335,7 +17398,7 @@ R8-M* and R9-M* by the stage of the recording unit.
       arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`);
     - `__kimi_buffer_bytes` as a plain define: removed with its last caller (`{{text_try_format}}` and `WriteFormattingConversion` at W1c,
       `format_take_string` at W2);
-    - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c).
+    - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c); done, R8-M22 (W1c-1).
   - Moves: acceptance, the buffer half of `BodylessWitness` (a `BufferWriter` requirement call or requirement Item at either buffer is
     accepted; no corpus program uses it, R5-M146; diagnostic snapshot 0 differences); `.ll`: 546 of 6,139 fixtures move, 84 in the
     formatting runtime text only, 404 in the runtime text plus one library location constant (HeapBuffer's `drop` calls `Text.release`
@@ -17583,6 +17646,181 @@ R8-M* and R9-M* by the stage of the recording unit.
 
   - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
     O-150 (a)).
+  - **The write body** (W1b-4): `Utf8Writer.write<T>` is a Kimigayo body in `Formatting.kimi` (SPEC 22.10.1): the recorded failure
+    without formatting; otherwise `value.format(self)` once, an `.Ok` healthy unless a nested write recorded; else `failed = true`
+    and `Err`. `failed` is a `var` (W1b-3 already made it one). The catalog row is `SourceFunction`, **`CallerLocation`** (revision
+    2's F1, B's family rule: a library body that can Abort on the caller's behalf takes `CallerLocation`; a built-in `format`'s
+    reservation can Abort, so the instance forwards the user's location to its witness, SPEC 22.5.1) and `Row: FormatsValue`, which
+    RP20's body-against-row check (`MirEffectsTest.EachRowOperationsBodyStaysWithinItsRow`) now covers: 31 bodies, nothing outside
+    the row.
+  - **Generated code** (W1b-4): one `write<T>` instance per value Type per module, shared by its callers (direct writes, `format`
+    bodies, an owning interpolation's value writes), calling its value's witness (a BuiltinFormat shim or the user's `format`).
+  - **Temporary** (W1b-4), each removed by an event:
+    - `LegacyRuntimeHelpers.WriteBuiltin` (`__kimi_writer_write_builtin`'s ABI without a row; its template expanded from it):
+      removed when the conversions become bodies (W1c) and `SegmentText`/`FormatLiteral` leave the runtime (W2); R8-M22 (W1c-2)
+      removed its conversion callers, so it goes at W2;
+    - the write wrapper over a Body formatter (`ModuleCodegen.Formatting`'s `Wrapped[0]`), now called only by the conversions: W1c;
+      done, R8-M22 (W1c-2).
+  - **`Wrapped`** (W1b-4) states the conversion's fixed-buffer flag as a column (design review Q5) instead of comparing ABIs by
+    reference.
+  - **The `FormattingContainer` arm for `WriteWindow`/`Utf8Writer`** (W1b-4; design N3): it was not dead once the signature files
+    went — `KimiLibrary`'s `formattingScopes` read it to find the five catalog rows' container. The arm is deleted by giving those
+    rows (`WindowLimit`, `WriterWrite`, `WriterStatus`, `WriterReserve`, `WriterWriteUtf8`) the catalog's existing `Owner` lookup
+    (as `DictionaryStorage`'s rows: a root struct's members, parent scope the library's), so `KimiLibraryContainer` loses
+    `WriteWindow` and `Utf8Writer` (14 → 12) and the scope loop keeps only the two `Text` buffers. The buffers' arm (`FixedBuffer`,
+    `HeapBuffer` under `Text`) stays: `Owner` names a root struct only.
+  - **W1b-3 review notes** (W1b-4): `ReadFormattingRuntime` seeds every `ErasedWriterDefinitions` name (W1b-2's N3); `settled`'s
+    pending `append` carries a comment on why it cannot fail (every kind reserved `amount + pendingLength`).
+  - **The Front's line** (W1b-4; C-192, consent YES 21:29): `Binding/Binding.Lints.cs:478`, the `OwningWriteArgument` lint, reads
+    `Target.LibraryDeclaration: KimiDeclarationId.WriterWrite` instead of
+    `Target.CompilerFunction: CompilerFunctionKind.WriterWrite` (design §2's table). Its test class is `Utf8TryWriteTest`.
+  - Counts (RQ9; W1b-4, on its base): `CompilerFunctionKind` 39 → 38 (−`WriterWrite`, value 19; `WriteLineUtf8`..`RawSlice` renumber
+    20..38 → 19..37; `None` included). `KimiDeclarationId` unchanged (`WriterWrite` keeps its Binding readers). Catalog entries
+    unchanged. `KimiLibraryContainer` 14 → 12. `Utf8Writer.kimi` and its loader line deleted.
+  - Tests moved by route (W1b-4; rewritten, not weakened): `InstanceCollectorTest.AFormattingCallIsItsValuesFormatWitness` (each
+    caller → the shared `write<T>` instance → the same witness); `FunctionCodegenTest.ASegmentWritesItsLiteralTextAfterItsHint` ×2
+    (the same step lists; a value write is the instance, named by its shim's kind); `AUserFormatterRunsThroughItsWrappers` (a direct
+    write is the instance with the user's location; the wrapper is the conversions'); `FormattingRowsGiveTheirTargetsKind`'s seven
+    write rows (removed by the probe) restored through the instance's shim. New:
+    `FunctionCodegenTest.ABuiltinWriteReportsItsCallersLocation` (IR: a direct and an interpolated write pass the user's location,
+    the instance forwards its received pair) and the native `Utf8WriterTest.AFailedAllocationInsideABuiltinWriteReportsTheWrite`
+    (`Hello.kimi:3:5: abort KIMI_E_ALLOC`).
+  - Census moves (W1b-4; 0 problems, the rule unchanged): `TyCtxtTest.WitnessResolvesEveryRequirementCallOfTheCorpus`'s corpus
+    counts Body 34 → 37 and Builtin 2 → 174: each `write<T>` instance the corpus makes adds its `format` requirement call; every one
+    resolves. `MirEffectsTest.EachRowOperationsBodyStaysWithinItsRow` 30 → 31 bodies.
+  - Moves (W1b-4, at 439c8a20e against the W1b chain's Session at c694748d1): no acceptance, record, snapshot or allocation-count
+    move; no MIR golden moved (`MirDumpTest` passed); 5,670 of 6,150 common `.ll` identical, 480 differ, 1 added
+    (`Utf8WriterBuiltinWriteFailure`, PASS O0/O2), natives 6,150 equal. The 480, by class (the runtime routines' text is identical
+    in every one):
+    - 26 library location lines only (`Formatting.kimi` lines after `write<T>` shift by 16: the buffers' and window's
+      caller-location sites);
+    - 452 value writes (direct, in `format` bodies, an owning interpolation's values, `$tryWrite`'s values) call the `write<T>`
+      instance instead of `__kimi_writer_write_builtin` or a `__kimi_write<N>` wrapper; the instance and its witness are defined;
+      generated functions, drop helpers and constants renumber;
+    - 2 renumbered only (`Utf8ConsoleReturn`, `Utf8InterpolationReturn`): a write after an early `return`; its instance is collected
+      and checked but not emitted, so later functions take new numbers.
+  - Not run (W1b-4): RP8 (the Interpolation kernel is the gate, in B's slot), with `Utf8CompilationCostTest`'s Generate A/B there
+    (its allocation bounds pass; the test has no instance-count row: the instance counts are the IR rows above, one `write<T>` per
+    value Type).
+- **R8-M22 `Text`'s functions and `Console.writeLine(Utf8Slice)` are Kimigayo bodies; `Text.release`, `WriteLineUtf8`, the
+  conversion routines, the write wrappers and the legacy Formatting writer go** (Back, 2026-11-10; R8-W1c-1, W1c-3 and W1c-2 with
+  W1c-2b, plan §5.2 W1 c; family design reviews 1 (W1c-1 ACCEPT; W1c-2 REVISE, answered by revision 1) and 2 (W1c-3 ACCEPT);
+  implementation reviews ACCEPT (W1c-1's and W1c-2's second); the owner's O-108 (a) (W1c-3's producer kind); the Middle's C-200; on
+  R8-M1, R8-M2, R8-M5, R8-M6, R8-M16 (W1a) and R8-M18 (W1b, with W1b-4); the library-sized tables: R8-M28; supersedes in part
+  R5-M116, R5-M128 and R5-M130) SPEC 5.7, 8.11.2, 22.5.1, 22.7, 22.9.2, 22.9.3, 22.10.1, 22.10.3, 22.10.5.
+  - **The `Text` constructions** (W1c-1): `Text.fixed`, `heap`, `utf8` and `validateUtf8` are functions of `group Text` in
+    `Formatting.kimi`. `fixed` returns `FixedBuffer.init(destination@follow@raw@raw/u8, destination.length)`, a new internal init
+    with stated obligations (the `WriteWindow.init` form). `heap` is `HeapBuffer.init()` (no allocation; `null` in its `during self`
+    layer, SPEC 5.7) plus, for a nonzero capacity, one `reserve(capacity)`: the growth rule's one statement grows an empty buffer to
+    exactly `capacity`, one allocation; its row is `CallerLocation`, so its `KIMI_E_ARG_RANGE` and allocation Aborts report the
+    caller (SPEC 22.5.1). `utf8` is the `Storage.StringRepr` pun (IMPL 21.1.3, R8-M1). `validateUtf8` runs `Text.validUtf8`, which
+    ends W1a's `__kimi_utf8_valid` (R8-M16's temporary). HeapBuffer's `drop` calls `Raw.release` (null and zero-byte results
+    ignored, as `__kimi_free` did), so `Text.release` and its id go.
+  - Ids (W1c-1): `TextFixed`, `TextUtf8`, `TextValidateUtf8` and `TextRelease` are deleted (no compiler reader; header pins by
+    container path and name, as W1a's); `TextHeap` stays (`Binding.Interpolation`'s plan reads it; `CallerLocation` row).
+  - **Temporary** (W1c-1), removed by an event: `LegacyRuntimeHelpers.FormatFixed` and `FormatHeap` (`__kimi_text_fixed`,
+    `__kimi_text_heap` without rows): FormatBuffer's routines and the conversions'; a second statement of the two constructions (the
+    runtime's FixedBuffer words, the heap allocation) beside `Text.fixed`'s and `Text.heap`'s bodies; removed at W2 (FormatBuffer
+    replaced by the library adapter), after W1c-2 removes the conversions' use (done; both stay for FormatBuffer, below).
+  - Rejected (W1c-1): H2, `HeapBuffer.init(data, capacity)` with the claim `data@(raw/u8 during self)`: in an `init` the claim is
+    `UnsatisfiedOriginRelation_Kd` (W1a's claim works only in a `uniq/Self` member), and it would state the allocation a second
+    time.
+  - Counts (RQ9; W1c-1, on its base): `CompilerFunctionKind` 38 → 33; `KimiDeclarationId` 185 → 181; catalog entries 181 → 177;
+    `Utf8BufferRuntime.ll.in` 246 → 148 lines. `IntrinsicId` unchanged.
+  - Moves (W1c-1, against W1b-4's Session at 439c8a20e): acceptance and records none (diagnostic snapshot 0 differences); 558 of
+    6,151 `.ll` fixtures move (59 in the formatting runtime text only, 103 call a Text body instance, 396 HeapBuffer's `drop` calls
+    `Raw.release`, with its library location); a module using only `Text.heap` no longer includes the formatting runtime; natives
+    `*.ll` 12,302 executions pass and 6,151 outcomes equal (allocation counts unchanged).
+  - **The producer** (W1c-3; the owner's O-108 (a) approved the producer kind; R8-M5's precedent, `StorageDestroyValues`):
+    `internal unsafe func writeStdout(data: raw/u8, length: isize)` in the signature-only `Console.kimi`, with its `- safety:` line;
+    kind `CompilerFunctionKind.ConsoleWriteStdout`, disposition `Intrinsic(WriteStdout)`, Effect `Environment` beside `WriteLine`
+    (SPEC 8.11.2); its `IntrinsicRow` is `Routine` over the new `RuntimeAbi.Stdout` (`__kimi_stdout`'s ABI with the location pair,
+    which the call writer fills from the call site or, in a caller-location body, forwards). `__kimi_stdout` is written into every
+    module, so the row needs no Requests column. `MirDescriptors`' `WriteStdout` row (`MirAccess.None`, Environment) gets **arity
+    2** (the bytes and their length; A3 E14, `MirValidatorTest.AnIntrinsicsRowCoversItsDeclaration`), the Middle's consent C-200
+    (the design held that the row fits unchanged; the first Session found that it does not); since W-144 (G709) the row is written
+    `Intrinsic(MirEffect.Environment, 2)`. Its missing Abort effect is PLAN G730.
+  - **The view print** (W1c-3): `writeLine(text: Text.Utf8Slice)` is a body in `public group Console` (`Formatting.kimi`): the
+    view's data through the `Storage.SliceRepr<u8>` pun (IMPL 21.1.3), then one LF from a local byte; its catalog row is
+    `SourceFunction`, `CallerLocation`, so `KIMI_E_STDOUT` reports the user's `Console.writeLine(...)` (SPEC 22.5.1). The body is
+    read before `Console.kimi`, so the overload rows swap (`WriteLineUtf8` `Overload: 0`, `WriteLine` `Overload: 1`); ids unchanged;
+    resolution is by Type (SPEC 22.7).
+  - Deleted (W1c-3): the `WriteLineUtf8` kind, its formatting row and `{{__kimi_write_line_utf8}}`. **Kept, unlike the design's §5
+    (a deviation B accepted):** the Formatting legacy writer (`LegacyWriter.Formatting`, `LegacyRow.Needs`, `Row`'s Body arm,
+    `FunctionCodegen.Formatting`), because on W1c-3's base `TextToString` and `TextTryFormat` still use it; W1c-2, which makes them
+    bodies, deletes it with its last users (W1c-2b, below).
+  - RP8 (W1c-3; review 2, N2): the view print's evidence form is VERIFICATION's `-O2Metrics` on the `Utf8Console*` fixtures (base
+    against candidate), with the Bind A/B/A′ and the O2 corpus A/B; no corpus kernel times the view overload (a line-count/SHA-256
+    corpus form was rejected as a second form of one check). W2's string overload over this body reuses the same evidence form.
+  - Rejected (W1c-3): L2 (keep `WriteLineUtf8` until W2; the fallback had O-108 rejected the class); a producer over `Slice<u8>` (a
+    Slice is passed as an owned slot, so it would need a new writer for one row); the LF as `Text.utf8("\n").bytes()` (a view of a
+    temporary).
+  - Counts (RQ9; W1c-3, on its base): `CompilerFunctionKind` 33 → 33 (−`WriteLineUtf8`, +`ConsoleWriteStdout`); `KimiDeclarationId`
+    181 → 182; catalog entries 177 → 178; `IntrinsicId` unchanged (`WriteStdout` `Unproduced` → `Routine`);
+    `Utf8BufferRuntime.ll.in` 148 → 138 lines.
+  - Moves (W1c-3, against W1c-1's Session): acceptance and records none (diagnostic snapshot 0 differences); natives `*.ll` 12,302
+    executions pass and 6,151 outcomes equal; 552 of 6,151 `.ll` move, 527 W1c-3's (83 view prints call the `writeLine` body
+    instance, which calls `__kimi_stdout` twice, instead of `{{__kimi_write_line_utf8}}`, 9 of those modules now without the
+    formatting runtime; 444 the formatting runtime text only, 403 of them with W1c-1's fix's location lines) and 25 W1c-1's fix
+    `f8e9a457e` only.
+  - **The conversions** (W1c-2, T1): `toString<T>` is `return "\(value)"`, the owning interpolation of the one value (SPEC 22.9.2
+    and 22.10.3 state one meaning for one value): FormatBuffer's estimate is `FormatBound` by Type (0 for a string or a view), then
+    the one exact reservation, as the deleted `__kimi_format_capacity` read `@__kimi_format_bounds`; W2 rewrites that one path.
+    `tryFormat` is a body over `Text.fixed`, `Text.writer` and `write<T>` (`try`), then `intoText`, whose `Err` arm is `$abort`
+    (adapters commit only valid UTF-8, SPEC 22.9.3). Both rows `SourceFunction`, `CallerLocation`, `Row: Formats`; both kinds leave
+    `CompilerFunctionKind`.
+  - Locations (W1c-2; revision 1, F1): both are caller-location bodies and W1b-4's `write<T>` row (R8-M18) is `CallerLocation`, so
+    FormatBuffer, FormatCheck, FormatFinish and a growth or size Abort inside the write report the user's `Text.toString(...)` /
+    `Text.tryFormat(...)` (SPEC 22.5.1).
+  - Deleted (W1c-2): `{{text_to_string}}`, `{{text_try_format}}`, `__kimi_format_capacity`, `__kimi_format_healthy`,
+    `@__kimi_format_bounds` (from S2d2's list, S2 revision 2); the write-wrapper machinery (`ModuleCodegen.Formatting.cs`,
+    `FunctionCodegen.WriteWrapper`, `Formatting`'s kind Context and Body arm, `WitnessKind`, `WriteFormattingConversion`,
+    `FormatHealthy`, the C# `WriterFail` ABI); the measured capacity Context (`Measure` and its arms in `Pass` and `Forward`, and
+    `ReferencedType`, `Measure`'s one user; `FormatFixed`'s capacity is a given Context word); `InstanceCollector.Bodyless`'s
+    published-`Runs` branch (no bodiless function has a `Runs` row). On the merge R8-U1 (R8-M17) had deleted Bodyless's `Destroys`
+    branch, so `Below`, whose two callers those branches were, is deleted too; `Runs` and `GlueOf` keep their other callers.
+  - **The legacy Formatting writer** (W1c-2b) is deleted: after W1c-2 (`toString`, `tryFormat`) and W1c-3 (`writeLine` of a view) no
+    Body-disposition kind has a formatting routine row. `LegacyWriter` is deleted whole (`Formatting` had no user, and `Routine`
+    alone would have been left), with `LegacyRow.Writer` and `LegacyRow.Needs`, `LegacyRuntimeHelpers.Row`'s formatting arm,
+    `FunctionCodegen.Formatting(LegacyRow, ...)` and `Routine(LegacyRow, ...)`; `Legacy` loses its target and `Routine(item, ...)`
+    its source parameter. `LegacyRow` is `LegacyRow(FunctionAbi Routine)`, `writeLine`'s alone; `Row` still throws for a Body kind
+    without a row (R5-M116's contract; unreachable while `None` and `WriteLine` are the only Body kinds). Both go with `writeLine`'s
+    body at W2 (review 1 N5).
+  - **Supersedes in part** (they stay as history): R5-M116's and R5-M128's `LegacyRow(Writer, Routine)`, the closed `LegacyWriter`
+    and the Formatting writer (R5-M128's `Formatting` writer with `LegacyRow.Needs`, the measured capacity Context and
+    `WitnessKind`); R5-M130's wrappers (the write wrapper, `WriteFormattingConversion` and `FormatHealthy`), replaced by the
+    `write<T>` body (R8-M18, W1b-4) and the conversion bodies.
+  - **PLAN G690 closed** (W1c-2b): `Text.tryFormat`'s 133-column header is wrapped within STYLE's 120 columns (as
+    `Array.tryGetPairUniq`'s), and `KimiLibraryShapeTest`'s `HeaderLines` reads the declaration's first source lines, as many as the
+    pin states, so a wrapped header and a one-line one are one pin form (W1c-2 revision 1 B1).
+  - Rejected (W1c-2): T2 (`heap`, `writer`, `write`, `intoString` with a new Fail kind for `KIMI_E_FORMAT`: a vocabulary entry for a
+    meaning the interpolation states; bounded values' bytes would move); T3 (keep `TextToString` as a kind until S2d2: a Builtin arm
+    beside a body is a second form for one function).
+  - Temporaries (W1c-2): `LegacyRuntimeHelpers.FormatFixed` (`__kimi_text_fixed`) is **kept**: W1c-2b removed no caller. Its two
+    callers are `FunctionCodegen.Interpolation.cs:65` (FormatBuffer's buffer over an owning interpolation's stack Region) and
+    `__kimi_text_heap`'s template (`Utf8BufferRuntime.ll.in:29`; `FormatHeap`, FormatBuffer's routine). Both are W2's to remove,
+    with `FormatHeap`. `WriteBuiltin` (R8-M18) loses its conversion callers; removed at W2 (SegmentText, FormatLiteral).
+    `FormatBound` is the only bound table until W2.
+  - Counts (RQ9; W1c-2 with W1c-2b, over W1c-3's head c1aeeee7a): `CompilerFunctionKind` 30 → 28 (`TextToString`, `TextTryFormat`);
+    `LegacyWriter` 2 → 0 (the enum is gone; R8-M11 left it at 5 and R8-M17's deletion of `Replace`, `Exchange` and `Swap` at 2);
+    `KimiDeclarationId` unchanged; `Utf8FormatRuntime.ll.in` −64 lines.
+  - Moves (W1c-2): counted with the chain's (below); `Formatting.kimi`'s lines from `tryFormat`'s header on move down two (the
+    `- return:` line, review 1 N7) and from its body on four (the wrapped header, W1c-2b).
+  - **The chain** (W1b-4, W1c-1, W1c-3, W1c-2 with W1c-2b; one window): R8-M28 (R8-W1c-2a's library-sized tables, with its RP8
+    exception until R8-L1), with G665 (BU-148), lets W1c-1 pass its two cold-Bind scaling rows
+    (`InferenceSlotScalingTest+AllocationTests.AColdBindOfCallsIsLinear("calls")`,
+    `TypeDagScalingTest+AllocationTests.AColdBindOfAnInheritanceChainIsLinear`), which fail from W1c-1 on without it, so the chain
+    lands after R8-M28's unit. The chain's library stays inside `KimiLibrarySize.Stated`'s Granules
+    (`KimiLibraryShapeTest.TheStatedSizeIsTheLibrarys` and `TheLibraryLeavesEachSizedTableItsRoom` pass at its top), so it restates
+    nothing.
+  - Moves at landing (the chain against dev's Session at 5d7c6b4ae): acceptance and records none (diagnostic snapshot 0
+    differences); 558 of 6,152 `.ll` move (by unit: W1b-4 480, W1c-1 557, W1c-3 551, W1c-2 558), 0 unexplained, and no fixture still
+    defines a deleted routine: each loses the deleted formatting routines, and 78 also call body instances for the conversions; the
+    added natives `Utf8WriterBuiltinWriteFailure` (W1b-4) and `Utf8ConversionAllocationFailure` (W1c-2) pass O0 and O2, and the
+    other 6,152 native outcomes are equal.
+  - Counts at landing (the chain over dev b1066023b, counted on 2a9edb2e3): `CompilerFunctionKind` 36 → 28, `KimiDeclarationId` 181
+    → 178, `KimiLibraryContainer` 14 → 12, `LegacyWriter` 2 → 0, `IntrinsicId` unchanged; `Utf8BufferRuntime.ll.in` 246 → 138 and
+    `Utf8FormatRuntime.ll.in` 599 → 535 lines. The units' counts above are each unit's on its own base.
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
@@ -17658,6 +17896,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       IR: 119 of 6,151 `.ll` move, all classified (77 no longer switch to an Open enum's Case holding only Elide parts, one also
       losing a glue function; 2 lose Elide-only glue functions; 40 renumber items); natives equal.
     - **Rejected:** keeping `Elided` beside the walk (two statements of one rule).
+  - Superseded in part by R8-M29 (PLAN G702): its Rule's statement that `DropGlue.Destroyed` is the one statement of what destroying
+    a value by a drop group's row destroys (its `Walker`, `Governing`, `Highest`), and its Rejected option "moving the part order to
+    Mir so A4 shares the walk (a larger unit)": the one walk is Mir's, `MirDropTable.Destroyed` and `MirDropTable.Level` over SPEC
+    16.3.2's level order (`MirTypes.LevelCount`, `MirTypes.LevelPart`), whose steps `DropGlue.Destroyed` and `DropGlue.Level` map to
+    glue parts.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -17779,6 +18022,57 @@ R8-M* and R9-M* by the stage of the recording unit.
     every library unit); a capacity or a room per table; one room for every table (U) and two rooms over six tables (H); `KeyedRoom`
     2,048 with or without the library-only kind (revision 2, d: more large-object bytes and gen2 collections); selection by entry
     count (it admitted a table whose step is smaller than an excluded table's).
+- **R8-M29 SPEC 16.3.2's order of a level's parts is one Mir Type fact (`MirTypes.LevelCount`, `MirTypes.LevelPart`); A2's
+  destruction walk composes it with a group's rows, and the builder and the Backend read it (PLAN G702)** (Back with the Middle's
+  consent, board C-212; Major: a contract across phases; no acceptance, record or IR move).
+  - **Supersedes in part.** R8-M23's rule that "`DropGlue.Destroyed` … is the one statement of what destroying a value by a drop
+    group's row destroys" (its `Walker`, `Governing`, `Highest`) and its rejected option "moving the part order to Mir so A4 shares
+    the walk (a larger unit)"; **R5-M95's reading of `DropGlue.Parts` as "the one enumeration the collector's DropGlue items target
+    and FunctionCodegen.Glue writes from"**: the one enumeration is now `MirDropTable`'s walk, which `DropGlue.Destroyed` and
+    `DropGlue.Level` map; `DropGlue.Parts` keeps only the parts no move path names (a declared destructor, a collection's element
+    Types, a Sealed payload). R5-M95's one level per Type, its rows and its parameters stand; R5-M60 stands; R4-M6b's Field cleanup
+    of a destructor body stands and now reads the fact.
+  - **Rule.**
+    - **The fact and its owner.** `MirTypes.LevelCount(type)` and `MirTypes.LevelPart(type, rank)` (`Mir/MirTypes.Destruction.cs`,
+      the Type facts' owner) are the one statement of SPEC 16.3.2's level order: a Type's direct parts in destruction order, by
+      rank, as move-path steps (a Tuple's elements and a Closure's captures from the last; a fixed array's elements from the last;
+      an enum's Case payloads by ordinal; a struct's Fields in reverse declaration order, then its direct base). Body-independent:
+      no body, row or verdict is read. A rank no part has is a broken contract (`InvalidOperationException`, InternalInvariant).
+      `MirBody.PartType` gives a part's Type.
+    - **Its readers.** `MirDropTable.Destroyed` (a group's walk: the level composed with the group's rows) and `MirDropTable.Level`
+      (the level no row governs, a glue function's) in `Mir/Analysis/MirDrops.Destroyed.cs`, as `MirDropStep`s (built only by
+      `MirDropStep.Whole`, `Run`, `Open`, `End`; no optional parameter, CR-R2); a fixed array's elements are walked down from the
+      first rank's position to the last rank's, both read from the fact, each run of elements without a row one Run step.
+      `MirBuilder.FieldCleanup` (a destructor body's cleanup of its layer's parts) reads the fact and keeps only its own filter
+      (`MirTypes.MayNeedDrop`) and its `DropAt`: the builder reads no analysis. A4 (`MirEffects.Dropped`) reads each Whole and Run
+      step's Type, as a set. The Backend maps: `DropGlue.Destroyed` and `DropGlue.Level` map each step to its glue part (the
+      aggregate writer's position, a Case's ordinal) and state no order of any aggregate's parts; a Case payload destroyed whole is
+      mapped through `MirDropTable.Level` of the payload Tuple under the payload's rows.
+    - **The census by search.** Every iteration over a Type's parts in `Mir/**` and `Backend/**` (every reverse loop, every loop
+      over a Type's components, Case payloads, captures, Fields or length) is classified: the fact; reads the fact; not a
+      destruction order, with its rule; kept with its reason. No copy of SPEC 16.3.2's level order remains. Kept: `DropGlue.Parts`'
+      collection element Types (not a level; read as a set); a Run's direction (`MirDropStepKind.Run`'s definition, which cites the
+      fact, and the Backend's Run loop that realizes it).
+    - **The walk's cost.** A walk reads the rows below its row in two passes (their count; their index, each row under its parent
+      row and its part's key, sorted once), then searches the index once per part of an Open level: linear in the group's rows at
+      any width and depth but for the sort and the searches' logarithm (bounded by `MirDropTest`'s width and depth rows). A row with
+      nothing below builds no index.
+    - **The child-row contract.** A child row of an Open row names a direct part of that row's Type: `MirDropTable`'s contract, met
+      by A2's writer by construction; the walk and `MirValidator` check nothing (an assertion, if ever wanted, belongs at A2's row
+      creation as `InternalInvariant_Kd`).
+  - **Why.** A4 and the Backend each derived the destroyed parts from the Type and the rows, a glue function's level restated the
+    same order, and the builder's Field cleanup stated the struct level a third time; the order is a language rule about a Type, so
+    it is a Type fact, and Mir is the only place every reader reaches.
+  - **Rejected:** keeping `DropGlue.Parts`' aggregate arm for glue functions beside Mir's walk for groups; the Backend's own loop
+    over a whole Case payload's elements; the order written in the walk with the builder's loop beside it; the builder reading A2's
+    walk (Mir/Build would read an analysis); a level scanning its whole subtree for its child rows; an index keyed by a rank (the
+    order stated again as a sort key); a walk with an ascending arm no Type has; A2 publishing the destroyed parts as rows; an
+    unordered Mir walk; a walk parameterized by a part enumerator; a check of the child-row invariant in the walk or in
+    `MirValidator`.
+  - **Temporary, with its removal condition.** `MirDropTable.Level` gives a fixed array without an element one empty Run: a need of
+    the Backend's stated in Mir's level, not of the order. The instance collector requests the element's glue from that Run and code
+    generation reads that target for `[0 of T]`; it writes no loop (the Run has no element), so the checked set and generated code
+    are as before G702. It goes with the unit that stops requesting and reading that target (a candidate B holds).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
@@ -17896,3 +18190,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     changes either the manifest's bytes or a failure: R9-B1's, with its manifest revision); a text-pattern ratchet row (it counted
     Build's own imports and missed aliases and a namespace declared outside the folder).
   - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
+  - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
+    type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+- **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
+  part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
+  ACCEPT; the Front's consent C-224 and the Back's C-225)
+  - Rule: `src/Kimi/Documentation` (namespace `Kimi.Documentation`) is the documentation model: the limited-profile Markdown parser
+    and its immutable document (SPEC 2.3), item classification against a declaration's parameters (`DocumentationMarkdown`), HTML
+    rendering and link resolution (`DocumentationLinks`), the Unicode punctuation table and its generator.
+  - Dependency rule (ARCH "Dependency rules", the Documentation row; the code's statement is the header of
+    `Documentation/DocumentationMarkdown.cs`). Documentation reads, of the compiler, exactly: Core's association
+    (`DocumentationComment` with its `DocumentationText`, `DocumentationSource.LogicalName` (a comment's `Owner`),
+    `DocumentationDiagnostic`); Core's `SourceDocument`, the comment's and the text's `Source` (its `SourceText`, to map an original
+    CRLF; passed into `DocumentationDiagnostic`); a declaration's syntax (`Koto`, `FunctionKoto`, `DeclarationContainerKoto`,
+    `PropertyAccessorKoto`: generic parameters, origins, parameters, modifiers with `ModifierKind`); its Binding facts only through
+    `HirTables.Symbol` (R5-M193); its `Kotonoha`, the default project identity; `SourceSpan`; Helper's `IntegerTable`. It writes no
+    compiler state, starts no Binding and reads no Koto semantic slot.
+  - The association (`DocumentationSource` with `.Transfer`, `DocumentationComment`, `DocumentationText`, `DocumentationDiagnostic`)
+    is the compiler's own input record: `Compiler/Core`, namespace `Kimi.Compiler`, beside `Kotonoha.Documentation` and
+    `CodeContext.Documentation`. The Tokenizer and the Parser write it, Binding selects fragments from it (`GetDocumentation`), the
+    library sources share its candidates, Documentation reads it.
+  - No file of `Compiler/`, `Testing/` or `Diagnostics/` reads a Documentation type; its readers are hover's projection in check
+    (`HoverBuilder`, `HoverFacts`, `HoverPlacement`) and the LSP's rendering (`HoverRenderer`), plus benchmarks and tests.
+    `ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders` closes the set; its type set is a folder's top-level types (a nested
+    type is named through its containing type; nested helper names such as `Container` and `Bracket` are spelled by 58 other files
+    for their own members). Its stated blind spots stand (a type reached without its name, a delegate, a short-name attribute;
+    Documentation declares neither).
+  - No reference turned around: the census found the compiler reading only the association; ordinary compilation never parses
+    Markdown.
+  - Responsibility moved: the association leaves the Middle's `Compiler/Documentation` for Core (any session under a board hold, the
+    Middle reviews; WORKFLOW's areas); `src/Kimi/Documentation` stays the Middle's.
+  - Behavior preserved: the Release `Kimi.dll` is identical to its base's at the IL level once the namespaces are mapped, but for
+    the informational version, the Regex generator's file-local class hash (from the build folder) and one generated difference:
+    Tinyhand's `TinyhandStaticRegistration_Kimi.Initialize` registers formatters in full-name order, so the moved types'
+    registrations change position and the `__TinyhandRegisterN` helpers are renumbered; the registered set is the same, each
+    registration keyed by its type, none twice, so the order has no effect (the IL comparison of dev 21d414f87 against the
+    implementation's commit, design review 1's dumper). No parser method body changed (design review 2's N7).
+  - The benchmark's paired mode finds the baseline's parser by the current full name, so a paired run needs a post-move baseline
+    (`src/Benchmark/DocumentationMarkdown.md`); a lookup falling back to the old namespace was rejected (a try-then-fallback).
+  - Rejected: the association in Core under namespace `Kimi.Compiler.Documentation` (no Lexing/Parsing/Binding hunk, but a folder
+    disagreeing with its namespace and two "Documentation" namespaces); the association in `Kimi.Documentation` (the compiler would
+    read Documentation); `DocumentationText`/`DocumentationDiagnostic` in Documentation (the association's `GetText` and
+    `GetDiagnostics` produce them); a semantic-slot row for the association's two files (one row over Core states R5-M193 for Core's
+    owner); the structure-limit splits in the move (pre-existing, none worse: parts 2 and 3, the plan's §5.3 rows).
+  - Amends: R5-M193's "the documentation model" now names `Kimi.Documentation`. R9-M6's description of
+    `ComponentIsReadOnlyByItsReaders` ("a reader names a type the folder declares"): the types are the folder's top-level ones,
+    since a nested type is named through its containing type and 58 files of `src/Kimi` spell nested Documentation helper names
+    (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
+    type, `NativeToolchain.NativeBuild`, is private).
+  - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).

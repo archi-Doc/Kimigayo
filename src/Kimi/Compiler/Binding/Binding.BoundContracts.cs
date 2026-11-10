@@ -62,7 +62,7 @@ public sealed partial class Binding
     // which completes the qualifier with its Type and checks the arity, so a Contract with Type parameters named without its arguments
     // names none); a selection that is no Contract is itself; null when the reference fails.
     private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
-        => selection.Declaration is ContractKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
+        => selection.IsContract ? this.BindContractReference(qualifier, selection, scope) : selection;
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {

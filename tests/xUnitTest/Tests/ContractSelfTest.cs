@@ -20,6 +20,10 @@ public class ContractSelfTest
     private const string Inner = Refined + "    func f<T>(value: T.(D<Self>).N) -> ()\n        T is C2<Self>\n";
     private const string Pair = "contract D2<U, W>\n    associate N\ncontract C2<U>: D2<Self, U>\ncontract C\n    func f<T>(value: T.(D2<T, ";
 
+    private const string SelfCopy = "contract C<X>\n    Self is Copy\n    func get(self: ref/Self, x: X) -> i32\n";
+    private const string CopyConformer = "struct S\n    Self is Copy\n    Self is C<i32>\n    public func get(self: ref/Self, x: i32) -> i32 => x\n";
+    private const string UseC = "func use<T>(t: ref/T) -> i32\n    T is C<i32>\n    return t.get(1)\n";
+
     private const string Argument = "contract E\ncontract D<U>\n    U is E\n" +
         "contract C\n    associate Y is E\n    associate Z is E\n    associate X is D<Self.Y>\n";
 
@@ -112,6 +116,25 @@ public class ContractSelfTest
         var c = MinimalEmissionTest.Analyze(source + "\nlet x = 1");
         Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString())));
     }
+
+    // SPEC 6.1.4, 8.7.1 (PLAN G701): a Contract-wide `Self is X` is an implementation requirement of every conformer, never a reference
+    // input condition. Forming `C<i32>` in a conformance, in a function's, a struct's or a requirement's clause or in a conditional
+    // conformance proves nothing about Self, and a conformer that does not satisfy the clause fails at its conformance (the last row).
+    [Theory]
+    [InlineData("conformer", SelfCopy + CopyConformer, "")]
+    [InlineData("function clause", SelfCopy + UseC, "")]
+    [InlineData("conformer and clause", SelfCopy + CopyConformer + UseC, "")]
+    [InlineData("not ObjectPayload", "contract C<X>\n    Self is not ObjectPayload\n    func get(self: ref/Self, x: X) -> i32\n" + UseC, "")]
+    [InlineData("Owned", "contract C<X>\n    Self is Owned\n    func get(self: ref/Self, x: X) -> i32\n" + UseC, "")]
+    [InlineData("struct clause", SelfCopy + "struct W<T>\n    T is C<i32>\n    public var n: i32 = 0\n", "")]
+    [InlineData("requirement clause", SelfCopy + "contract K\n    func k<U>(self: ref/Self, u: ref/U) -> i32\n        U is C<i32>\n", "")]
+    [InlineData(
+        "conditional conformance",
+        SelfCopy + "struct Box<T>\n    Self is Copy when T is Copy\n    Self is C<i32> when T is Copy\n    public var item: Option<T> = .None\n    public func get(self: ref/Self, x: i32) -> i32 => x\n",
+        "")]
+    [InlineData("non-Copy conformer", SelfCopy + "struct S\n    Self is C<i32>\n    public func get(self: ref/Self, x: i32) -> i32 => x\n", "UnsatisfiedConstraint_Kd: Self is C<i32>")]
+    public void AContractWideSelfClauseBindsConformersNotReferences(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "let x = 1", records);
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
