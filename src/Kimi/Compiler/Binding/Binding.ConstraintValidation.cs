@@ -94,6 +94,17 @@ public sealed partial class Binding
             _ => constraint.Subject,
         };
 
+    // The declaration a clause pending in Provisional mode leaves pending (BU-151; SPEC 8.6.2: a conformance is Refuted only when every
+    // path fails): its own declaration, or for a conditional conformance's target the Type, whose conformances wait on the Contract
+    // (SPEC 8.8.1, 8.8.3). A condition is a premise: a proof applying the conformance reads its pending atom as Unknown
+    // (CheckConstraints), so it leaves no declaration pending.
+    private static DeclarationKoto? PendingDeclaration(IsKoto clause) => clause.Parent switch
+    {
+        DeclarationKoto declaration => declaration,
+        SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationKoto type, Operands: [var target, ..] } when ReferenceEquals(target, clause) => type,
+        _ => null,
+    };
+
     private static Koto? ProjectionDeclarationOwner(Koto use)
     {
         if (((Koto?)FunctionSignatureOwner(use) ?? PropertySignatureOwner(use)) is { } signature)
@@ -247,17 +258,22 @@ public sealed partial class Binding
         var changed = false;
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true, Parent: DeclarationKoto owner } pending)
+            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true } pending && PendingDeclaration(pending) is { } owner)
             {
+                // In the declaration's scope: a conditional target is bound in its Type's, never under the conformance's premises.
                 var previous = owner.BindingState;
-                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(pending));
+                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(owner));
                 if (pendingProof == ConstraintProof.Proven)
                 {
                     pendingProof = ConstraintProof.Unknown;
                 }
 
-                this.RequireConstraint(pending, pendingProof, mode);
-                this.RequireConstraint(owner, pendingProof, mode);
+                // The clause, a conditional conformance between it and its Type, and the declaration.
+                for (Koto? node = pending; node is not null; node = ReferenceEquals(node, owner) ? null : node.Parent)
+                {
+                    this.RequireConstraint(node, pendingProof, mode);
+                }
+
                 changed |= previous != owner.BindingState;
             }
 
