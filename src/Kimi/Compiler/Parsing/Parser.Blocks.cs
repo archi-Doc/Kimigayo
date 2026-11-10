@@ -231,6 +231,7 @@ public static partial class Parser
         if (IsOriginRelationStart(ref reader))
         {
             ReportPendingAttributes(ref reader);
+            RejectAccessWord(ref reader);
             var relation = ParseOriginRelation(ref reader);
             if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true })
             {
@@ -265,6 +266,7 @@ public static partial class Parser
             if (!state.SeenExecutableItem || isGenericParameter)
             {
                 ReportPendingAttributes(ref reader);
+                RejectAccessWord(ref reader);
                 var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
                 var constraint = ParseTypeConstraint(ref reader);
                 if (constraint is not null && function is { IsDestructor: false } && !excluded)
@@ -467,6 +469,8 @@ public static partial class Parser
                     return ParseExpression(ref reader);
                 }
 
+                // A local function takes no access word (SPEC 9.3, F.10 LocalFunction).
+                RejectAccessWord(ref reader);
                 return ParseFunctionItem(ref reader);
 
             default:
