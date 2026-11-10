@@ -31,7 +31,8 @@ internal interface IMirDestruction
     bool Deep(BoundType type);
 }
 
-// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds.
+// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds;
+// and the order of a level's parts (LevelCount, LevelPart), SPEC 16.3.2's one statement.
 internal static partial class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
@@ -245,9 +246,10 @@ internal static partial class MirTypes
     internal static (MirProjectionKind Step, long Arg) LevelPart(BoundType type, long rank) => type switch
     {
         { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count - 1 - rank),
-        { Kind: BoundTypeKind.FixedArray } => (MirProjectionKind.ConstIndex, type.Length - 1 - rank),
+        { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, type.Length - 1 - rank),
         _ when AdtDef.CaseTypes(type) is not null => (MirProjectionKind.Downcast, rank),
         _ when rank < AdtDef.Count(type) => (MirProjectionKind.Field, AdtDef.Count(type) - 1 - rank),
-        _ => (MirProjectionKind.Base, 1),
+        _ when rank == AdtDef.Count(type) && AdtDef.Base(type) is not null => (MirProjectionKind.Base, 1),
+        _ => throw new InvalidOperationException($"A level has no part at rank {rank} (InternalInvariant)."),
     };
 }

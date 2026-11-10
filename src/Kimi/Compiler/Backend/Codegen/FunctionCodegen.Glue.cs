@@ -144,6 +144,7 @@ internal sealed partial class FunctionCodegen
             if (this.NextTarget() is { } glue && step.First <= step.Last && this.Laid(type) is { } element)
             {
                 var guard = this.Test(this.Own(step.Parent));
+                // A Run is its elements from Last down to First (MirDropStepKind.Run's definition, Mir's order of a fixed array).
                 var last = new Value('\0', ElementOffset(element, step.Last)); // The run's last element, which the first pass destroys.
                 this.Loop(new Value('\0', step.Last - step.First + 1), element, new Destroyed(glue, address, last, site));
                 this.Join(guard);

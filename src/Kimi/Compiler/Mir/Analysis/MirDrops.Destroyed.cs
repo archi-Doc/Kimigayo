@@ -226,9 +226,9 @@ internal sealed partial class MirDropTable
             return at < this.index.Length && this.index[at] >> 32 == key >> 32 ? (int)(this.index[at] & uint.MaxValue) : -1;
         }
 
-        // A fixed array's elements in the level's order: each element with a row by its walk, each run of elements without one between
-        // them one Run step. The rowed elements are the level's entries by position, taken from the end the order starts at. An array
-        // without an element is one empty Run (the header's Temporary).
+        // A fixed array's elements in the level's order, which descends from its first rank's position (MirTypes.LevelPart): each
+        // element with a row by its walk, each run of elements without one between them one Run step. The rowed elements are the
+        // level's entries by position, taken from the highest. An array without an element is one empty Run (the header's Temporary).
         private void Elements(BoundType type, int row, long count)
         {
             var element = type.Components[0];
@@ -239,14 +239,13 @@ internal sealed partial class MirDropTable
             }
 
             var children = this.Children(row);
-            var (at, last) = (MirTypes.LevelPart(type, 0).Arg, MirTypes.LevelPart(type, count - 1).Arg); // The first and the last destroyed.
-            for (var toward = last < at ? -1 : 1; ; at += toward)
+            var end = MirTypes.LevelPart(type, count - 1).Arg - 1; // Below the last position destroyed.
+            for (var at = MirTypes.LevelPart(type, 0).Arg; ; at--)
             {
-                var next = children.Length == 0 ? default : toward < 0 ? children[^1] : children[0];
-                var stop = children.Length == 0 ? last + toward : (long)((next >> 32) & uint.MaxValue) - 1; // The position the run ends before.
+                var stop = children.Length == 0 ? end : (long)((children[^1] >> 32) & uint.MaxValue) - 1; // The run ends above it.
                 if (stop != at)
                 {
-                    into.Add(MirDropStep.Run(element, row, Math.Min(at, stop - toward), Math.Max(at, stop - toward)));
+                    into.Add(MirDropStep.Run(element, row, stop + 1, at));
                 }
 
                 if (children.Length == 0)
@@ -254,9 +253,10 @@ internal sealed partial class MirDropTable
                     return;
                 }
 
-                children = toward < 0 ? children[..^1] : children[1..];
+                var child = (int)(children[^1] & uint.MaxValue);
+                children = children[..^1];
                 at = stop;
-                this.Step(element, row, (int)(next & uint.MaxValue), MirProjectionKind.ConstIndex, at);
+                this.Step(element, row, child, MirProjectionKind.ConstIndex, at);
             }
         }
     }

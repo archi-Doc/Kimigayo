@@ -432,6 +432,8 @@ public sealed partial class MirDropTest
             {
                 if (steps[open].Kind == MirDropStepKind.Open)
                 {
+                    var array = steps[open].Type is { Kind: BoundTypeKind.FixedArray } fixedArray ? fixedArray : null;
+                    Assert.True(array is null || MirTypes.LevelPart(array, 0) == (MirProjectionKind.ConstIndex, array.Length - 1));
                     level.Clear();
                     MirDropTable.Level(steps[open].Type, level);
                     var (all, at) = (Places(level, 0), 0);
