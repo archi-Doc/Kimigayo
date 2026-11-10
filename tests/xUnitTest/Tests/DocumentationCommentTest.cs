@@ -15,7 +15,7 @@ public class DocumentationCommentTest
     [InlineData("\r")]
     public void ExtractsTextAndMapsUnicodeAndWhitespace(string newline)
     {
-        var source = "/// First 😀  \n///\n///     code\npublic func f() => ()".Replace("\n", newline);
+        var source = "/// First 😀  \n///\n///     code\nfunc f() => ()".Replace("\n", newline);
         var tree = Parse(source);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         Assert.Equal("f", Assert.IsType<FunctionKoto>(comment.Declaration).Name);

@@ -547,7 +547,7 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void AFixedArrayBehindAReferenceIsIndexedWithoutItsLayout()
     {
-        var c = Analyze("public func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
+        var c = Analyze("func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));

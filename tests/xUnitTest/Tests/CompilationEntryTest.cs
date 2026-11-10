@@ -36,7 +36,7 @@ public sealed class CompilationEntryTest
         c.IsTestBuild = test;
         c.Project.ProjectFile.OutputKind = output;
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
+        var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "func first() => ()\nfunc second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
         Assert.True(c.Check(), MinimalEmissionTest.Describe(c)); // A test build's check discovers its tests (Compilation.Check).
@@ -285,7 +285,7 @@ public sealed class CompilationEntryTest
     // G444's probe shapes: `public func f(c: bool) -> i32` with `depth` nested levels.
     internal static string NestedIfs(int depth)
     {
-        var source = new System.Text.StringBuilder("public func f(c: bool) -> i32\n");
+        var source = new System.Text.StringBuilder("func f(c: bool) -> i32\n");
         for (var i = 0; i < depth; i++)
         {
             source.Append(' ', 4 * (i + 1)).Append("if c\n");
@@ -295,14 +295,14 @@ public sealed class CompilationEntryTest
     }
 
     internal static string Parentheses(int depth)
-        => $"public func f(c: bool) -> i32\n    return {new string('(', depth)}1{new string(')', depth)}\n";
+        => $"func f(c: bool) -> i32\n    return {new string('(', depth)}1{new string(')', depth)}\n";
 
     internal static string Calls(int depth)
-        => $"func g(x: i32) -> i32 => x\npublic func f(c: bool) -> i32\n    return {string.Concat(Enumerable.Repeat("g(", depth))}1{new string(')', depth)}\n";
+        => $"func g(x: i32) -> i32 => x\nfunc f(c: bool) -> i32\n    return {string.Concat(Enumerable.Repeat("g(", depth))}1{new string(')', depth)}\n";
 
     internal static string LabeledDos(int depth)
     {
-        var source = new System.Text.StringBuilder("public func f(c: bool) -> i32\n");
+        var source = new System.Text.StringBuilder("func f(c: bool) -> i32\n");
         for (var i = 0; i < depth; i++)
         {
             source.Append(' ', 4 * (i + 1)).Append($"let y{i}: i32 = label a{i}: do\n");

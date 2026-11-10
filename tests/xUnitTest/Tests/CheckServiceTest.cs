@@ -15,8 +15,8 @@ namespace XunitTest;
 // SPEC 23.2: the shared check entry, compilation-owned diagnostics and immutable check output.
 public sealed partial class CheckServiceTest : IDisposable
 {
-    private const string Valid = "public func one() -> i32 => 1\n";
-    private const string Broken = "public func one() -> i32 => 1 +\n";
+    private const string Valid = "func one() -> i32 => 1\n";
+    private const string Broken = "func one() -> i32 => 1 +\n";
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
 
@@ -69,7 +69,7 @@ public sealed partial class CheckServiceTest : IDisposable
     {
         var project = this.WriteProject("App");
         var folder = Path.GetDirectoryName(project)!;
-        const string other = "public func two() -> i32 => 2\n";
+        const string other = "func two() -> i32 => 2\n";
         var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = other });
         var output = this.Run(project, inputs: inputs);
         if (!equal)
@@ -206,13 +206,13 @@ public sealed partial class CheckServiceTest : IDisposable
     [InlineData(true)]
     public void EveryModulesNamesAreCheckedWithinTheModule(bool invalid)
     {
-        this.WriteLibrary("Lib", "lib", "public func value() -> i32 => 2\n");
+        this.WriteLibrary("Lib", "lib", "func value() -> i32 => 2\n");
         const string dependency = "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}";
         var project = this.WriteProject("App", ("Main.kimi", Valid), dependencies: dependency);
         if (invalid)
         {
-            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "public func app() -> i32 => 3\n");
-            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "public func lib() -> i32 => 4\n");
+            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "func app() -> i32 => 3\n");
+            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "func lib() -> i32 => 4\n");
         }
 
         var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
@@ -263,15 +263,15 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public void SourcesAreParsedInLogicalDeclarationOrder()
     {
-        var project = this.WriteProject("App", ("c.kimi", "public func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
-        File.WriteAllText(this.PathOf("App", "a.kimi"), "public func a() -> i32 => 1\n");
+        var project = this.WriteProject("App", ("c.kimi", "func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
+        File.WriteAllText(this.PathOf("App", "a.kimi"), "func a() -> i32 => 1\n");
         File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
-        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
-        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
+        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "func smile() -> i32 => 4\n");
+        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "func wide() -> i32 => 5\n");
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
+        loaded.AddSource(this.PathOf("App", "a0.kimi"), "func a0() -> i32 => 0\n");
         var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
         Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
     }
@@ -284,7 +284,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
+        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "func twin() -> i32 => 2\n");
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
@@ -343,7 +343,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var project = this.WriteProject("ReadFailures", ("a.kimi", Valid));
         var first = this.PathOf("ReadFailures", "a.kimi");
         var second = this.PathOf("ReadFailures", "b.kimi");
-        File.WriteAllText(second, "public func two() -> i32 => 2\n");
+        File.WriteAllText(second, "func two() -> i32 => 2\n");
         using (new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.None))
         using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
         {
@@ -431,8 +431,8 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public async Task ConflictingDependencyInputsUnderALockReportTheCommandMessage()
     {
-        this.WriteLibrary("LeafA", "leaf", "public func a() -> i32 => 1\n");
-        this.WriteLibrary("LeafB", "leaf", "public func b() -> i32 => 2\n");
+        this.WriteLibrary("LeafA", "leaf", "func a() -> i32 => 1\n");
+        this.WriteLibrary("LeafB", "leaf", "func b() -> i32 => 2\n");
         var project = this.WriteProject(
             "App",
             ("main.kimi", Valid),
@@ -455,7 +455,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var project = this.WriteProject("App", ("main.kimi", Valid));
         var main = this.PathOf("App", "main.kimi");
         var added = this.PathOf("App", "added.kimi");
-        var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "public func two() -> i32 => 2\n" });
+        var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "func two() -> i32 => 2\n" });
         var output = this.Run(project, inputs: inputs);
 
         Assert.Contains(output.Diagnostics, x => Location(output, x) == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
@@ -534,7 +534,7 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
     {
-        const string Source = "public func outer() -> ()\n    #Test\n    func inner() -> () => ()\n    inner()\n";
+        const string Source = "func outer() -> ()\n    #Test\n    func inner() -> () => ()\n    inner()\n";
         var project = this.WriteProject("Local", ("main.kimi", Source));
         Assert.Equal(TestPresence.Yes, this.Run(project).Presence);
         var output = this.Run(project, CheckMode.Test);
