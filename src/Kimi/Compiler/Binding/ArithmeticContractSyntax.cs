@@ -2,13 +2,10 @@
 
 namespace Kimi.Compiler;
 
-// The standard declaration identities, independent of a bound Contract's own Symbol and of user spelling.
-internal static class ArithmeticContracts
+// Binding's pairing of the arithmetic Contracts (SPEC 13.3.3's table) with source: each Contract's operator token and requirement
+// method, and the identity of a declared Contract's Symbol. The Types' facts are the root ArithmeticContracts'.
+internal static class ArithmeticContractSyntax
 {
-    internal static bool Supports(BoundType type, KimiDeclarationId id)
-        => type.IsNumeric && (id == KimiDeclarationId.Negatable ? !type.IsUnsignedInteger
-            : id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.RemainderProvider && (id != KimiDeclarationId.RemainderProvider || !type.IsFloatingPoint));
-
     internal static Parsing.KotoKind Operator(KimiDeclarationId id) => id switch
     {
         KimiDeclarationId.Addable or KimiDeclarationId.LeftAddable => Parsing.KotoKind.Plus,
@@ -20,12 +17,8 @@ internal static class ArithmeticContracts
         _ => Parsing.KotoKind.Invalid,
     };
 
-    internal static bool IsArithmetic(KimiDeclarationId? id) => id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable;
-
     internal static KimiDeclarationId? Identity(BindingSymbol? contract)
-        => contract?.Declaration.BoundSymbol?.LibraryDeclaration is { } id && IsArithmetic(id) ? id : null;
-
-    internal static bool IsLeft(KimiDeclarationId id) => id is >= KimiDeclarationId.LeftAddable and <= KimiDeclarationId.LeftRemainderProvider;
+        => contract?.Declaration.BoundSymbol?.LibraryDeclaration is { } id && ArithmeticContracts.IsArithmetic(id) ? id : null;
 
     internal static string Method(KimiDeclarationId id) => id switch
     {

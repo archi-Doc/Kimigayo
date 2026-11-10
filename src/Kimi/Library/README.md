@@ -78,8 +78,7 @@ resource IO, lexing or parsing. Keep the allocation checks in `CoreCatalogTest` 
 `KimiLibraryBenchmark` for initialization and warm-binding measurements.
 
 Recognition does not prove runtime support. Missing API entries do not create
-placeholder declarations. Use `GetSymbol` for ID lookup. The old ObjectOwnership
-ID is reserved.
+placeholder declarations. Use `GetSymbol` for ID lookup.
 
 ## Dictionary implementation policy
 

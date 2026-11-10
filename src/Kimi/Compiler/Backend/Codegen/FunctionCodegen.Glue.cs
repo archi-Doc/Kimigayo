@@ -14,12 +14,12 @@ namespace Kimi.Compiler.Backend;
 // struct's, Tuple's, enum's, fixed array's or Closure environment's level destroys its parts in destruction order (a Closure's captures
 // last to first, SPEC 16.4, each addressed as a Tuple's element): a struct that declares a drop by its destructor instance alone (PD18,
 // R4-M6b), the value its receiver (never under an Open row: A2's MovedPlace_Kd); otherwise each part whose instance Type may need a drop
-// (MirTypes.MayNeedDrop, the rule the collector targets by) by its row's verdict, or its parent's own bit without one, through its glue,
-// the destruction's next target, at the part's address (Component, the aggregate writer's rule; a base at the value's own address, X1),
-// an Open part by its own level; an enum's parts under one switch on its tag over the Cases holding such a part (an Open enum's tag is
-// defined: Case payload paths exist only in an owned match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's
-// elements from the last, each run of elements without a row in one counted loop (Loop, Fill's loop), so the text does not grow with the
-// length.
+// (MirTypes.MayNeedDrop, the rule the collector targets by) by its Keep or Flag row (an Elide row, destroying nothing, has no step), or its
+// parent's own bit without one, through its glue, the destruction's next target, at the part's address (Component, the aggregate writer's
+// rule; a base at the value's own address, X1), an Open part by its own level; an enum's parts under one switch on its tag over the Cases
+// holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned match Subject, initialized before arm
+// selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a row in one counted loop (Loop, Fill's
+// loop), so the text does not grow with the length.
 // A common Function value's calls its table's drop entry, when present, on a copy of its word in an entry slot (FunctionCodegen.Erasures),
 // and an owning handle's releases its object (FunctionCodegen.Objects' Release), each only in its glue function, since no move path opens
 // either. A collection's row (also only in its glue function), an Array's or a Dictionary's, calls its one target, the library body its
@@ -107,8 +107,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 16.3.2: a step of the walk in its level (owner: none at the top) at the level's address; the index after it (after its End for
     // an Open step). A destructor alone on the value (its receiver); a part that may need a drop (MirTypes.MayNeedDrop, the rule the
     // collector targets by) at its address (Component, the aggregate writer's rule; a base at the value's own address, X1): Whole by its
-    // row's verdict and flag, or its parent's own bit without a row (Keep and Flag its glue, the destruction's next target, under the flag;
-    // Elide only reading it), Open by its level (Opened); a Run of fixed array elements under its parent's own bit in the one counted loop
+    // Keep or Flag row's flag, or its parent's own bit without a row (its glue, the destruction's next target, under the flag), Open by its
+    // level (Opened); a Run of fixed array elements under its parent's own bit in the one counted loop
     // (Loop, Fill's loop), whose k-th pass destroys the element at the run's last element's offset (ElementOffset) less the pass's, so the
     // text does not grow with the length.
     private int Step(int index, BoundType? owner, ValueLowering? record, Value address, Site site)
@@ -153,10 +153,9 @@ internal sealed partial class FunctionCodegen
             return this.Opened(index, this.Offset(address, offset), site);
         }
 
-        var (verdict, flag) = step.Row >= 0 ? (this.DropRow(step.Row).Verdict, this.DropRow(step.Row).Flag) : (MirDropVerdict.Keep, this.Own(step.Parent));
-        if (this.NextTarget() is { } part && verdict != MirDropVerdict.Elide)
+        if (this.NextTarget() is { } part)
         {
-            var guard = this.Test(flag);
+            var guard = this.Test(step.Row >= 0 ? this.DropRow(step.Row).Flag : this.Own(step.Parent));
             this.Destroy(this.module.Glue(part), this.Offset(address, offset), site);
             this.Join(guard);
         }

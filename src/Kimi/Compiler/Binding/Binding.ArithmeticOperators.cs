@@ -41,7 +41,8 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
-                    ArithmeticContracts.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) && this.AvailableConstraintFact(environment, fact))
+                    ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
+                    this.AvailableConstraintFact(environment, fact))
                 {
                     return true;
                 }
@@ -128,7 +129,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var requirement = selected.Contract!.MembersByName[ArithmeticContracts.Method(id)][0];
+        var requirement = selected.Contract!.MembersByName[ArithmeticContractSyntax.Method(id)][0];
         plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, requirement.Contract, requirement.Symbol, scope);
         plan.Active = plan.Call.BoundCall is not null;
         if (compound && plan.Active)
@@ -275,7 +276,7 @@ public sealed partial class Binding
 
         void Add(BindingSymbol reference, Koto source)
         {
-            if (ArithmeticContracts.Identity(reference) == id && !plan.Candidates.Contains(reference))
+            if (ArithmeticContractSyntax.Identity(reference) == id && !plan.Candidates.Contains(reference))
             {
                 plan.Candidates.Add(reference);
                 plan.Sources.Add(source);
@@ -285,7 +286,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < shape.Ancestors.Count; i++)
                 {
-                    if (ArithmeticContracts.Identity(shape.Ancestors[i]) == id && !plan.Candidates.Contains(shape.Ancestors[i]))
+                    if (ArithmeticContractSyntax.Identity(shape.Ancestors[i]) == id && !plan.Candidates.Contains(shape.Ancestors[i]))
                     {
                         plan.Candidates.Add(shape.Ancestors[i]);
                         plan.Sources.Add(source);

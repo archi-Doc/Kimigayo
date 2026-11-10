@@ -134,8 +134,7 @@ public sealed partial class Binding
         var call = solution.Call;
         var function = solution.Function;
         var scope = solution.Scope;
-        var arguments = solution.Types;
-        var lengths = solution.Lengths;
+        var frame = solution.Frame;
         var generic = solution.Generic;
         var self = solution.Self;
         var origins = solution.Origins;
@@ -171,8 +170,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Error;
             }
 
-            this.InitializeCallSlots(call, function, declaringType, arguments, solution.FixedConstruction);
-            Array.Clear(lengths, 0, CallSlotCount(function));
+            this.InitializeCallSlots(call, function, declaringType, frame, solution.FixedConstruction);
+            frame.ClearLengths(CallSlotCount(function));
             Array.Clear(origins, 0, function.Origins.Count);
             Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
 
@@ -195,12 +194,12 @@ public sealed partial class Binding
                 {
                     if (CallOwnSlots(function)[i] is LengthParameterKoto)
                     {
-                        lengths[i] = explicitLengths[i];
+                        frame.SetLength(i, explicitLengths[i]);
                         continue;
                     }
 
-                    arguments[i] = generic.TypeArguments[i].BoundType;
-                    if (arguments[i] is null)
+                    frame.SetType(i, generic.TypeArguments[i].BoundType);
+                    if (frame.Types[i] is null)
                     {
                         this.trialPending = new(PendingJudgmentKind.FailedTypeArgument, generic.TypeArguments[i]) { Epoch = this.frameEpoch };
                         return CandidateApplicability.Pending;
@@ -249,7 +248,7 @@ public sealed partial class Binding
                     continue; // A parameter Type that failed to bind is a wildcard (rule W; TryCandidate reads it at the verdict).
                 }
 
-                if (this.FormedApplication(type, CallSlotOwner(function), arguments).Kind == BoundTypeKind.SemanticsApplication)
+                if (this.FormedApplication(type, CallSlotOwner(function), frame.Types).Kind == BoundTypeKind.SemanticsApplication)
                 {
                     waiting.Add(i); // SPEC 10.2: solved together; s/U is matched once another argument fixes s.
                     continue;
@@ -304,7 +303,7 @@ public sealed partial class Binding
 
                 // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
                 // the completed result are judged at the destination.
-                expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), arguments, true, lengths);
+                expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), frame, true, true);
                 this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)
                 {
@@ -375,7 +374,7 @@ public sealed partial class Binding
                     if (type is null)
                     {
                         if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
-                            arguments[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
+                            frame.Types[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
                         {
                             BoundType? signature = null;
                             if (this.TryCallable(slotType, this.ConstraintScope(function), out var required, out _))
@@ -386,7 +385,7 @@ public sealed partial class Binding
                                     // SPEC 10.8: every other piece of evidence is in, so a slot of S that is still unbound stays unsolved; the
                                     // candidate stays applicable on its other checks, and the header parts it writes were matched by
                                     // InferClosureHeader. Anything else S lacks keeps the candidate pending.
-                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
                                     {
                                         return CandidateApplicability.Pending;
                                     }
@@ -411,7 +410,7 @@ public sealed partial class Binding
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
                             if (this.KindOf(argument) != PartKind.Literal &&
-                                MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                                MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
@@ -449,7 +448,7 @@ public sealed partial class Binding
                         type = solution.Type(pattern);
                         if (type is null)
                         {
-                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
                             {
                                 // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
@@ -500,7 +499,7 @@ public sealed partial class Binding
 
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
-            this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
+            this.UnsolvedSlots(call, function, frame.Types, frame.Lengths, mapping, ref unsolvedSlots, out var unrepresentable);
             var environment = this.EnvironmentJudgment(function, unsolvedSlots);
             unrepresentable |= environment is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
@@ -553,7 +552,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            var proof = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
+            var proof = solution.Prove(frame.Types[..CallOwnSlots(function).Count], waitingCallables, unsolvedSlots);
             var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
@@ -563,7 +562,7 @@ public sealed partial class Binding
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
-                this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallSlotCount(function)), scope, self, function.IsConstructor ? null : declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count), slotOwner: CallSlotOwner(function)))
+                this.ResolvedClauseUnknown(function.TypeConstraints, function, frame.Types[..CallSlotCount(function)], scope, self, function.IsConstructor ? null : declaringType, frame.Lengths[..CallOwnSlots(function).Count], slotOwner: CallSlotOwner(function)))
             {
                 // SPEC 10.5, 8.3: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never

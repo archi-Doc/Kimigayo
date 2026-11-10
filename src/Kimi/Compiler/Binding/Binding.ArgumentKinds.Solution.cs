@@ -20,8 +20,7 @@ public sealed partial class Binding
             Scope = evaluation.Scope,
             Self = evaluation.Self,
             DeclaringType = declaringType,
-            Types = evaluation.Scratch,
-            Lengths = evaluation.LengthArguments,
+            Frame = evaluation.Frame,
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };
@@ -33,8 +32,7 @@ public sealed partial class Binding
         InvocationKoto? call,
         EnumKoto declaration,
         BindingScope scope,
-        BoundType?[] slots,
-        BoundLength?[] lengths,
+        SlotFrame frame,
         BoundOrigin[] origins)
         => new()
         {
@@ -42,8 +40,7 @@ public sealed partial class Binding
             Call = call!,
             Binder = declaration,
             Scope = scope,
-            Types = slots,
-            Lengths = lengths,
+            Frame = frame,
             Origins = origins,
             Inputs = [],
             FixedConstruction = true,
@@ -65,8 +62,7 @@ public sealed partial class Binding
         internal BindingScope Scope;
         internal BoundType? Self;
         internal BoundType? DeclaringType;
-        internal BoundType?[] Types;
-        internal BoundLength?[] Lengths;
+        internal SlotFrame Frame;
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
@@ -84,6 +80,11 @@ public sealed partial class Binding
         // R4' (DECISIONS BU-104): the callee's Origin slots that an evidence position's pattern names (EvidenceNames), built once per solve
         // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
         internal SlotSet EvidenceNamed;
+
+        // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
+        internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
+
+        internal readonly ReadOnlySpan<BoundLength?> Lengths => this.Frame.Lengths;
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
@@ -148,15 +149,15 @@ public sealed partial class Binding
             {
                 // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
                 // Constraint then holds, that instantiation solves the slots and nothing is reported.
-                this.Types.AsSpan(0, count).CopyTo(restored);
+                this.Types[..count].CopyTo(restored);
                 if (this.StandIns(mapping, restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
                 {
-                    restored.AsSpan(0, count).CopyTo(this.Types);
+                    this.Frame.CopyTypes(restored.AsSpan(0, count));
                     this.CompleteOperationTypes(marks);
                     return true;
                 }
 
-                this.Types.AsSpan(0, count).CopyTo(restored);
+                this.Types[..count].CopyTo(restored);
                 var marked = this.StandIns(mapping, restored.AsSpan(0, count), marks, false);
                 if (!marked || this.Prove(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
                 {
@@ -195,7 +196,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var function = this.Function;
             var constructor = function.IsConstructor;
-            var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
+            var arguments = constructor ? this.Types[..CallSlotCount(function)] : slots;
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
@@ -231,7 +232,7 @@ public sealed partial class Binding
 
             if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && this.FitsCallable(node, instantiated))
             {
-                binding.InstantiateOpenOrigins(this.Types.AsSpan(0, CallOwnSlots(this.Function).Count), argument, type);
+                binding.InstantiateOpenOrigins(this.Frame, CallOwnSlots(this.Function).Count, argument, type);
                 operation = new(argument, node.BoundType, instantiated, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
             }

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -426,6 +427,38 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         output.WriteLine($"library locals {locals}: holding Loans {holding}, observing {observing}");
         Assert.True(holding > 0 && observing > 0);
+    }
+
+    // SPEC 13.3.3 (DECISIONS R5-M126): MIR's pairing of the table (MirTypes.ArithmeticOperation) and Binding's
+    // ArithmeticContractSyntax.Operator, composed with the MIR builder's operator for that token, agree: each Contract with a built-in
+    // witness on i32 has the MIR operation the builder writes for its operator on i32 operands, one each; any other Contract, a comparison
+    // or a Left one, has none.
+    [Fact]
+    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
+    {
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        Assert.Equal(6, contracts.Length);
+        foreach (var contract in contracts)
+        {
+            var token = ArithmeticContractSyntax.Operator(contract);
+            var spelling = token switch
+            {
+                KotoKind.Plus => "+",
+                KotoKind.Minus or KotoKind.PrefixMinus => "-",
+                KotoKind.Asterisk => "*",
+                KotoKind.Slash => "/",
+                KotoKind.Percent => "%",
+                _ => throw new InvalidOperationException($"{contract} has no operator."),
+            };
+            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
+            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
+            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
+            Assert.Equal((rvalue.Kind, rvalue.Op), MirTypes.ArithmeticOperation(contract));
+        }
+
+        Assert.Equal(contracts.Length, contracts.Select(static x => MirTypes.ArithmeticOperation(x)).Distinct().Count());
+        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
+        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => MirTypes.ArithmeticOperation(x)));
     }
 
     private static (MirBody Body, Compilation Compilation) Probe(string function)

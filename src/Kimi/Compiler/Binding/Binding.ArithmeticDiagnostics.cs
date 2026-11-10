@@ -76,7 +76,8 @@ public sealed partial class Binding
         foreach (var fact in environment.Facts)
         {
             if (fact.Kind != ConstraintKind.Contract || fact.Subject is not { } subject || fact.Contract is not { Type.Components: [var counterpart] } contract ||
-                ArithmeticContracts.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable || !this.AvailableConstraintFact(environment, fact))
+                ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable ||
+                !this.AvailableConstraintFact(environment, fact))
             {
                 continue;
             }
@@ -93,7 +94,8 @@ public sealed partial class Binding
                 foreach (var oppositeFact in other.Facts)
                 {
                     if (oppositeFact.Kind == ConstraintKind.Contract && oppositeFact.Contract is { Type.Components: [var oppositeCounterpart] } opposite &&
-                        ArithmeticContracts.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) && AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
+                        ArithmeticContractSyntax.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) &&
+                        AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
                     {
                         var here = ArithmeticFactUse(fact, scope);
                         var there = ArithmeticFactUse(oppositeFact, current);
@@ -125,6 +127,13 @@ public sealed partial class Binding
             ArithmeticSelectionCause.Ambiguous => "Multiple proven conformances fit the counterpart structure",
             _ => throw new UnreachableException(),
         };
-        use.Report(requirement, DiagnosticCode.ArithmeticSelection_Kd, ArithmeticOperatorText(ArithmeticContracts.Operator(failure.Id)), this.Library.GetSymbol(failure.Id)!.Name, note: note, evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Cause], related: related);
+        use.Report(
+            requirement,
+            DiagnosticCode.ArithmeticSelection_Kd,
+            ArithmeticOperatorText(ArithmeticContractSyntax.Operator(failure.Id)),
+            this.Library.GetSymbol(failure.Id)!.Name,
+            note: note,
+            evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Cause],
+            related: related);
     }
 }
