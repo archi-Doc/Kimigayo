@@ -30,7 +30,7 @@ public class BindingBenchmark
             "Origins" => "struct View<T> {a, b}\n    let first: ref/T during a\n    let second: ref/T during b\n",
             "Enums" => "enum Entry<T>\n    Value(T, string)\nfunc accept(value: Option<Entry<i32>>) => ()\n",
             "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
-            "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.Source.Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
+            "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.(Source).Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
             "Properties" => "contract C\n    property item: i32 has get, set\n    property view: ref/i32 has get\n",
             "ConditionalConformances" => "contract A\n    associate E is i32\n    property item: E has get\ncontract B: A\n",
             "ConditionalMembers" => "contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n",

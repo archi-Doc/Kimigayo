@@ -88,12 +88,12 @@ public class RequirementTypeParsingTest
     }
 
     [Theory]
-    [InlineData("(i32, [1 of S.C.Element])", "public", true)]
-    [InlineData("(i32, [1 of S.C.Element])", "internal", false)]
-    [InlineData("Box<i32>.C.Element", "public", true)]
-    [InlineData("Box<i32>.C.Element", "internal", false)]
-    [InlineData("Box<Box<i32>>.C.Element", "public", true)]
-    [InlineData("Box<Box<i32>>.C.Element", "internal", false)]
+    [InlineData("(i32, [1 of S.(C).Element])", "public", true)]
+    [InlineData("(i32, [1 of S.(C).Element])", "internal", false)]
+    [InlineData("Box<i32>.(C).Element", "public", true)]
+    [InlineData("Box<i32>.(C).Element", "internal", false)]
+    [InlineData("Box<Box<i32>>.(C).Element", "public", true)]
+    [InlineData("Box<Box<i32>>.(C).Element", "internal", false)]
     public void NewRequirementFormsRetainAccessAcrossRebindingAndReload(string requirement, string contractAccess, bool valid)
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is {requirement}\n        ()");
@@ -118,7 +118,7 @@ public class RequirementTypeParsingTest
     [Fact]
     public void ConstructedQualifierCannotHideARestrictedArgument()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.C.Element\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.(C).Element\n        ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
@@ -206,7 +206,7 @@ public class RequirementTypeParsingTest
     [Fact]
     public void WarmTupleAndConstructedProjectionBindingAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is (Box<i32>.C.Element, string)\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is (Box<i32>.(C).Element, string)\n        ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

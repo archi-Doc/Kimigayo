@@ -153,7 +153,7 @@ public class ContractBindingTest
     [Fact]
     public void ChildIdentityConstraintDeterminesInheritedAssociatedType()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate Element\n    func read() -> Element\ncontract B: A\n    Self.A.Element is i32\nstruct S\n    Self is B\n    public func read() -> i32 => 1");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate Element\n    func read() -> Element\ncontract B: A\n    Self.(A).Element is i32\nstruct S\n    Self is B\n    public func read() -> i32 => 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -191,14 +191,14 @@ public class ContractBindingTest
     [Fact]
     public void ProjectionUsesRequireConformanceEvidence()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.(C).Element) => ()");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void SignatureProjectionsSeeAllLeadingConstraints()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) -> i32\n    T.C.Element is i32\n    T is C\n    return value");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.(C).Element) -> i32\n    T.(C).Element is i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -216,9 +216,9 @@ public class ContractBindingTest
     }
 
     [Theory]
-    [InlineData("T.C.Element", "T is C")]
-    [InlineData("i32", "T is C\n    T.C.Element is i32")]
-    [InlineData("i32", "T.C.Element is i32\n    T is C")]
+    [InlineData("T.(C).Element", "T is C")]
+    [InlineData("i32", "T is C\n    T.(C).Element is i32")]
+    [InlineData("i32", "T.(C).Element is i32\n    T is C")]
     public void GenericInstanceRequirementCallsSubstituteAssociatedTypes(string result, string constraints)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source: ref/T) -> {result}\n    {constraints}\n    return source.read()");
@@ -284,7 +284,7 @@ public class ContractBindingTest
     [Fact]
     public void DistinctGenericAssociatedConstraintsCannotChooseAnArbitraryIdentity()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nfunc f<T>(value: T.C.E)\n    T is C\n    T.C.E is i32\n    T.C.E is string\n    ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nfunc f<T>(value: T.(C).E)\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
@@ -300,7 +300,7 @@ public class ContractBindingTest
     [Fact]
     public void RefinementRejectsContradictoryFixedAssociatedTypesWithoutUses()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E is i32\ncontract B: A\n    Self.A.E is string");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E is i32\ncontract B: A\n    Self.(A).E is string");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Container(c, "B").StateOf());
     }
@@ -390,7 +390,7 @@ public class ContractBindingTest
     [Fact]
     public void WarmContractBindingReusesMetadataAndCallStorage()
     {
-        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.A.E is i32\nstruct S\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x: ref/T)\n    T is B\n";
+        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.(A).E is i32\nstruct S\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x: ref/T)\n    T is B\n";
         source += string.Concat(Enumerable.Repeat("    x.read()\n", 128));
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -413,7 +413,7 @@ public class ContractBindingTest
     [Fact]
     public void QualifiedContractNamesUseTheSameRegistrationAndProjectionRules()
     {
-        var c = CompilationTestHelper.ParseSuccess("group P\n    public contract C\n        associate E\n        func f() -> E\nstruct S\n    Self is P.C\n    associate P.C.E is i32\n    public func f() -> i32 => 1\nfunc call<T>() -> T.P.C.E\n    T is P.C\n    return T.f()");
+        var c = CompilationTestHelper.ParseSuccess("group P\n    public contract C\n        associate E\n        func f() -> E\nstruct S\n    Self is P.C\n    associate P.C.E is i32\n    public func f() -> i32 => 1\nfunc call<T>() -> T.(P.C).E\n    T is P.C\n    return T.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -429,9 +429,9 @@ public class ContractBindingTest
     [Fact]
     public void AssociatedIdentityCyclesCannotValidateAnImplementation()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.C.F\n    associate C.F is S.C.E");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.(C).F\n    associate C.F is S.(C).E");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.C.F");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.(C).F");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
 
@@ -527,7 +527,7 @@ public class ContractBindingTest
     [Fact]
     public void ReferencedNestedAssociatedContractsSupplyTheirFixedIdentities()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value: T.C.E.D.F) -> i32\n    T is C\n    return value");
+        var c = CompilationTestHelper.ParseSuccess("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value: T.(C).E.(D).F) -> i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
