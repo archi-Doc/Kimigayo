@@ -9,8 +9,8 @@ namespace Kimi.Compiler.Backend;
 // R5-M95, R5-M100, R5-M102, R5-M104): a DropGlue item's function, void (ptr value, ptr location, i64 length), which ModuleCodegen names and
 // signs (Glue), is one level of its Type (Level) at its value parameter, reporting failures at its own location parameters, reading its
 // item's targets; a Drop destroys its value by its group (FunctionCodegen.Drops), at its address, reporting the Drop's location, reading
-// the Drop's targets. Both write the one walk the collector targets by (Destroys: DropGlue.Destroyed, PLAN G641; a glue function's
-// level is its walk without a row), step by step (Step): a string's level calls the runtime release (PD18's string row, C0c). A
+// the Drop's targets. Both write the steps the collector targets by (Destroys: a group's walk, DropGlue.Destroyed, PLAN G641; a glue
+// function's level, DropGlue.Level, no row), step by step (Step): a string's level calls the runtime release (PD18's string row, C0c). A
 // struct's, Tuple's, enum's, fixed array's or Closure environment's level destroys its parts in destruction order (a Closure's captures
 // last to first, SPEC 16.4, each addressed as a Tuple's element): a struct that declares a drop by its destructor instance alone (PD18,
 // R4-M6b), the value its receiver (never under an Open row: A2's MovedPlace_Kd); otherwise each part whose instance Type may need a drop
@@ -28,8 +28,9 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class FunctionCodegen
 {
     private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
-    private readonly List<DropPart> parts = []; // DropGlue.Destroyed's scratch of DropGlue.Parts.
-    private readonly List<DropStep> steps = []; // DropGlue.Destroyed's steps.
+    private readonly List<DropPart> parts = []; // DropGlue.Level's scratch of DropGlue.Parts.
+    private readonly List<DropStep> steps = []; // DropGlue.Destroyed's and DropGlue.Level's steps.
+    private readonly List<MirDropStep> walk = []; // Their scratch of Mir's steps.
     private int read; // The next of the item's targets the destruction being written reads: a glue function's, or a Drop's at its site.
     private int end; // The end of them.
     private SourceInfo destruction; // Where it reports a missing target: a Drop's source; none for a glue function.
@@ -95,11 +96,19 @@ internal sealed partial class FunctionCodegen
     }
 
     // What destroying a value of a closed Type at an address by a row of the body's drop table destroys (-1: a glue function's level, which
-    // no row governs), by the walk the collector targets by (DropGlue.Destroyed), each step in order (Step).
+    // no row governs), by the steps the collector targets by (DropGlue.Destroyed, DropGlue.Level), each in order (Step).
     private void Destroys(int row, BoundType type, Value address, Site site)
     {
         var (steps, start) = (this.steps, this.steps.Count);
-        DropGlue.Destroyed(this.typeContext, row < 0 ? default : this.program.Drops.RowsOf(this.body.Ordinal), row, type, this.parts, steps);
+        if (row < 0)
+        {
+            DropGlue.Level(this.typeContext, type, this.parts, this.walk, steps);
+        }
+        else
+        {
+            DropGlue.Destroyed(this.program.Drops, this.body, row, type, this.walk, steps);
+        }
+
         _ = this.Step(start, null, null, address, site);
         steps.RemoveRange(start, steps.Count - start);
     }
@@ -130,7 +139,7 @@ internal sealed partial class FunctionCodegen
             return this.After(index);
         }
 
-        if (step.Kind == DropStepKind.Run)
+        if (step.Kind == MirDropStepKind.Run)
         {
             if (this.NextTarget() is { } glue && step.First <= step.Last && this.Laid(type) is { } element)
             {
@@ -148,7 +157,7 @@ internal sealed partial class FunctionCodegen
             return this.After(index); // A broken contract, recorded.
         }
 
-        if (step.Kind == DropStepKind.Open)
+        if (step.Kind == MirDropStepKind.Open)
         {
             return this.Opened(index, this.Offset(address, offset), site);
         }
@@ -182,7 +191,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var (id, open, i) = (AdtDef.IsEnum(type) ? this.Switch(index, address) : -1, -1, index + 1);
-        while (this.steps[i].Kind != DropStepKind.End)
+        while (this.steps[i].Kind != MirDropStepKind.End)
         {
             var part = this.steps[i].Part;
             if (id >= 0 && part.Ordinal != open && MirTypes.MayNeedDrop(part.Type, this.seen))
@@ -217,7 +226,7 @@ internal sealed partial class FunctionCodegen
         this.WriteValue(tag);
         Name(output, ", label %destroyed", id);
         output.Write(" [");
-        for (int i = index + 1, last = -1; this.steps[i].Kind != DropStepKind.End; i = this.After(i))
+        for (int i = index + 1, last = -1; this.steps[i].Kind != MirDropStepKind.End; i = this.After(i))
         {
             if (this.steps[i].Part is var part && part.Ordinal != last && MirTypes.MayNeedDrop(part.Type, this.seen))
             {
@@ -237,7 +246,7 @@ internal sealed partial class FunctionCodegen
     {
         for (var depth = 0; ; index++)
         {
-            depth += this.steps[index].Kind switch { DropStepKind.Open => 1, DropStepKind.End => -1, _ => 0 };
+            depth += this.steps[index].Kind switch { MirDropStepKind.Open => 1, MirDropStepKind.End => -1, _ => 0 };
             if (depth <= 0)
             {
                 return index + 1;
@@ -316,7 +325,7 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(routine, this.arguments.AsSpan(0, parameters.Length), entry);
     }
 
-    // The destruction's next target (I8: a glue function's in DropGlue.Parts' order, a Drop's in DropGlue.Destroyed's), or null with
+    // The destruction's next target (I8: a glue function's in DropGlue.Level's order, a Drop's in DropGlue.Destroyed's), or null with
     // InternalInvariant_Kd at the destruction where none is left.
     private int? NextTarget()
     {

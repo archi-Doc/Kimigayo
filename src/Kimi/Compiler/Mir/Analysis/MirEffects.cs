@@ -17,7 +17,6 @@
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
-using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -56,6 +55,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
+    private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
@@ -154,20 +154,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         CompilerFunctionEffect.Dependent => Derived,
         _ => Limit,
     };
-
-    // Whether a direct child row of a verdict row, between it and the row after its subtree, covers its part of an argument.
-    private static bool Covers(ReadOnlySpan<MirDropRow> rows, int row, int next, int part)
-    {
-        for (var i = row + 1; i < next; i++)
-        {
-            if (rows[i].Depth == rows[row].Depth + 1 && rows[i].Step != MirProjectionKind.Base && rows[i].Arg == part)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters its declaration's summary at the call's substitution (SPEC
@@ -314,74 +300,25 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         var group = program.Drops.Group(body.Ordinal, block, view);
-        if (group >= 0)
-        {
-            _ = this.Destroyed(program.Drops.RowsOf(body.Ordinal), group, body, type);
-        }
-        else
+        if (group < 0)
         {
             this.Item(type, Drop);
-        }
-    }
-
-    // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
-    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
-    // of its argument (a mask below 64 parts, past them the rows themselves). A part Binding rejected (a null Field or Case, DECISIONS
-    // BU-37) destroys nothing, as MirTypes.Destruction reads it, never a limit (R4-M139). Returns the row after the subtree.
-    private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
-    {
-        var node = rows[row];
-        var next = row + 1;
-        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
-        {
-            this.Item(type, Drop);
+            return;
         }
 
-        var (covered, based) = (0UL, false);
-        while (next < rows.Length && rows[next].Depth > node.Depth)
+        // Each part the group destroys whole (MirDropTable.Destroyed: a Keep or Flag row's, a part's without a row, a fixed array's
+        // run of elements). The items are a set: the walk's order and an array's several Runs of one element Type read alike. An Open
+        // level has no drop of its own, an Elide row no step.
+        program.Drops.Destroyed(body, group, type, this.destroyed);
+        foreach (var step in this.destroyed)
         {
-            var child = rows[next];
-            covered |= child.Step == MirProjectionKind.Base || child.Arg > 63 ? 0UL : 1UL << child.Arg;
-            based |= child.Step == MirProjectionKind.Base;
-            next = this.Destroyed(rows, next, body, body.ProjectedType(type, child.Step, child.Arg));
-        }
-
-        if (node.Verdict != MirDropVerdict.Open || type is null)
-        {
-            return next;
-        }
-
-        // The parts as move paths name them: a Tuple's or Closure's elements and a struct's Fields, a fixed array's elements (one Type), an
-        // enum's Case payloads, and a struct's base.
-        var (kind, count) = type switch
-        {
-            { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count),
-            { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, (int)type.Length),
-            _ when AdtDef.CaseTypes(type) is { } payloads => (MirProjectionKind.Downcast, payloads.Length),
-            _ => (MirProjectionKind.Field, AdtDef.Count(type)),
-        };
-        for (var i = 0; i < count; i++)
-        {
-            if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
+            if (step.Kind is MirDropStepKind.Whole or MirDropStepKind.Run)
             {
-                if (body.ProjectedType(type, kind, i) is { } part)
-                {
-                    this.Item(part, Drop);
-                }
-
-                if (kind == MirProjectionKind.ConstIndex)
-                {
-                    break; // A fixed array's elements share one Type.
-                }
+                this.Item(step.Type, Drop);
             }
         }
 
-        if (!based && AdtDef.Base(type) is { } parent)
-        {
-            this.Item(parent, Drop);
-        }
-
-        return next;
+        this.destroyed.Clear();
     }
 
     // SPEC 8.11.3 rule 1: a call the caller's premises bound may destroy each value moved into it.
