@@ -4,8 +4,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Kimi.Compiler;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.4).</summary>
 internal static partial class Kernel32Imports

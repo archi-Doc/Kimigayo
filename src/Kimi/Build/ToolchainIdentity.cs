@@ -9,8 +9,9 @@
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read WindowsProfile.
 
 using System.Text.Json;
+using Kimi.Compiler;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>The pinned native-toolchain identity of the windows-x64 profile, from the compiler's embedded backend record.</summary>
 public static class ToolchainIdentity

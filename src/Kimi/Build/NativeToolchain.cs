@@ -6,11 +6,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
-using static Kimi.Compiler.ArtifactFiles;
+using static Kimi.Build.ArtifactFiles;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>Owns build-record publication and native tool/executable execution. Consumes checked product metadata
 /// or validated emission artifacts; publishes success atomically and never checks source semantics.</summary>

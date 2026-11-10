@@ -2,10 +2,11 @@
 
 using System.Text;
 using System.Text.Json;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
-using static Kimi.Compiler.ArtifactFiles;
+using static Kimi.Build.ArtifactFiles;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>Publication of a checked, matched pre-optimization IR/manifest pair, which records its own failure. Does not run native tools.</summary>
 public static class EmissionArtifacts

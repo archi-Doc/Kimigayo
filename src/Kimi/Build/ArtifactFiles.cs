@@ -2,7 +2,7 @@
 
 using System.Security.Cryptography;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 /// <summary>Shared artifact identity and path validation for emission and native builds.</summary>
 internal static class ArtifactFiles

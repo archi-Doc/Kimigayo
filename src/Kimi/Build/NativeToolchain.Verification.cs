@@ -3,10 +3,11 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
-using static Kimi.Compiler.ArtifactFiles;
+using static Kimi.Build.ArtifactFiles;
 
-namespace Kimi.Compiler;
+namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
