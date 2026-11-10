@@ -6964,6 +6964,7 @@ resumed by R4-M86 (2026-10-20).
   it, replacing five `is` chains. A new intrinsic adds a row (2b-4: Transferable). Outside it: the capability engine's leaves, the `not
   ObjectPayload` opt-out and Copy's derivation. Open: the conditional Self clause keeps its own failure code (PLAN G190). Rejected:
   per-column pattern methods (a new intrinsic extends each) and a flags enum (more code).
+  - Superseded in part by BU-152 (PLAN G717): its column set (`ConformanceJudged` leaves) and its reader list.
 - **BU-21** (2026-10-21; superseded in part by G224; PLAN G189, unit bu15) A Borrow's operand is a Temporary Value exactly when its
   root, read through parentheses and inline parts (stopping at a getter result), is no Place (SPEC 3.4, 3.6): `BorrowableTemporary`
   (`Binding.PlaceAuthority.cs`) refuses a root that `IsBarePlace` or `IsStaticField` names a Place and admits any other (a call result,
@@ -11334,6 +11335,30 @@ resumed by R4-M86 (2026-10-20).
     (the position's role is Qualifier either way).
   - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
     published reads skip it. RP8 owed (with BU-144's).
+- **BU-152 SPEC 8.7.1's pair has one representation: the requirement `T is X`, decided by the capability judgment** (2026-11-11;
+  Front, Binding; Major, Q17 class 1; PLAN G717; the owner's O-153 (1a) and (2a); SPEC 8.7.1's sentences land with it, D-307) SPEC
+  8.7.1, 8.7.3, 3.5.2.
+  - Adopted: a judged compiler-intrinsic X as a refinement parent and `Self is X` in a Contract are one requirement `T is X` on
+    every conforming Type, decided only by the capability engine's judgment without derivation (`ProveConstraint`'s Judged branch;
+    `VerifyConformance` judges an ancestor X by the same request, and `ContractSupply` supplies `T is X` from either form). Neither
+    form opts a Type in (O-153 (1a)): only a Type's own `Self is Copy`, optionally `when P`, registers its Copy declaration
+    (`DeclaresCopy`, the conditional registration: the Copy identity, never a refinement of it).
+  - The table's `Judged` column is the one fact that the engine judges K, with two consequences: K is a memberless refinement parent
+    (KimiLibrary makes its empty shape where it registers the symbol), and a conformance to K on any path, an ancestor's or an
+    inherited one, is that judgment (`VerifyConformance`; `InheritedConformances` never inherits it, `VerifyInheritedConformance`
+    judges it).
+  - The column `ConformanceJudged` leaves: it restated `Judged` and disagreed with it for ObjectPayload, so an opted-out Type
+    conformed to `contract C: ObjectPayload` (SPEC 8.7.3); the four-name shape list left PrimitiveInteger no parent (G717). Readers
+    of the table: `ProveConstraint`, a Contract's Self clause, a struct's or enum's Self clause (plain or conditional),
+    `VerifyConformance`, `InheritedConformances`, `VerifyInheritedConformance`, KimiLibrary's registration.
+  - Record selection (the Front's choice, DECISIONS Q13): a user Type conforming to a child of PrimitiveInteger gets the judged
+    parent's `UnsatisfiedConstraint_Kd`, not the closed record. Callable is not judged and is no parent (O-153 (2a)).
+  - Supersedes in part BU-20's columns and reader list: BU-20 records no reason for a separate conformance column, and the one the
+    code suggests (a declared conformance to ObjectPayload or PrimitiveInteger is an error, so none is judged) does not hold for an
+    ancestor's conformance.
+  - Rejected: a fifth name with its own flag (one more case; Transferable repeats it); indexing the intrinsic declarations as source
+    Contracts (larger, and it removes only the shape code); storing one form of the pair as the other (ancestors are built before
+    clauses bind; a parent is no clause).
 - **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
   `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
   15.3.1-15.3.6, 23.1.2.
