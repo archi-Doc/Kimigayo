@@ -10110,6 +10110,8 @@ resumed by R4-M86 (2026-10-20).
 
   - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
     superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`).
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
   third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
@@ -10729,6 +10731,8 @@ resumed by R4-M86 (2026-10-20).
     publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
   - Amended by BU-144: `LookupRole` and `PathEnd` are file-level types of ResolvePath.cs (`PathEnd.None`: not looked up); the Value
     row is untouched.
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`).
 - **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
   compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
   BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
@@ -11026,6 +11030,9 @@ resumed by R4-M86 (2026-10-20).
     (N1e2-2 replaces `UseRow`'s rows by SPEC 9.2's roles).
   - Not verified: review 4's R4-N5. (R4-N1 is verified by the implementation review: a Type slot whose Type reading needs a
     qualifier gives the same record on all six builds.)
+  - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
+    end (`PathEnd[]`). Its whitelist's exception "Constraints' Container question" is gone: f1 removed the only evaluation there
+    (implementation review 2).
 - **BU-145 The pun rule's Type facts are Binding's published readers (PLAN G667, C-189)** (2026-11-10; Major; the Front's design,
   the Middle's implementation under Q18; design reviews 1-3 and the re-check under the owner's O-126 (a); the Front's implementation review ACCEPT; the Middle's consent on
   C-189) SPEC 3.8, 5.2, 5.6, 5.7, 15.6.1, 22.1.
@@ -11150,6 +11157,73 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
     check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
     restore changed; recorded under G525).
+- **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
+  design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
+  owner's O-101 (1)(a), O-122 (a), O-128 (a).
+  - Rule: `LookupRole` is SPEC 9.2's roles: `Qualifier` (every Type-namespace declaration but a pair binder; the only row reaching
+    stage 4), `Core`, `ObjectViewTarget`, `TypeSemantics`, `Requirement` (every declaration but a group: 8.2.1), `ContractReference`
+    (Contracts) and `Value`. `HasLookupRole` alone decides eligibility. `UseRow(use)` maps a use's position to its row: a Contract
+    parent, a `(C)` selector or `.(C).` suffix, a parenthesized left of a Type path and a conditional conformance's Contract are
+    Contract Reference; any other member-access position, `effect A.r`'s and `associate C.E`'s path selector and an alias target are
+    Qualifier (9.6); an object form's target is Object View Target; a subject or requirement is Requirement; a bare adaptation
+    target is Core compared with Type Semantics; every other Type position is Core. `NamePath` and `TypeName` take no row; the
+    walk's left and `ResolveRootPath`'s left ask `UseRow`; a new form adds a `UseRow` row.
+  - Object View Target (O-128 (a), review 2's R1): the row is 9.2's "Cores and Contracts (§8.12)" (D-259, fadfe771f): every Contract
+    is eligible; ObjectViewCompatible checks after selection and never resumes lookup. So n06 (a nearer Contract before a Core at
+    `obj/X`) stays InvalidTypeFormation_Kd. Every row has 9.2's eligible set.
+  - Alias targets (N6): an alias target resolves from the Compilation root without source or default aliases, and there are no alias
+    chains (18.2.1), so no named alias is a candidate there and Qualifier's set equals Declaration Container's set at every
+    alias-target lookup; 2a adds no Declaration Container row.
+  - The column: no reader of the published row is left (no caller passes a row, so a published use's row is `UseRow`'s by
+    construction), so `UseLookup` and its `Role` are removed and `HirTables.Lookups` is `PathEnd[]`, 1 byte a node (was 2). A
+    publication is still written once: a different end, or another selection over a Selected use, is InternalInvariant.
+    `EarlyRead.Role` stays: the early-read check's `ProbePath` reads it.
+  - Moves, valid newly accepted: G575 (q1 and its siblings: p03, p04, p05, w05, n12, n13, r08, r09; e02, e04; p11), G576 (stage 4 at
+    a parent or projection Contract: n10, n11), the Contract Reference positions past a nearer group, struct or Type Parameter (p19,
+    p21, p23, p27, n02c, n04, n04s, a11, a12), n01 (a pair binder is no Qualifier), b02 (Core past a pair binder), g05. G575 holds
+    at every Core position, not only the listed ones: a runtime `is` target (x04), a Type argument inside a requirement (x07) and a
+    parent's Type argument (x08) pass a nearer Contract too (implementation review 1, N3).
+  - Calls' length-or-Type question (BU-144's U6) asks Core (`UseRow(argumentName)`) instead of NoContainer, so a Contract no longer
+    gives the spelling a Type reading: x03 (two opened `f<T>` and `f<length N>`, a `contract Size` and a `let Size`; valid) moves
+    Unsupported_Kd -> accepted, and x02 (the same at `func f<T>` alone; invalid) records NoApplicableOverload_Kd at the call instead
+    of InvalidTypeFormation_Kd at `Size` (Q13: a record at another node, no Type reading of `Size` exists by 9.2; review 1, N2).
+  - Provisional mode (R7-N1e2-2a-f1, implementation review 1's B1; ruling 2): a role filters candidates by kind and lookup stops
+    only at a stage with an eligible declaration (9.2, 9.5), so a declaration of the name that the role excludes, of any kind,
+    decides nothing: the name is missing, pending in Provisional mode and rejected at the final pass with a missing name's records.
+    The constraint visitor's Container question (`ProbePath(node, Scope, Qualifier, 0)?.Kind == Container`, dev's NoContainer
+    exclusion: a second lookup without the use's role, "an available group is a definite non-Type") is removed, with the visitor's
+    scope (NameEvaluationSites loses `Binding.Constraints.cs=1`). Provisional verdicts that move, final records unchanged: a parent
+    named by a struct (`Target`, a supplied `struct Future`; c0d3ea7f3) or by a group (`Api`), and a group at a subject or a
+    requirement (`i32 is Future`, `Invalid is Copy`, `T is Future or Invalid` with `group Future`/`group Invalid`): Invalid ->
+    pending. A parent past a nearer group whose Contract a later source supplies (v07) is no longer Invalid before the append; a
+    Contract at a Core position inside a requirement (v11, `T is Box<C>`) is pending where dev was Invalid. Rows:
+    `UnresolvedRefinementBindingTest.ADeclarationTheRoleExcludesLeavesTheNameMissing`,
+    `UnresolvedConstraintBindingTest.FinalBindingRejectsNamesThatRemainMissing`. The Unit's class selection gains the twelve classes
+    that bind in Provisional mode (`e2-2a\classes.txt`, 240).
+  - Moves, invalid newly rejected: h01, h02 (`(P).(C).Item` with a struct `P`: accepted on dev by G496's D1, now
+    UnresolvedBinding_Kd; guard rows in `UseLookupTest.ARoleFollowsItsPosition` with h03).
+  - Records by code (Q13): a Contract or a pair binder alone at a Core position is UnresolvedBinding_Kd at the name instead of
+    InvalidTypeFormation_Kd (9.2: no eligible Core; p06, b03, e03, d02 and 16 test rows: ErasureOwnedDiagnosticTest 12,
+    TypeArityBindingTest 1, GenericTypeArgumentBindingTest 3); n02bx (4 records for 2). g02 (valid; a nearer struct before a
+    library Contract in `[4 of u8].(Indexable<isize>).Element`) now passes the struct and shows g01's two records
+    (UnprovenConstraint_Kd, TypeMismatch_Kd): g01, SPEC F.5's own example, is rejected on dev (pre-existing; PLAN G715).
+  - Keeps (O-122 (a)): `ProjectionQualifier` reads `T.C.X` as `T.(C).X` (its `C` in the Qualifier row); 8.5.2 makes it an ordinary
+    path; R7-N1e2-2b removes the reading. No test became invalid: the refinement and constraint rows above changed a Provisional
+    expectation, not a program's validity.
+  - Removes `Any`, `NoContainer`, `Type`, `Semantics`; the row argument at every `NamePath`/`TypeName` call and
+    `LookupAdaptationTarget`; `ResolveAdaptationTarget`'s fallback lookup (NameEvaluationSites ResolvePath.cs 18 -> 17);
+    `UseLookup`.
+  - Supersedes BU-122's "They are today's filters, not SPEC 9.2's roles, and `Any` alone reaches stage 4" and its rejected "SPEC's
+    names on the rows (they are not its contracts)" (no longer holds: each row has 9.2's eligible set, Object View Target by the
+    reading above); BU-131's "the Type rows stay today's filters"; BU-144's "`BindNamedType` asks its position's row, `UseRow`: ...
+    a Contract parent Any, every other Type position NoContainer" (now SPEC's roles and the only source of rows), its "A read in
+    another row than the published one is InternalInvariant" (no longer holds: no caller passes a row, so the row is `UseRow`'s by
+    construction) and its `UseLookup(End, Role)` (the column is the end alone).
+  - Rejected: callers keeping explicit rows (two sources); keeping `Role` in the column (no reader); a `Subject` row (8.2.1);
+    Qualifier with pair binders (9.2); keeping the adaptation fallback (try-then-fallback); a temporary `UseRow` arm for `T.C.X`
+    (the position's role is Qualifier either way).
+  - Cost: `UseRow` runs once per evaluated use and per path left in a walk (probes and early-read re-evaluations included);
+    published reads skip it. RP8 owed (with BU-144's).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
