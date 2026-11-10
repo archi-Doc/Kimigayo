@@ -191,8 +191,8 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. The formatting kinds left
-    // (Text.writer, the built-in items) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
+    // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
+    // built-in items (BuiltinFormat alone formats) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
