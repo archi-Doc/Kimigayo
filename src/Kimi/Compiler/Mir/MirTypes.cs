@@ -169,7 +169,7 @@ internal static partial class MirTypes
         {
             MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || ReferenceTypes.IsPointer(type),
             MirBinaryOp.Mul or MirBinaryOp.Div or MirBinaryOp.Rem => Conforms(kind, op, type),
-            MirBinaryOp.Shl or MirBinaryOp.Shr or MirBinaryOp.BitAnd or MirBinaryOp.BitOr or MirBinaryOp.BitXor => type.HasIntegerArithmetic,
+            var bitwise when IsBitwiseOrShift(bitwise) => type.HasIntegerArithmetic,
             MirBinaryOp.Eq or MirBinaryOp.Ne => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable),
             MirBinaryOp.Lt or MirBinaryOp.Le or MirBinaryOp.Gt or MirBinaryOp.Ge => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Comparable),
             _ => false,
@@ -256,6 +256,10 @@ internal static partial class MirTypes
     // Wrapping over an abstract Type, which stays constructed until substitution (SPEC 3.1.1; TyCtxt.Intern).
     private static bool IsGenericWrapping(BoundType type)
         => type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping;
+
+    // SPEC 13.3.1's bitwise and shift group, each operator named: the shifts << >> and the bitwise & | ^.
+    private static bool IsBitwiseOrShift(MirBinaryOp op)
+        => op is MirBinaryOp.Shl or MirBinaryOp.Shr || op is MirBinaryOp.BitAnd or MirBinaryOp.BitOr or MirBinaryOp.BitXor;
 
     // Whether an arithmetic operator's Contract has a built-in witness at a Type (ArithmeticOperations; ArithmeticContracts.Supports).
     private static bool Conforms(MirRvalueKind kind, byte op, BoundType type)

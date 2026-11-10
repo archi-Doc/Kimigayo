@@ -41,7 +41,8 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
-                    ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) && this.AvailableConstraintFact(environment, fact))
+                    ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
+                    this.AvailableConstraintFact(environment, fact))
                 {
                     return true;
                 }

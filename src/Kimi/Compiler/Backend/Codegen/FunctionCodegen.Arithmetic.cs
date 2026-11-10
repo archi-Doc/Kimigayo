@@ -123,7 +123,8 @@ internal sealed partial class FunctionCodegen
         return type.IsFloatingPoint ? 4 : 1;
     }
 
-    // The row of a MIR operator, a statement's or an arithmetic shim's (MirTypes.ArithmeticOperation): MirBinaryOp's members, then MirUnaryOp's.
+    // The row of a MIR operator, a statement's or an arithmetic shim's (MirTypes.ArithmeticOperation): MirBinaryOp's members, then
+    // MirUnaryOp's.
     private static int RowOf(MirRvalueKind kind, byte op) => (kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + op;
 
     // The table, whose rows follow the operator enums' order with an entry per column; a row or an entry missing is a broken contract.

@@ -15,7 +15,8 @@ internal static class ArithmeticContracts
     // and unary - (MirTypes.Operates) and Binding's conformance.
     internal static bool Supports(BoundType type, KimiDeclarationId id)
         => type.IsNumeric && (id == KimiDeclarationId.Negatable ? !type.IsUnsignedInteger
-            : id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.RemainderProvider && (id != KimiDeclarationId.RemainderProvider || !type.IsFloatingPoint));
+            : id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.RemainderProvider &&
+                (id != KimiDeclarationId.RemainderProvider || !type.IsFloatingPoint));
 
     internal static bool IsArithmetic(KimiDeclarationId? id) => id is >= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable;
 
