@@ -11072,6 +11072,25 @@ resumed by R4-M86 (2026-10-20).
     scope (expanded facts under substitution not shown equal; the conditions still walk); composing only the Self and reaching the
     declaring scope by syntax (a consumer deciding by syntax); presizing `TyCtxt.types` or relaxing the row (moves the resize; the
     factor is never relaxed).
+- **BU-149 An access word where none is taken is one parser rule, `Parser.RejectAccessWord` (PLAN G689)** (2026-11-10; Front,
+  Parsing; Major, an acceptance mover (invalid programs newly rejected); design reviews 1-3 and the R3-1 re-check, implementation
+  review ACCEPT; the owner's O-127 (a) and O-134 (a)) SPEC 6.1.1, 9.3, Appendix F.
+  - **Rule.** An access word on an item whose production has no `Access` (Appendix F), or on a function item where 6.1.1 or 9.3
+    forbids it, is reported by one parser rule, `Parser.RejectAccessWord`: `Decoration` at the access word itself, once, the word
+    cleared.
+  - **Location.** The prefix reader publishes the word's span (`TokenReader.AccessModifierSpan`, the first access word, carried by
+    `TokenContext` beside `DispatchModifierSpan`); the location is the word because it is the token SPEC calls wrong and no record
+    of the item's own parse has its span (a record at the item's first token merged with the item's record through `RecallError`:
+    design review 3, R3-1).
+  - **Rows.** The 16 of the G689 site table: alias; root and local function; LocalBinding; body and member Constraint clause, Origin
+    relation and effect; conditional conformance; `associate`; EnumCase; `property` requirement; function requirement; `drop`;
+    specialization. The specialization header reports only its other modifiers (`SpecializationHeader`). A new production without
+    `Access` adds a call row and a table row.
+  - **Binding.** Its protected placement check no longer judges function bodies or Contracts and treats a word there as a broken
+    parser contract.
+  - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
+    check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
+    restore changed; recorded under G525).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
