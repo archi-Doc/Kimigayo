@@ -114,6 +114,32 @@ public sealed partial class FunctionCodegenTest
     public void ArrayProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): the steps the Array invariant or a dominating guard bounds check no arithmetic. `insertAt` keeps one
+    // check, its documented length sum, as `reserve` and `append` keep theirs; `appendCopies` keeps one, the step of the range it iterates.
+    [Fact]
+    public void ArrayBodiesCheckNoBoundedArithmetic()
+    {
+        const string Source =
+            "func abSwap(values: uniq/Array<i32>) -> i32 => values.swapRemove(0)\n" +
+            "func abCut(values: uniq/Array<i32>) => values.truncate(1)\n" +
+            "func abFill() -> Array<i32> => Array<i32>.init(repeating: 1, count: 3)\n" +
+            "func abCopy(values: uniq/Array<i32>, more: Slice<i32>) => values.appendCopies(more)\n" +
+            "func abTake(values: uniq/Array<i32>) -> Option<i32> => values.pop()\n" +
+            "func abWedge(values: uniq/Array<i32>) => values.insert(0, 7)\n" +
+            "func abRemove(values: uniq/Array<i32>) -> i32 => values.remove(0)\n" +
+            "func abLarge(value: ref/i32) -> bool => value > 25\n" +
+            "func abFilter(values: uniq/Array<i32>) => values.removeAll(matching: abLarge)\n" +
+            "func abTurn(values: uniq/Array<i32>) => values.reverse()\n" +
+            "func abSort(values: uniq/Array<i32>) => values.sort()\n" +
+            "func abDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n";
+        var c = Analyze(Source, OutputKind.Library);
+        AssertNoCheckedArithmetic(c, "swapRemove", "truncate", "initRepeating", "pop", "removeAt", "removeAll", "reverse", "sort", "next");
+        foreach (var name in new[] { "insertAt", "appendCopies" })
+        {
+            Assert.Equal(1, Regex.Count(Assert.Single(ItemTexts(c, name)), @"call .*with\.overflow"));
+        }
+    }
+
     // SPEC 4.9.3: each operation calls its body (R8-A1a, A1b) with the handle, its operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
     // location; `append`'s body grows through `growArray` by the element's stride.
     [Fact]
