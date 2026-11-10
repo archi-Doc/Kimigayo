@@ -138,8 +138,8 @@ internal sealed partial class MirBuilder
     // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
-    // serves (R3 decision 5) of the elements from the receiver's Storage, displaced by a start whose boundary is not Start (SPEC 5.3,
-    // 8.15.3; O-92 (a)), any address for none (SPEC 5.6), backed by what the
+    // serves (R3 decision 5) of the elements from the view's first element's address (First: the receiver's Storage, displaced by a
+    // start whose boundary is not Start; SPEC 5.3, 8.15.3; O-92 (a)), any address for none (SPEC 5.6), backed by what the
     // Slice retains (DECISIONS R4-M40): a Slice receiver's handle, its value and no handle variable, read where it is located (Handle), or
     // a shared borrow of an array's whole Place made where it is located, before the boundaries, which is the receiver's check (R4-M56).
     private void Slice(MirPlace destination, IndexKoto index)
@@ -195,27 +195,18 @@ internal sealed partial class MirBuilder
         }
 
         var element = TypeOf(index).Components[0];
-        var pointer = this.Temp(compilation.Types.Pointer(element), index);
-        var first = based ? pointer : this.Temp(this.body.TypeOf(pointer)!, index);
+        var type = compilation.Types.Pointer(element);
+        var pointer = this.Temp(type, index);
+        var through = based ? pointer : this.Temp(type, index); // The displaced form's temp, among the statement's temporaries.
         var some = this.body.AddBlock();
         var empty = this.body.AddBlock();
         var join = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(count), this.body.AddCase(0, empty), 1, some, this.Info(index)));
-        var storage = this.Unlent(sequence, this.body.TypeOf(pointer)!) ?? MirRvalue.Storage(sequence, this.body.TypeOf(pointer)!);
-        this.body.Push(some, MirStatement.Assign(first, storage, this.Info(index)));
-        if (!based)
-        {
-            var displaced = this.body.AddOperand(MirOperand.Copy(first));
-            this.body.AddOperand(MirOperand.Copy(start));
-            this.body.Push(some, MirStatement.Assign(pointer, MirRvalue.Binary(MirBinaryOp.Add, displaced, proven: true), this.Info(index)));
-        }
-
+        var view = MirStatement.Assign(pointer, this.Unlent(sequence, type) ?? MirRvalue.Storage(sequence, type), this.Info(index));
+        this.First(some, view, MirOperand.Copy(start), based, through);
         this.body.Push(
             empty,
-            MirStatement.Assign(
-            pointer,
-            MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(pointer)!))))),
-            this.Info(index)));
+            MirStatement.Assign(pointer, MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))))), this.Info(index)));
         this.body.Terminate(some, MirTerminator.Goto(join, this.Info(index)));
         this.body.Terminate(empty, MirTerminator.Goto(join, this.Info(index)));
         var at = this.arguments.Count;
@@ -224,6 +215,22 @@ internal sealed partial class MirBuilder
         this.arguments.Add(MirOperand.Copy(count));
         this.arguments.Add(backing);
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
+    }
+
+    // SPEC 4.8.1, 8.15.3 (DECISIONS R8-M13): a view's first element's address, the one statement of its form, from the view at its
+    // receiver's Storage (an Opaque value where nothing lends the receiver: Unlent) by where it starts: at the storage, the view; at a
+    // position, the view in a temp its caller holds in its own region (`through`; else the view's Place), displaced by the start, a
+    // proven Add at the view's location.
+    private void First(int block, in MirStatement view, in MirOperand start, bool starts, MirPlace through)
+    {
+        this.body.Push(block, view with { Place = through });
+        if (!starts)
+        {
+            var displaced = this.body.AddOperand(MirOperand.Copy(through));
+            this.body.AddOperand(start);
+            var add = MirRvalue.Binary(MirBinaryOp.Add, displaced, proven: true);
+            this.body.Push(block, MirStatement.Assign(view.Place, add, view.Source with { StatementStart = false }));
+        }
     }
 
     // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads (Position); a written ^x, which resolves only for
