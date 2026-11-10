@@ -56,7 +56,7 @@ public sealed partial class Binding
             return recorded;
         }
 
-        if (reference is null || self.Symbol is not { } owner || this.impls.OfType(owner) is not { } identities)
+        if (reference is null || self.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }

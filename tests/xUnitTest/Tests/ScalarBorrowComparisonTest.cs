@@ -35,10 +35,26 @@ public class ScalarBorrowComparisonTest
     [InlineData("func f(a: ref/i32, b: ref/i64) -> bool => a == b", Kimi.DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f(a: ref/bool, b: ref/bool) -> bool => a < b", Kimi.DiagnosticCode.OperatorNotDefined_Kd)]
     [InlineData("func f(a: ref/string, b: ref/i32) -> bool => a == b", Kimi.DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f(b: i32, a: ref/Never) -> bool => b == a", Kimi.DiagnosticCode.TypeMismatch_Kd)] // PLAN G676: no operand is Never.
+    [InlineData("func f(b: i32, a: ref/Never) -> bool => a == b", Kimi.DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f(b: string, a: uniq/Never) -> bool => b < a", Kimi.DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f(b: i32, a: ref/Never) -> bool\n    let r = a@ref\n    return b != r", Kimi.DiagnosticCode.TypeMismatch_Kd)]
     public void RejectsMismatchedOrUnorderedReferents(string source, Kimi.DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
+    // SPEC 13.4: one operand of Type Never compares with any referent; two Never terminals are equal Types.
+    [Theory]
+    [InlineData("func f(b: i32, a: Never) -> bool => b == a")]
+    [InlineData("func f(b: ref/i32, a: Never) -> bool => a < b")]
+    [InlineData("func f(c: ref/Never, a: ref/Never) -> bool => c != a")]
+    public void ComparesANeverOperandWithAnyReferent(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")));
     }
 }

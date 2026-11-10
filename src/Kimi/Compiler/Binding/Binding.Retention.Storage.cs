@@ -27,6 +27,16 @@ namespace Kimi.Compiler;
 // so the walk names every storage past the root; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
 // Must not: judge an Origin relation (the premise closure's), decide which source a position can hold (the fits'), or read the call's
 // arguments or solved Origins.
+// Also the parts the value at a Place's key holds at its own address by the walk's by-value criterion (OwnParts, read by OwnLayers in
+// Binding.Retention.PlaceKeys.cs; TyCtxt.OwnLayers: A5's covering and pun rule read them).
+
+/// <summary>A part a value holds at its own address (<see cref="Binding.OwnLayers"/>; SPEC 5.2.1, 5.7, 15.6.4): a raw layer
+/// (<see cref="Layer"/>) with its step at the Place (Holdings' under its holding instance; a `during self` layer's, where the path
+/// dereferences, the step of the Origin reading it gives), or, Layer null, another part that reaches storage with its step;
+/// <see cref="Past"/> the key of the Place past the step (a raw layer's pointee, a borrow's referent, an abstract part itself; Type null
+/// where no Type states it).</summary>
+internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceKey Past);
+
 public sealed partial class Binding
 {
     // The storage walk's root storage, the Abstract one (what an abstract part hides), the result's (every position of its Type, one
@@ -53,6 +63,7 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
     private readonly List<Hold> retentionHeld = new(); // HeldRun's runs, a stack: each caller reads its run and removes it.
     private readonly List<BoundType> retentionReads = new(); // Reads' runs, a stack.
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder)> ownSeen = new(); // OwnLayers' walked keys, reused.
 
     // An abstract part a carrier stands for: a Type parameter that is no pair layer, or a pair's target (RetentionWalk's carriers).
     private static bool IsCarrier(BoundType type)
@@ -191,7 +202,10 @@ public sealed partial class Binding
     }
 
     // A raw layer. An input fold's walk names no write, so any step's layer is gone through. An output fold's steps by its position (RawStepAt,
-    // as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113), the cap of a contract's walk, which stays outside the fact.
+    // as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113), the cap of a contract's walk, which stays outside the fact;
+    // one stepping Exclusive also writes its Origin's members wherever the input holds it (SPEC 15.6.4 "a Tuple element, an Option payload,
+    // a Field or a Type argument included"; PLAN G583): its holding instance decides its step, never its members, and the walk meets the
+    // layers an input holds at its own address by ByValue, as OwnLayers lists them.
     private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var pointee = this.retentionHeld[run.Start].Part!;
@@ -211,7 +225,7 @@ public sealed partial class Binding
         }
 
         this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
-        if (step == HoldStep.Exclusive && at.Holder is null)
+        if (step == HoldStep.Exclusive)
         {
             this.Members(environment, OwnedOrigin(type)!, below);
         }
@@ -240,9 +254,9 @@ public sealed partial class Binding
         }
     }
 
-    // What a raw layer of the contract whose Origin steps Exclusive lets the call write (RawContent's members: the referent of each input
-    // whose outer Origin it is, the keepers of each slot it binds), each past the layer, for the output fold; an incomplete member walk is
-    // the Limit.
+    // What a raw layer of the contract whose Origin steps Exclusive lets the call write, at any holder (RawContent's members over the contract
+    // scope: the referent of each input whose outer Origin it is, the keepers of each slot it binds, a holding instance's included), each
+    // past the layer, for the output fold; an incomplete member walk is the Limit.
     private void Members(OriginPremiseEnvironment environment, BoundOrigin origin, StorageAt at)
     {
         if (at.Storage == NoStorage)
@@ -627,12 +641,21 @@ public sealed partial class Binding
         return new(start, this.retentionHeld.Count);
     }
 
-    // HeldRun of a value a contract reads, a Closure's as its body sees it (ClosureEnvironment).
+    // HeldRun of a value a contract reads as its body sees it (BodySees); a Closure whose environment does not substitute is the Limit.
     private HeldRange BodyRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
-        => this.HeldRun(type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type, written, holder, out complete);
+    {
+        var sees = this.BodySees(type);
+        this.retentionLimit |= sees is null;
+        return this.HeldRun(sees ?? type, written, holder, out complete);
+    }
+
+    // A part of a contract input as the contract's body sees it (DECISIONS R4-M148, one rule): a Closure's environment
+    // (TyCtxt.ClosureEnvironment), null where it does not substitute; any other Type itself. The storage walk (BodyRun) and OwnLayers read it.
+    private BoundType? BodySees(BoundType type) => type.Kind == BoundTypeKind.Closure ? this.types.ClosureEnvironment(type) : type;
 
     // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part.
-    // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10).
+    // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10). The one by-value criterion, at any holder:
+    // the storage walk's parts (Parts) and the parts an input holds at its own address (OwnLayers) read it.
     private bool ByValue(BoundType type, in Hold entry) => entry.Step switch
     {
         HoldStep.Loan => type.Symbol?.LibraryDeclaration == KimiDeclarationId.Loan,
@@ -640,6 +663,40 @@ public sealed partial class Binding
         HoldStep.Inline => true,
         _ => false,
     };
+
+    // OwnLayers from a part (Type, Written, Holder), each key once per call; retentionHeld is read as a stack (each run removed).
+    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, in PlaceKey at, List<OwnLayer> into)
+    {
+        if (!this.ownSeen.Add((type, written, holder)))
+        {
+            return true;
+        }
+
+        var (start, sees) = (this.retentionHeld.Count, this.BodySees(type));
+        var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
+        var raw = start < this.retentionHeld.Count && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
+        if (raw && complete)
+        {
+            var layer = this.retentionHeld[start];
+            into.Add(new(type, this.LayerStep(layer.Step, at), new(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at))));
+        }
+
+        for (var i = start; !raw && complete && i < this.retentionHeld.Count; i++)
+        {
+            var entry = this.retentionHeld[i];
+            if (this.ByValue(type, entry) && entry.Part is { } part)
+            {
+                complete = this.OwnParts(part, entry.Written, entry.Holder, at, into);
+            }
+            else if (entry.Step != HoldStep.Loan || entry.Part is null)
+            {
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, this.PastThrough(type, entry, at))));
+            }
+        }
+
+        this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
+        return complete;
+    }
 
     // A run of retentionHeld (HeldRun).
     private record struct HeldRange(int Start, int End);

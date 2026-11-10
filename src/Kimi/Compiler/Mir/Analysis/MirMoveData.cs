@@ -7,9 +7,10 @@
 // argument; a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its
 // base. A PairLayer step is transparent: it is the Place itself in the owner case, and the accesses of a reference case end before it
 // (MirInit). Deref and Index end a path: an access through them is an access of the prefix's path, and a Move through them has no Move
-// Path, except through a raw pointer, however read (an untracked Take). Roots whose events all lie in one chain from their StorageLive (a
-// StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow roots, so a head stores only the flow
-// paths. A path admits one placement when its root is a let binding or it lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
+// Path, except into a raw Place, a raw pointer's Deref however read or its TyCtxt.RawPart parts (an untracked Take; PLAN G672). Roots
+// whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and
+// numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it
+// lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
 // Each Assign's Never parts: the components of its destination that its construction leaves unplaced, as their operand is the Never value
 // (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies, and its carries, the paths of a temp it takes whole that A1 copies onto
 // the destination's component on each path.
@@ -40,7 +41,7 @@ internal sealed class MirMoveData
     /// <summary>The Place is its path.</summary>
     internal const int Direct = 0;
 
-    /// <summary>The Place is through a raw pointer below its path: an untracked Take (SPEC 5.2.3).</summary>
+    /// <summary>The Place is a raw Place below its path (<see cref="TyCtxt.RawPart"/>): an untracked Take (SPEC 5.2.3).</summary>
     internal const int Raw = 1;
 
     /// <summary>The Place is through a reference, an object handle or an index below its path: it has no Move Path.</summary>
@@ -196,7 +197,8 @@ internal sealed class MirMoveData
     // The path of a Place by creation index << 2 | access, its prefix's first: a Base of depth d is d steps of depth 1, a PairLayer is its
     // prefix's path, and Deref and Index end the path. A Deref's access is its pointer's, whatever its prefix's: Raw through a raw pointer
     // (SPEC 5.2: `*p` is a raw Place however `p` is read; PLAN G222), else NoPath (a referent or payload, also inside a raw Place, never
-    // offers Take, SPEC 15.1.5); below a Raw or NoPath Place, any other step keeps that access.
+    // offers Take, SPEC 15.1.5). Below a Raw Place a step keeps Raw only into a raw Place's part, Binding's one rule (TyCtxt.RawPart:
+    // PLAN G672), else NoPath (an Array's or view's element is a referent, SPEC 4.7.1); below a NoPath Place any step keeps NoPath.
     private int Resolve(MirPlace place)
     {
         if (place.Projection == 0)
@@ -215,6 +217,7 @@ internal sealed class MirMoveData
         found = row.Kind switch
         {
             MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix)?.Semantics == SemanticsKind.Raw ? Raw : NoPath),
+            _ when (found & 3) == Raw && row.Kind != MirProjectionKind.PairLayer && !TyCtxt.RawPart(this.body.TypeOf(prefix)) => (found & ~3) | NoPath,
             _ when (found & 3) != Direct || row.Kind == MirProjectionKind.PairLayer => found,
             MirProjectionKind.Index => found | NoPath,
             MirProjectionKind.Base => this.Bases(found >> 2, row.Arg) << 2,
