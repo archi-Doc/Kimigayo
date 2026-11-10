@@ -221,6 +221,14 @@ internal static partial class MirTypes
     // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
     internal static BoundType Premised(MirBody body, BoundType type) => body.Key.Decl is { } definition ? TyCtxt.Premised(definition, type) : type;
 
+    // SPEC 3.1.3, 8.2.3: whether a Type is Never in the body: Never itself, or an abstract Type the body's identity premises make Never (T
+    // under `T is Never`; only an abstract Type takes another's head, so a concrete Type is answered by the reference test alone and costs
+    // no premising), since MIR Types keep a premised parameter (DECISIONS BU-72). The one statement the Never value's rules read, the
+    // builder's and the validator's (DECISIONS R4-M62, R5-M38). PLAN G355's interim (G704): removed when MIR Types are the identical Types
+    // (R7-Y5), where this is the reference test again; G697's forms in this file go with it.
+    internal static bool IsNever(MirBody body, BoundType? type)
+        => ReferenceEquals(type, BoundType.Never) || (type is { IsAbstract: true } && ReferenceEquals(Premised(body, type), BoundType.Never));
+
     // SPEC 8.2: the one agreement under premises: Types agree as they are (Agree) or as the body's premises make them (E and S under
     // `E is S`), which the validator checks every Type by.
     internal static bool Agrees(MirBody body, BoundType? expected, BoundType? actual)

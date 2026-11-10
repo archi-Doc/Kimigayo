@@ -266,6 +266,54 @@ public sealed partial class MirBuildTest
     [InlineData("func f() -> i32\n    return true\n")]
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
 
+    // SPEC 8.2.3, 3.8, 3.1.3, 14.10.3 (PLAN G704, G355; the owner's O-147 (c)): a Place whose Type the body's identity premises make Never
+    // (a: T under `T is Never`, through `owner/`, the root path or a chain) is a Place of Type Never (MirTypes.IsNever): a Never form
+    // acquires it into the Never value and a call whose result the premises make Never diverges, so each body validates and gets the
+    // records of its non-generic twin (a: Never), the first form; `let b: i32 = a` leaves b uninitialized (fail-before: the Place's Copy
+    // at T where another Type is expected, MirValidator's Type or Operation finding, InternalInvariant_Kd). The assumed path after the value
+    // is still checked (14.10.3; the last rows, design review 2's adversarial twins L1-L4, M1, M2): a Loan conflict across a `let`, an
+    // argument, a comparison or a `return`, and a read after a Move, stay rejected.
+    [Theory]
+    [InlineData("return a", "i32", "clean")]
+    [InlineData("return a + 1", "i32", "clean")]
+    [InlineData("return 1 + a", "i32", "clean")]
+    [InlineData("return a == 1", "bool", "clean")]
+    [InlineData("return not a", "bool", "clean")]
+    [InlineData("let b: i32 = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: i32 = a@move\n    return 0", "i32", "clean")]
+    [InlineData("return if c => a else => 1", "i32", "clean")]
+    [InlineData("return g(a)", "i32", "clean")]
+    [InlineData("let t: (i32, i32) = (a, 2)\n    return 0", "i32", "clean")]
+    [InlineData("while a\n        ()\n    return 0", "i32", "clean")]
+    [InlineData("return id(a)", "i32", "clean")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let b: i32 = a\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = g(a@move)\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = a == 1\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    return a\n    x = 2\n    use(r)\n    return 0", "i32", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("pass(a@move, a)", "()", "1*MovedPlace_Kd")]
+    [InlineData("let b = a@move\n    return a", "i32", "1*MovedPlace_Kd")]
+    public void APlaceThePremisesMakeNeverIsAcquiredAsTheNeverValue(string statements, string result, string records)
+    {
+        const string helpers = "func g(x: i32) -> i32 => x\nfunc id<U>(x: U) -> U => x@move\nfunc use(r: uniq/i32) -> () => ()\nfunc pass(x: i32, y: i32) -> () => ()\n";
+        (string Signature, string Premises)[] forms =
+        [
+            ("func f(a: Never, c: bool)", string.Empty), ("func f<T>(a: T, c: bool)", "    T is Never\n"),
+            ("func f<T>(a: T, c: bool)", "    T is owner/Never\n"), ("func f<T>(a: T, c: bool)", "    T is ::Kimi.Never\n"),
+            ("func f<T, U>(a: T, c: bool)", "    T is U\n    U is Never\n"),
+        ];
+        foreach (var (signature, premises) in forms)
+        {
+            var source = $"{helpers}{signature} -> {result}\n{premises}    {statements}\n";
+            Assert.Empty(Compile(source).BuildMir().Findings);
+            Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        }
+    }
+
+    // SPEC 8.2.3, 3.8 (PLAN G704): a Field a conditional member's premise makes Never is such a Place too (fail-before: a Type finding).
+    [Fact]
+    public void AFieldAMembersPremiseMakesNeverIsAcquiredAsTheNeverValue()
+        => _ = Body("struct Box<E>\n    var v: E\n    public func f(self: ref/Self) -> i32\n        E is Never\n        return self.v\n", "f");
+
     // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
     // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
     // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).

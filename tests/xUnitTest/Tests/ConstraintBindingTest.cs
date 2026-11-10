@@ -377,6 +377,8 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is Option<i32>\n    ()")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
+    [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
     public void G615KnownLimitAcceptsNeverWithAConflictingIdentityPremise(string source) => Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
