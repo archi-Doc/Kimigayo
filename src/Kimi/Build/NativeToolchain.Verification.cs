@@ -12,7 +12,8 @@ namespace Kimi.Build;
 internal static partial class NativeToolchain
 {
     // Installation and explicit verification cover the entire distributed tool set.
-    private static readonly string[] InstallationTools = ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
+    private static readonly string[] InstallationTools =
+        ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
 
     internal static string RequireInstalledFile(string path)
     {
@@ -24,7 +25,8 @@ internal static partial class NativeToolchain
         return path;
     }
 
-    internal static async Task Verify(string? configuredRoot, string? configuredBin, string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    internal static async Task Verify(
+        string? configuredRoot, string? configuredBin, string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         var root = ToolchainResolver.ResolveRoot(configuredRoot);
         var bin = configuredBin is null ? root : ResolvePath(configuredBin, Directory.GetCurrentDirectory());
@@ -34,7 +36,8 @@ internal static partial class NativeToolchain
         {
             ["status"] = "incomplete", ["toolchainVerification"] = "failed", ["compilerVersion"] = CompilerRelease.Version,
             ["llvmVersion"] = ToolchainIdentity.LlvmVersion, ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
-            ["root"] = Redact(root, Directory.GetCurrentDirectory()), ["llvmBin"] = Redact(bin, Directory.GetCurrentDirectory()), ["tools"] = identities,
+            ["root"] = Redact(root, Directory.GetCurrentDirectory()), ["llvmBin"] = Redact(bin, Directory.GetCurrentDirectory()),
+            ["tools"] = identities,
         };
         if (reportPath is not null)
         {
@@ -45,7 +48,8 @@ internal static partial class NativeToolchain
 
         try
         {
-            using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(RequireInstalledFile(Path.Combine(root, "installation.json")), cancellationToken));
+            var installationFile = RequireInstalledFile(Path.Combine(root, "installation.json"));
+            using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(installationFile, cancellationToken));
             var installed = installation.RootElement;
             if (installed.GetProperty("schemaVersion").GetInt32() != 1 || installed.GetProperty("profile").GetString() != WindowsProfile.Name)
             {
@@ -100,19 +104,7 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Adopted backend SHA-256 mismatch: " + backend);
             }
 
-            var kernel = RequireInstalledFile(Path.Combine(root, "windows_x64", "kernel32.lib"));
-            using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(RequireInstalledFile(Path.ChangeExtension(kernel, ".json")), cancellationToken));
-            var entry = metadata.RootElement;
-            Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
-            if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
-            {
-                throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");
-            }
-
-            var importedDll = await ExecuteTool(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
-            var inspection = await ExecuteTool(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
-            Kernel32Imports.ValidateLibrary(importedDll, inspection);
-            record["kernel32"] = JsonNode.Parse(entry.GetRawText());
+            await VerifyKernel32(root, bin, record, report, cancellationToken);
             record["toolchainVerification"] = "passed";
             record["unverifiedToolchain"] = false;
             record["status"] = "passed";
@@ -130,5 +122,26 @@ internal static partial class NativeToolchain
                 WriteRecord(reportPath, record);
             }
         }
+    }
+
+    // The installed kernel32 import library: its recorded generation conditions and hash, its definition, and the DLL, architecture and
+    // symbol set the tools read from it. The record keeps the installation's entry.
+    private static async Task VerifyKernel32(
+        string root, string bin, JsonObject record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    {
+        var kernel = RequireInstalledFile(Path.Combine(root, "windows_x64", "kernel32.lib"));
+        var metadataFile = RequireInstalledFile(Path.ChangeExtension(kernel, ".json"));
+        using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(metadataFile, cancellationToken));
+        var entry = metadata.RootElement;
+        Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
+        if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
+        {
+            throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");
+        }
+
+        var importedDll = await ExecuteTool(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
+        var inspection = await ExecuteTool(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
+        Kernel32Imports.ValidateLibrary(importedDll, inspection);
+        record["kernel32"] = JsonNode.Parse(entry.GetRawText());
     }
 }

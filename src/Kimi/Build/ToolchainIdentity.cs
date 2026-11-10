@@ -55,32 +55,9 @@ public static class ToolchainIdentity
         var kernel = root.GetProperty("kernel32");
         Kernel32DefinitionSha256 = kernel.GetProperty("definitionSha256").GetString()!;
         DlltoolSha256 = kernel.GetProperty("dlltoolSha256").GetString()!;
-        if (!SequenceEqual(root.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols))
+        if (!ArtifactFiles.SequenceEqual(root.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols))
         {
             throw new InvalidDataException("The embedded native supply catalog has incompatible provided symbols.");
         }
-    }
-
-    /// <summary>Compares a JSON string array with an expected ordered list without allocating.</summary>
-    /// <param name="array">The JSON array.</param>
-    /// <param name="expected">The expected strings.</param>
-    /// <returns>Whether both contain the same strings in order.</returns>
-    internal static bool SequenceEqual(JsonElement array, ReadOnlySpan<string> expected)
-    {
-        if (array.ValueKind != JsonValueKind.Array || array.GetArrayLength() != expected.Length)
-        {
-            return false;
-        }
-
-        var i = 0;
-        foreach (var item in array.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.String || !item.ValueEquals(expected[i++]))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

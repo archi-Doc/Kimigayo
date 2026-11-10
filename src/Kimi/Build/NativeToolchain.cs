@@ -1,5 +1,30 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
+// here, in its entry file, for all its types.
+// Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
+// pair (NativeToolchain.Build.cs), the built Application's run and the installed toolchain's verification
+// (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
+// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
+// Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
+// native build); the installed toolchain.
+// Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
+// Compilation.Diagnostics; Binding.Startup.OutputKind and Binding.LibraryImports (an import's Library and Kind); the enum OutputKind,
+// which project configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease;
+// CompilationBuildMetadata, through Project.BuildMetadata; the Backend's LlvmModuleText.SymbolFromName; and of Kimi.Diagnostics the
+// record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
+// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
+// Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
+// replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
+// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception its host renders (IsToolchainFailure).
+// Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
+// commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
+// (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
+// Must not: check source semantics, or read compiler state outside the list above.
+// Temporary: the two reads of Binding (Startup.OutputKind, LibraryImports) and SymbolFromName (ReadExternalDeclarations' IR re-parse)
+// end with the plan's unit R9-B1, when the generation result carries the output kind, the required libraries and the external
+// declarations. The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
+
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
@@ -7,7 +32,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using static Kimi.Build.ArtifactFiles;
 
@@ -18,13 +42,11 @@ namespace Kimi.Build;
 internal static partial class NativeToolchain
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 
-    // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
-    private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
-
+    // A failure of the native build or of a toolchain command: publication's kinds (an output, a configuration or a supply), a tool that
+    // does not start, or a manifest, record or installation file that is not the JSON its reader expects.
     internal static bool IsToolchainFailure(Exception ex)
-        => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException or Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
+        => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
 
     internal static void Invalidate(ArtifactPaths paths)
     {
@@ -45,69 +67,6 @@ internal static partial class NativeToolchain
         WriteRecord(paths.Record, record);
     }
 
-    internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-    {
-        using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
-        ValidateManifest(document.RootElement);
-        var configuredBin = project.KimiOptions.LlvmBin ?? project.ProjectFile.LlvmBin;
-        var bin = configuredBin is null ? null : ResolvePath(configuredBin, project.KimiOptions.LlvmBin is null && project.Directory.Length != 0 ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
-        await BuildCore(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, project.KimiOptions.ToolchainRoot, bin, report, cancellationToken);
-    }
-
-    // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed.
-    internal static async Task BuildManifest(string path, string? toolchainRoot, string? llvmBin, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-    {
-        path = Path.GetFullPath(path);
-        var directory = Path.GetDirectoryName(path)!;
-        var record = Path.ChangeExtension(path, ".build.json");
-        WriteRecord(record, CreateBuildRecord());
-        using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
-        var manifest = document.RootElement;
-        ValidateManifest(manifest);
-        var ir = ResolvePath(manifest.GetProperty("irFile").GetString()!, directory);
-        var optimization = manifest.GetProperty("codegen").GetProperty("optimization").GetString()!;
-        var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) :
-            manifest.TryGetProperty("toolchain", out var configured) && configured.TryGetProperty("llvmBin", out var value) ? ResolvePath(value.GetString()!, directory) : null;
-        await BuildCore(null, paths, manifest, directory, optimization, toolchainRoot, bin, report, cancellationToken);
-    }
-
-    internal static void ValidateManifest(JsonElement root)
-    {
-        if (root.GetProperty("schemaVersion").GetInt32() != 3)
-        {
-            throw new InvalidDataException("Link manifest schema 3 is required. Re-emit the manifest for automatic backend toolchain resolution.");
-        }
-
-        var code = root.GetProperty("codegen");
-        var support = root.GetProperty("backendSupport");
-        if (root.GetProperty("target").GetString() != WindowsProfile.Target ||
-            root.GetProperty("outputKind").GetString() != "Application" || root.GetProperty("entry").GetString() != WindowsProfile.EntrySymbol || root.GetProperty("subsystem").GetString() != WindowsProfile.Subsystem ||
-            code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != ToolchainIdentity.LlvmVersion ||
-            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !ToolchainIdentity.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
-            code.GetProperty("relocationModel").GetString() != WindowsProfile.RelocationModel || code.GetProperty("codeModel").GetString() != WindowsProfile.CodeModel || code.GetProperty("unwindTables").GetString() != WindowsProfile.UnwindTables ||
-            code.GetProperty("optimization").GetString() is not ("O0" or "O2"))
-        {
-            throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
-        }
-
-        var valid = support.GetProperty("packageId").GetString() == ToolchainIdentity.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == ToolchainIdentity.BackendAbiVersion &&
-            support.GetProperty("packageVersion").GetString() == ToolchainIdentity.BackendVersion && support.GetProperty("artifactSha256").GetString() == ToolchainIdentity.BackendSha256 &&
-            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && ToolchainIdentity.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
-            ToolchainIdentity.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
-        foreach (var dependency in root.GetProperty("expectedUndefinedSymbols").EnumerateArray())
-        {
-            valid &= dependency.GetProperty("provider").GetString() == WindowsProfile.BackendLibrary &&
-                Array.IndexOf(WindowsProfile.ProvidedSymbols, dependency.GetProperty("symbol").GetString()) >= 0;
-        }
-
-        if (!valid)
-        {
-            throw new InvalidDataException("Invalid backend supply identity or runtime dependency.");
-        }
-    }
-
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
         var paths = ArtifactPaths.Create(project);
@@ -119,7 +78,8 @@ internal static partial class NativeToolchain
         using var record = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Record, cancellationToken));
         var root = record.RootElement;
         if (root.GetProperty("status").GetString() is not ("linked" or "executed") ||
-            root.GetProperty("optimization").GetString() != project.ProjectFile.Optimization || root.GetProperty("executableSha256").GetString() != Hash(paths.Executable))
+            root.GetProperty("optimization").GetString() != project.ProjectFile.Optimization ||
+            root.GetProperty("executableSha256").GetString() != Hash(paths.Executable))
         {
             throw new InvalidDataException("The latest build failed or the binary was changed. Run 'kimi build' first.");
         }
@@ -222,253 +182,24 @@ internal static partial class NativeToolchain
         }
     }
 
-    // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
-    // original; a staged copy is reused only when its bytes still have that hash.
-    internal static string StageInput(string input, string stem, out string hash)
-    {
-        var directory = stem + ".native";
-        Directory.CreateDirectory(directory);
-        var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
-        try
-        {
-            File.Copy(input, temporary);
-            hash = Hash(temporary);
-            var staged = Path.Combine(directory, hash + ".lib");
-            if (!File.Exists(staged) || Hash(staged) != hash)
-            {
-                Replace(temporary, staged);
-            }
-
-            return staged;
-        }
-        finally
-        {
-            File.Delete(temporary);
-        }
-    }
-
     private static JsonObject CreateBuildRecord() => new()
     {
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
 
-    private static async Task BuildCore(Project? project, ArtifactPaths paths, JsonElement manifest, string directory, string optimization, string? configuredRoot, string? configuredBin, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-    {
-        var outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
-        var irHash = Hash(paths.Ir);
-        if (ResolvePath(manifest.GetProperty("irFile").GetString()!, outputDirectory) != paths.Ir || irHash != manifest.GetProperty("irSha256").GetString())
-        {
-            throw new InvalidDataException("IR/manifest SHA-256 or path mismatch.");
-        }
-
-        if (optimization != manifest.GetProperty("codegen").GetProperty("optimization").GetString())
-        {
-            throw new InvalidDataException("Project and manifest optimization differ; re-emit the inputs.");
-        }
-
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new PlatformNotSupportedException("Native build currently requires Windows.");
-        }
-
-        var toolchainRoot = ToolchainResolver.ResolveRoot(configuredRoot);
-        var bin = configuredBin ?? toolchainRoot;
-        var tools = new Dictionary<string, string>(StringComparer.Ordinal);
-        var identities = new JsonObject();
-        var record = CreateBuildRecord();
-        record["tools"] = identities;
-        record["irSha256"] = irHash;
-        record["optimization"] = optimization;
-        WriteRecord(paths.Record, record);
-        foreach (var name in ToolNames)
-        {
-            var tool = RequireInstalledFile(Path.Combine(bin, name + ".exe"));
-            tools.Add(name, tool);
-            identities.Add(name, new JsonObject { ["path"] = Redact(tool, directory) });
-        }
-
-        var libraries = new List<string>();
-        var libraryIdentities = new JsonArray();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in manifest.GetProperty("libraries").EnumerateArray())
-        {
-            var name = item.GetProperty("name").GetString()!;
-            var kind = item.GetProperty("kind").GetString();
-            if (!seen.Add(name) || kind is not ("import" or "static"))
-            {
-                throw new InvalidDataException("Invalid or duplicate native library.");
-            }
-
-            string path;
-            string? stagedHash = null;
-            if (name == WindowsProfile.Kernel32Library)
-            {
-                Kernel32Imports.ValidateManifest(item);
-                path = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
-                record["kernel32"] = new JsonObject { ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["path"] = Redact(path, directory) };
-            }
-            else if (name == WindowsProfile.BackendLibrary)
-            {
-                path = ToolchainResolver.ResolveBackend(item, toolchainRoot, outputDirectory);
-                if (!File.Exists(path))
-                {
-                    throw new InvalidDataException($"Backend archive not found: {path}. Run src/backend/windows-x64/build.ps1 for this toolchain, or install the matching compiler toolchain package.");
-                }
-
-                if (item.TryGetProperty("input", out _))
-                {
-                    path = StageInput(path, paths.Stem, out stagedHash);
-                    if (stagedHash != ToolchainIdentity.BackendSha256)
-                    {
-                        throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
-                    }
-                }
-            }
-            else
-            {
-                path = StageInput(ResolvePath(item.GetProperty("input").GetString()!, outputDirectory), paths.Stem, out stagedHash);
-            }
-
-            var hash = stagedHash;
-            if ((name == WindowsProfile.Kernel32Library && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
-            {
-                throw new InvalidDataException("Native library kind mismatch.");
-            }
-
-            // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
-            // requirement/supply hash assertions checked against the actual bytes that are linked.
-            if (project is not null && name is not (WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary))
-            {
-                var supply = project.ProjectFile.NativeLibraries.TryGetValue(WindowsProfile.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
-                var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(project.ProjectFile, WindowsProfile.Target, name, supply);
-                if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
-                }
-            }
-
-            if (item.TryGetProperty("sha256", out var assertion) &&
-                (assertion.GetString() is not { Length: 64 } expected || !expected.Equals(hash, StringComparison.OrdinalIgnoreCase)))
-            {
-                throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
-            }
-
-            libraries.Add(path);
-            libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, directory), ["sha256"] = hash });
-        }
-
-        if (!seen.Contains(WindowsProfile.Kernel32Library) || !seen.Contains(WindowsProfile.BackendLibrary))
-        {
-            throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
-        }
-
-        record["libraries"] = libraryIdentities;
-        WriteRecord(paths.Record, record);
-        Task<string> Tool(string name, params string[] args) => ExecuteTool(tools[name], args, outputDirectory, report, cancellationToken);
-        await Tool("opt", "-passes=verify", "-disable-output", paths.Ir);
-        var selectedIr = paths.Ir;
-        if (optimization == "O2")
-        {
-            selectedIr = paths.Stem + ".ll";
-            await Tool("opt", "-S", "-passes=default<O2>", "-mtriple=" + WindowsProfile.Target, paths.Ir, "-o", selectedIr);
-            var ir = await File.ReadAllTextAsync(selectedIr, cancellationToken);
-            ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, directory));
-            await File.WriteAllTextAsync(selectedIr, ir, new UTF8Encoding(false), cancellationToken);
-            await Tool("opt", "-passes=verify", "-disable-output", selectedIr);
-        }
-
-        var obj = paths.Stem + ".obj";
-        await Tool("llc", "-" + optimization, "-filetype=obj", "-mtriple=" + WindowsProfile.Target, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, selectedIr, "-o", Path.GetFileName(obj));
-        var undefined = await Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
-        Dictionary<string, bool>? declared = null;
-        foreach (var line in undefined.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separator = line.AsSpan().IndexOfAny(' ', '\t');
-            var symbol = separator < 0 ? line : line[..separator];
-            if (AllowedUndefined.Contains(symbol))
-            {
-                continue;
-            }
-
-            // SPEC 22.6: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
-            declared ??= ReadExternalDeclarations(paths.Ir);
-            var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
-            if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)
-            {
-                throw new InvalidDataException("Unsupported actual object dependency: " + line);
-            }
-        }
-
-        var defined = await Tool("llvm-nm", "--defined-only", "--extern-only", "--format=posix", obj);
-        var inspection = await Tool("llvm-readobj", "--unwind", "--coff-directives", obj);
-        if (FloatMarkerPattern().Count(defined) != 1 || !inspection.Contains("RuntimeFunction", StringComparison.Ordinal) || inspection.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
-        }
-
-        await File.WriteAllTextAsync(paths.Stem + ".inspection.txt", Redact(inspection, directory), cancellationToken);
-        // Link to a fresh file; a failed link must never publish a partially written executable.
-        var temporary = paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
-        try
-        {
-            var link = new string[libraries.Count + 6];
-            link[0] = obj;
-            libraries.CopyTo(link, 1);
-            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
-            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
-            link[^3] = "/nodefaultlib";
-            link[^2] = "/Brepro";
-            link[^1] = "/out:" + temporary;
-            await Tool("lld-link", link);
-            cancellationToken.ThrowIfCancellationRequested();
-            Replace(temporary, paths.Executable);
-            record["status"] = "linked";
-            record["executable"] = Path.GetFileName(paths.Executable);
-            record["executableSha256"] = Hash(paths.Executable);
-            record["objectUndefinedSymbols"] = undefined.Trim();
-            WriteRecord(paths.Record, record);
-        }
-        finally
-        {
-            File.Delete(temporary);
-        }
-
-        report(DiagnosticSeverity.Information, "Built: " + paths.Executable);
-    }
-
-    // The external functions of the hash-verified pre-optimization IR, keyed by symbol, with their dllimport form.
-    private static Dictionary<string, bool> ReadExternalDeclarations(string ir)
-    {
-        var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var line in File.ReadLines(ir))
-        {
-            // A quoted name escapes every quote, so its closing quote is the next one.
-            if (line.StartsWith("declare ", StringComparison.Ordinal) && line.IndexOf('@') is var at and >= 0 &&
-                (at + 1 < line.Length && line[at + 1] == '"' ? line.IndexOf('"', at + 2) + 1 : line.IndexOf('(', at)) is var end and > 0)
-            {
-                declared[LlvmModuleText.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
-            }
-        }
-
-        return declared;
-    }
-
-    private static HashSet<string> CreateAllowedUndefined()
-    {
-        var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
-        foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
-        {
-            allowed.Add("__imp_" + symbol);
-        }
-
-        return allowed;
-    }
-
-    private static async Task<string> ExecuteTool(string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
+    private static async Task<string> ExecuteTool(
+        string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var start = new ProcessStartInfo(tool) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true };
+        var start = new ProcessStartInfo(tool)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = directory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
         foreach (var argument in args)
         {
             start.ArgumentList.Add(argument);
@@ -526,7 +257,7 @@ internal static partial class NativeToolchain
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temporary, record.ToJsonString(JsonOptions), new UTF8Encoding(false));
+            File.WriteAllText(temporary, record.ToJsonString(JsonOptions), Utf8);
             Replace(temporary, path);
         }
         finally
@@ -537,10 +268,4 @@ internal static partial class NativeToolchain
 
     [GeneratedRegex(@"(?im)^\s*(?:.*\b(?:LLVM|clang) version|LLD)\s+([0-9]+\.[0-9]+\.[0-9]+[^\s()]*)")]
     private static partial Regex VersionPattern();
-
-    [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
-    private static partial Regex ModulePathPattern();
-
-    [GeneratedRegex("(?m)^" + WindowsProfile.FloatMarker + " [BD] ")]
-    private static partial Regex FloatMarkerPattern();
 }

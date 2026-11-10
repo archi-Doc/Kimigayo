@@ -33,21 +33,28 @@ internal static partial class Kernel32Imports
 
     internal static void ValidateManifest(JsonElement library)
     {
-        if (library.GetProperty("kind").GetString() != "import" ||
-            !library.TryGetProperty("generator", out var generator) || generator.GetString() != Generator ||
-            !library.TryGetProperty("dll", out var dll) || dll.GetString() != Dll ||
-            !library.TryGetProperty("definitionSha256", out var hash) || hash.GetString() != DefinitionSha256 ||
-            library.TryGetProperty("input", out _))
+        // The generated library's identity: an import with this compiler's generator, DLL and definition, each present.
+        var import = library.GetProperty("kind").GetString() == "import";
+        var generated = import && Has(library, "generator", Generator) && Has(library, "dll", Dll) && Has(library, "definitionSha256", DefinitionSha256);
+        if (!generated || library.TryGetProperty("input", out _))
         {
             throw new InvalidDataException("Invalid generated kernel32 identity. Re-emit the link manifest; external kernel32 paths are no longer supported.");
         }
+
+        static bool Has(JsonElement library, string name, string value) => library.TryGetProperty(name, out var property) && property.GetString() == value;
     }
 
     internal static void ValidateInstallation(JsonElement entry, string actualHash)
     {
-        if (entry.GetProperty("generator").GetString() != Generator || entry.GetProperty("generatorSha256").GetString() != DlltoolSha256 ||
-            entry.GetProperty("target").GetString() != WindowsProfile.Target || entry.GetProperty("dll").GetString() != Dll ||
-            entry.GetProperty("definitionSha256").GetString() != DefinitionSha256 || entry.GetProperty("sha256").GetString() != actualHash)
+        var generated = ArtifactFiles.States(
+            entry,
+            ("generator", Generator),
+            ("generatorSha256", DlltoolSha256),
+            ("target", WindowsProfile.Target),
+            ("dll", Dll),
+            ("definitionSha256", DefinitionSha256),
+            ("sha256", actualHash));
+        if (!generated)
         {
             throw new InvalidDataException("Installed kernel32 generation conditions or SHA-256 mismatch. Run setup.ps1 again.");
         }
