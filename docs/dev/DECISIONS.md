@@ -11252,6 +11252,43 @@ resumed by R4-M86 (2026-10-20).
   - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
     inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
     inference (`InferLocalOrigins`), stated from the code and not probed.
+- **BU-158 An import taken as a value is rejected where an unsafe function is: `Binding.DirectCallOnly`, one failure
+  `DirectCallFunctionValue` (PLAN G677)** (2026-11-11; Front, Binding; Major, an acceptance mover; the owner's O-149 (a), verbatim
+  「a」) SPEC 22.6, 7.6, 7.7.4.
+  - Cause: SPEC gives two declarations one rule, "supports direct calls only" (7.6 an unsafe function, 22.6 an import), and Binding
+    held it for one: the four places that decide a function reference is a value (`BindReference` for a name with one declaration,
+    and after a group's selection `BindFunctionReference`, `BindExplicitFunctionItem` and `BindRequirementItem`) each tested
+    `ModifierKind.Unsafe`. An import's reference therefore became a Function Item, and code generation ran it (R8-M19's Import item,
+    R5-M146).
+  - Adopted: one membership test, `Binding.DirectCallOnly(FunctionKoto)` beside `IsValueUse` (the rule's other half, the complement
+    of the callee): an unsafe function or a `#LibraryImport` function (by its Attribute, whatever the Attribute's verdict, as
+    Binding's other readers of an import read it). The four places ask it; no position is listed. A requirement is never an import,
+    so a requirement's Item stays a value whatever its witness (SPEC 22.6's sentence of O-149 (a)); an unsafe requirement's Item
+    stays rejected whatever its witness (7.6).
+  - One failure for the one rule: `BindingFailure.UnsafeFunctionValue`, `UnsafeFunctionValue_Kd` and the requirement row
+    `Binding.UnsafeFunctionValue` are renamed in place to `DirectCallFunctionValue`, `DirectCallFunctionValue_Kd` and
+    `Binding.DirectCallFunctionValue` (message "A function that may only be called directly is used as a value"; a Note names the
+    two reasons, no Advice). `BindingFailure` stays at 88 members.
+  - Vocabulary: renamed in place, no entry (R4-M176's rule: a rename adds no vocabulary entry; the owner is told at landing).
+  - Record selection (the Front's ruling, DECISIONS Q13): a `#LibraryImport` function whose Attribute fails
+    (`InvalidLibraryImport_Kd`) also reports its use as a value (SPEC 23.1.2).
+  - Moves: an import's own Item and its erasure to a common Function Type, accepted and run on dev, are `DirectCallFunctionValue_Kd`
+    at the reference (a group's import, a receiverless struct type function, a conforming struct's own import by `Win.now` and
+    `Self.now`, the unqualified name, the library's `Kimi.Windows.queryPerformanceCounter`, a group's member selected by erasure or
+    by a `Callable` context; the positions are the unsafe rule's). `FunctionCodegenTest.AnImportsItemCallsTheImport` is deleted
+    (O-149 (a)); its IR assertion moves to the erased requirement Item whose witness is an import
+    (`FunctionCodegenTest.AnErasedRequirementItemCallsItsImportWitness`). No library or corpus program moves (snapshot 0
+    differences); no `.kimi` program outside the library declares an import.
+  - Not removed: the Backend keeps every line. `Callee` → `Implementation` → `Bodyless` → `Imported` is the path of the import's
+    direct call too, and `Runs` → `Witness`'s `Import` arm is the path of a requirement Item whose witness is an import, called or
+    erased (`ItemAdapter`); three comments that named "its own Item" change (`InstanceCollector.Callees.cs`,
+    `FunctionCodegen.Closures.cs` twice; the Back's C-222).
+  - Supersedes in part: R8-M19's "Not changed, against SPEC 22.6" bullet and its "its own Item's call and adapter" target; R5-M146's
+    Import Item line (already ended by R8-M19).
+  - Rejected: a second failure kind and code for one requirement (DIAGNOSTICS §2 rule 2; `ImportFunctionValue`, the design's
+    prototype); the check inside `CompleteFunctionItem` (a value use that selects nothing, `f == f` or a branch value, never reaches
+    it, and a group is selected first); a second check in the collector or code generation (a consumer re-deciding Binding's rule).
+  - Open: two valid forms rejected, pre-existing (design review 1, N3): PLAN G731.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -17477,6 +17514,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Called` (a compiler function taken as a witness would silently run its direct call's rows); naming generated functions by a
     definition counter to avoid the renaming (a separate naming change; every fixture moves once).
 
+  - Amended by BU-158 (G677): the import's own Item is rejected by Binding; `Imported` is the target of its direct call and of a
+    requirement call or requirement Item whose witness it is.
 - **R8-M20 The operator table's comparison domain is one statement, `ComparisonTypes.OperatorCompares`** (Middle, 2026-11-09; PLAN
   G662; Major; design reviews 1 REVISE (B1, B2), 2 ACCEPT; implementation review ACCEPT; the Back's C-187, the Front's C-190; on
   R8-M4's `OperatorTableRuns`; supersedes R8-M15's "Open family" bullet) SPEC 3.1.3, 5.1, 13.4, 13.4.1.
