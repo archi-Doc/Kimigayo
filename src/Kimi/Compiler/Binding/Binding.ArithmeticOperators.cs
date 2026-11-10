@@ -224,7 +224,7 @@ public sealed partial class Binding
             }
         }
 
-        if (self.Symbol is { } owner && this.impls.OfType(owner) is { } identities)
+        if (self.Symbol is { } owner && this.ConformancesOf(owner) is { } identities)
         {
             for (var i = 0; i < identities.Count; i++)
             {

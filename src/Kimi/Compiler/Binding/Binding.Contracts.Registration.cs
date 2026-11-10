@@ -170,7 +170,7 @@ public sealed partial class Binding
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        if (this.impls.OfType(type) is { } previousBindings)
+        if (this.ConformancesOf(type) is { } previousBindings)
         {
             foreach (var identity in previousBindings)
             {
