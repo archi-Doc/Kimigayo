@@ -183,7 +183,7 @@ internal static class MirDescriptors
         IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.Fail => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.TestRequireAbort => Intrinsic(MirEffect.Abort, 2) with { Diverges = true }, // The issue and the site's location.
-        IntrinsicId.WriteStdout => Intrinsic(MirEffect.Environment, arity: -1),
+        IntrinsicId.WriteStdout => Intrinsic(MirEffect.Environment, 2), // The bytes and their length (R8-W1c-3).
         IntrinsicId.TestMessage => Intrinsic(MirEffect.Environment, 2), // The issue and a shared view of the message.
         IntrinsicId.TestRecordValue => Intrinsic(MirEffect.Environment, 2), // The side and the Scalar value (F8b).
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
