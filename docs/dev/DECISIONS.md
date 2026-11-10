@@ -16726,6 +16726,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
   - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
   - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.
+  - Amended by the W1b chain's RP8 fix (2026-11-10; R8-M18): the bounded-arithmetic rule, stated once for every library body over a
+    runtime representation: an arithmetic operation whose result is bounded either by the representation's invariant or by a guard
+    that dominates it in the same body is written in `Wrapping<isize>`, `(a@Wrapping<isize> op b@Wrapping<isize>)@isize`, with the
+    bound stated in a comment; an operation with no such bound stays checked and keeps its Abort (SPEC 22.5.1). A caller's input is
+    not special: under a dominating guard it wraps. Every guard and every Abort stays where it is. `Formatting.kimi` follows it; the
+    remaining sites are PLAN G693.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -17049,6 +17055,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     callees in every `ErasedWriter` over a standard buffer); B (delete `WriterKind` now: a `CallerLocation` reserve does not fit the
     dispatch ABI, and the adapter's arms carry `pending` and the hint; W1b's); C (the runtime calling the body directly: it cannot name an
     instance); D (a `BufferRepr` pun for the buffers' own operations: their Fields are already ordinary Places).
+  - Amended by R8-M18 (the W1b chain's RP8 fix): `Text.validUtf8`'s guard-bounded steps wrap under R8-M2's rule, and the six
+    validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -17186,6 +17194,88 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Moves: none (no producer forms a term until R8-W2 a2; T-86's RP8: no stop, warm 0 B).
   - Rejected: a `KotoKind` row for the term; forming it in `BindInterpolation` (Binding does not know a line is direct); a reference
     order in `CompareLength`; three term arms at the substitution sites instead of one in `SubstituteLength`.
+- **R8-M18 The write window, the writer's leaf and its reservation are Kimigayo bodies; the erased writer's routines are a kept
+  runtime** (Back, 2026-11-09; R8-W1b-2, W1b-1 and W1b-3, plan §5.2 W1 b; Major each; the W1 family reviewer: W1b design reviews 1
+  REVISE, 2 ACCEPT, W1b-3's design reviews 1-3, implementation reviews ACCEPT; the owner's O-108 (a); the Middle's C-188; on R8-M1,
+  R8-M5, R8-M16; W1b-4 extends this entry) SPEC 5.2, 22.9.3, 22.9.4, 22.10.1.
+  - **The erased writer's kept runtime** (W1b-2): `Backend/ErasedWriterRuntime.ll.in` holds `{{__kimi_text_writer}}` (the
+    `ErasedWriter` intrinsic's routine, its ABI `IntrinsicRows.Of(ErasedWriter).Routine`, stated by the TextWriter formatting row
+    until W2) and `__kimi_erased_reserve(ret, writer, amount)`: a Writer's `reserve` through the adapter's dispatch word, then the
+    window check (`written == 0`, `remaining >= amount`, else `BufferFull`), the plan contract of `ErasedReserve`. `LlvmModuleText`
+    owns its text (`ErasedWriterRuntime`, expanded once on first use); `ModuleCodegen` writes it after the formatting runtime when
+    `Needs.ErasedWriter` (bit 32; bit 16 stays free) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
+    `Request(HelperNeeds.FormattingRuntime)`.
+  - **The window's bodies** (W1b-1): `WriteWindow.push`, `append`, `limit`, `commit` and `Utf8Writer.status` are Kimigayo bodies in
+    `Formatting.kimi` (SPEC 22.9.4, 22.10.1); `written` and `remaining` are `public var` with `private set` (a user write is
+    `InaccessibleBinding_Kd` at the member, `Utf8DeclarationTest.WindowCountsAreNotWritable`). `limit` keeps a `CallerLocation`
+    catalog row (its `KIMI_E_ARG_RANGE` Abort reports the user's call); `push`, `append`, `commit` and `status` cannot Abort on the
+    caller's behalf, since their checked operations stay within the window invariant (`0 <= written`, `0 <= remaining`, `start +
+    written + remaining` within the buffer's capacity), which only the internal `WriteWindow.init` through W1a's reserve bodies, the
+    window bodies themselves and, until W2, the runtime's own windows (`__kimi_writer_reserve`'s arms) set. `append` copies by
+    `Storage.transferBytes` (non-overlapping) where the runtime used memmove: in safe code a live Slice of the window's unwritten
+    capacity would conflict with the exclusive Loan the buffer and the window hold, and `bytes()` exposes only `[0, length)`
+    (R8-M3's form).
+  - **`Storage.BufferRepr` is lasting** (a new representation, W1b-1): `#Layout("C")` `{data: raw/u8, capacity, length, validated}`,
+    the prefix `Text.FixedBuffer` and `Text.HeapBuffer` both begin with, through which the window, erased over the two buffer Types
+    and holding one pointer (`state`), reads `data` and commits `length` (SPEC 5.2's pun of punnable `isize` and raw-pointer
+    Fields). The buffers' own operations keep their own Fields (R8-M16's option D stays rejected).
+    `KimiLibraryShapeTest.RuntimeLayoutsAreFixed` pins it {0, 8, 16, 24}, size 32, beside both buffers' rows. Its pairing with the
+    runtime's offsets is temporary (removed at W2 with those routines), not R8-M1's lasting `StringRepr`/`RuntimeAbi.String` pair.
+    W2 may supersede `BufferRepr` itself only by changing the window's layout (W1b's design option C), with a superseding entry.
+  - **The leaf** (W1b-3): `Utf8Writer.writeUtf8(text: Text.Utf8Slice)` (a body, `CallerLocation`) is a built-in formatter's one
+    write: one exact reservation, none for empty output, a failed reservation recorded; it has no failure test of its own (SPEC
+    22.10.1). It commits through `WriteWindow.commitUtf8`, the adapter commit: the validated length follows a fully validated buffer
+    (SPEC 22.9.3).
+  - **The adapter's reservation** (W1b-3): `Utf8Writer.reserve(amount)` (a body, `CallerLocation`): the failed check; the size Abort
+    for `amount` and the deferred literal; the destination's reservation by the closed set of writer kinds (0 `FixedBuffer.reserve`,
+    1 `HeapBuffer.reserve` with the owning interpolation's hint applied exactly, 2 `Storage.erasedReserve`; any other an `$abort`,
+    unreachable while `LegacyRuntimeHelpers.WriterKind` is the one writer of `kind`); then one shared tail: a failure recorded, else
+    the deferred literal prepended through `append`. Pending may sit on an adapter of any kind; the shared tail prepends it; only
+    the kind-1 arm reads the hint. Every kind's request is `amount + pending` (as `__kimi_writer_reserve` prepends after every
+    kind): on kind 2 the user's `reserve` is asked for the bytes it must hold, equal to the runtime's `amount` while no user
+    Writer's adapter carries pending. Its window is `WriteWindow during target`, the destination's Origin, so the adapter stays
+    writable while the window lives; the caller commits or drops the window before the next reservation (both contracts state it).
+  - **The producer** (W1b-3; the owner's O-108 (a)): `Storage.erasedReserve(writer: uniq/Utf8Writer, minimum) -> Result<WriteWindow
+    during writer.target, BufferFull>` (`StorageOperations.kimi`) is `IntrinsicId.ErasedReserve`'s first producer,
+    `CompilerFunctionKind.StorageErasedReserve` in the Storage family (effect `Inputs` by the family; R8-M5's class, RQ9). Its
+    contract is lasting: a user Writer's `reserve` through the adapter's dispatch word, then the window check, tag 1 on a violation;
+    it records nothing. Its routine is the kept file's `__kimi_erased_reserve`, spliced from `RuntimeAbi.ErasedReserve` (one ABI for
+    the definition and every call). The adapter's `destination` at offset 0 and `dispatch` at 8, which `__kimi_erased_reserve`
+    reads, are a lasting layout pair, pinned by `RuntimeLayoutsAreFixed`'s Utf8Writer row (as R8-M1's `StringRepr`).
+  - **The need column** (W1b-3): `IntrinsicRow.Requests` (`ModuleCodegen.Needs`) states the module parts a `Requested` row's routine
+    needs, which its call requests: `TryAllocateBytes` and `MoveBytes` state `StorageBytes | Memory` (replacing `Requested`'s fixed
+    request), `ErasedReserve` states `ErasedWriter`. `llvm.memset` is declared by its lasting user, the kept file
+    (`__kimi_text_writer` zeroes the adapter), no longer by `Utf8BufferRuntime.ll.in`; the formatting runtime, which also calls it,
+    is written only with the kept file until W2 (`Request(HelperNeeds)` requests `Formatting | Memory | ErasedWriter` together).
+  - **Temporary**, each removed by an event: `Request(HelperNeeds.FormattingRuntime)` implying `Needs.ErasedWriter` (because
+    `__kimi_writer_reserve` calls `__kimi_erased_reserve`): W2, with the adapter's reservation in F; `__kimi_writer_reserve`'s user
+    arm as a call of the kept routine, with the failure record and the pending prepend around it, and its restatement of the
+    adapter's reservation for the runtime's own callers: W2 (each caller's unit, W2 last); the formatting runtime's expansion
+    skipping the kept file's definitions (`LegacyRuntimeHelpers.ReadFormattingRuntime` seeds its symbol set with them): with
+    `LegacyRuntimeHelpers` (X1) or when the TextWriter row's ABI moves into `IntrinsicRows` (W2); `utf8_commit`'s restated commit:
+    with `utf8_commit` (W2, the float reduction); `window_address` and `window_advance`: with their last runtime caller (W2);
+    `BufferRepr`'s pairing with the runtime's offsets: W2; the reservation's kind switch restating `WriterKind`'s 0/1/2, the hint
+    arm and the unreachable kind Abort: W2.
+  - **Not yet observed:** no program reaches `writeUtf8` or `Storage.erasedReserve` before S2a, so W1b-3's behavior rows (the
+    Middle's two `MirEffectsTest` rows from C-188, the IR row "a module calling `writeUtf8` defines the kept runtime once", the
+    natives over the leaf path, `BoundedGrowsByItsHint`) land with S2a, its first caller, named in S2a's Q row. W1b-3 lands first
+    because S2a needs W1b-4 and W1c-2, which build on it.
+  - Counts (RQ9), on dev d30bbc7e0: `CompilerFunctionKind` 43 to 39 (`None` included; W1b-1 −`WindowPush`, `WindowAppend`,
+    `WindowLimit`, `WindowCommit`, `WriterStatus`; W1b-3 +`StorageErasedReserve`); `KimiDeclarationId` 185 unchanged (W1b-1
+    −`WindowPush`, `WindowAppend`, `WindowCommit`; W1b-3 +`WriterReserve`, `WriterWriteUtf8`, `StorageErasedReserve`); catalog
+    entries 181 unchanged (178 between the parts); `IntrinsicId` unchanged (`ErasedReserve` produced).
+  - Moves: no acceptance or record move (diagnostic snapshot 0 differences); `.ll` only, natives equal. W1b-2 moves the runtime text
+    of every module that writes the formatting runtime (170 of 238 Utf `.ll` in its Unit scope: `__kimi_text_writer` moved,
+    `__kimi_erased_reserve` added, `__kimi_writer_reserve`'s user arm a call). W1b-1 moves 548 of 6,141 `.ll` against W1b-2's head
+    62d95eb00: 481 in the runtime text and library location constants only, 3 also calling the window and status body instances, 64
+    direct callers of window operations (and of the buffers' validation, whose body W1a's 49e517aeb, in W1b-1's base, changed)
+    gaining or changing generated bodies. W1b-3 moves runtime text only.
+  - RP8 (T-88): W1b-1's `Buffers` kernel was about 1.4% slower (B/A 1.013 plain, 1.016 aligned; R5-M147: 16 of 16 pairs above A=A):
+    the window and buffer bodies checked arithmetic their invariants or dominating guards already bound. The chain's RP8 fix applies
+    R8-M2's rule (amended below) to every such step in `Formatting.kimi` (`WriteWindow`'s private `advance` and `end`, `limit`'s
+    room, both buffers' `reserve`, one internal `Text.validSuffix(data, validated, length)` for the six validated-suffix copies,
+    `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
+    those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
