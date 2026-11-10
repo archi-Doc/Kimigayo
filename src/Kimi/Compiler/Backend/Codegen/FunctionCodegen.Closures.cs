@@ -102,7 +102,7 @@ internal sealed partial class FunctionCodegen
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
         {
-            this.Legacy(call, row, target);
+            this.Legacy(call, row);
             return;
         }
 
@@ -134,7 +134,7 @@ internal sealed partial class FunctionCodegen
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
-        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, source, out given) is { } routine)
+        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, out given) is { } routine)
         {
             return new Run(routine, null);
         }

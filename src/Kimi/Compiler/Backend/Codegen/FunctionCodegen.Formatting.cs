@@ -4,29 +4,12 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The formatting rows of FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): a call of a
-// Body-disposition kind whose legacy row's writer is Formatting (LegacyRuntimeHelpers.Row) is the call of its row's routine in the formatting
-// runtime through the one call writer, the module requesting the formatting runtime its row declares (Formatting); no kind has that row
-// after W1c-2 and W1c-3. Text.writer, the ErasedWriter intrinsic's row (K package 4.5 row 6), calls P1d's TextWriter routine with the writer
-// kind of its destination and the dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the
-// adapter's write and Console.writeLine of a view are bodies (R8-W1a, W1b, W1c).
+// The formatting rows of FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): Text.writer, the
+// ErasedWriter intrinsic's row (K package 4.5 row 6), calls P1d's TextWriter routine with the writer kind of its destination and the
+// dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the adapter's write and Console.writeLine
+// of a view are bodies (R8-W1a, W1b, W1c), so no compiler function's call is a formatting routine's.
 internal sealed partial class FunctionCodegen
 {
-    // A Formatting row's routine (above), the formatting runtime its row declares requested; null after a record at the source: no
-    // formatting row's call carries a target or a kind Context (WriteLineUtf8's, the one Body kind left until W1c-3).
-    private FunctionAbi? Formatting(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
-    {
-        given = default;
-        if (target >= 0)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, source); // The collector targets no formatting row's call.
-            return null;
-        }
-
-        this.module.Request(row.Needs);
-        return row.Routine;
-    }
-
     // SPEC 22.9.2, 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer's call, its Item's Value call and its adapter's entry:
     // P1d's TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs

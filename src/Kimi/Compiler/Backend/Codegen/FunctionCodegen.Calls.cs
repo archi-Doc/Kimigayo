@@ -35,7 +35,7 @@ internal sealed partial class FunctionCodegen
         switch (callee.Kind)
         {
             case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
+                this.Legacy(call, row);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -229,17 +229,10 @@ internal sealed partial class FunctionCodegen
     }
 
     // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
-    // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
-    // carries: a runtime routine through the one call writer (Invoke), the row's (Routine) or a formatting routine
-    // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
-    // site's location.
-    private void Legacy(in MirTerminator call, LegacyRow row, int target)
-    {
-        if (this.Routine(row, target, call.Source, out var given) is { } routine)
-        {
-            this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
-        }
-    }
+    // DECISIONS R5-M116), at its direct call and at its Item's Value call (SPEC 7.7.4): the row's runtime routine through the one call
+    // writer (Invoke), the call's operands at its parameters' slots placed by the call's own key and the call site's location.
+    private void Legacy(in MirTerminator call, LegacyRow row)
+        => this.Invoke(call, row.Routine, new(call.Callee.Symbol, MirBodyKind.Fn));
 
     // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
     // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an

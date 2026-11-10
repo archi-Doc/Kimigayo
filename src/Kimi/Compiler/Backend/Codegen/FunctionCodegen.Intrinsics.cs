@@ -79,7 +79,7 @@ internal sealed partial class FunctionCodegen
     // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem), a Body disposition's legacy routine (LegacyRuntimeHelpers.Row); null
     // for any other row, which is not one routine call (a Shim's, an instruction writer's, an Unproduced row's), and after a record at the
     // source.
-    private FunctionAbi? Routine(BoundType item, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
+    private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
@@ -87,17 +87,8 @@ internal sealed partial class FunctionCodegen
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } =>
                 this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, source, out given) : null,
+            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
         };
-    }
-
-    // A legacy row's routine (DECISIONS R5-M116, R5-M128), the one path its direct call, its Item's Value call and its
-    // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
-    // (FunctionCodegen.Formatting); null after a record at the source.
-    private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
-    {
-        given = default;
-        return row.Writer == LegacyWriter.Formatting ? this.Formatting(row, target, source, out given) : row.Routine;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in

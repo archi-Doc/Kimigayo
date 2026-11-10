@@ -401,7 +401,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
     [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
-    [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
+    [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(\nvalue: ref/T, destination: uniq/[N of u8]\n) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, HeaderLines(Library.Value.Library.GetSymbol(id)!.Declaration, header));
@@ -708,10 +708,15 @@ public partial class KimiLibraryShapeTest
     // The header and its direct member lines, one level deeper, without comments or bodies.
     private static string Shape(Koto node) => string.Join('\n', Lines(node, true));
 
-    // A body's pinned header (R8-W1b B2, W1c B1): the declaration's header and as many clause lines (an origin relation, a constraint) as
-    // the pinned header states, since the body's statements follow them at the clauses' depth.
+    // A body's pinned header (R8-W1b B2, W1c B1, W1c-2b): the declaration's first source lines, each trimmed, as many as the pin states:
+    // its header, on one line or wrapped within STYLE's 120 columns, then its clause lines (an origin relation, a constraint). The body's
+    // statements follow the clauses at their depth, so the pin's own line count bounds what is read.
     private static string HeaderLines(Koto node, string header)
-        => string.Join('\n', Lines(node, true).Take(header.AsSpan().Count('\n') + 1));
+    {
+        var text = node.CodeContext.SourceDocument!.SourceText;
+        var lines = text.Split('\n').Skip(text.AsSpan(0, node.Span.Start).Count('\n')).Take(header.AsSpan().Count('\n') + 1);
+        return string.Join('\n', lines.Select(static x => x.Trim()));
+    }
 
     private static List<string> Lines(Koto node, bool members)
     {

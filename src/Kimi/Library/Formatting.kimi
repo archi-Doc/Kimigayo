@@ -382,7 +382,9 @@ public group Text
 
     /// Formats `value` once into the array, without a pre-pass or retry (SPEC 22.9.2); on `BufferFull` the array may
     /// hold partial bytes.
-    public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>
+    public func tryFormat<T, length N>(
+        value: ref/T, destination: uniq/[N of u8]
+    ) -> Result<Utf8Slice during destination, BufferFull>
         T is Utf8Format
         var buffer = Text.fixed(destination)
         var writer = Text.writer(buffer@uniq)
