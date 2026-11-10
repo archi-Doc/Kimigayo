@@ -345,7 +345,7 @@ public sealed partial class Binding
         switch (node)
         {
             // Each PathSuffix is asked in its position's row (UseRow), the row its Type former reads (R7-N1e2-1R).
-            case MemberAccessKoto when this.TypeName(node, scope, UseRow(node)) is null:
+            case MemberAccessKoto when this.TypeName(node, scope) is null:
                 return true;
             case ParenthesizedKoto group:
                 return this.ContainsProjection(group.Operand, scope);
@@ -427,7 +427,7 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
-        var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.NoContainer); // The subject's one lookup, the row that forms its Type.
+        var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var head = AssociatedHead(clause);
         var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
@@ -529,9 +529,9 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    // One lookup serves both readings, a Contract and a complete Type: dev formed the Type with NoContainer, so the
-                    // requirement takes that row (no group, no stage 4: SPEC 9.2, 9.5).
-                    var requirement = this.NamePath(node, scope, LookupRole.NoContainer);
+                    // One lookup serves both readings, a Contract and a complete Type, in its position's row: Requirement, or a
+                    // conditional conformance's Contract Reference (SPEC 9.2, 8.8; no group, no stage 4).
+                    var requirement = this.NamePath(node, scope);
                     var target = requirement.Symbol;
                     if (target?.Declaration is ContractKoto)
                     {
@@ -754,7 +754,7 @@ public sealed partial class Binding
             this.Missing |= missing;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.ProbePath(node, this.Scope, LookupRole.Any, 0)?.Kind == BindingSymbolKind.Container; // A question, not the use's lookup.
+            this.Invalid |= missing && binding.ProbePath(node, this.Scope, LookupRole.Qualifier, 0)?.Kind == BindingSymbolKind.Container; // A question, not the use's lookup.
             node.VisitChildren(this);
         }
     }
