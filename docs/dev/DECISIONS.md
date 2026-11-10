@@ -11158,6 +11158,30 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
     check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
     restore changed; recorded under G525).
+- **BU-150 What a written `Self` selects is decided by `ResolvePath`** (2026-11-11; Front, Binding; Major; PLAN G701; design review
+  3 ACCEPT with conditions C1-C4, implementation review ACCEPT) SPEC 6.1.5, 8.4, 9.1, 9.3, 9.7. In a Contract a written `Self`
+  selects the Contract's Self Type parameter (`ContractSelfType(contract).Symbol`, SPEC 9.1's conforming-Type binder), in a struct
+  or enum the declaration, and written with Type arguments it has no candidate (`PathEnd.Unresolved`, reported
+  `UnresolvedBinding_Kd`). `BindingSymbol` publishes the two classifications readers of a selection need, with `SelfOf` as the one
+  mark of a Contract's Self.
+  - `IsContract` (`Declaration is ContractKoto` and `SelfOf` is null): "this selection names a Contract". Its twelve readers are the
+    name-selection readers (a requirement's Contract, a projection's Contract, a qualifier's reference, a specification's and a
+    refinement's Contract, a Contract's parents, an effect bound, a qualified access, `HasLookupRole`, `BindNamedType`).
+  - `IsGenericInput` (Kind `TypeParameter`, `SemanticsTarget` or `SemanticsParameter`, and `SelfOf` is null): "this subject is a
+    generic input of its declaration" (SPEC 8.1.1, 8.2.3, 9.1). A Contract's Self is none: a condition on it is an implementation
+    requirement checked at the conformance (SPEC 6.1.4, 8.7.1), never a reference input condition. Its three readers:
+    `BindConstraint`'s `input`, `CheckConstraints`' skip of a non-input clause, `ValidateConstraintUses`' closed-clause test.
+  - A reader whose question is "a Type-namespace symbol" (scopes, resolution, access, display) keeps its Kind test, and the Self
+    parameter takes its Kind's answer. Hover shows the Self parameter's Contract through `SelfOf`.
+  - Reason: `ResolvePath` answered "the enclosing declaration", so each reader that knew the spelling corrected the meaning and the
+    readers that did not accepted invalid programs (`U is Self<i32>`, `Self.(Self).E`, `contract C: Self`, an implementation's
+    `U is <the Contract>` under `U is Self`) and rejected valid ones (`U is Self` against `U is S`).
+  - Rejected: a predicate per reader keyed on the spelling (the held fix, review 1 B1); a "written as Self" fact in the lookup row;
+    a Self parameter with another `Declaration` (`Self.Element` needs the Contract's member scope); a `SelfOf` test at each reader
+    (review 2: the per-reader exclusion again); a symbol Kind of its own for a Contract's Self (a closed-vocabulary entry, not
+    needed).
+  - Open: the struct side (PLAN G701's remaining item); one record kind for every arity mismatch would need a `PathEnd` entry (owner
+    approval), not taken: `Self<...>` reports `UnresolvedBinding_Kd` (the planning session's record selection, Q13).
 - **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
   design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
   owner's O-101 (1)(a), O-122 (a), O-128 (a).

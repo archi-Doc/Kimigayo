@@ -311,7 +311,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
+            if (parent is not { IsContract: true } || parent.Contract is not { } inherited ||
                 (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
