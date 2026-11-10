@@ -6116,6 +6116,92 @@ and migration obligations remain in force; no numeric cap changes are authorized
     witness in the copy (a responsibility moved between phases for one consumer).
   - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
     parameter-dependent atom ...").
+- **R4-M198 A5's pun rule reads one fact per raw access and entry** (2026-11-11; Middle, A5 and Binding's one reader; Major, an
+  acceptance mover; PLAN G667 with G667b's held rule; the owner's O-131 (a), O-135 (c), O-137 (a), O-144 (a), O-159 (a)) SPEC 4.1,
+  4.3.3, 4.4.2, 5.2; IMPL 21.1.2. A5's pun rule reads one fact per raw access and entry: the Place the entry names, the value's
+  Position (On: an address where the Place's leading chain starts; Off: anywhere else in it; per value, one Off step marks every
+  entry of the value) and the Type written there.
+  - The leading chain of a Type is the Type, then the part the specification places at its own address, repeatedly: a fixed array's
+    element (SPEC 4.1), a `#Layout("C")` struct's first Field (IMPL 21.1.2); its grid rows are the Type and the element rows reached
+    through element rows; its end is its last row where every step to it holds. Binding publishes the chain's one step
+    (`TyCtxt.Leading(at, out element)` in `TyCtxt.Raw.cs`, beside `Select` and `Base`: the key of a fixed array's element at any
+    length, or of a `#Layout("C")` struct's first Field, Type null for any other Type and an unbound key; the Front's C-211), which
+    reads no length; A5 steps every row, a Place's case Type, a written or stride Type, as a root's key under the case view, the
+    step being a function of the Type.
+  - A5 owns the walk, Position (dataflow), the judgement and the one reading of a length (`Sized`; SPEC 4.1 and 5.2
+    "positive-sized"), three-valued: a fixed array of a constant length 0 holds nothing; one of a constant length above 0 holds; one
+    of a length that is no constant is not established (SPEC 4.4.2: the body is checked for every binding that meets the public
+    conditions, which may all make it 0), and no pun is decided over it. Both sides read it.
+  - The holder: a Place is punned only where it may hold a raw pointer's byte: a Scalar holds none, a raw pointer surely one, a
+    fixed array its element's by its own extent, a Tuple, a struct (Fields and base) and an enum (Case payloads) their parts' most,
+    and any other Type (an abstract part, a Closure, an own step, an unbound part) may, as Binding's layers say: three answers,
+    none, may and surely (`Pointered`), one gate for the seen store, the call and the unknown write, which is a pun only on surely
+    and undecided on may (design review 5's N2). This is the bytes a Place has, not what its value carries: Binding's holdings state
+    the Loans and layers carried, and an array of no element keeps its element's (SPEC 4.3.3), so they are not read for it; the raw
+    Places within a written Type are read from them (`Within`, `Scalared`: a missed part there would drop a write, and an array of
+    no element is cut by `Sized`), the two walks' reasons standing in `MirBorrows.PunTypes.cs`'s contract (review 5's N1).
+  - The written Type: it holds a Scalar by the same extent, so a written array of no element is never a pun. The holder's typed rows
+    read no length (an element's Type through its array's address is typed at any length).
+  - One judge: the Place's own Type, or On a chain row's, is typed; any other write is a pun only where it must overlap a raw
+    pointer (the Place's grid rows end at one; or On, its chain ends at one and the written Type's chain ends at a Scalar) with
+    every length on the way a constant above 0; else undecided, a located `Unsupported_Kd` where a verdict rests on it, never a
+    Language error. The judge's verdict is composed once with the Place's layers (`PunAt`: a stated Origin answers typed, a layer
+    without an answer undecided).
+  - One step function (`Step`: a displacement or element step keeps the Position where the stride's Type is a grid row; a C-layout
+    first Field keeps it; any other step gives Off) serves the store, the call and the displacement.
+  - Reach (G667b's held rule, landed with this entry; the owner's O-105 (b), O-117 (a)): a raw write may reach every Place its
+    pointer's value carries a non-shared direct Loan or address of (SPEC 15.6's carrying; 5.2.1 condition 1 bounds it to that
+    Place); a pun gives the holder {Φ_E, Φ_W} (5.5) unless every raw layer there states an Origin other than `static` at the Place
+    (5.2, 5.7: `PunAt`'s typed answer).
+  - Calls (G667b): a call judges every input its contract may store through (`NoStore`): first step at its root key's write Types
+    (`OwnLayers`), then past each holder an entry names, at the entry's Place key (`CallWrite`; `UnknownWrite` past an abstract
+    part); each (holder state, key) is scanned once per run: Work ≤ Σ over distinct (state, key) of |state| + Σ over calls of the
+    pairs reached; one memo of key facts per program version; warm 0 B.
+  - The undecided class (G667b; the owner's O-135 (b)): an undecided write reports nothing by itself; it gives the holder {Φ_E, Φ_W,
+    Φ_M}; a value read through a Φ_M pointer carries Φ_U, and a check whose sets hold Φ_U gathers at `MirOutcome.Limit` (below
+    Decided, above the depth bound's Deep; R4-M153's path): a located `Unsupported_Kd` at the check's subject, only where a verdict
+    rests on the write; a valid program whose pun no verdict reads is accepted.
+  - Named limits of G667b: a callee that derives a raw pointer from a safe borrow and puns is not counted (the safe-borrow
+    convention); integer zero (pNullOk, O-60's residue, O-105 (b)); a constructor's or `drop`'s receiver root keeps Φ (C-189's N13);
+    Φ_U is set-level, so a decided conflict beside a rested store reports `Unsupported_Kd` (still rejected; eDecidedBesideRestedBad;
+    PLAN G599 (b)) and a read through a Φ_M pointer taints its whole value; the own-step Warning and Activations' scans do not read
+    the tier; A5 keeps one state for a struct an `init` made (as on dev).
+  - Rejected (G667b): per-part holder states (15.6 Holders); pointee-keyed pun entries with wildcards; A5's own Type walks and
+    identity (`Same`); a per-holder marker Π (G599 r1b); one `Classify` steering the store and call rules by bools. G667b's Δ and
+    its open B1/B2 are replaced by this entry's Position and judge.
+  - Reason: reviews 1 and 4 (B1, B2), revision 1's R1 and design reviews 1-4 (F1, G1, B1, B2, B3) were one cause, a pun decided (or
+    a write left undecided) where the write's overlap with a raw pointer of the Place is not established: by Type where its offset
+    or size is not known, by the written Type's size read as the Place's layout, at a Place that has no pointer byte, or over a
+    length nothing establishes (owner's O-131 (a), O-135 (c), O-137 (a), O-144 (a)).
+  - Rejected: three local fixes; Binding holding the per-access fact (dataflow and a call's arguments: BU-145); byte positions in A5
+    (Layout's facts: PLAN G732); a sub-Place path per value and entry; a pun decided by Type alone (F1); a column "the Place holds
+    no Scalar inline" (rests on padding IMPL 21.1.2 does not promise); the length test in the chain's element row (G1); a holder's
+    length deciding nothing, the size-0 holder resting on the write being undefined (B1: SPEC 1.3); two readers of a length (N3); a
+    length that is no constant judged as positive (B2: a Language error on valid programs whose length is 0 in every admitted
+    binding); the holder test at the chain's end, or over arrays and Tuples only (a size-0 pointer array in a Tuple, a struct or an
+    enum payload: dZeroInTupleHolderOk, B3's eZeroPayloadBranchOk); Binding's holdings listing nothing for an array of no element
+    (SPEC 4.3.3: `[0 of v]` keeps v's Loans; measured: five invalid programs accepted, eight valid ones rejected,
+    `AFillCarriesItsValuesLoans` fails).
+  - Named limits: (a) a write of another Type over a Tuple or Kimigayo-layout struct of raw pointers is undecided also where every
+    layout would put it on a pointer (rejected by `Unsupported_Kd`, not the conflict: a Tuple has no promised layout; Layout's byte
+    positions decide it later, PLAN G732): rTupleOverBad, rTupleCallBad, vMixedStatedBad, pZeroBesidePtrBad and the StatedStores
+    rows fieldPunBad, tuplePunnedBad, tupleCopiedPunBad, whose expectations become the located `Unsupported_Kd` at the conflict's
+    two subjects (the Middle's Q13 ruling; the rows move to `MirBorrowsTest.Puns.cs`); (b) where two entries join, one Off marks the
+    value, so a valid typed write may rest as `Unsupported_Kd`; (c) a write whose pun verdict depends on a length that is no
+    constant, the written Type's or the holder's, is undecided: where a verdict rests on it the program is rejected by a located
+    `Unsupported_Kd`, whether some admitted length makes the write a pun (the body is invalid and a Language error is due: zGenArrU,
+    zGenArrInst1Bad, rGenWriteOverPtrArrBad, gPosExprWriteBad, hGenPtrArrBad, hGenPtrArrOffBad) or every admitted length is 0 (the
+    body is valid: gZeroExprWriteOk, gMulZeroWriteOk, gZeroCondWriteOk, gZeroExprHolderOk); removal: a published sign of a length
+    expression under the body's public conditions (SPEC 4.4.2), which `Sized` then reads (PLAN G735).
+  - Record selection (DECISIONS Q13, the Middle's rulings): beside limit (a)'s rows, kClosureZeroBranchOk (invalid: the conflict at
+    `kk = 2` on dev without the write) reports `Unsupported_Kd` there, `Pointered` reading no Closure environment (PLAN G736).
+  - RP8: T-110 (1eb61683f) stopped on RawStores warm Bind (B/A' 1.115), T-120 (536c07f1e against dev b1066023b) on Hello cold Bind
+    1.044 and warm 1.087 with RawStores within; T-120's no-GC diagnostic (1 GB gen0 budget) put every Bind column within
+    (0.949-0.991). G667c changes no Bind code and Bind allocates the same bytes; the owner's O-159 (a) lands it, recorded as a
+    GC-schedule effect of A5's cold allocation (Analyze +1,024 B Hello, +1,656 B Milestone26, +197,808 B RawStores; warm 0 B),
+    compared at the stage exit.
+  - Removes: PLAN G667's (B1), (B2) and R1 from G667b's held rule, and G667b's zero-length puns (written and holder); supersedes
+    nothing. Open: PLAN G732-G737.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -11157,6 +11243,30 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a Contract-wide check by position (reports items whose production has `Access`; two calls per item); a Binding
     check (the word is syntax, and the parser already owns four copies); claiming the word in the item loop (needs `ParseProperty`'s
     restore changed; recorded under G525).
+- **BU-150 What a written `Self` selects is decided by `ResolvePath`** (2026-11-11; Front, Binding; Major; PLAN G701; design review
+  3 ACCEPT with conditions C1-C4, implementation review ACCEPT) SPEC 6.1.5, 8.4, 9.1, 9.3, 9.7. In a Contract a written `Self`
+  selects the Contract's Self Type parameter (`ContractSelfType(contract).Symbol`, SPEC 9.1's conforming-Type binder), in a struct
+  or enum the declaration, and written with Type arguments it has no candidate (`PathEnd.Unresolved`, reported
+  `UnresolvedBinding_Kd`). `BindingSymbol` publishes the two classifications readers of a selection need, with `SelfOf` as the one
+  mark of a Contract's Self.
+  - `IsContract` (`Declaration is ContractKoto` and `SelfOf` is null): "this selection names a Contract". Its twelve readers are the
+    name-selection readers (a requirement's Contract, a projection's Contract, a qualifier's reference, a specification's and a
+    refinement's Contract, a Contract's parents, an effect bound, a qualified access, `HasLookupRole`, `BindNamedType`).
+  - `IsGenericInput` (Kind `TypeParameter`, `SemanticsTarget` or `SemanticsParameter`, and `SelfOf` is null): "this subject is a
+    generic input of its declaration" (SPEC 8.1.1, 8.2.3, 9.1). A Contract's Self is none: a condition on it is an implementation
+    requirement checked at the conformance (SPEC 6.1.4, 8.7.1), never a reference input condition. Its three readers:
+    `BindConstraint`'s `input`, `CheckConstraints`' skip of a non-input clause, `ValidateConstraintUses`' closed-clause test.
+  - A reader whose question is "a Type-namespace symbol" (scopes, resolution, access, display) keeps its Kind test, and the Self
+    parameter takes its Kind's answer. Hover shows the Self parameter's Contract through `SelfOf`.
+  - Reason: `ResolvePath` answered "the enclosing declaration", so each reader that knew the spelling corrected the meaning and the
+    readers that did not accepted invalid programs (`U is Self<i32>`, `Self.(Self).E`, `contract C: Self`, an implementation's
+    `U is <the Contract>` under `U is Self`) and rejected valid ones (`U is Self` against `U is S`).
+  - Rejected: a predicate per reader keyed on the spelling (the held fix, review 1 B1); a "written as Self" fact in the lookup row;
+    a Self parameter with another `Declaration` (`Self.Element` needs the Contract's member scope); a `SelfOf` test at each reader
+    (review 2: the per-reader exclusion again); a symbol Kind of its own for a Contract's Self (a closed-vocabulary entry, not
+    needed).
+  - Open: the struct side (PLAN G701's remaining item); one record kind for every arity mismatch would need a `PathEnd` entry (owner
+    approval), not taken: `Self<...>` reports `UnresolvedBinding_Kd` (the planning session's record selection, Q13).
 - **BU-151 A Type-name use's row is SPEC 9.2's role of its position: `UseRow`, the one table** (2026-11-10; R7-N1e2-2a; Major;
   design reviews 1 REVISE, 2 ACCEPT) SPEC 9.2 (with D-174's Contract Reference row), 9.5, 9.6, 8.2.1, 8.5.2, 8.8, 8.11.1, 8.12; the
   owner's O-101 (1)(a), O-122 (a), O-128 (a).
