@@ -266,6 +266,9 @@ public class InheritedConformanceTest
     private const string CycleHead = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\n";
     private const string CycleA = "open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n";
     private const string CycleB = "open struct B: A\n    public init(): base() => ()\n";
+    private const string TwoPathBase = "contract C\n    associate E\n    func get(self: ref/Self) -> i32\ncontract C2: C\n    func two(self: ref/Self) -> i32\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nopen struct T0<X, W>\n    public func get(self: ref/Self) -> i32 => 1\n    public func two(self: ref/Self) -> i32 => 2\n";
+    private const string TwoPathDirect = "    Self is C when X is Option<W>\n        associate C.E is X\n";
+    private const string TwoPathUses = "func t(v: ref/T1<Option<i32>, i32>) => use(v)\nfunc u(v: ref/T1<i64, i32>) => use(v)\n";
     private const string IdentityBase = "contract C\n    associate E\n    E is Copy\n    func get(self: ref/Self) -> i32\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nopen struct T0<X>\n    Self is C when X is Option<i32>\n        associate C.E is X\n    public func get(self: ref/Self) -> i32 => 1\n";
     private const string GenericHeir = "contract HasBase\n    associate Parent\nopen struct Root<T>\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle<T>\n    Self is HasBase\n    associate HasBase.Parent is Root<T>\n    public init() => ()\nstruct S0<T>\n    Self is HasBase\n    associate HasBase.Parent is Middle<T>\nopen struct Source<T>: S0<T>.HasBase.Parent\n    public init(): base() => ()\n";
 
@@ -461,6 +464,25 @@ public class InheritedConformanceTest
     {
         var records = Records(IdentityBase + "open struct T1<Y> : T0<Y>\n    Self is C when Y is Copy\n        associate C.E is " + associated + "\nfunc t(v: ref/" + use + ") => use(v)\n").Split('|');
         Assert.Equal(disagreements, records.Count(static x => x == "IncompatibleContractImplementation_Kd Self is C"));
+        Assert.True(disagreements != 0 || records is [""], string.Join('|', records));
+    }
+
+    // SPEC 8.2.3, 8.9.2 (PLAN G695): an heir inherits two paths of one Contract, T0's own and the one under C2, which meet where T0's do
+    // (X = Option<W>, W Copy); their agreement is judged under both paths' premises whichever T0 declares first, so the heir is accepted
+    // with or without a use, and a source whose paths disagree is rejected at its two declarations once.
+    [Theory]
+    [InlineData(false, "X", "", 0)]
+    [InlineData(true, "X", "", 0)]
+    [InlineData(false, "X", TwoPathUses, 0)]
+    [InlineData(true, "X", TwoPathUses, 0)]
+    [InlineData(false, "W", "", 2)]
+    [InlineData(true, "W", TwoPathUses, 2)]
+    public void TwoInheritedPathsOfOneContractAgreeInEitherOrder(bool swapped, string associated, string uses, int disagreements)
+    {
+        var refined = "    Self is C2 when X is Copy\n        associate C.E is " + associated + "\n";
+        var source = TwoPathBase + (swapped ? refined + TwoPathDirect : TwoPathDirect + refined) + "open struct T1<A, B> : T0<A, B>\n" + uses;
+        var records = Records(source).Split('|');
+        Assert.Equal(disagreements, records.Count(static x => x.StartsWith("IncompatibleContractImplementation_Kd Self is C", StringComparison.Ordinal)));
         Assert.True(disagreements != 0 || records is [""], string.Join('|', records));
     }
 
