@@ -266,7 +266,7 @@ public partial class ApplicabilityChainRegressionTest
     public void AHeldJoinKeepsItsVerdictThroughWhatDeliversIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
-    // These rows pin a temporary record, not a SPEC verdict (DECISIONS BU-n): each program is valid (SPEC 14.9.2 step 2: a source's fit to the
+    // These rows pin a temporary record, not a SPEC verdict (DECISIONS BU-156): each program is valid (SPEC 14.9.2 step 2: a source's fit to the
     // common Type is never a Type mismatch), but the step-2 Type keeps one typed source's own Origins (PLAN G443), so a source that takes it late
     // and differs from it in Origins alone is the located Unsupported_Kd at that source, never an internal fault: another Loan (h1, its other
     // order h2, the argument h3), a new shared borrow (h4), uniq (h5), a call that defaults first (h6). Removal: G443's unit (R7-I2 d) deletes

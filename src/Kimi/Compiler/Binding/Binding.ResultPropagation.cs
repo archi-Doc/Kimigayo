@@ -51,7 +51,7 @@ namespace Kimi.Compiler;
 // - Prohibitions: no inference here, and no record but these four: a bound part's own misfit at the part, its mismatch or its failed
 //   erasure (ErasePart), in BindWaitedSources, where its join rests on it, and in TryPropagate's adaptation (AdaptAtPosition); a waited
 //   join's own Conflict record (DecideWaiting); a broken contract's Internal record (BindWaitedSources: an erasure TryPropagate failed
-//   that ErasePart then accepts; BindStepThree: a waiting part at a typed position with no Type); and one interim (DECISIONS BU-n,
+//   that ErasePart then accepts; BindStepThree: a waiting part at a typed position with no Type); and one interim (DECISIONS BU-156,
 //   removed by G443's unit, R7-I2 d): a waited source whose Type at the join's Target Result Type fits its structural part and misfits
 //   by Origins alone is the located Unsupported_Kd at that source. A waiting part is bound only by BindNode at its decided Type or
 //   default, which reports its own misfit at the literal, as RequireType does at a position (RequireAtPosition); the reader reports a
@@ -535,7 +535,7 @@ public sealed partial class Binding
     // to its element Type. At `type`, the Target Result Type the join or its position decided (a failed join's too): a source that
     // waited unbound is bound at it, which checks its literals, and fits it, except that one whose Type there fits its structural part
     // (SPEC 15.6.1) and misfits by Origins alone is the located Unsupported_Kd at itself, the join resting on it, and no misfit: SPEC
-    // 14.9.2 step 2 makes it valid, but the step-2 Type keeps one typed source's own Origins (PLAN G443). This interim is DECISIONS BU-n,
+    // 14.9.2 step 2 makes it valid, but the step-2 Type keeps one typed source's own Origins (PLAN G443). This interim is DECISIONS BU-156,
     // removed by G443's unit (R7-I2 d), which forms the common Type's Origins over every source. A bound one that awaits, or does not fit
     // as it is, takes it when its late Type fits (U1.6g (b)), a bound one that does not await failing at itself otherwise (the join
     // resting on it). With no Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source holding a literal
@@ -614,7 +614,7 @@ public sealed partial class Binding
 
             if (!fits && late is not null && context.Outcome != JoinOutcome.Conflict && this.FitsStructurallyAt(late, type!, node))
             {
-                // The interim of DECISIONS BU-n (see the header): the late Type fits the structural part (SPEC 14.9.2 step 2, 15.6.1),
+                // The interim of DECISIONS BU-156 (see the header): the late Type fits the structural part (SPEC 14.9.2 step 2, 15.6.1),
                 // a Function component's Origin part included, and misfits by Origins alone.
                 this.Fail(source, BindingFailure.Unsupported);
                 context.RestOn(source);
