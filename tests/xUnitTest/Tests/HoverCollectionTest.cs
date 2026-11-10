@@ -4,7 +4,6 @@ using System.Text.Json;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Parsing;
 using Xunit;
 

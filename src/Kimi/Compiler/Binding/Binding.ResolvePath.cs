@@ -16,19 +16,20 @@ namespace Kimi.Compiler;
 //   Container's members are read through MemberTypes (SPEC 9.6, 18.2.1): no path, `::` member step or import stage reaches a formal
 //   parameter, which only the scope walk finds.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
-// - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end and row; its selection
-//   in the Symbols column), once; NamePath, the only entry outside this file, reads the published lookup on every later call.
+// - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end; its selection in the
+//   Symbols column), once; NamePath, the only entry outside this file, reads the published lookup on every later call. The row is the
+//   use's position's (UseRow), which no caller passes and no column stores.
 
-// The candidate filters of a lookup; a row fixes its namespace. Value is SPEC 9.2's Value role, the only Value-namespace row. The Type
-// rows are not SPEC 9.2's roles: Any filters nothing and is the only row that reaches stage 4, at qualifiers and at the other positions
-// (Constraint subjects, Contract names) alike; NoContainer drops Containers; Type and Semantics are an adaptation target's two roles
-// (SPEC 13.5.1). Type legality rejects the rest after selection.
+// SPEC 9.2's Lookup Roles: a use's syntactic position chooses one (UseRow), the row alone decides eligibility (HasLookupRole), and
+// Qualifier alone reaches stage 4 (SPEC 9.5). Type legality rejects the rest after selection, never resuming lookup.
 internal enum LookupRole : byte
 {
-    Any,
-    NoContainer,
-    Type,
-    Semantics,
+    Qualifier,
+    Core,
+    ObjectViewTarget,
+    TypeSemantics,
+    Requirement,
+    ContractReference,
     Value,
 }
 
@@ -41,10 +42,6 @@ internal enum PathEnd : byte
     Ambiguous,
     QualificationStop,
 }
-
-// A use's published lookup (HirTables.Lookups), written once: how it ended and the row it was looked up in. A Selected use's selection
-// is its Symbols entry, which is then written once too (HirTables.WriteSymbol).
-internal readonly record struct UseLookup(PathEnd End, LookupRole Role);
 
 public sealed partial class Binding
 {
@@ -66,22 +63,27 @@ public sealed partial class Binding
     // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
     // A Qualifier is a path's left use, published with its end (End).
     private readonly record struct NameStep(
-        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier = null, AliasImport Import = default, LookupRole Role = LookupRole.Any,
+        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier = null, AliasImport Import = default, LookupRole Role = LookupRole.Qualifier,
         PathEnd End = PathEnd.None);
 
     private readonly record struct ResolvedPath(PathEnd End, BindingSymbol? Symbol, Koto Use, QualificationFact Stop = default);
 
+    // SPEC 9.2's eligible declarations of each row. Qualifier: groups, Kotonoha references and the Types that qualify members (no pair
+    // binder); Requirement: what requirement syntax admits (SPEC 8.2.1: subjects, Contracts and complete Types); Contract Reference: Contracts.
     private static bool HasLookupRole(BindingSymbol candidate, LookupRole role) => role switch
     {
-        LookupRole.Any => true,
-        LookupRole.NoContainer => candidate.Kind != BindingSymbolKind.Container,
-        LookupRole.Type => candidate.Declaration is not ContractKoto &&
-            candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or
-                BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType,
-        LookupRole.Semantics => candidate.Kind == BindingSymbolKind.SemanticsParameter,
+        LookupRole.Qualifier => candidate.Kind != BindingSymbolKind.SemanticsParameter,
+        LookupRole.Core => IsCore(candidate),
+        LookupRole.ObjectViewTarget => IsCore(candidate) || candidate.Declaration is ContractKoto,
+        LookupRole.TypeSemantics => candidate.Kind == BindingSymbolKind.SemanticsParameter,
+        LookupRole.Requirement => candidate.Kind != BindingSymbolKind.Container,
+        LookupRole.ContractReference => candidate.Declaration is ContractKoto,
         LookupRole.Value => true,
         _ => throw new UnreachableException(),
     };
+
+    private static bool IsCore(BindingSymbol candidate) => candidate.Declaration is not ContractKoto &&
+        candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType;
 
     // SPEC 9.3: the first enclosing Container that is no group is the declaration a written Self names.
     private static BindingSymbol? EnclosingSelf(BindingScope scope)
@@ -108,42 +110,72 @@ public sealed partial class Binding
         return target.Parent is ConversionKoto conversion && ReferenceEquals(conversion.Right, target);
     }
 
-    // The row a use's position takes on today's rows, for a Type former's demand and check (N1e2-2 replaces the rows by SPEC 9.2's roles):
-    // an adaptation target its Type row (SPEC 13.5.1: ResolveAdaptationTarget compares both roles), a qualifier (9.6), an alias target (18.2.1)
-    // and a Contract parent Any, every other Type position NoContainer.
+    // SPEC 9.2: the one table of a Type-name use's row, by its syntactic position (the position seen through parentheses and transparent
+    // wrappers). A new form adds a row here; NamePath asks no caller.
     private static LookupRole UseRow(Koto use)
     {
         if (IsAdaptationTarget(use))
         {
-            return LookupRole.Type;
+            return LookupRole.Core; // SPEC 13.5.1: a bare target compares Core with Type Semantics (ResolveAdaptationTarget).
         }
 
         var node = use;
+        var grouped = false; // `(C)`: a ContractReference in parentheses (F.6), or with an Origin binding set a bound qualifier `(S{v})`.
+        var bound = use is TypeSemanticsKoto { HasOrigin: true };
         while (node.Parent is ParenthesizedKoto or ParenthesizedTypeKoto or TypeSemanticsKoto { IsTransparentWrapper: true })
         {
+            grouped |= node.Parent is ParenthesizedKoto or ParenthesizedTypeKoto;
+            bound |= node.Parent is TypeSemanticsKoto { HasOrigin: true };
             node = node.Parent;
         }
 
-        var qualifier = node.Parent is ContractKoto or AliasKoto || (node.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, node));
-        return qualifier ? LookupRole.Any : LookupRole.NoContainer;
+        var requirement = node;
+        while (requirement.Parent is UnaryKoto { Akind: KotoKind.Not } or BinaryKoto { Akind: KotoKind.And or KotoKind.Or } or ParenthesizedKoto)
+        {
+            requirement = requirement.Parent;
+        }
+
+        return node.Parent switch
+        {
+            ContractKoto => LookupRole.ContractReference, // A parent (F.6 ContractParentList, SPEC 8.4.3).
+            MemberAccessKoto member when grouped && (ReferenceEquals(member.Right, node) || !bound)
+                => LookupRole.ContractReference, // `.(C).Name` (8.5.2) and the selector `(C).Name` (8.5.1).
+            // SPEC 9.6: a path's intermediate component, the selector `C.Name` too. ProjectionQualifier still looks up the `C` of `T.C.X`
+            // unqualified in this row (dev's reading; SPEC 8.5.2 makes it an ordinary path: R7-N1e2-2b).
+            MemberAccessKoto => LookupRole.Qualifier,
+            EffectBoundKoto => grouped ? LookupRole.ContractReference : LookupRole.Qualifier, // `effect (A).r` (8.11.1), `effect A.r` (9.6).
+            AliasKoto => LookupRole.Qualifier, // SPEC 18.2.1, 9.5.1.
+            TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq }
+                => LookupRole.ObjectViewTarget,
+            _ => requirement.Parent switch
+            {
+                IsKoto { Parent: SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Operands: [IsKoto clause, SyntaxFormKoto, ..] } } conformance
+                    when ReferenceEquals(clause, conformance) && ReferenceEquals(conformance.Right, requirement)
+                    => LookupRole.ContractReference, // `Self is C when P` (8.8): the form whose second operand is P; P's clauses are requirements.
+                IsKoto { IsRuntimeTest: false } clause when ReferenceEquals(clause.Left, requirement) || ReferenceEquals(clause.Right, requirement)
+                    => LookupRole.Requirement, // SPEC 8.2.1: a subject and a requirement; a formation Type (`for T`) is a Type position.
+                _ => LookupRole.Core,
+            },
+        };
     }
 
     // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
-    // different end or row is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol).
-    private static void PublishUse(Koto use, UseLookup lookup, BindingSymbol? symbol)
+    // different end is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol). Every
+    // publication of a use is in UseRow's row (NamePath's and the walk's left), so the column stores no row.
+    private static void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol)
     {
         var published = HirTables.LookupOf(use);
-        if (published.End != PathEnd.None && published != lookup)
+        if (published != PathEnd.None && published != end)
         {
-            throw new InvalidOperationException($"`{use}` was published as {published}, then as {lookup} (InternalInvariant; R7-N1e2-1R).");
+            throw new InvalidOperationException($"`{use}` was published as {published}, then as {end} (InternalInvariant; R7-N1e2-1R).");
         }
 
-        if (lookup.End == PathEnd.Selected)
+        if (end == PathEnd.Selected)
         {
             use.BoundSymbol = symbol;
         }
 
-        HirTables.Of(use).Lookups[use.SyntaxId] = lookup;
+        HirTables.Of(use).Lookups[use.SyntaxId] = end;
     }
 
     // The node a use's lookup is published on: below the transparent wrappers and the parentheses that ResolvePath sees through.
@@ -167,20 +199,19 @@ public sealed partial class Binding
 
     // The symbol a Type name selects, published. Its qualifiers' Types are bound once, in the role of the form the name selects, by
     // BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base (SPEC 15.4.2).
-    private BindingSymbol? TypeName(Koto syntax, BindingScope scope, LookupRole role, int arity = 0) => this.NamePath(syntax, scope, role, arity).Symbol;
+    private BindingSymbol? TypeName(Koto syntax, BindingScope scope, int arity = 0) => this.NamePath(syntax, scope, arity).Symbol;
 
-    // A use's one lookup, with how it ended: resolved and published on the use (UseNode) at the first call, read from the use at every
-    // later one, so BindNamedType forms the use's Type from it and no reader looks the use up again.
-    private ResolvedPath NamePath(Koto syntax, BindingScope scope, LookupRole role, int arity = 0)
+    // A use's one lookup in its position's row (UseRow), with how it ended: resolved and published on the use (UseNode) at the first call,
+    // read from the use at every later one, so BindNamedType forms the use's Type from it and no reader looks the use up again.
+    private ResolvedPath NamePath(Koto syntax, BindingScope scope, int arity = 0)
     {
         var use = UseNode(syntax);
-        if (HirTables.LookupOf(use) is { End: not PathEnd.None } published)
+        if (HirTables.LookupOf(use) is var published and not PathEnd.None)
         {
-            // One use, one row: a reader asking another row than the use's lookup is a broken contract (the census's rows agree).
-            return published.Role == role ? new(published.End, published.End == PathEnd.Selected ? use.BoundSymbol : null, use)
-                : throw new InvalidOperationException($"`{use}` was looked up in {published.Role}, asked in {role} (InternalInvariant; R7-N1e2-1R).");
+            return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, use);
         }
 
+        var role = UseRow(use);
         var mark = this.nameSteps.Count;
         var reads = this.notReadyReads;
         var path = this.ResolvePath(use, scope, role, arity);
@@ -190,7 +221,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.PublishPath(path, mark);
-        PublishUse(use, new(path.End, role), symbol);
+        PublishUse(use, path.End, symbol);
         return path with { Symbol = symbol };
     }
 
@@ -207,7 +238,7 @@ public sealed partial class Binding
     // The target's one lookup in its Type row, published on it, so the target's BindType reads it and never compares the roles again.
     private BindingSymbol? LookupAdaptationTarget(Koto syntax, BindingScope scope, out bool semantics)
     {
-        var symbol = this.NamePath(syntax, scope, LookupRole.Type).Symbol;
+        var symbol = this.NamePath(syntax, scope).Symbol;
         semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         return symbol;
     }
@@ -233,7 +264,7 @@ public sealed partial class Binding
                     this.AddImportCandidates(step.Use, step.Qualifier!, step.Symbol!);
                     break;
                 case NameStepKind.Qualifier:
-                    PublishUse(step.Use, new(step.End, LookupRole.Any), step.Symbol); // The state stays the binder's.
+                    PublishUse(step.Use, step.End, step.Symbol); // The state stays the binder's.
                     break;
                 case NameStepKind.Member:
                     var member = (MemberAccessKoto)step.Use;
@@ -333,8 +364,9 @@ public sealed partial class Binding
             case ParenthesizedTypeKoto parentheses:
                 return this.ResolvePath(parentheses.Type, scope, role, arity);
             case MemberAccessKoto member:
-                var qualifier = this.ResolvePath(member.Left, scope, LookupRole.Any);
-                this.nameSteps.Add(new(NameStepKind.Qualifier, UseNode(member.Left), qualifier.Symbol, End: qualifier.End));
+                var left = UseNode(member.Left);
+                var qualifier = this.ResolvePath(member.Left, scope, UseRow(left)); // The left's row is its position's, as NamePath asks it.
+                this.nameSteps.Add(new(NameStepKind.Qualifier, left, qualifier.Symbol, End: qualifier.End));
                 return this.ResolveMember(member, qualifier, scope, role, arity);
             case SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root:
                 var rooted = this.ResolveRootPath(root.Operands[0], this.ModuleScope(root.Operands[0]), role, arity);
@@ -372,8 +404,8 @@ public sealed partial class Binding
             return EnclosingSelf(scope) is { } self ? new(PathEnd.Selected, self, syntax) : new(PathEnd.Unresolved, null, syntax);
         }
 
-        var target = this.ResolveName(name, scope, syntax, LookupRole.Type, 0);
-        var parameter = this.ResolveName(name, scope, syntax, LookupRole.Semantics, 0);
+        var target = this.ResolveName(name, scope, syntax, LookupRole.Core, 0);
+        var parameter = this.ResolveName(name, scope, syntax, LookupRole.TypeSemantics, 0);
         if (target.End == PathEnd.Ambiguous || parameter.End == PathEnd.Ambiguous)
         {
             this.nameSteps.Add(new(NameStepKind.AmbiguousRole, syntax, null));
@@ -384,13 +416,7 @@ public sealed partial class Binding
             return new(PathEnd.Ambiguous, null, syntax);
         }
 
-        // Preserve the ordinary wrong-role or missing-name diagnostic when neither role applies.
-        var selected = parameter;
-        if (selected.Symbol is null)
-        {
-            selected = target.Symbol is not null ? target : this.ResolveName(name, scope, syntax, LookupRole.NoContainer, 0);
-        }
-
+        var selected = parameter.Symbol is not null ? parameter : target;
         this.nameSteps.Add(new(NameStepKind.AdaptationTarget, syntax, selected.Symbol));
         return selected;
     }
@@ -415,7 +441,8 @@ public sealed partial class Binding
             }
         }
 
-        if (role == LookupRole.Any && this.ModuleReference(use, name) is { } reference)
+        // Stage 4, for Type qualifiers only (SPEC 9.5).
+        if (role == LookupRole.Qualifier && this.ModuleReference(use, name) is { } reference)
         {
             return new(PathEnd.Selected, reference, use);
         }
@@ -463,7 +490,7 @@ public sealed partial class Binding
     private BindingSymbol? SelectQualifier(BindingSymbol? head, BindingScope scope, Koto use)
     {
         var candidates = default(TypeCandidates);
-        this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Any, 0);
+        this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Qualifier, 0);
         if (candidates.Ambiguous)
         {
             this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
@@ -554,7 +581,7 @@ public sealed partial class Binding
         }
 
         var candidates = default(TypeCandidates);
-        if (syntax is MemberAccessKoto member && this.ResolveRootPath(member.Left, root, LookupRole.Any) is { Symbol: { } qualifier } &&
+        if (syntax is MemberAccessKoto member && this.ResolveRootPath(member.Left, root, UseRow(UseNode(member.Left))) is { Symbol: { } qualifier } &&
             this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName)
         {
             this.AddTypeCandidates(ref candidates, MemberTypes(members, rightName), root, role, arity);

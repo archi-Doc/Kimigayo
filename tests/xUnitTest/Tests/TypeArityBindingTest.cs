@@ -103,7 +103,7 @@ public class TypeArityBindingTest
     [InlineData("struct T<U>\nfunc f(b: ::T<i32, Missing>) => ()", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
     [InlineData("func f(b: Nope<Missing>) => ()", "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Nope")]
     [InlineData("func f<X>(b: X<Missing>) => ()", "InvalidTypeFormation_Kd X<Missing>|UnresolvedBinding_Kd Missing")]
-    [InlineData(Contract + "func f(b: C<Missing>) => ()", "InvalidTypeFormation_Kd C<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "func f(b: C<Missing>) => ()", "UnresolvedBinding_Kd C|UnresolvedBinding_Kd Missing")] // SPEC 9.2: Core has no Contract.
     [InlineData(Contract + "func f<X>(x: X)\n    X is C<i32, Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is C<i32, Missing>\n    return|TypeMismatch_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
     [InlineData("contract C<T, U>\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is C<Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is C<Missing>\n    return|TypeMismatch_Kd C<Missing>|UnresolvedBinding_Kd Missing")]
     [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D<i32>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is D<i32>\n    return|TypeMismatch_Kd D<i32>")]

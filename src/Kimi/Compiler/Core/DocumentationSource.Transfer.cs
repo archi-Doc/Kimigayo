@@ -2,7 +2,7 @@
 
 using Kimi.Compiler.Parsing;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Compiler;
 
 public sealed partial class DocumentationSource
 {

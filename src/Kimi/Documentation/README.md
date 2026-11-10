@@ -3,8 +3,15 @@
 `DocumentationMarkdown` uses the independent limited-profile parser. Compiler
 assemblies and packages have no Markdig dependency; Markdig remains a private
 dependency of comparison tests and benchmarks only. The adopted language rules
-are in [§2.3](../../../../docs/spec/02-source-and-lexical-structure.md#23-documentation-comments)
-and the [Documentation Markdown profile](../../../../docs/spec/02-source-and-lexical-structure.md).
+are in [§2.3](../../../docs/spec/02-source-and-lexical-structure.md#23-documentation-comments)
+and the [Documentation Markdown profile](../../../docs/spec/02-source-and-lexical-structure.md).
+
+Documentation (`src/Kimi/Documentation`, namespace `Kimi.Documentation`) is outside
+the compiler: it reads the compiler, and the compiler never reads it. The comments it
+parses are Core's documentation association (`DocumentationSource`,
+`DocumentationComment`, `DocumentationText` in `Kimi.Compiler`), which the tokenizer
+and the parser collect when `Compilation.CollectDocumentation` is set. The contract
+is the header of `DocumentationMarkdown.cs`.
 
 ## Parsing and declaration context
 
@@ -56,7 +63,7 @@ comment objects in a disabled compilation. Invalid lexical results are not share
 
 Optional Hover projection runs after diagnostics and TestPresence are fixed, behind
 `CheckService.TryCreateHover`; its failure is logged separately from check outcomes.
-The complete editor contract is [SPEC §23.4.11](../../../../docs/spec/23-compiler-services.md);
+The complete editor contract is [SPEC §23.4.11](../../../docs/spec/23-compiler-services.md);
 general Hover rendering and adoption are still implementation work.
 
 ## HTML and link placement
@@ -111,4 +118,4 @@ StringBuilder of capacity 65,536 per rendering thread. Larger builders are relea
 callbacks may reenter rendering without sharing mutable buffers. No partial output
 or HTML cache is published. The standalone syntax API also provides `ToHtml(options,
 token)` and permits heading offset 0. Full output conditions and measurements are
-in the [benchmark report](../../../Benchmark/DocumentationMarkdown.md).
+in the [benchmark report](../../Benchmark/DocumentationMarkdown.md).
