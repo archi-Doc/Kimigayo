@@ -628,7 +628,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
     // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
-    // its confined bound where Text.writer erases it. No body reaches the call before S2a's built-in bodies, its first callers.
+    // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
     public void AnErasedReserveCallIsClassedByItsStorageFamily()
     {
@@ -637,6 +637,17 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
+
+    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
+    // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
+    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
+    [Theory]
+    // A growing writer, Text.heap(0): allocation permitted (SPEC 8.11.2), nothing reported.
+    [InlineData("        var buffer = Text.heap(0)\n")]
+    // A fixed buffer of 3 bytes, which the reserve of 4 fails with BufferFull (SPEC 22.9.4): nothing reported.
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n")]
+    public void AConfinedLeafWriteReportsNothing(string buffer)
+        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
 
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
     // for bool, char and Unit (R8-S2a), Shown's printing one, also in an interpolation (fail-before: each, a limit).

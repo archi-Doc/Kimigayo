@@ -510,6 +510,22 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain("@__kimi_erased_reserve(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
+    // R8-W1b-3 (R8-M18), R8-S2a: the leaf writeUtf8 reserves through Utf8Writer.reserve, whose ErasedReserve call requests the kept runtime:
+    // a module whose one write is a table body's defines it once, without the formatting runtime, the other requester (a module without a
+    // write defines neither: ARequestedRowRequestsItsRoutinesModulePart).
+    [Fact]
+    public void ALeafWriteDefinesTheKeptRuntimeOnce()
+    {
+        using var formatting = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
+        var c = Analyze("func wlBool(writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(true)\n", OutputKind.Library);
+        var text = Generate(c);
+        Assert.Single(FunctionsOf(GeneratedIr.Parse(text), c, "writeUtf8"));
+        Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_erased_reserve\("));
+        Assert.Contains(LlvmModuleText.ErasedWriterRuntime, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(formatting.ToString(), text, StringComparison.Ordinal);
+    }
+
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
     // char, bool, Unit and string; -1 exactly for a Type without built-in formatting.
     [Fact]
