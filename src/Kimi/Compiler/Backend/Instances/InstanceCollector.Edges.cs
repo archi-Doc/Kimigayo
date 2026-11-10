@@ -130,7 +130,7 @@ internal sealed partial class InstanceCollector
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed && !Elided(program, body, site.At.Block, this.Set.Items[item].View) &&
+            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed &&
                 !(Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok))
             {
                 this.DropTargets(program, item, subject, body, site, closed);

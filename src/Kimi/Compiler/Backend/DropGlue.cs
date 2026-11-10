@@ -65,7 +65,7 @@ internal readonly record struct DropPart(DropPartKind Kind, BoundType Type, int 
 /// <summary>What a step of a drop group's walk is (<see cref="DropGlue.Destroyed"/>).</summary>
 internal enum DropStepKind : byte
 {
-    Whole, // A part destroyed whole through its glue (a destructor alone), by its row's verdict, or by its parent's own bit without a row.
+    Whole, // A part destroyed whole through its glue (a destructor alone), by its Keep or Flag row, or by its parent's own bit without a row.
     Run, // A fixed array's elements without a row, from Last down to First, through the element's glue under the parent's own bit.
     Open, // A level destroyed part by part: its steps follow, up to its End.
     End, // The end of a level.
@@ -179,12 +179,12 @@ internal static class DropGlue
     }
 
     /// <summary>Appends the walk of what destroying a closed Type's value by a row of a drop group destroys, in destruction order (SPEC
-    /// 16.3.2, 15.1.3; R4-M6a), each part a step: a Keep, a Flag or an Elide row the value whole (an Elide row as the whole glue's admission
-    /// reaches it, until R3-U2b); an Open row (never a struct's that declares a drop: A2's MovedPlace_Kd), or no row (-1: a glue function's
-    /// level, which no row governs), an Open step, then each direct part (<see cref="Parts"/>) by its governing row, by that row's walk, so
-    /// a part without a row whole under its parent's own bit, then the End step; a fixed array's elements from the last, each run of
-    /// elements without a row one Run step (without a row, one run of every element, none left out for no element), each element with a
-    /// row by its row's walk (<see cref="Walker"/>).</summary>
+    /// 16.3.2, 15.1.3; R4-M6a; what MirDropTable states a group destroys), each part a step: a Keep or a Flag row the value whole; an Elide
+    /// row no step, as it destroys nothing (PLAN G641 kind 4: so a Drop's checked set is what it destroys); an Open row (never one whose Type
+    /// declares a drop in an exact body, MirDropVerdict), or no row (-1: a glue function's level, which no row governs), an Open step, then
+    /// each direct part (<see cref="Parts"/>) by its governing row, by that row's walk, so a part without a row whole under its parent's own
+    /// bit, then the End step; a fixed array's elements from the last, each run of elements without a row one Run step (without a row, one
+    /// run of every element, none left out for no element), each element with a row by its row's walk (<see cref="Walker"/>).</summary>
     /// <param name="types">The Type context, whose Sealed proofs decide an owning handle's payload.</param>
     /// <param name="rows">The body's drop table rows (none for no row).</param>
     /// <param name="row">The row, or -1.</param>
@@ -237,18 +237,20 @@ internal static class DropGlue
             this.into = into;
         }
 
-        /// <summary>Appends a part's walk by its governing row under its parent: an Open row's level, else the part whole.</summary>
+        /// <summary>Appends a part's walk by its governing row under its parent: an Open row's level, nothing for an Elide row, else the
+        /// part whole (a Keep or Flag row, or its parent's own bit without a row).</summary>
         /// <param name="part">The part.</param>
         /// <param name="parent">The row whose own bit the part follows without a row; -1 for none.</param>
         /// <param name="row">The part's governing row, or -1.</param>
         /// <param name="position">The part's element position, or -1.</param>
         internal void Step(in DropPart part, int parent, int row, long position)
         {
-            if (row >= 0 && this.rows[row].Verdict == MirDropVerdict.Open)
+            var verdict = row < 0 ? MirDropVerdict.Keep : this.rows[row].Verdict;
+            if (verdict == MirDropVerdict.Open)
             {
                 this.Level(part, parent, row, position);
             }
-            else
+            else if (verdict != MirDropVerdict.Elide)
             {
                 this.into.Add(new(DropStepKind.Whole, part, parent, row, position));
             }

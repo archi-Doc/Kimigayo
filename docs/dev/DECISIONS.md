@@ -17086,6 +17086,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     reason was 'A4 relies on it: such a row elaborates nothing, no flag, no codegen, no destructor'; that reason is now carried by
     A4's runtime gate (no destructor), the flagless reading of a check-only group (no flag) and code generation's runtime walk
     (`FunctionCodegen` I3: no codegen), and a check-only Drop has the group of what it would destroy.
+  - Superseded in part by R8-M23 (U2b), for R8-M10's reader clause ("which A5 (`Dropping`) and the instance collector read; the
+    collector requests no DropGlue for such a Drop"): the collector now reads a Drop's group row by row through
+    `DropGlue.Destroyed`, whose walk gives an Elide row no step (`MirDropTable`'s summary, U1). The reason that no longer holds: the
+    collector needed its own top-level reading of `Elides` only while no walk read every row's verdict; with the walk it became a
+    second copy. `MirDropTable.Elides` stays the one statement A5 (`Dropping`) reads, and its summary in `MirDrops.cs` now says so
+    (the Middle's YES on C-195; U2b implementation review 1's B1).
 - **R8-M17 `replace`, `exchange` and `swap` are Kimigayo bodies** (Back, 2026-11-09; R8-U1; Major; design and SP3 reviews ACCEPT; the
   Middle's RP17 consent C-174 YES; plan RP20, RQ9; on R8-M3; supersedes in part R5-M116 and R5-M117; amends R8-M1's guard list) SPEC 15.7
   as R8-SP3 states it, 15.7.1, 22.5.1.
@@ -17389,6 +17395,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     Ref, Discriminant, Len, Storage, Adapt). MirUses' walk, the default copy's fold and the builder's Never test read it; no site
     lists the kinds.
   - **Rejected:** deriving it from the row's Access (an Opaque has an access and no Place).
+
+  - **R3-U2b: a Drop's checked set is what its group destroys** (Back, 2026-11-10; PLAN G641 kind 4's last part; Major, an
+    acceptance mover; design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE (B1), 2 ACCEPT) SPEC 16.3.2, 8.15.3,
+    14.10.3.
+    - **Rule.** `DropGlue.Destroyed`'s walk gives an Elide row no step: it destroys nothing (`MirDropTable`'s statement). So the
+      instance collector requests, and code generation writes, exactly the glues of what a Drop's group destroys, on runtime groups
+      and on U1's check-only groups alike.
+    - **Removed.** The collector's `Elided` (a Drop whose group is Elide requests nothing): the walk now gives such a group no step,
+      the same rule, so it had become a second copy. Codegen's per-step Elide test (an Elide row read its target and wrote nothing)
+      goes for the same reason; codegen's whole-Drop Elide test stays (an Elide Drop writes no address, no cleanup phase).
+    - **Moves.** Acceptance: 12 valid programs rejected with `InvalidCLayout_Kd` are accepted (`V_openAllMoved`, `V_openOkLeft`,
+      `V_openNested`, `V_openMixed`, `V_openDict`, `V_deadOpenAll`; B's reviewer's `T_condAll`, `T_fixAll`, `T_baseAll`, `T_genAll`,
+      `T_dictValGone`, `T_deadRetAll`); every invalid twin stays rejected. Records on rejected programs (Q13): the false records at
+      a Drop that destroys nothing go (`I_deadOpenKeep` 8:18, `I_deadOpenU` 8:18, `T_deadRet` and `T_deadFlag` 10:18); of U2a's four
+      records, `T_deadRetAll`'s and `I_deadOpenU`'s go, `T_deadRet`'s and `T_deadFlag`'s (12:5, the true use) stay. At check-only
+      Drops (N15): U1 merged with U2a adds `I_deadOpenKeep` 10:5 (the dead local `w`'s Keep group requests its glue at its Drop, the
+      true use), which U2b keeps while its false 8:18 goes; the final records equal design review 2's on all 29 programs. Generated
+      IR: 119 of 6,151 `.ll` move, all classified (77 no longer switch to an Open enum's Case holding only Elide parts, one also
+      losing a glue function; 2 lose Elide-only glue functions; 40 renumber items); natives equal.
+    - **Rejected:** keeping `Elided` beside the walk (two statements of one rule).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
