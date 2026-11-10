@@ -7,8 +7,9 @@ namespace Kimi.Compiler.Mir;
 // Default copies (plan 5.6.2, SPEC 7.2.3): where a call omits a default whose template is not recursive, did not fail and instantiates
 // under the call's substitution (Defaults), its value is a copy of the template's MIR in the calling body, folded once under that
 // substitution. Each statement and terminator of a copy is its template's, folded: at its template's location, in the copy's scopes under
-// the one Inlined at the call; its case decides a PairAcquire's rvalue again (ByCase). Only the pending slots and the prologue's borrows
-// (Defaults) are the caller's. Whether the substitution instantiates the copy is decided before it is written, so none is written in part.
+// the one Inlined at the call; its case decides a PairAcquire's rvalue again (ByCase) and its folded key a keyed view's form (First).
+// Only the pending slots and the prologue's borrows (Defaults) are the caller's. Whether the substitution instantiates the copy is
+// decided before it is written, so none is written in part.
 internal sealed partial class MirBuilder
 {
     private readonly List<int> folded = []; // A copy's scopes, locals and blocks in this body.
@@ -64,6 +65,23 @@ internal sealed partial class MirBuilder
         }
 
         return true;
+    }
+
+    // A copy's keyed view (SPEC 8.15.3; PLAN G597): its key, in the call's instance, decides its form again (First), so a closed one is
+    // unkeyed; the displaced form's temp is the copy's, at the view's location and live for its two statements.
+    private void Refirst(in MirStatement view, in MirOperand start, BoundType key)
+    {
+        var starts = MirTypes.StartsAtStorage(key);
+        if (starts != false)
+        {
+            this.First(this.current, view, start, starts, key, view.Place);
+            return;
+        }
+
+        var through = new MirPlace(this.body.AddLocal(new(view.Rvalue.Type!, MirLocalKind.Temp, view.Source with { StatementStart = false })));
+        this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, through, this.body.Locals[through.Root].Source));
+        this.First(this.current, view, start, starts, key, through);
+        this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, through, view.Source with { StatementStart = false }));
     }
 
     // A Type of a copy in the call's instance (Instantiates), each once.
@@ -137,7 +155,9 @@ internal sealed partial class MirBuilder
     // in its frame (Frame), its returns going on after it; each Type applied and each callee's substitution composed (TyCtxt.Compose),
     // each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent acquisition its
     // case's (ByCase), each static and constant added again, and a Drop the instance's Type does not need left out. No MustNotComplete
-    // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3).
+    // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3). Two forms are decided again in the copy, each
+    // by its owner: a PairAcquire's rvalue by its case (Reacquired; ByCase) and a keyed view by its folded key (Refirst; First). A third
+    // would be an open family, to close in one representation.
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;
@@ -153,6 +173,14 @@ internal sealed partial class MirBuilder
             foreach (ref readonly var statement in template.Statements.Slice(block.Start, block.Count))
             {
                 var copy = statement with { Place = FoldPlace(statement.Place), Source = this.FoldInfo(statement.Source) };
+                if (statement.Rvalue is { Kind: MirRvalueKind.Storage, Count: not 0 } keyed)
+                {
+                    var view = copy with { Rvalue = MirRvalue.Storage(FoldPlace(keyed.Place), this.FoldType(keyed.Type!, subst)) };
+                    var key = this.FoldType(template.Consts[template.Operands[keyed.Start + 1].Arg].Type, subst);
+                    this.Refirst(view, FoldOperand(template.Operands[keyed.Start]), key);
+                    continue;
+                }
+
                 if (statement.Kind == MirStatementKind.Assign)
                 {
                     var acquires = statement.Rvalue is { Kind: MirRvalueKind.Use, Op: not 0 }; // A PairAcquire's Use is marked (R4-M66).
