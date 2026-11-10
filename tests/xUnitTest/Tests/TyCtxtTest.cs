@@ -1566,7 +1566,8 @@ public sealed partial class TyCtxtTest
         var self = BoundType.Primitives[name];
         var contract = c.Library.GetSymbol(KimiDeclarationId.Position)!;
         var targets = new List<(BindingSymbol Target, Subst Instance)>();
-        Assert.True(c.Types.Witnesses(contract.Contract!.OwnRequirement()!, self, contract, null, [], [], null, targets));
+        var requirement = contract.Contract!.OwnRequirement()!;
+        Assert.True(c.Types.Witnesses(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), null, targets));
         var (target, instance) = Assert.Single(targets);
         Assert.Equal([self], instance.Types);
         var selected = c.Types.Implementation(target, instance, 0)!;
@@ -1575,10 +1576,11 @@ public sealed partial class TyCtxtTest
         Assert.Null(c.Types.Implementation(target, instance, 1));
     }
 
-    // SPEC 8.6.3 (PLAN G663): the instance A4 is given for a conformance witness (Witnesses) at a requirement call's own Types and lengths
-    // is the witness under its declaring instance at them by position, a renamed or reordered slot and a length slot included, as Witness's
-    // Conformance binds them: the two agree but for the Origins, which the analyses relate; with none (a requirement no call names) the
-    // witness's own slots stay unbound (fail-before: the instance bound none for any call).
+    // SPEC 8.6.3 (PLAN G663): the instance A4 is given for a conformance witness (Witnesses) under a requirement call's substitution is the
+    // witness under its declaring instance at the call's own Types and lengths by position, a renamed or reordered slot and a length slot
+    // included, as Witness's Conformance binds them: the two agree but for the Origins, which the analyses relate; a requirement no call
+    // names (Synthesized on the Self) leaves the witness's own slots unbound (fail-before: the instance bound none for any call). A call in
+    // a view (InView) is the call itself where its Self and reference are the view's, else the call at them with its own Types and lengths.
     [Theory]
     [InlineData("f<T, U>(self: ref/Self, x: T, y: U)", "f<U, T>(self: ref/Self, x: U, y: T)", "1, true")]
     [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[1, 2]")]
@@ -1593,8 +1595,9 @@ public sealed partial class TyCtxtTest
         Assert.Equal(RequirementTargetKind.Body, body.Kind);
         Assert.Equal(2, subst.Types.Length);
         var targets = new List<(BindingSymbol Target, Subst Instance)>();
-        Assert.True(c.Types.Witnesses(call.Inner.Target, subst.Self!, call.Inner.RequirementContract, subst.Declaring, subst.Types, subst.Lengths, null, targets));
-        Assert.True(c.Types.Witnesses(call.Inner.Target, subst.Self!, call.Inner.RequirementContract, subst.Declaring, [], [], null, targets));
+        var (requires, contract) = (call.Inner.Target, call.Inner.RequirementContract);
+        Assert.True(c.Types.Witnesses(requires, contract, subst, null, targets));
+        Assert.True(c.Types.Witnesses(requires, contract, c.Types.Synthesized(requires, subst.Self!, TyCtxt.Contract(requires).Type!), null, targets));
         Assert.Equal(2, targets.Count);
         Assert.All(targets, x => Assert.Same(body.Target, x.Target));
         Assert.All(targets, x => Assert.Same(body.Subst!.Declaring, x.Instance.Declaring));
@@ -1602,6 +1605,9 @@ public sealed partial class TyCtxtTest
         Assert.True(instance.Types.SequenceEqual(body.Subst!.Types) && instance.Lengths.SequenceEqual(body.Subst.Lengths));
         Assert.True(instance.Types.SequenceEqual(subst.Types) && instance.Lengths.SequenceEqual(subst.Lengths));
         Assert.Equal(0, targets[1].Instance.Types.Length);
+        Assert.Same(subst, c.Types.InView(subst, subst.Self!, subst.Declaring));
+        var moved = c.Types.InView(subst, BoundType.I32, null);
+        Assert.True(ReferenceEquals(moved.Self, BoundType.I32) && moved.Types.SequenceEqual(subst.Types) && moved.Lengths.SequenceEqual(subst.Lengths));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload

@@ -284,7 +284,8 @@ internal sealed partial class MirEffects
     // witness body, a library witness at the Self's arguments among them, or an accessor as a dynamic edge, a virtual witness by its slot's
     // bound, DispatchBounds: a built-in target keeps its requirement's declaration), each entered at that instance as a call enters it (its
     // declaration's summary, specializations included: SPEC 15.6.4), and none resolving (a composite with an abstract part, a standard
-    // Property witness) is a limit.
+    // Property witness) is a limit. The call is the item's, in its view (Terminator); a requirement no call names (a summary's atom, a
+    // published row's) is the requirement on the Type under its own Contract, which binds no own slot.
     private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, Subst? call)
     {
         if (type.IsAbstract)
@@ -298,10 +299,8 @@ internal sealed partial class MirEffects
         }
 
         var start = this.targets.Count;
-        var reference = call?.Declaring is { } declaring ? cases.Type(declaring) : null; // The call's Contract reference in the selected view.
-        ReadOnlySpan<BoundType?> own = call is null ? [] : call.Types; // The call's own Types and lengths; none without a call.
-        ReadOnlySpan<BoundLength?> lengths = call is null ? [] : call.Lengths;
-        this.found |= types.Witnesses(requirement, type, contract, reference, own, lengths, this.definition, this.targets) ? (byte)0 : Limit;
+        call ??= types.Synthesized(requirement, type, TyCtxt.Contract(requirement).Type!);
+        this.found |= types.Witnesses(requirement, contract, call, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, instance) = this.targets[i];

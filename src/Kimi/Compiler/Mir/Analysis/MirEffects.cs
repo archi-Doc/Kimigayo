@@ -202,8 +202,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             (callee.Symbol!.CompilerFunction != CompilerFunctionKind.None || !self.IsAbstract))
         {
             // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
-            // own Types (SPEC 8.6.3; PLAN G663): the item keeps the call's substitution.
-            this.Item(self, Requires, callee.Symbol, callee.Contract, subst);
+            // own Types and lengths (SPEC 8.6.3): the item keeps the call's substitution in the view, here alone its Self and its
+            // reference taking their case Types.
+            var reference = subst.Declaring is { } declaring ? cases.Type(declaring) : null;
+            this.Item(self, Requires, callee.Symbol, callee.Contract, types.InView(subst, self, reference));
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -435,9 +437,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <param name="Requirement">The requirement of a <see cref="Requires"/> atom.</param>
     /// <param name="Contract">The Contract reference the requirement's call recorded (<see cref="MirCallee.Contract"/>; a published row's
     /// requirement's own).</param>
-    /// <param name="Call">The call's substitution for a local input whose Self is not abstract: its Contract reference
-    /// (<see cref="Subst.Declaring"/>) and the requirement's own Types and lengths, at which its witness runs; null for a summary's atom,
-    /// whose abstract Self names no conformance, and for a published row's requirement, which has no own slot.</param>
+    /// <param name="Call">The call's substitution in the view for a local input whose Self is not abstract (<see cref="TyCtxt.InView"/>): its
+    /// Self, the Type, its Contract reference (<see cref="Subst.Declaring"/>) and the requirement's own Types and lengths, at which its
+    /// witness runs; null for a summary's atom, whose abstract Self names no conformance, and for a published row's requirement, which has
+    /// no own slot.</param>
     internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
