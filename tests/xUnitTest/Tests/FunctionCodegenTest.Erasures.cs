@@ -159,6 +159,21 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([.. own.Skip(1).Take(own.Count - 4), own[^2], own[^1]], body.Operands);
     }
 
+    // SPEC 22.6, 7.7.4 (DECISIONS R8-M19): a requirement's Function Item is a function value whatever its witness; erased with an import as
+    // its witness, its adapter's entry calls the import by its C signature, as the import's direct call does.
+    [Fact]
+    public void AnErasedRequirementItemCallsItsImportWitness()
+    {
+        var c = Analyze(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc erased<C>() -> () -> u32\n    C is Clock\n    C is Owned\n    return C.now\nfunc h() -> () -> u32 => erased<Win>()\n",
+            OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "erased"))).Entry);
+        Assert.Single(CallsOf(entry), x => x.Callee == ir.Function("GetLastError"));
+    }
+
     // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104 as G182 amends it): a Function value's glue calls its table's drop entry, when present,
     // with the address of its word's copy in an entry slot, so the value's own address does not escape, and its own location and length; a
     // parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
