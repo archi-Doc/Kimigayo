@@ -96,8 +96,7 @@ public sealed partial class Binding
         BindingSymbol? foundReference = null;
         BoundRequirement? alternative = null;
         this.ambiguousAssociatedMatches?.Clear();
-        var contextualQualifier = qualifier is not null && !IsBoundContractReference(qualifier) && qualifier.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 };
-        if (qualifier?.Contract is { } qualified && !contextualQualifier)
+        if (qualifier?.Contract is { } qualified)
         {
             Search(qualified);
         }
@@ -105,7 +104,7 @@ public sealed partial class Binding
         {
             if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
             {
-                SearchAvailable(own);
+                Search(own);
             }
 
             for (var current = scope; current is not null; current = current.Parent)
@@ -119,7 +118,7 @@ public sealed partial class Binding
                 {
                     if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
                     {
-                        SearchAvailable(this.AppliedAssociatedContract(fact, type).Contract!);
+                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
                     }
                 }
             }
@@ -128,7 +127,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < list.Count; i++)
                 {
-                    SearchAvailable(list[i].Contract.Contract!);
+                    Search(list[i].Contract.Contract!);
                 }
             }
         }
@@ -141,25 +140,6 @@ public sealed partial class Binding
         }
 
         return found;
-
-        void SearchAvailable(BoundContract shape)
-        {
-            if (!contextualQualifier || ReferenceEquals(shape.Symbol.Declaration, qualifier!.Declaration))
-            {
-                Search(shape);
-            }
-
-            if (contextualQualifier)
-            {
-                for (var i = 0; i < shape.Ancestors.Count; i++)
-                {
-                    if (ReferenceEquals(shape.Ancestors[i].Declaration, qualifier!.Declaration))
-                    {
-                        Search(shape.Ancestors[i].Contract!);
-                    }
-                }
-            }
-        }
 
         void Search(BoundContract shape)
         {

@@ -43,11 +43,10 @@ public class UseLookupTest
     [InlineData("contract C<T>\n    func m(self: ref/Self) -> i32\nfunc f(x: i32) -> i32\n    let y = x@C<i32>\n    return 0", "UnresolvedBinding_Kd C")]
     [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd Missing<i32>|InvalidConstraint_Kd contract D")]
     // An effect selector names its declaration and has the bound ancestor it designates as its Type (SPEC 8.11.1; review 3's v-e1, v-e2,
-    // v-e5); a selector that names two bound ancestors is rejected (i-e4).
-    [InlineData(BoundEffect + "contract Q: P<i32>\n    effect P.value confined", "")]
+    // v-e5), below a root-name form too; one without its Type arguments names no reference (EffectBoundDeclarationTest).
+    [InlineData(BoundEffect + "contract Q: P<i32>\n    effect ::P<i32>.value confined", "")]
     [InlineData(BoundEffect + "contract Q: P<i32>\n    effect P<i32>.value confined", "")]
     [InlineData(BoundEffect + "contract Q: P<i32>, P<i64>\n    effect P<i64>.value confined", "")]
-    [InlineData(BoundEffect + "contract Q: P<i32>, P<i64>\n    effect P.value confined", "InvalidEffectBound_Kd effect P.value confined")]
     // An explicit generic argument is read for the slot it fills (SPEC 4.4.1, 9.5; review 4's v-u1, i-u2): a spelling whose Type reading
     // is ambiguous (two opened structs `Size`) supplies a length slot by its value, and fills no Type slot.
     [InlineData("alias A\nalias B\ngroup A\n    public struct Size\ngroup B\n    public struct Size\nlet Size: isize = 2\nfunc f<length N>() => ()\nf<Size>()", "")]
