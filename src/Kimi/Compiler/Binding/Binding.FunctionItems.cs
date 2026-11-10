@@ -387,7 +387,7 @@ public sealed partial class Binding
         var target = (FunctionKoto)selected!.Declaration;
         if ((target.Modifier & ModifierKind.Unsafe) != 0)
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
         var arguments = this.typeScratch.Rent(count);

@@ -98,7 +98,7 @@ public sealed partial class Binding
             if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
             {
                 // SPEC 7: an unsafe function supports direct calls only. An overload group is checked after selection.
-                return this.Fail(node, BindingFailure.UnsafeFunctionValue);
+                return this.Fail(node, BindingFailure.DirectCallFunctionValue);
             }
 
             // A function group is resolved for call selection, but not an inferred first-class value.

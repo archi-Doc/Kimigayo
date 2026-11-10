@@ -187,7 +187,7 @@ internal enum BindingFailure : byte
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,
-    UnsafeFunctionValue,
+    DirectCallFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidInlineLayout,
