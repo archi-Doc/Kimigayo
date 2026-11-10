@@ -106,15 +106,16 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): each FormatSegment step gives its hint, then writes its literal text with the string's kind
     // and checks the adapter: deferred to the next reservation (__kimi_format_literal) when a value follows, written (the built-in write) at
-    // the end, where no value follows; a value's write (the built-in write of its kind) follows its step (fail-before: C9c's interim record
-    // at FormatBuffer and no text step).
+    // the end, where no value follows; a value's write follows its step: Utf8Writer.write's instance at the value's Type (R8-W1b-4), named
+    // by the kind its BuiltinFormat shim gives (fail-before: C9c's interim record at FormatBuffer and no text step).
     [Theory]
     [InlineData("ipPrefix", new[] { "hint 12", "literal 16", "check", "hint 12", "write 16", "hint 11", "literal 16", "check", "hint 0", "write 5" })]
     [InlineData("ipTail", new[] { "hint 1", "write 16", "hint 0", "write 16", "check" })]
     public void ASegmentWritesItsLiteralTextAfterItsHint(string name, string[] steps)
     {
         var c = Analyze(Interpolations, OutputKind.Library);
-        var ir = GeneratedIr.Parse(Generate(c));
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
         var function = Assert.Single(FunctionsOf(ir, c, name));
         var routines = new Dictionary<IrFunction, string>
         {
@@ -123,6 +124,13 @@ public sealed partial class FunctionCodegenTest
             [ir.Function("__kimi_writer_write_builtin")] = "write",
             [ir.Function("__kimi_format_check")] = "check",
         };
+        var shims = ShimsOf(ir, text);
+        foreach (var write in FunctionsOf(ir, c, "write"))
+        {
+            var shim = Assert.Single(CallsOf(write), x => shims.Contains(x.Callee!)).Callee!;
+            routines[write] = "write " + Regex.Match(Assert.Single(CallsOf(shim)).Shape, @", i32 (\d+), ").Groups[1].Value;
+        }
+
         Assert.Equal(
             steps,
             CallsOf(function).Where(x => x.Callee is { } callee && routines.ContainsKey(callee))

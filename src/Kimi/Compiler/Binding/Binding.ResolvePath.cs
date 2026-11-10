@@ -74,30 +74,16 @@ public sealed partial class Binding
     {
         LookupRole.Qualifier => candidate.Kind != BindingSymbolKind.SemanticsParameter,
         LookupRole.Core => IsCore(candidate),
-        LookupRole.ObjectViewTarget => IsCore(candidate) || candidate.Declaration is ContractKoto,
+        LookupRole.ObjectViewTarget => IsCore(candidate) || candidate.IsContract,
         LookupRole.TypeSemantics => candidate.Kind == BindingSymbolKind.SemanticsParameter,
         LookupRole.Requirement => candidate.Kind != BindingSymbolKind.Container,
-        LookupRole.ContractReference => candidate.Declaration is ContractKoto,
+        LookupRole.ContractReference => candidate.IsContract,
         LookupRole.Value => true,
         _ => throw new UnreachableException(),
     };
 
-    private static bool IsCore(BindingSymbol candidate) => candidate.Declaration is not ContractKoto &&
+    private static bool IsCore(BindingSymbol candidate) => !candidate.IsContract &&
         candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType;
-
-    // SPEC 9.3: the first enclosing Container that is no group is the declaration a written Self names.
-    private static BindingSymbol? EnclosingSelf(BindingScope scope)
-    {
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Owner is DeclarationContainerKoto and not GroupKoto)
-            {
-                return current.Owner.BoundSymbol;
-            }
-        }
-
-        return null;
-    }
 
     private static bool IsAdaptationTarget(Koto syntax)
     {
@@ -348,6 +334,22 @@ public sealed partial class Binding
         return path.Symbol;
     }
 
+    // SPEC 6.1.5, 9.1, 9.3: what a written Self selects, decided here for every reader. The first enclosing Container that is no group
+    // is its context: a Contract's Self is the Contract's Self Type parameter (the conforming-Type binder), never the Contract; a
+    // struct's or enum's is the declaration, which Self names with all its bindings.
+    private BindingSymbol? EnclosingSelf(BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Owner is DeclarationContainerKoto and not GroupKoto)
+            {
+                return current.Owner.BoundSymbol is { Declaration: ContractKoto } contract ? this.ContractSelfType(contract).Symbol : current.Owner.BoundSymbol;
+            }
+        }
+
+        return null;
+    }
+
     private ResolvedPath ResolvePath(Koto syntax, BindingScope scope, LookupRole role, int arity = 0)
     {
         while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
@@ -386,7 +388,13 @@ public sealed partial class Binding
             return this.ResolveAdaptationTarget(syntax, scope);
         }
 
-        return name == "Self" && EnclosingSelf(scope) is { } self ? new(PathEnd.Selected, self, syntax) : this.ResolveName(name, scope, syntax, role, arity);
+        if (name == "Self" && this.EnclosingSelf(scope) is { } self)
+        {
+            // SPEC 9.7: Self has no Type parameters, so no candidate remains for a Self written with Type arguments.
+            return arity > 0 ? new(PathEnd.Unresolved, null, syntax) : new(PathEnd.Selected, self, syntax);
+        }
+
+        return this.ResolveName(name, scope, syntax, role, arity);
     }
 
     // The one form with more than one lookup above a mark: both roles' steps replay, and a role's ambiguity stands beside the other's selection.
@@ -399,7 +407,7 @@ public sealed partial class Binding
 
         if (name == "Self")
         {
-            return EnclosingSelf(scope) is { } self ? new(PathEnd.Selected, self, syntax) : new(PathEnd.Unresolved, null, syntax);
+            return this.EnclosingSelf(scope) is { } self ? new(PathEnd.Selected, self, syntax) : new(PathEnd.Unresolved, null, syntax);
         }
 
         var target = this.ResolveName(name, scope, syntax, LookupRole.Core, 0);
