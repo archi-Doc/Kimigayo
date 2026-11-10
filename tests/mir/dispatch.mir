@@ -145,7 +145,7 @@ fn make @50
       goto bb11 @96 s1
   bb13:
       StorageDead(_12) @97 s1
-      drop _10 -> bb14 @86 s1
+      drop _10 -> bb14 [keep] @86 s1
   bb14:
       StorageDead(_10) @86 s1
       StorageDead(_5) @74 s1

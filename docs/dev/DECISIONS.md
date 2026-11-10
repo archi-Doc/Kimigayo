@@ -919,7 +919,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
   code. Not temporary.
-  - Superseded in part by R8-M10 (OI-1a): a Drop only check edges reach now has one Elide row where nothing of its Place is initialized, and check-only code is judged by that row alone.
+  - Superseded in part by R8-M10 and R8-M23 (PLAN G641 kind 4): a Drop only check edges reach with a Move Path has the flagless
+    group of what it would destroy; check-only code is still not judged (no problem, no inexact body, no destructor in A4).
 - **R4-M6b** (2026-10-12; U5b, NEW-F9; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
   builder registers its end cleanup as the layer's field cleanup (SPEC 16.3.2) through `Cleanup.Fields` (`FieldCleanup`): after the
   body's Scope Exit, on the normal end and in every return's drop tree, a Drop of each own Field whose Type may need drop, last to
@@ -16726,6 +16727,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
   - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
   - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.
+  - Amended by the W1b chain's RP8 fix (2026-11-10; R8-M18): the bounded-arithmetic rule, stated once for every library body over a
+    runtime representation: an arithmetic operation whose result is bounded either by the representation's invariant or by a guard
+    that dominates it in the same body is written in `Wrapping<isize>`, `(a@Wrapping<isize> op b@Wrapping<isize>)@isize`, with the
+    bound stated in a comment; an operation with no such bound stays checked and keeps its Abort (SPEC 22.5.1). A caller's input is
+    not special: under a dominating guard it wraps. Every guard and every Abort stays where it is. `Formatting.kimi` follows it; the
+    remaining sites are PLAN G693.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -17049,6 +17056,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     callees in every `ErasedWriter` over a standard buffer); B (delete `WriterKind` now: a `CallerLocation` reserve does not fit the
     dispatch ABI, and the adapter's arms carry `pending` and the hint; W1b's); C (the runtime calling the body directly: it cannot name an
     instance); D (a `BufferRepr` pun for the buffers' own operations: their Fields are already ordinary Places).
+  - Amended by R8-M18 (the W1b chain's RP8 fix): `Text.validUtf8`'s guard-bounded steps wrap under R8-M2's rule, and the six
+    validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -17067,6 +17076,10 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** the collector deriving "nothing initialized" itself (a second owner of A2's fact); a destruction laying out an element
     only where its destruction runs (accepts `I_dDrop`, `I_aDrop`, against the planning session's ruling); a move into the Destination
     on the check edge.
+  - Superseded in part by R8-M23 (PLAN G641 kind 4, R3-U1): its rule 'one Elide row ..., else none, never another verdict', whose
+    reason was 'A4 relies on it: such a row elaborates nothing, no flag, no codegen, no destructor'; that reason is now carried by
+    A4's runtime gate (no destructor), the flagless reading of a check-only group (no flag) and code generation's runtime walk
+    (`FunctionCodegen` I3: no codegen), and a check-only Drop has the group of what it would destroy.
 - **R8-M17 `replace`, `exchange` and `swap` are Kimigayo bodies** (Back, 2026-11-09; R8-U1; Major; design and SP3 reviews ACCEPT; the
   Middle's RP17 consent C-174 YES; plan RP20, RQ9; on R8-M3; supersedes in part R5-M116 and R5-M117; amends R8-M1's guard list) SPEC 15.7
   as R8-SP3 states it, 15.7.1, 22.5.1.
@@ -17186,6 +17199,145 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Moves: none (no producer forms a term until R8-W2 a2; T-86's RP8: no stop, warm 0 B).
   - Rejected: a `KotoKind` row for the term; forming it in `BindInterpolation` (Binding does not know a line is direct); a reference
     order in `CompareLength`; three term arms at the substitution sites instead of one in `SubstituteLength`.
+- **R8-M18 The write window, the writer's leaf and its reservation are Kimigayo bodies; the erased writer's routines are a kept
+  runtime** (Back, 2026-11-09; R8-W1b-2, W1b-1 and W1b-3, plan §5.2 W1 b; Major each; the W1 family reviewer: W1b design reviews 1
+  REVISE, 2 ACCEPT, W1b-3's design reviews 1-3, implementation reviews ACCEPT; the owner's O-108 (a); the Middle's C-188; on R8-M1,
+  R8-M5, R8-M16; W1b-4 extends this entry) SPEC 5.2, 22.9.3, 22.9.4, 22.10.1.
+  - **The erased writer's kept runtime** (W1b-2): `Backend/ErasedWriterRuntime.ll.in` holds `{{__kimi_text_writer}}` (the
+    `ErasedWriter` intrinsic's routine, its ABI `IntrinsicRows.Of(ErasedWriter).Routine`, stated by the TextWriter formatting row
+    until W2) and `__kimi_erased_reserve(ret, writer, amount)`: a Writer's `reserve` through the adapter's dispatch word, then the
+    window check (`written == 0`, `remaining >= amount`, else `BufferFull`), the plan contract of `ErasedReserve`. `LlvmModuleText`
+    owns its text (`ErasedWriterRuntime`, expanded once on first use); `ModuleCodegen` writes it after the formatting runtime when
+    `Needs.ErasedWriter` (bit 32; bit 16 stays free) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
+    `Request(HelperNeeds.FormattingRuntime)`.
+  - **The window's bodies** (W1b-1): `WriteWindow.push`, `append`, `limit`, `commit` and `Utf8Writer.status` are Kimigayo bodies in
+    `Formatting.kimi` (SPEC 22.9.4, 22.10.1); `written` and `remaining` are `public var` with `private set` (a user write is
+    `InaccessibleBinding_Kd` at the member, `Utf8DeclarationTest.WindowCountsAreNotWritable`). `limit` keeps a `CallerLocation`
+    catalog row (its `KIMI_E_ARG_RANGE` Abort reports the user's call); `push`, `append`, `commit` and `status` cannot Abort on the
+    caller's behalf, since their checked operations stay within the window invariant (`0 <= written`, `0 <= remaining`, `start +
+    written + remaining` within the buffer's capacity), which only the internal `WriteWindow.init` through W1a's reserve bodies, the
+    window bodies themselves and, until W2, the runtime's own windows (`__kimi_writer_reserve`'s arms) set. `append` copies by
+    `Storage.transferBytes` (non-overlapping) where the runtime used memmove: in safe code a live Slice of the window's unwritten
+    capacity would conflict with the exclusive Loan the buffer and the window hold, and `bytes()` exposes only `[0, length)`
+    (R8-M3's form).
+  - **`Storage.BufferRepr` is lasting** (a new representation, W1b-1): `#Layout("C")` `{data: raw/u8, capacity, length, validated}`,
+    the prefix `Text.FixedBuffer` and `Text.HeapBuffer` both begin with, through which the window, erased over the two buffer Types
+    and holding one pointer (`state`), reads `data` and commits `length` (SPEC 5.2's pun of punnable `isize` and raw-pointer
+    Fields). The buffers' own operations keep their own Fields (R8-M16's option D stays rejected).
+    `KimiLibraryShapeTest.RuntimeLayoutsAreFixed` pins it {0, 8, 16, 24}, size 32, beside both buffers' rows. Its pairing with the
+    runtime's offsets is temporary (removed at W2 with those routines), not R8-M1's lasting `StringRepr`/`RuntimeAbi.String` pair.
+    W2 may supersede `BufferRepr` itself only by changing the window's layout (W1b's design option C), with a superseding entry.
+  - **The leaf** (W1b-3): `Utf8Writer.writeUtf8(text: Text.Utf8Slice)` (a body, `CallerLocation`) is a built-in formatter's one
+    write: one exact reservation, none for empty output, a failed reservation recorded; it has no failure test of its own (SPEC
+    22.10.1). It commits through `WriteWindow.commitUtf8`, the adapter commit: the validated length follows a fully validated buffer
+    (SPEC 22.9.3).
+  - **The adapter's reservation** (W1b-3): `Utf8Writer.reserve(amount)` (a body, `CallerLocation`): the failed check; the size Abort
+    for `amount` and the deferred literal; the destination's reservation by the closed set of writer kinds (0 `FixedBuffer.reserve`,
+    1 `HeapBuffer.reserve` with the owning interpolation's hint applied exactly, 2 `Storage.erasedReserve`; any other an `$abort`,
+    unreachable while `LegacyRuntimeHelpers.WriterKind` is the one writer of `kind`); then one shared tail: a failure recorded, else
+    the deferred literal prepended through `append`. Pending may sit on an adapter of any kind; the shared tail prepends it; only
+    the kind-1 arm reads the hint. Every kind's request is `amount + pending` (as `__kimi_writer_reserve` prepends after every
+    kind): on kind 2 the user's `reserve` is asked for the bytes it must hold, equal to the runtime's `amount` while no user
+    Writer's adapter carries pending. Its window is `WriteWindow during target`, the destination's Origin, so the adapter stays
+    writable while the window lives; the caller commits or drops the window before the next reservation (both contracts state it).
+  - **The producer** (W1b-3; the owner's O-108 (a)): `Storage.erasedReserve(writer: uniq/Utf8Writer, minimum) -> Result<WriteWindow
+    during writer.target, BufferFull>` (`StorageOperations.kimi`) is `IntrinsicId.ErasedReserve`'s first producer,
+    `CompilerFunctionKind.StorageErasedReserve` in the Storage family (effect `Inputs` by the family; R8-M5's class, RQ9). Its
+    contract is lasting: a user Writer's `reserve` through the adapter's dispatch word, then the window check, tag 1 on a violation;
+    it records nothing. Its routine is the kept file's `__kimi_erased_reserve`, spliced from `RuntimeAbi.ErasedReserve` (one ABI for
+    the definition and every call). The adapter's `destination` at offset 0 and `dispatch` at 8, which `__kimi_erased_reserve`
+    reads, are a lasting layout pair, pinned by `RuntimeLayoutsAreFixed`'s Utf8Writer row (as R8-M1's `StringRepr`).
+  - **The need column** (W1b-3): `IntrinsicRow.Requests` (`ModuleCodegen.Needs`) states the module parts a `Requested` row's routine
+    needs, which its call requests: `TryAllocateBytes` and `MoveBytes` state `StorageBytes | Memory` (replacing `Requested`'s fixed
+    request), `ErasedReserve` states `ErasedWriter`. `llvm.memset` is declared by its lasting user, the kept file
+    (`__kimi_text_writer` zeroes the adapter), no longer by `Utf8BufferRuntime.ll.in`; the formatting runtime, which also calls it,
+    is written only with the kept file until W2 (`Request(HelperNeeds)` requests `Formatting | Memory | ErasedWriter` together).
+  - **Temporary**, each removed by an event: `Request(HelperNeeds.FormattingRuntime)` implying `Needs.ErasedWriter` (because
+    `__kimi_writer_reserve` calls `__kimi_erased_reserve`): W2, with the adapter's reservation in F; `__kimi_writer_reserve`'s user
+    arm as a call of the kept routine, with the failure record and the pending prepend around it, and its restatement of the
+    adapter's reservation for the runtime's own callers: W2 (each caller's unit, W2 last); the formatting runtime's expansion
+    skipping the kept file's definitions (`LegacyRuntimeHelpers.ReadFormattingRuntime` seeds its symbol set with them): with
+    `LegacyRuntimeHelpers` (X1) or when the TextWriter row's ABI moves into `IntrinsicRows` (W2); `utf8_commit`'s restated commit:
+    with `utf8_commit` (W2, the float reduction); `window_address` and `window_advance`: with their last runtime caller (W2);
+    `BufferRepr`'s pairing with the runtime's offsets: W2; the reservation's kind switch restating `WriterKind`'s 0/1/2, the hint
+    arm and the unreachable kind Abort: W2.
+  - **Not yet observed:** no program reaches `writeUtf8` or `Storage.erasedReserve` before S2a, so W1b-3's behavior rows (the
+    Middle's two `MirEffectsTest` rows from C-188, the IR row "a module calling `writeUtf8` defines the kept runtime once", the
+    natives over the leaf path, `BoundedGrowsByItsHint`) land with S2a, its first caller, named in S2a's Q row. W1b-3 lands first
+    because S2a needs W1b-4 and W1c-2, which build on it.
+  - Counts (RQ9), on dev d30bbc7e0: `CompilerFunctionKind` 43 to 39 (`None` included; W1b-1 −`WindowPush`, `WindowAppend`,
+    `WindowLimit`, `WindowCommit`, `WriterStatus`; W1b-3 +`StorageErasedReserve`); `KimiDeclarationId` 185 unchanged (W1b-1
+    −`WindowPush`, `WindowAppend`, `WindowCommit`; W1b-3 +`WriterReserve`, `WriterWriteUtf8`, `StorageErasedReserve`); catalog
+    entries 181 unchanged (178 between the parts); `IntrinsicId` unchanged (`ErasedReserve` produced).
+  - Moves: no acceptance or record move (diagnostic snapshot 0 differences); `.ll` only, natives equal. W1b-2 moves the runtime text
+    of every module that writes the formatting runtime (170 of 238 Utf `.ll` in its Unit scope: `__kimi_text_writer` moved,
+    `__kimi_erased_reserve` added, `__kimi_writer_reserve`'s user arm a call). W1b-1 moves 548 of 6,141 `.ll` against W1b-2's head
+    62d95eb00: 481 in the runtime text and library location constants only, 3 also calling the window and status body instances, 64
+    direct callers of window operations (and of the buffers' validation, whose body W1a's 49e517aeb, in W1b-1's base, changed)
+    gaining or changing generated bodies. W1b-3 moves runtime text only.
+  - RP8 (T-88): W1b-1's `Buffers` kernel was about 1.4% slower (B/A 1.013 plain, 1.016 aligned; R5-M147: 16 of 16 pairs above A=A):
+    the window and buffer bodies checked arithmetic their invariants or dominating guards already bound. The chain's RP8 fix applies
+    R8-M2's rule (amended below) to every such step in `Formatting.kimi` (`WriteWindow`'s private `advance` and `end`, `limit`'s
+    room, both buffers' `reserve`, one internal `Text.validSuffix(data, validated, length)` for the six validated-suffix copies,
+    `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
+    those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
+
+- **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
+  2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
+  programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
+  8.15.3.
+  - **Rule.** `DropGlue.Destroyed` (beside `DropGlue.Parts`, in destruction order) is the one statement of what destroying a value
+    by a drop group's row destroys, as steps: a Keep, a Flag or (until U2b) an Elide row the value Whole; an Open row an Open step,
+    each direct part by its governing row (`Governing`, moved from `FunctionCodegen.Drops` into `DropGlue`'s private walker of one
+    group, `Walker`), so an Open part by its own level and any other part Whole, a fixed array's elements from the last as Run steps
+    (each run without a row) and element-row steps (`Highest`, likewise), then End. A row of -1 is a glue function's level, which no
+    row governs.
+  - **The collector** (`InstanceCollector.Destroys`, reading the steps at the template's site, its location and runtime bit) targets
+    each Whole and Run step's part (`PartTarget`): at a Drop's site with the site's runtime bit (`DropTargets`; a Drop without a
+    group, check-only or of an inexact body, destroys its Type whole), and at a DropGlue item's default site (`DestructionTargets`).
+    The `InstanceCollector.Edges` invariant "one target per site" now excepts a Drop's (one per destroyed part, in walk order)
+    beside an owner Value call's `Rest`.
+  - **Code generation** (`FunctionCodegen.Glue`'s `Destroys`, `Step`, `Opened`) writes a Drop and a glue function's level from the
+    same steps, each Whole or Run step reading the destruction's next target (a Drop's site range, checked consumed; a glue
+    function's own item's); its former per-level traversal (`DestroyParts`, `Cases`, `Part`, `Elements`, `DestroyByRow`) is gone.
+  - **Why.** The collector requested an Open Drop's whole-Type glue, whose admission requests every part's glue, while codegen
+    destroys only what the group leaves (the cause of G641 kind 4, with U1's check-only groups); one walk read by both makes U2b's
+    "skip Elide rows" a change of one statement.
+  - **Moves.** No acceptance move; records move on four rejected programs (+`InvalidCLayout_Kd` x4, DECISIONS Q13; the Back's
+    revision 3): `T_deadRet`, `T_deadFlag` and `T_deadRetAll` at 12:5, `I_deadOpenU` at 8:18 (an Open Drop now requests its parts'
+    glues, and a refused item reports where it is first requested); `T_deadRetAll` is valid and already rejected on dev by this
+    row's cause, and U2b accepts it. Snapshot 0 and natives equal. Generated IR: a partly moved value's whole-Type
+    `__kimi_drop<item>` leaves the module where nothing else requests it, and item indices renumber.
+  - **Rejected:** the prototype's collector-only walk (a third copy of A4's walk, out of destruction order, with a 64-part bit set);
+    codegen restating the walk's composition (implementation review 1's U1); moving the part order to Mir so A4 shares the walk (a
+    larger unit; recorded in the design).
+  - **R3-U1: a check-only Drop's group is what it would destroy; A4 runs none** (Back, 2026-11-10; Major, no acceptance or record
+    move; B's design reviews 1 REVISE, 2 ACCEPT; the Middle's design review (C-195) REVISE, B1-B3, and RP17 consent YES;
+    implementation reviews: B's REVISE (S1) and the Middle's REVISE (B1′), both ACCEPT on the fix commit) SPEC 14.10.3, 16.3.2,
+    15.1.3, 8.15.3. Supersedes in part R8-M10 (its rule "a check-only Drop has one Elide row where nothing of its Place is
+    initialized on any assumed path, else none, never another verdict").
+    - **Rule (A2, `MirDrops`).** A group says what its Drop destroys, stated once in `MirDropTable`'s summary, which every walk of
+      it cites: a Keep or Flag row its Type whole (its drop, then every part); an Open row its child rows, its parts without a row
+      and a base without one, never a drop of its own; an Elide row nothing. A Drop only check edges reach with a Move Path gets a
+      group from the state on its assumed paths, by the same per-view Type rule; one without a Move Path has none.
+    - **One site for the check-only reading (`MirDrops.Tree`).** `Record` records the same state tree whatever the reach, and the
+      Drop's reach beside it; `Tree` reads a check-only group there alone: flagless (Flag's state reads as Keep, no row has a flag;
+      check-only code has no flags, R4-M6a), and where an Open layer's Type declares a `drop` (it may be incomplete where that drop
+      would run, SPEC 15.1.3, 16.3.2), the one condition gives `MovedPlace_Kd` at a runtime Drop (the body inexact, as before) and,
+      in a check-only group, which is not judged (R4-M6a's clause, kept), a **Keep** row with no child rows: its whole destruction,
+      its `drop` included, exactly dev's checked set there (SPEC 8.15.3 paragraph 2: no SPEC reading destroys such a layer without
+      its `drop`).
+    - **A4 (`MirEffects.Dropped`).** A Drop only the checks reach runs no destructor, whatever its group (one gate, `flow.Runtime`).
+    - **Readers.** Codegen generates only the blocks the runtime walk reaches (`FunctionCodegen` I3), so it reads runtime groups
+      only; A4 gates check-only ones; A5's `Dropping` reads `Elides`, which now also holds on check-only Drops whose Type needs no
+      drop (where `Destruction` is shallow; A5 neutral: the A5 class set passes, snapshot 0); the instance collector still asks the
+      whole glue for a non-Elide group until U2a/U2b.
+    - **Moves.** None in acceptance or records (U1 alone; snapshot 0). The dump shows check-only groups (the `tests/mir` goldens and
+      `MirDropTest`'s rows, listed in the commit).
+    - **Rejected:** the prototype's Open row at a check-only drop-bearing layer (drops the destructor instance from the checked set:
+      unsound acceptance, B's design review 1 B1); `MovedPlace_Kd` on check-only groups (R4-M6a; SPEC 14.10.3's assumed paths add no
+      normal completion; the Middle's C-195 ruling); applying the check-only reading in the state recording too (two sites, a bool
+      steering `Subtree`: the Middle's implementation review B1′).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
