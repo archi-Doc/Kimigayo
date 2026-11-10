@@ -19,14 +19,14 @@ public sealed partial class Binding
     /// <param name="contract">The required Contract identity.</param>
     /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
 
     /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
     /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -116,12 +116,12 @@ public sealed partial class Binding
     private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
     {
         ambiguous = false;
-        if (this.impls.Find(type, contract) is { } direct)
+        if (this.ConformanceOf(type, contract) is { } direct)
         {
             return direct;
         }
 
-        if (IsBoundContractReference(contract) || this.impls.OfType(type) is not { } identities)
+        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
         {
             return null;
         }
@@ -303,11 +303,12 @@ public sealed partial class Binding
             // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
             // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
             var generic = GenericParentApplication(name);
-            var parent = this.TypeName(name, this.scopes[contract], LookupRole.Any);
+            var parentPath = this.NamePath(name, this.scopes[contract]);
+            var parent = parentPath.Symbol;
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
+                if (this.HasUnresolvedConstraintSyntax(syntax))
                 {
                     shape.HasUnresolvedParents = true;
                     continue;
@@ -317,6 +318,8 @@ public sealed partial class Binding
             if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
                 (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
+                // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;

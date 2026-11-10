@@ -14,8 +14,8 @@ internal sealed partial class InstanceCollector
         => OperandType(body, body.Operands[rvalue.Start]).ContainsParameter || rvalue.Type is { ContainsParameter: true };
 
     // IMPL 21.3.3 (DECISIONS R5-M126): the gap of a Builtin witness's operation, an arithmetic shim's Contract's MIR operator
-    // (BuiltinArithmetic, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the shim, as a
-    // statement's operation is at its location; none for any other compiler function.
+    // (MirTypes.ArithmeticOperation, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the
+    // shim, as a statement's operation is at its location; none for any other compiler function.
     private static CapabilityGap? ArithmeticGap(in RequirementTarget target)
     {
         if (target.Target!.CompilerFunction != CompilerFunctionKind.BuiltinArithmetic)
@@ -23,7 +23,7 @@ internal sealed partial class InstanceCollector
             return null;
         }
 
-        var (kind, op) = BuiltinArithmetic.Operation(TyCtxt.Contract(target.Target).LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(TyCtxt.Contract(target.Target).LibraryDeclaration);
         return Capability.Of(kind, op, target.Subst!.Self!, null);
     }
 

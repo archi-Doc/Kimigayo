@@ -46,6 +46,18 @@ public sealed class MirDumpTest
         Golden("every-form", text.ToString());
     }
 
+    // SPEC 8.15.3 (PLAN G597): a keyed Storage's operands follow its Place, the start then the key's Type token (fail-before: the dump
+    // gave the Place only, so a keyed Storage read as an unkeyed one).
+    [Theory]
+    [InlineData("r", "_2 = storage(_1, copy _3, const type R)")]
+    [InlineData("from", "_2 = storage(_1, copy _3, const type Kimi.Range<S, Kimi.End>)")]
+    public void AKeyedStorageDumpsItsStartAndKey(string key, string expected)
+    {
+        var text = new StringBuilder();
+        MirDump.Write(MirValidatorTest.KeyedStorage(key, 2).Body, text, new MirDropTable(), 0);
+        Assert.Contains(expected, text.ToString(), StringComparison.Ordinal);
+    }
+
     // SPEC 14.6.1 (PLAN G427): an iteration body Binding rejected (Op Error; tests/diagnostics/syntax.json `while-header-cut`) is a
     // statement's value, its derived Opaque value in one temp of its own, ended before the next iteration.
     [Fact]

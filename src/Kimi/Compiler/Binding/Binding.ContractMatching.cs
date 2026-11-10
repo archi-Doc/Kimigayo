@@ -77,6 +77,11 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
+    // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
+    // identification and its associated bindings) is this one, so what is keyed by the path (requirementMatches) has one Self.
+    private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
+
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
     // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
@@ -142,7 +147,7 @@ public sealed partial class Binding
         {
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
-            var self = this.ContractType(this.SelfType(conformance.Type), scope);
+            var self = this.ConformanceSelf(conformance);
             var declarationProof = this.ReadSourceState(conformance.Type);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
@@ -289,7 +294,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -333,7 +338,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var match = this.IdentifyRequirement(conformance, identity, self);
+                var match = this.IdentifyRequirement(conformance, identity);
                 if (match.State == RequirementMatchState.Ambiguous)
                 {
                     return Invalid(BindingFailure.Ambiguous);

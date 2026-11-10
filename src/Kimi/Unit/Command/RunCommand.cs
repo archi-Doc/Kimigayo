@@ -30,7 +30,7 @@ public class RunCommand : ISimpleCommand<RunCommand.Options>
         {
             if (args.Length == 1 && Path.GetExtension(args[0]).Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                return await Compiler.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken);
+                return await Build.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken);
             }
 
             this.solution.LoadForBuild(this.logger, options, args);

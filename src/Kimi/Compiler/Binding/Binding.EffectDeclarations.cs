@@ -147,7 +147,7 @@ public sealed partial class Binding
             }
         }
 
-        if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type && this.impls.OfType(type) is { } conformances)
+        if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type && this.ConformancesOf(type) is { } conformances)
         {
             // Use the available bound conformance paths, including conditional and constructed references.
             for (var i = 0; i < conformances.Count; i++)
@@ -423,7 +423,7 @@ public sealed partial class Binding
             };
         }
 
-        if (this.TypeName(syntax, scope, LookupRole.Any) is not { Declaration: ContractKoto declaration } named)
+        if (this.TypeName(syntax, scope) is not { Declaration: ContractKoto declaration } named)
         {
             this.RejectEffectBound(effect, new(EffectRejection.NotContract));
             return null;
@@ -461,7 +461,7 @@ public sealed partial class Binding
             return null;
         }
 
-        selector.BoundSymbol = ancestor;
+        CompleteQualifier(selector, named, ancestor);
         var name = effect.Name is IdentifierNameKoto identifier ? identifier.IdentifierName : null;
         BoundRequirement? target = null;
         var found = 0;

@@ -444,7 +444,7 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 
 `#LibraryImport("library", "symbol")` on a bodyless `func`, safe or unsafe, declares a C function. Both arguments are nonempty, non-interpolated string literals without NUL: a case-sensitive logical native library name of the defining Kotonoha, resolved when the program is built ([§20.4](../impl/20-compilation-configuration.md#204-native-libraries)), and the exact external symbol.
 
-An import is declared directly in a group or rootgroup, or as a receiverless struct type function, and has no task slot, receiver, parameter default, varargs, specialization or body. An import must not be generic: neither the import nor any enclosing Container may declare a generic parameter of any kind (Type, Semantics, length or Origin, [§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)), even an unused one; Origins introduced by borrow annotations in its own signature are allowed, and a raw layer may state one of them ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) as part of the import's safety contract. Every argument is required; imports are only called directly, never used as function values.
+An import is declared directly in a group or rootgroup, or as a receiverless struct type function, and has no task slot, receiver, parameter default, varargs, specialization or body. An import must not be generic: neither the import nor any enclosing Container may declare a generic parameter of any kind (Type, Semantics, length or Origin, [§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)), even an unused one; Origins introduced by borrow annotations in its own signature are allowed, and a raw layer may state one of them ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) as part of the import's safety contract. Every argument is required; imports are only called directly, never used as function values. This restricts the import itself: a requirement's Function Item ([§8.4.2](08-generics-constraints-and-contracts.md#842-function-requirements)) is a function value whatever implementation an instance's conformance supplies for it, an import included, and calling that value calls the import.
 
 The declaration promises that, for every call meeting its signature and `- safety:` conditions, the foreign function behaves as a Kimigayo function with that signature would: it accesses only what its arguments permit, and only during the call: reads through `ref`, exclusive access through `uniq`, and through `raw/T` what its `- safety:` conditions allow; stores only valid values, constructs or overwrites only values whose Type has no user `drop`, recursively (a relocation, [§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places), moves values and does neither), retains no borrow beyond its result's Origins, returns a valid result, and lets no unwinding, non-local jump, callback or reentry cross Kimigayo frames. A false promise is undefined behavior. An import is `unsafe` only when callers have obligations its Types cannot express ([§7.6](07-functions-and-callable-values.md#76-unsafe-functions)). A call's effects are the accesses its signature permits plus an environment effect ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). Arguments are evaluated once, left to right, and passed without marshalling, retention or ownership transfer; the floating-point boundary contract of [§21.2](../impl/21-layout-runtime-and-code-generation.md#212-foreign-function-abi) applies.
 
@@ -456,15 +456,23 @@ The declaration promises that, for every call meeting its signature and `- safet
 | `Option<ref/T>`, `Option<uniq/T>` | pointer, `None` is null |
 | Unit (result only) | `void` |
 
-A C-exchangeable Type is a fixed-width integer, `f32` or `f64`, `raw/T`, `ref/T` or `uniq/T` over a C-exchangeable referent and their `Option`, a positive-length fixed array of C-exchangeable elements, or a C-layout struct ([§21.1.2](../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)) whose Fields are all C-exchangeable. A parameter or result whose Type has no C counterpart — `string`, dynamic collections, object handles, function and Closure values, and borrows of such Types — is an error. Any other Type outside the table — `bool`, `char`, `isize`/`usize`, `i128`/`u128`, Tuples, enums, structs or fixed arrays passed by value, and borrows of a referent that is not C-exchangeable — is Unsupported.
+A C-exchangeable Type is a fixed-width integer, `f32` or `f64`, `raw/T`, `ref/T` or `uniq/T` over a C-exchangeable referent and their `Option`, a positive-length fixed array of C-exchangeable elements, or a C-layout struct ([§21.1.2](../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)) whose Fields are all C-exchangeable. The definition is read coinductively: a C-layout struct Type revisited while its Fields are being judged counts as C-exchangeable, where Types of one declaration that differ only in Origins count as one. A cycle of borrows through C-layout structs therefore never by itself makes them non-exchangeable: a struct that holds a `ref` or `uniq` to itself, or an `Option` of one, is C-exchangeable when its other Fields are. A cycle through by-value Fields or elements is an inline storage cycle, an error at its declaration ([§6.2](06-declarations-and-containers.md#62-structure-declarations)). A parameter or result whose Type has no C counterpart — `string`, dynamic collections, object handles, function and Closure values, and borrows of such Types — is an error. Any other Type outside the table — `bool`, `char`, `isize`/`usize`, `i128`/`u128`, Tuples, enums, structs or fixed arrays passed by value, and borrows of a referent that is not C-exchangeable — is Unsupported.
 
 ```kimi
+#Layout("C")
+struct Node
+    var value: i32
+    var next: Option<ref/Node during static>   // C: struct Node { int32_t value; const struct Node *next; };
+
 group Native
     #LibraryImport("observer", "observe_record")
     public func observe(record: uniq/NativeRecord) -> ()     // C: void observe_record(NativeRecord *);
 
     #LibraryImport("observer", "observe_raw")
     public unsafe func observeRaw(record: raw/NativeRecord) -> ()   // - safety: states layout, lifetime, retention.
+
+    #LibraryImport("observer", "walk")
+    public func walk(head: ref/Node) -> i32   // C: int32_t walk(const struct Node *); Node is C-exchangeable.
 
     // #LibraryImport("observer", "print")
     // public func print(text: ref/string) -> ()   // Error: string has no C counterpart.

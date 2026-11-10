@@ -85,7 +85,7 @@ public sealed partial class Binding
         {
             for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
             {
-                if (TypeSpelling(member.Right) == ArithmeticContracts.Method(id))
+                if (TypeSpelling(member.Right) == ArithmeticContractSyntax.Method(id))
                 {
                     Add(this.ArithmeticReference(id, type).Contract!);
                     break;
@@ -187,7 +187,7 @@ public sealed partial class Binding
     private BoundType? CallType(
         BoundType type,
         Koto binder,
-        BoundType?[] arguments,
+        ReadOnlySpan<BoundType?> arguments,
         BindingScope scope,
         BoundType? self,
         BoundOrigin[] origins,

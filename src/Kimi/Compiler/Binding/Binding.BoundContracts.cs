@@ -9,6 +9,29 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
 
+    // SPEC 8.6.1, 9.7.1 (R7-N1e2-1R): a Contract use names its declaration, the selection its lookup published (its Symbols entry, written
+    // once, never a bound reference), and the bound reference its Type arguments formed is its Type (the Meaning column). This writes
+    // both at each level of a qualifier or selector (its parentheses and transparent wrappers down to its use): Unit when the reference is
+    // the declaration itself. Readers take the reference through ContractReferenceOf.
+    private static void CompleteQualifier(Koto qualifier, BindingSymbol selection, BindingSymbol reference)
+    {
+        var type = IsBoundContractReference(reference) ? reference.Type! : BoundType.Unit;
+        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedKoto grouped => grouped.Operand, ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
+        {
+            level.BoundSymbol = selection;
+            Complete(level, type);
+        }
+    }
+
+    // The bound Contract reference a Contract use names: the one its Type is (BindContractReference, CompleteQualifier), else its selection.
+    private BindingSymbol? ContractReferenceOf(Koto use)
+        => use.BoundType is { Symbol.Declaration: ContractKoto } reference ? this.BoundContractReference(reference) : use.BoundSymbol;
+
+    // SPEC 8.4, 9.7.1: the bound Contract reference a Contract qualifier's Type arguments form (BindContractReference, which completes the
+    // qualifier with its Type), else the qualifier's selection itself; null when the reference fails.
+    private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
+        => selection.Declaration is ContractKoto && UnwrapTransparentType(qualifier) is GenericsKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
+
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
         // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written

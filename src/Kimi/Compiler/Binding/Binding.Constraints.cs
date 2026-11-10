@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new();
+    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Constraints));
 
     private readonly Dictionary<IsKoto, bool> deferredConstraints = new(ReferenceEqualityComparer.Instance);
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
@@ -344,7 +344,8 @@ public sealed partial class Binding
     {
         switch (node)
         {
-            case MemberAccessKoto when this.TypeName(node, scope, LookupRole.Any) is null:
+            // Each PathSuffix is asked in its position's row (UseRow), the row its Type former reads (R7-N1e2-1R).
+            case MemberAccessKoto when this.TypeName(node, scope) is null:
                 return true;
             case ParenthesizedKoto group:
                 return this.ContainsProjection(group.Operand, scope);
@@ -426,15 +427,16 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
-        var symbol = this.TypeName(clause.Left, bindingScope, LookupRole.Any);
+        var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapTransparentType(application.Type) is MemberAccessKoto associatedMember
-            ? this.BindAssociatedRefinement(clause, application, associatedMember, scope)
+        var head = AssociatedHead(clause);
+        var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
+            ? this.BindAssociatedRefinement(clause, associatedMember, scope)
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
-        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left, scope);
+        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
@@ -527,7 +529,10 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    var target = this.TypeName(node, scope, LookupRole.Any);
+                    // One lookup serves both readings, a Contract and a complete Type, in its position's row: Requirement, or a
+                    // conditional conformance's Contract Reference (SPEC 9.2, 8.8; no group, no stage 4).
+                    var requirement = this.NamePath(node, scope);
+                    var target = requirement.Symbol;
                     if (target?.Declaration is ContractKoto)
                     {
                         if (target.Intrinsic == IntrinsicKind.Callable)
@@ -548,13 +553,13 @@ public sealed partial class Binding
                             return this.InternConstraint(new(ConstraintKind.Error));
                         }
 
-                        node.BoundSymbol = target;
                         result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
                     }
                     else
                     {
+                        // A complete Type (SPEC 8.2), formed from the requirement's own lookup (BindNamedType).
                         var type = this.BindType(node, scope);
-                        result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node, scope) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
+                        result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
                     }
                 }
 
@@ -720,36 +725,31 @@ public sealed partial class Binding
         }
     }
 
-    private bool HasUnresolvedConstraintSyntax(Koto node, BindingScope scope)
+    private bool HasUnresolvedConstraintSyntax(Koto node)
     {
         if (this.capabilityMode != BindingMode.Provisional)
         {
             return false;
         }
 
-        this.constraintSyntaxVisitor ??= new(this);
-        this.constraintSyntaxVisitor.Scope = scope;
+        this.constraintSyntaxVisitor ??= new();
         this.constraintSyntaxVisitor.Missing = false;
         this.constraintSyntaxVisitor.Invalid = false;
         this.constraintSyntaxVisitor.Visit(node);
         return this.constraintSyntaxVisitor.Missing && !this.constraintSyntaxVisitor.Invalid;
     }
 
-    private sealed class ConstraintSyntaxVisitor(Binding binding) : KotoVisitor
+    private sealed class ConstraintSyntaxVisitor : KotoVisitor
     {
-        internal BindingScope Scope { get; set; } = null!;
-
         internal bool Missing { get; set; }
 
         internal bool Invalid { get; set; }
 
         public override void Visit(Koto node)
         {
-            var missing = node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
-            this.Missing |= missing;
+            // A missing name is pending whatever the role excluded (SPEC 9.2, 9.5): a declaration that is no candidate decides nothing.
+            this.Missing |= node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
             this.Invalid |= node.BindingState == BindingState.Invalid;
-            // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.TypeName(node, this.Scope, LookupRole.Any)?.Kind == BindingSymbolKind.Container;
             node.VisitChildren(this);
         }
     }

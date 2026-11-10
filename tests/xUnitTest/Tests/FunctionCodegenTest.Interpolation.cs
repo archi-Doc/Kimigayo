@@ -41,7 +41,7 @@ public sealed partial class FunctionCodegenTest
             ["call void @(ptr %, i64 20)", "call void @(ptr %, i64 0)"],
             CallsOf(function).Where(x => x.Callee == ir.Function("__kimi_format_hint")).Select(static x => x.Shape));
         Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "text").Contains(x.Callee));
-        Assert.Single(CallsOf(function), x => x.Callee == ir.Function("__kimi_write_line_utf8"));
+        Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "writeLine").Contains(x.Callee));
         Assert.DoesNotContain(
             CalleesOf(function),
             x => x == ir.Function("__kimi_text_heap") || x == ir.Function("__kimi_format_finish") || x == ir.Function("__kimi_text_fixed") ||
@@ -80,7 +80,7 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(Generate(c));
         var at = Assert.Single(FunctionsOf(ir, c, "atLimit"));
         Assert.Equal(RegionShape + "1024 x i8] }, align 1", Region(ir, c, at).Region.Shape);
-        Assert.Equal([FunctionsOf(ir, c, "fixed")[0], ir.Function("__kimi_write_line_utf8")], Ends(ir, c, at));
+        Assert.Equal([FunctionsOf(ir, c, "fixed")[0], Assert.Single(FunctionsOf(ir, c, "writeLine"))], Ends(ir, c, at));
         var past = Assert.Single(FunctionsOf(ir, c, "pastLimit"));
         Assert.Matches(@"^call void @\(ptr %, i64 1025, ptr @, i64 \d+\)$", Assert.Single(CallsOf(past), x => x.Callee == ir.Function("__kimi_text_heap")).Shape);
         Assert.Equal([ir.Function("__kimi_text_heap"), ir.Function("__kimi_format_finish"), ir.Function("__kimi_write_line")], Ends(ir, c, past));
@@ -167,7 +167,7 @@ public sealed partial class FunctionCodegenTest
     private static IrFunction[] Ends(GeneratedIr ir, Compilation c, IrFunction function)
     {
         IrFunction[] routines = [.. FunctionsOf(ir, c, "fixed"), ir.Function("__kimi_text_heap"), ir.Function("__kimi_format_finish"),
-            ir.Function("__kimi_write_line_utf8"), ir.Function("__kimi_write_line")];
+            .. FunctionsOf(ir, c, "writeLine"), ir.Function("__kimi_write_line")];
         return [.. CalleesOf(function).Where(routines.Contains)];
     }
 

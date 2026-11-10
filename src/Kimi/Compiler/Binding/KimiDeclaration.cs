@@ -10,6 +10,7 @@ public enum KimiDeclarationId : byte
     Owned,
     Callable,
     WriteLine,
+    ConsoleWriteStdout,
     Option,
     Result,
     Array,
@@ -19,12 +20,10 @@ public enum KimiDeclarationId : byte
     ResolvedRange,
     Slice,
     Dictionary,
-    Stringify, // Reserved legacy ID; not a declaration or special source identifier.
     Equatable,
     Comparable,
     Iterator,
     IntoIterable,
-    ObjectOwnership, // Reserved legacy aggregate ID; no longer a declaration entry.
     Sealed,
     Replace,
     Exchange,
@@ -101,8 +100,6 @@ public enum KimiDeclarationId : byte
     DictionaryIndexUniq,
     StorageMissingDictionaryKey,
     DictionaryStoragePlaceEntry,
-    StorageReserveDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
-    StorageShrinkDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
     RawAllocate,
     RawRelease,
     RawInitialize,

@@ -88,7 +88,7 @@ public sealed partial class Binding
 
     // The reference check restores the original declaration group, including inference-rejected
     // candidates. Syntax mappings are unchanged; only binding-dependent applicability is rerun.
-    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, BoundType?[] arguments, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
+    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, SlotFrame frame, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var count = original.Length;
         var argumentCount = call.ArgumentNodes.Count;
@@ -148,8 +148,7 @@ public sealed partial class Binding
                         Binder = function,
                         Scope = scope,
                         DeclaringType = construction,
-                        Types = arguments,
-                        Lengths = lengths,
+                        Frame = frame,
                         Origins = origins,
                         Inputs = inputs,
                         FixedConstruction = true,
@@ -187,7 +186,7 @@ public sealed partial class Binding
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
                         // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
                         var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
-                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
+                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frame.Types, scope, null, origins, inputs, construction, frame.Lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
                             (context is null || usedContext is null || !IsSubtype(context, usedContext) || !IsSubtype(usedContext, context)))
@@ -231,7 +230,7 @@ public sealed partial class Binding
             }
 
             checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
-            this.InitializeCallSlots(call, selectedFunction, construction, arguments, fixedConstruction: true);
+            this.InitializeCallSlots(call, selectedFunction, construction, frame, fixedConstruction: true);
             if (count > 1)
             {
                 allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);

@@ -35,7 +35,8 @@ internal enum MirRvalueKind : byte
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
     Adapt, // A case adaptation (SPEC 8.14), whose operation each Semantics case selects: MirCases.Adapt resolves it per view.
-    Storage, // The address of a sequence Place's first element (SPEC 4.8.1), a raw pointer; it projects no element (SPEC 8.15.3).
+    Storage, // The address a view of a sequence Place starts at, a raw pointer (SPEC 4.8.1): its first element's, which projects no
+             // element; keyed by a start and an open key's Type, displaced by the start where the instance's key is a position (8.15.3).
 }
 
 /// <summary>A MIR terminator (plan 5.4); there is no unwinding. <c>CheckTarget</c> is an attribute of Goto, a Call without a target
@@ -114,7 +115,7 @@ internal enum MirBinaryOp : byte
 internal enum MirUnaryOp : byte
 {
     Neg,
-    Not, // Logical on bool, bitwise on an integer.
+    Not, // Logical on bool (SPEC 13.2; MirTypes.Operates).
 }
 
 internal enum MirRefKind : byte

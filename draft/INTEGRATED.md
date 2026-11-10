@@ -1345,6 +1345,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   rule, and RQ11's entry (the managed Types as ordinary structs) is added. No user program changes validity or record; SPECJ follows
   (RQ10). Frozen: 「識別」's first three sentences (its implementation sentences stay plan text); the R7/R8/R9 plan's text is not.
 - Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
+- Revision 52 (2026-11-10, plan §14; the Front's D-273): I2's row after I2-core's store landed (DECISIONS R7-M18; O-129 (a)). Nothing frozen.
+- Revision 53 (2026-11-11, plan §14; the Middle's D-311): M2's row after R9-M2 landed (DECISIONS R9-M6); B1's row gains R9-M2's notes. Nothing frozen.
+- Revision 54 (2026-11-11, plan §14; the Front's D-317): C2's parts and order after the owner's O-148 (b) (part e first, e1 then a1). Nothing frozen.
+- Revision 55 (2026-11-11, plan §14; the Front's D-319): C2's part b keeps its own part after c2; §4.4 names C2e1. Nothing frozen.
+- Revision 56 (2026-11-11, plan §14; the Middle's D-323): M1's row after R9-M1 part 1 landed (DECISIONS R9-M7), with parts 2 and 3, the splits of Documentation's members over a structure limit, as new §5.3 rows. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

@@ -18,8 +18,9 @@ public static partial class Parser
     /// <param name="token">The <c>associate</c> token.</param>
     internal static void ParseAssociatedTypeItem(ref TokenReader reader, DeclarationContainerKoto container, Token token)
     {
-        // An associate declaration takes no attributes (SPEC 6.7).
+        // An associate declaration takes no attributes (SPEC 6.7) and no access word (SPEC F.6.2).
         ReportPendingAttributes(ref reader);
+        RejectAccessWord(ref reader);
         reader.Advance();
         if (IsTypeConstraintStart(ref reader, declarationContext: true))
         {

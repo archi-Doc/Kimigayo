@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Parsing;
+using Kimi.Documentation;
 using Tinyhand;
 using Xunit;
 
@@ -95,7 +95,7 @@ public class DocumentationMarkdownIntegrationTest
         var compilation = Compilation.CreateForTest();
         compilation.CollectDocumentation = true;
         Assert.True(compilation.Prepare(WindowsProfile.Target));
-        compilation.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n" + Comment("- windows: selected", "        ") + "        public func f(windows: i32) => ()\n    #case _\n" + Comment("- other: selected", "        ") + "        public func f(other: i32) => ()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n" + Comment("- windows: selected", "        ") + "        func f(windows: i32) => ()\n    #case _\n" + Comment("- other: selected", "        ") + "        func f(other: i32) => ()"));
         Assert.True(compilation.Bind().IsComplete);
         var original = Selected(compilation.Kotonoha);
         var oldDocument = DocumentationMarkdownDocument.Parse(original);
@@ -123,7 +123,7 @@ public class DocumentationMarkdownIntegrationTest
     [Fact]
     public void PublicationAccessAndSpecializationAreAppliedBeforeMarkdownParsing()
     {
-        var tree = DocumentationCommentTest.Parse(Comment("**original**") + "public func weight<T>(value: ref/T) -> i32 => 1\n" + Comment("**implementation**") + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n" + Comment("**private**", "    ") + "    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("public group Docs\n" + Comment("**original**", "    ") + "    public func weight<T>(value: ref/T) -> i32 => 1\n" + Comment("**implementation**", "    ") + "    specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n" + Comment("**private**", "    ") + "    public func f() => ()");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
         var binding = tree.Compilation.Binding;

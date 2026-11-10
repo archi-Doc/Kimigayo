@@ -325,7 +325,10 @@ public sealed partial class FunctionCodegenTest
 
     // The rvalue rows' programs (R5 C2b; DECISIONS R5-M87), self-checking as the operator rows' are: Tuples built, copied, nested and read,
     // zero-sized values borrowed (SPEC 4.3, IMPL 21.1.3); enum Cases built and matched by their discriminant and payload (SPEC 6.5, 14.8);
-    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written.
+    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written; the keyed
+    // Storage's instances (SPEC 8.15.3; PLAN G597): a generic key's and a forwarded one's that start at the storage and that displace, a
+    // default's copy in each (the fold's unkeyed and displaced forms) and through a generic caller (its keyed one), a resolved key, and
+    // the library's slice instances, each reading its view's first element.
     public static TheoryData<string, string, string> RvaluePrograms => new()
     {
         {
@@ -356,6 +359,17 @@ public sealed partial class FunctionCodegenTest
             string.Empty
         },
         { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
+        {
+            "RvalueKeyedStorage",
+            "func h<R>(v: ref/Array<i32>, r: R, n: i32 = v[r][0]) -> i32\n    R is PositionRange\n    return n\n" +
+            "func k<R>(v: ref/Array<i32>, r: R) -> i32\n    R is PositionRange\n    return v[r][0]\n" +
+            "func g<Q>(v: ref/Array<i32>, q: Q) -> i32\n    Q is PositionRange\n    return h(v, q)\n" +
+            "func w(v: ref/Array<i32>) -> i32 => v.slice(..)[0] + v.slice(1..3)[0]\n" +
+            "let a: Array<i32> = [10, 20, 30]\nlet x1 = h(a, 1..)\nlet x2 = h(a, ..)\nlet x3 = g(a, 2..)\nlet x4 = g(a, ..)\nlet x5 = k(a, 1..3)\n" +
+            "let x6 = k(a, ..2)\nlet x7 = h(a, (1..).resolve(a.length))\nlet x8 = h(a, (..).resolve(a.length))\nlet x9 = w(a)\n" +
+            "Console.writeLine(\"\\(x1) \\(x2) \\(x3) \\(x4) \\(x5) \\(x6) \\(x7) \\(x8) \\(x9)\")\n",
+            "20 10 30 10 20 10 20 10 30\n"
+        },
     };
 
     // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.
@@ -547,7 +561,7 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void AFixedArrayBehindAReferenceIsIndexedWithoutItsLayout()
     {
-        var c = Analyze("public func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
+        var c = Analyze("func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
@@ -816,6 +830,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(2, texts.Length);
         Assert.Single(texts, static x => x.Contains("sext i32 %t0 to i64\n", StringComparison.Ordinal) && !x.Contains("__kimi_abort", StringComparison.Ordinal));
         Assert.Single(texts, static x => x.Contains("icmp ugt i64 %t0, 9223372036854775807\n", StringComparison.Ordinal) && x.Contains("__kimi_abort", StringComparison.Ordinal));
+    }
+
+    // SPEC 8.15.3 (PLAN G597): a keyed Storage is written by its key's need in the item's instance (LayoutNeeds.Of(key)): the instance
+    // whose key starts at the storage stores the sequence's buffer as it is; the one whose key displaces adds the start times its
+    // element's stride, the statement a raw p + n uses (Displace) (fail-before: both instances displaced, one by a zero start).
+    [Fact]
+    public void AKeyedStorageDisplacesWhereItsInstancesKeyDoes()
+    {
+        var source = "func h<R>(v: ref/Array<i64>, r: R) -> isize\n    R is PositionRange\n    return v[r].length\n" +
+            "let a: Array<i64> = [1, 2, 3]\nlet x = h(a, ..)\nlet y = h(a, 1..)\n";
+        var texts = ItemTexts(Analyze(source), "h");
+        Assert.Equal(2, texts.Length);
+        Assert.Single(texts, static x => !x.Contains(" = mul ", StringComparison.Ordinal));
+        Assert.Single(texts, static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n"));
     }
 
     // The place writer (R5 C2a; DECISIONS R5-M83, package C 3.2 I7 and I9): a Place's address is its root's home, then each step at the offset
@@ -1225,6 +1253,22 @@ public sealed partial class FunctionCodegenTest
     public void LayeredComparisonsRun()
         => ScalarEmissionTest.WriteFixture("RawComparisonLayers", Generate(LayeredComparisons), string.Empty);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): a contiguous remainder's steps and splits, a selected view's start and a Slice iterator's step
+    // are bounded by the remainder's invariant or a dominating guard, so their bodies check no arithmetic.
+    [Fact]
+    public void RemainderBodiesCheckNoBoundedArithmetic()
+    {
+        const string Source =
+            "func rmTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmZero(values: uniq/Array<i32>)\n    for v in values\n        v@follow = 0\n" +
+            "func rmDrain(values: [3 of i32]) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n" +
+            "func rmEach(values: Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmPair(values: uniq/Array<i32>) -> bool\n    match values.tryGetPairUniq(first: 0, second: 1)\n" +
+            "        .Some(_) => return true\n        .None => return false\n" +
+            "func rmView(values: uniq/Array<i32>) -> i32\n    var view = values.sliceUniq(1..)\n    return view[0]\n";
+        AssertNoCheckedArithmetic(Analyze(Source, OutputKind.Library), "splitFirst", "takeFirst", "tryGetPairUniq", "sliceUniq", "next");
+    }
+
     // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
@@ -1582,9 +1626,9 @@ public sealed partial class FunctionCodegenTest
     }
 
     // K11 (ModuleCodegen.Requested; DECISIONS R5-M77): every request naming an item outside Generated is that broken contract, at the item's
-    // site: a static's ensure function and a user formatter's wrapper, each item (by kind and
-    // definition) kept out of Generated by making its requesters' targets non-runtime, since Mark follows runtime targets only. The wrapper's
-    // row held before Wrapper read Requested: the wrapper's definition requests its target's Signature.
+    // site: a static's ensure function and a user formatter's format, each item (by kind and
+    // definition) kept out of Generated by making its requesters' targets non-runtime, since Mark follows runtime targets only. The format's
+    // row is a Signature request: the write body's requirement call requests its target's Signature.
     [Theory]
     [InlineData("group Values\n    public let count: i32 = start()\n    func start() -> i32 => 4\nlet x = Values.count\n", "Body", "count", "let count: i32 = start()")]
     [InlineData(
@@ -1796,6 +1840,17 @@ public sealed partial class FunctionCodegenTest
     // The functions of a definition's body items, one per instance (ItemTexts).
     internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
         => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+
+    // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
+    internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var texts = ItemTexts(c, name);
+            Assert.NotEmpty(texts);
+            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
+        }
+    }
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as `Compilation.Check` discovers it.

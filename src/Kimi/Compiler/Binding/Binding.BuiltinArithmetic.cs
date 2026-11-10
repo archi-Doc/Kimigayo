@@ -15,7 +15,7 @@ public sealed partial class Binding
     // `scope` (SameConformanceType), as a projection naming it is (`i32 is Addable<U.(HasItem).Item>` with SrcI for U).
     private bool BuiltinArithmeticConformance(BoundType self, BindingSymbol contract, BindingScope scope)
     {
-        if (ArithmeticContracts.Identity(contract) is not { } id || ArithmeticContracts.IsLeft(id))
+        if (ArithmeticContractSyntax.Identity(contract) is not { } id || ArithmeticContracts.IsLeft(id))
         {
             return false;
         }
