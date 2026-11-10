@@ -69,7 +69,7 @@ internal sealed partial class MirValidator
         // every instance (SPEC 8.7.4; Binding types a literal it fits through an identity premise at the complete Type, BU-72); else a
         // finding.
         private static bool Holds(in MirConst constant) => constant.Kind != MirConstKind.Integer ||
-            (ScalarTypes.Width(constant.Type) is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
+            (constant.Type.Width is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
             : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
                 ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
                 : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)));
