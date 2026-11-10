@@ -167,7 +167,9 @@ internal sealed partial class MirBuilder
         ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
         if (target.Break < 0)
         {
-            this.body.Terminate(target.Break = target.Join = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
+            this.body.Terminate(
+                target.Break = target.Join = this.body.AddBlock(),
+                MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
         }
 
         return ref target;
@@ -178,7 +180,8 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
+        this.targets.Add(new(
+            node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
         return after;
     }
 

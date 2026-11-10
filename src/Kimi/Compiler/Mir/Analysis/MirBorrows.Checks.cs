@@ -18,17 +18,17 @@ internal sealed partial class MirBorrows
     /// or, for a destroying one, shallow as a write (R4-M68), and that call's observing destruction of the old value past what the write
     /// hits (err(destroy), E11); a destruction past the destruction walk's bound is not classified (OwnershipDepthLimit_Kd, as A4's Deep); a Call's
     /// or Drop's effect on a mutable static root by A4's keys, a read or a write of the whole root, shallow (SPEC 15.6.4, 15.6.2;
-    /// MirBorrows.Effects).</summary>
+    /// MirBorrows.Effects). The deep kinds (<see cref="Deep"/>) are SharedBorrow through Activate.</summary>
     private enum AccessKind : byte
     {
         Read,
         SharedBorrow,
         UniqueBorrow,
         Move,
-        Write,
-        Destroy,
         Observe,
         Activate,
+        Write,
+        Destroy,
         ActivateInPlace,
         ActivateThrough, // An activation at its parent Loans' Places on a root (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
         ObservePast, // err(destroy): the Loans an observing destruction hits and the destroying activation's write does not, in every mode.
@@ -54,6 +54,10 @@ internal sealed partial class MirBorrows
     // Index step meets every index step, which the trie's walk resolves), every other step by its kind and argument.
     private static (MirProjectionKind Kind, int Arg) StepKey(in MirStep step)
         => (step.Kind, step.Kind is MirProjectionKind.Deref or MirProjectionKind.Index ? 0 : step.Arg);
+
+    // A3 5's deep(k): an access that reaches every Loan below its Place, through every Deref: a Move or a borrow, an observing
+    // destruction (E3) and a reservation's activation, as an exclusive borrow (R4-M68).
+    private static bool Deep(AccessKind kind) => kind is >= AccessKind.SharedBorrow and <= AccessKind.Activate;
 
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
@@ -133,8 +137,7 @@ internal sealed partial class MirBorrows
         }
 
         var past = kind == AccessKind.ObservePast; // The write's hits, negated.
-        if (steps.Length >= loan.Count || kind is AccessKind.Move or AccessKind.SharedBorrow or AccessKind.UniqueBorrow or AccessKind.Activate or
-            AccessKind.Observe)
+        if (steps.Length >= loan.Count || Deep(kind))
         {
             return !past;
         }
