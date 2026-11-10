@@ -124,9 +124,9 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (identity.Contract.Intrinsic != IntrinsicKind.None)
+            if (IntrinsicContract.Of(identity.Contract.Intrinsic).Judged)
             {
-                continue; // Copy, Owned and other intrinsic capabilities retain their own derivation rules.
+                continue; // A judged intrinsic's conformance is the judgment's, never inherited (SPEC 8.7.1).
             }
 
             var contract = Substitute(identity.Contract);
@@ -211,7 +211,7 @@ public sealed partial class Binding
             var shape = path.Contract.Contract!;
             foreach (var ancestor in shape.AncestorStorage)
             {
-                var inheritedProof = ancestor.Intrinsic != IntrinsicKind.None
+                var inheritedProof = IntrinsicContract.Of(ancestor.Intrinsic).Judged
                     ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
                     : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
                 proof = CombineProof(proof, inheritedProof, true);

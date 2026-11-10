@@ -177,7 +177,7 @@
 
   + Name="ClosedContractConformance_Kd"
     Category="Language"
-    Message="Only the Types that the language designates conform to this Contract, such as Position, PositionRange or PrimitiveInteger, or to a Contract that refines it; a user Type cannot declare the conformance"
+    Message="Only the Types that the language designates conform to this Contract, such as PrimitiveInteger, Position, PositionRange or a Contract that refines Position or PositionRange; a user Type cannot declare the conformance"
 
   + Name="NotIndexable_Kd"
     Category="Language"
