@@ -266,7 +266,8 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         var accepted = checkedAll && c.Accepts;
-        var records = c.Diagnostics.Finalize(rejected: !accepted).Diagnostics.Select(static x => new DiagnosticEntryView(x.Code, x.Category, x.Message, x.Span ?? default, x.Label)).ToArray();
+        var records = c.Diagnostics.Finalize(rejected: !accepted).Diagnostics
+            .Select(static x => new DiagnosticEntryView(x.Code, x.Category, x.Message, x.Span ?? default, x.Label)).ToArray();
         output.WriteLine(string.Join(", ", records.Select(static x => $"{x.Code} {x.Span}")));
         return (records, accepted);
     }
