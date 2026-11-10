@@ -1173,7 +1173,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "usize" => BoundType.USize,
             "wrapping" => BoundType.WrappingOf(BoundType.I32),
             "wrapping u32" => BoundType.WrappingOf(BoundType.Primitives["u32"]),
-            "wrapping parameter" => c.Types.Intern(BoundTypeKind.Constructed, BoundType.WrappingOf(BoundType.I32).Symbol!, SemanticsKind.Owner, [parameter!]),
+            "wrapping parameter" => c.Types.Intern(BoundTypeKind.Constructed, c.Library.GetSymbol(KimiDeclarationId.Wrapping)!, SemanticsKind.Owner, [parameter!]),
             "parameter" => parameter!,
             "refNever" => c.Types.Reference(SemanticsKind.Ref, BoundType.Never),
             "uniqNever" => c.Types.Reference(SemanticsKind.Uniq, BoundType.Never),
