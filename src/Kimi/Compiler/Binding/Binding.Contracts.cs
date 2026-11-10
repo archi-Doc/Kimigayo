@@ -237,12 +237,10 @@ public sealed partial class Binding
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
         var head = AssociatedHead(declaration);
-        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head;
-        if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
-        {
-            return; // A qualified specification refines an existing requirement.
-        }
+        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type)! : head!;
 
+        // Only a declaration reaches here, and its head is a Name: the parser places every specification among the members.
+        var spelling = TypeSpelling(name) ?? throw new InvalidOperationException($"`{declaration}` declares no Name (InternalInvariant; G683).");
         var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
         symbol.Type = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
@@ -364,6 +362,12 @@ public sealed partial class Binding
             {
                 AddAssociated(new(associated, shape.Symbol));
                 Complete(member, BoundType.Unit);
+            }
+            else if (member is IsKoto { IsAssociatedConstraint: true } specification)
+            {
+                // SPEC 8.5.3: a specification constrains an inherited associated Type; its bound requirement (BindAssociatedSpecification)
+                // is one of the Contract's clauses, inherited and checked as they are.
+                shape.ClauseStorage.Add(specification);
             }
             else if (member is not EffectBoundKoto)
             {

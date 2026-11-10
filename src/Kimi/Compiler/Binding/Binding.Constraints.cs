@@ -305,11 +305,19 @@ public sealed partial class Binding
 
         this.BindConditionalAssociatedSpecifications();
 
+        // SPEC 8.5.1, 8.5.3: every owner's specifications are its members (Parser.ParseAssociatedTypeItem), a Contract's included.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { IsAssociatedConstraint: true, Parent: StructKoto or EnumKoto } clause)
+            if (this.nodes[i] is StructKoto or EnumKoto or ContractKoto)
             {
-                this.BindAssociatedSpecification(clause, this.scopes[clause.Parent!]);
+                var owner = (DeclarationContainerKoto)this.nodes[i];
+                for (var j = 0; j < owner.Members.Count; j++)
+                {
+                    if (owner.Members[j] is IsKoto { IsAssociatedConstraint: true } clause)
+                    {
+                        this.BindAssociatedSpecification(clause, this.scopes[owner]);
+                    }
+                }
             }
         }
 
@@ -429,10 +437,7 @@ public sealed partial class Binding
         var bindingScope = this.NodeScope(clause, scope);
         var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var head = AssociatedHead(clause);
-        var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
-            ? this.BindAssociatedRefinement(clause, associatedMember, scope)
-            : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
+        var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
@@ -478,7 +483,7 @@ public sealed partial class Binding
         // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
         // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
         var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
-        if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
+        if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
             this.Fail(clause, BindingFailure.InvalidConstraint);
