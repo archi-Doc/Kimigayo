@@ -1225,6 +1225,22 @@ public sealed partial class FunctionCodegenTest
     public void LayeredComparisonsRun()
         => ScalarEmissionTest.WriteFixture("RawComparisonLayers", Generate(LayeredComparisons), string.Empty);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): a contiguous remainder's steps and splits, a selected view's start and a Slice iterator's step
+    // are bounded by the remainder's invariant or a dominating guard, so their bodies check no arithmetic.
+    [Fact]
+    public void RemainderBodiesCheckNoBoundedArithmetic()
+    {
+        const string Source =
+            "func rmTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmZero(values: uniq/Array<i32>)\n    for v in values\n        v@follow = 0\n" +
+            "func rmDrain(values: [3 of i32]) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n" +
+            "func rmEach(values: Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmPair(values: uniq/Array<i32>) -> bool\n    match values.tryGetPairUniq(first: 0, second: 1)\n" +
+            "        .Some(_) => return true\n        .None => return false\n" +
+            "func rmView(values: uniq/Array<i32>) -> i32\n    var view = values.sliceUniq(1..)\n    return view[0]\n";
+        AssertNoCheckedArithmetic(Analyze(Source, OutputKind.Library), "splitFirst", "takeFirst", "tryGetPairUniq", "sliceUniq", "next");
+    }
+
     // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
@@ -1791,6 +1807,17 @@ public sealed partial class FunctionCodegenTest
             new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
             return writer.ToString();
         })];
+    }
+
+    // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
+    internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var texts = ItemTexts(c, name);
+            Assert.NotEmpty(texts);
+            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
+        }
     }
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
