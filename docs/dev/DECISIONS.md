@@ -13994,6 +13994,10 @@ structure is recorded here by the unit that first implements it.
     witnesses now (R8).
   - Amended by R5-M166 (provisional, G308): "one function per tree node" is adopted for comparison items; the reason (more
     functions and calls) no longer holds against a shared node written once per root-to-leaf path.
+  - Superseded in part by R8-M25: the Contract-to-operator relation is MIR's `MirTypes.ArithmeticOperations`; the Backend's
+    `BuiltinArithmetic` is deleted. Binding's pairing of a Contract with its operator token, which this entry names
+    `ArithmeticContracts.Operator`, is `ArithmeticContractSyntax.Operator` (Binding's own type; the root `ArithmeticContracts` keeps
+    the Types' facts), and the test tying the two, `TheBuiltinArithmeticRowsAreTheBuildersOperators`, is in `MirTypesTest`.
 - **R5-M127 The owner confirms C8f's departure** (owner, 2026-10-26, after C8f's design; verbatim 「C8f の逸脱 (i)も承認します」) The departure
   R5-M126 records is confirmed: K package 4.3's Builtin row (and PropertyWitness's) gives "Representative: Self Type"; a shim item also
   records its admitting call's substitution as its Representative, since Self alone does not instantiate a binary arithmetic requirement's
@@ -17170,6 +17174,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     second reader yet); a Unit column (no operation).
   - **Moves:** none (no accepted program forms a comparison BinaryOp outside the domain; probes, twins, snapshots).
 
+  - Superseded in part by R8-M25 (G662's remainder): `Column` reads `MirTypes.Operates`, whose comparison rows are
+    `OperatorCompares`; the Backend no longer reads `ComparisonTypes`.
 - **R8-M21 The interpolation-bound term: BoundLength's `Values` and Binding's `LengthOperation`** (2026-11-09; R8-W2 a1-0 and a1,
   the Back's design §4a, its design review 3 ACCEPT, in the Front's files with the Front's consent, C-179; the Back's reviewer's
   implementation review B1 fixed)
@@ -17338,6 +17344,42 @@ R8-M* and R9-M* by the stage of the recording unit.
       unsound acceptance, B's design review 1 B1); `MovedPlace_Kd` on check-only groups (R4-M6a; SPEC 14.10.3's assumed paths add no
       normal completion; the Middle's C-195 ruling); applying the check-only reading in the state recording too (two sites, a bool
       steering `Subtree`: the Middle's implementation review B1′).
+- **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
+  G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
+  review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
+  5.3, 13.4.
+  - **Rule.** `MirTypes.Operates(kind, op, type)`, keyed by MIR's operator, composes the root statements: + - * / % and unary -
+    where the operator's arithmetic Contract has a built-in witness (`ArithmeticContracts.Supports`, now a root Type statement), +
+    and - a raw pointer too (SPEC 5.3); & | ^ and a shift's left operand an integer or wrapping integer Type; not bool; a comparison
+    `OperatorCompares` (R8-M20). An abstract Type's on Binding's proof per group: every binary operator at an abstract Type or
+    Wrapping over one (PrimitiveInteger), unary - at Wrapping over one; unary - at a bare abstract Type (a requirement call) and not
+    at any are broken contracts. MirValidator's UnaryOp and BinaryOp stand only where it holds at the left operand's premised
+    terminal (the right one's after a Never-value left), else an Operation finding (`InternalInvariant_Kd`); the Backend's `Column`
+    reads it for each operator it applies (a statement's, an arithmetic shim's, each comparison of a Builtin leaf).
+  - **Pairing.** `MirTypes.ArithmeticOperations` is the one pairing of the arithmetic Contracts with MIR's operators (read by
+    operator and by Contract, `ArithmeticOperation`); the Backend's `BuiltinArithmetic` is deleted (supersedes R5-M126's owner of
+    the relation).
+  - **The MIR builder's two new reads (COMPILER_ARCHITECTURE "May read").** `ArithmeticContracts.Supports`: SPEC 13.3.3's built-in
+    conformances are the operator table's arithmetic domain, and Binding already states them; a MIR copy would be a second statement
+    (design review 1 B1). `ReferenceTypes.IsPointer`: SPEC 5.3's raw-pointer + and - are in the table and outside every arithmetic
+    Contract, and the root predicate is the one statement of "raw pointer", which the Backend already reads. Both are pure functions
+    of a Type; neither is a closed-vocabulary entry or a CodeRuleException (no owner approval, as R8-M20).
+  - **Responsibility moved between phases.** `ArithmeticContracts.cs` moves from Binding to the compiler root and is split (the
+    Front, C-208): the root `ArithmeticContracts` holds the Type statement (`Supports`) and the identity predicates (`IsArithmetic`,
+    `IsLeft`) under its contract header; Binding's `ArithmeticContractSyntax` (`Binding/ArithmeticContractSyntax.cs`) keeps what
+    reads syntax or Binding's Symbols (`Operator`, `Identity`, `Method`). The root reads neither Parsing nor a phase's Symbols.
+  - **The Backend reads no `ComparisonTypes`** (its `Column` reads `MirTypes.Operates`; grep over `Backend/`: none; B's C-203).
+  - **Not** is logical on bool only (SPEC 13.2); MIR's "bitwise on an integer" had no SPEC operator and no builder site.
+  - **Staged removal** (the Front's, PLAN G708): Binding's `NumericApplicability` (IsNumeric), `NegationApplicability` (IsNumeric,
+    IsUnsignedInteger) and `LeftOperatorApplicability`'s % arm (HasIntegerArithmetic) restate `Supports`. Removal condition: they
+    read `ArithmeticContracts.Supports` for the operator's Contract, Binding's token pairing kept one statement.
+  - **Deleted:** `MirValidator.OperandsCompare`; the operator table's unsigned negation entry and its not entries on signed columns;
+    `Backend/BuiltinArithmetic.cs`; `Leaf`'s one column for all its operators.
+  - **Rejected:** a validator-local whitelist per group; R8-M20's operand-class enum; a root operator vocabulary read by Binding;
+    own table columns for bool and char; restating Supports' groups in MIR (review 1 B1) or a new root negation property (a fourth
+    statement); a MIR operator-to-Contract switch beside the Backend's Contract-to-operator one (a third copy of the pairing);
+    keeping Binding's token and Symbol members in the root file (the Front, C-208).
+  - **Moves:** none (probes, snapshots, compare-fixtures; the commit states them).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
