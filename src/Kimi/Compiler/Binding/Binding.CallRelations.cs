@@ -170,8 +170,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring
-    // Type's stored slots, then the callee's own Origins and inputs, as many as the call gives.
+    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the callee's
+    // own Origins and inputs, as many as the call gives, and the declaring Type's stored slots, in one pass (Binding.CallSubstitution).
     private BoundOrigin SubstituteClauseOrigin(
         BoundOrigin origin,
         FunctionKoto selected,
@@ -179,14 +179,11 @@ public sealed partial class Binding
         ReadOnlySpan<BoundOrigin> inputs,
         BoundType? declaringType)
     {
-        if (declaringType?.Symbol is { } owner)
-        {
-            origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-        }
-
         var binder = selected.OriginBinder;
         var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
-        return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
+        return this.Substitute(
+            origin,
+            new CallSubstitution(binder, default, default, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))], declaringType?.Symbol is null ? null : declaringType));
     }
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that

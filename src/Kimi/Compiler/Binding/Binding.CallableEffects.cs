@@ -90,7 +90,7 @@ public sealed partial class Binding
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
-                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
+                this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins), call);
             }
 
             if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&
@@ -103,7 +103,7 @@ public sealed partial class Binding
                     try
                     {
                         CopyItemArguments(item, referenced, arguments);
-                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, arguments.AsSpan(0, slots), ItemDeclaringType(item, referenced), null, item.LengthArguments);
+                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, SubstitutionOf(referenced, ItemDeclaringType(item, referenced), arguments.AsSpan(0, slots), item.LengthArguments), null);
                     }
                     finally
                     {
@@ -115,12 +115,12 @@ public sealed partial class Binding
             if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type &&
                 node.Parent?.BoundType != type)
             {
-                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null, origins: (BoundOrigin[])type.OriginArguments);
+                this.CheckCallableEffectUses(node, container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), null);
             }
         }
     }
 
-    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default, ReadOnlySpan<BoundOrigin> origins = default)
+    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, in CallSubstitution substitution, CallPlan? call)
     {
         var scope = this.ConstraintScope(use);
         for (var i = 0; i < clauses.Count; i++)
@@ -130,11 +130,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths, origins: origins);
-            if (declaring?.Symbol is not null)
-            {
-                substituted = this.StoredConstraint(substituted, declaring);
-            }
+            var substituted = this.SubstituteConstraint(fact, substitution);
 
             // SPEC 8.6.4: a selected requirement call's clause reads the Contract's parameters at its reference, as AvailableEffectBounds does.
             substituted = this.ContractConstraint(substituted, scope, null, reference: call?.RequirementContract);

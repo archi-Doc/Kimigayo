@@ -25,7 +25,7 @@ public sealed partial class Binding
     /// <param name="context">The caller's syntax node.</param>
     /// <returns>The proof result after identity-preserving substitution.</returns>
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
-        => this.ProveConstraint(this.SubstituteConstraint(constraint, binder, arguments), this.ConstraintScope(context));
+        => this.ProveConstraint(this.SubstituteConstraint(constraint, new CallSubstitution(binder, arguments)), this.ConstraintScope(context));
 
     // The scope a node's names and premises are judged in: its nearest enclosing scope, where a match arm's body is in its pattern's
     // scope (SPEC 14.8.2) and a standard witness bridge has its conformance path's premises (SPEC 11.9.2).
