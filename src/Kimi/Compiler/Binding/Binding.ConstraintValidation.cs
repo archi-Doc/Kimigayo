@@ -340,7 +340,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Invalid = true;
+                            (scope.Constraints ??= new()).Fail(node);
                             break;
                         }
 

@@ -264,7 +264,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Invalid = true;
+                (scope.Constraints ??= new()).Fail(syntax);
             }
         }
     }

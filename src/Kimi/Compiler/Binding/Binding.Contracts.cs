@@ -620,7 +620,7 @@ public sealed partial class Binding
 
                     if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
-                        environment.Invalid = true;
+                        environment.Fail(scope.Owner);
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
                     }
 

@@ -380,7 +380,7 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Invalid = true;
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
@@ -391,7 +391,7 @@ public sealed partial class Binding
                 {
                     var previous = scope.Owner.BindingState;
                     changed |= !environment.Invalid;
-                    environment.Invalid = true;
+                    environment.Fail(scope.Owner);
                     // Other input facts can have independent contradictions. Record a
                     // sole missing-name cause only when this is the entire environment.
                     this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -489,7 +489,11 @@ public sealed partial class Binding
         if (input || requirement.Kind == ConstraintKind.Error)
         {
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            if (this.AddConstraintFact(environment, requirement))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
@@ -584,11 +588,13 @@ public sealed partial class Binding
         return result;
     }
 
-    private void AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    // Adds a fact and its conjuncts; true when one of them is an Error (a failed clause, which the caller names as the environment's
+    // failed node). Only a clause's own requirement can be an Error.
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
     {
         if (fact.HasUnresolved)
         {
-            return;
+            return false;
         }
 
         if (source is null)
@@ -603,20 +609,17 @@ public sealed partial class Binding
         var added = environment.Facts.Add(fact);
         if (!added && fact.Kind != ConstraintKind.And)
         {
-            return;
+            return fact.Kind == ConstraintKind.Error;
         }
 
         environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
         environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
-        if (fact.Kind == ConstraintKind.Error)
+        if (fact.Kind == ConstraintKind.And)
         {
-            environment.Invalid = true;
+            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
         }
-        else if (fact.Kind == ConstraintKind.And)
-        {
-            this.AddConstraintFact(environment, fact.Left!, source);
-            this.AddConstraintFact(environment, fact.Right!, source);
-        }
+
+        return fact.Kind == ConstraintKind.Error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)

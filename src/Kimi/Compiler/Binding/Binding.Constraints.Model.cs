@@ -93,6 +93,8 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
     private static int Identity(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 }
 
+// A scope's Constraint facts. An Invalid environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer
+// fails that node in the same step and names it here; the first one is kept.
 internal sealed class ConstraintEnvironment
 {
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
@@ -101,7 +103,10 @@ internal sealed class ConstraintEnvironment
 
     internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
 
-    internal bool Invalid { get; set; }
+    /// <summary>Gets the node whose failure made the environment Invalid; null while it is valid.</summary>
+    internal Koto? Failed { get; private set; }
+
+    internal bool Invalid => this.Failed is not null;
 
     internal bool HasAssociatedProjection { get; set; }
 
@@ -109,12 +114,16 @@ internal sealed class ConstraintEnvironment
     /// expressions bound in its scope substitute one for the other.</summary>
     internal bool HasParameterIdentity { get; set; }
 
+    /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
+    /// <param name="node">The failed node.</param>
+    internal void Fail(Koto node) => this.Failed ??= node;
+
     internal void Reset()
     {
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
-        this.Invalid = false;
+        this.Failed = null;
         this.HasAssociatedProjection = false;
         this.HasParameterIdentity = false;
     }
