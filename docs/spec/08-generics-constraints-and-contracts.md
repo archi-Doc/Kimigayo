@@ -559,7 +559,7 @@ Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger and Transferable 
 | Owned | Checked assertion: the Type must be Owned ([§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned)) for every binding its Constraints (and `P`) admit. It grants nothing. |
 | Sealed, ObjectPayload, PrimitiveInteger, Callable, Transferable | Error. These are decided by the Type's structure alone. |
 
-In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` (and `Self is not ObjectPayload`) is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body.
+In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` with X one of Copy, Owned and ObjectPayload, and `Self is not ObjectPayload`, is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body. Any other Contract-wide clause whose subject is `Self` is an error: a user Contract is related by refinement (`contract C: B`, [§8.4.3](#843-refinement)), and an identity premise on `Self` (`Self is i32`, `Self is Self`) would admit at most one conforming Type.
 
 The identities of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration and the Indexable Contracts are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); they are ordinary Contracts with their declared bounds. The arithmetic Contracts are ordinary declarations with built-in witnesses ([§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)). Conformance proves only the stated requirements: documented laws such as symmetry of equality are not enforced, and nothing is proven about initialization, Loans or representation.
 
@@ -572,6 +572,12 @@ struct Pair<T>
 
 struct Plain
     Self is Sealed                  // Error: Sealed is structural.
+
+contract Shape
+    Self is Copy                    // Every conforming Type is Copy.
+
+contract Named
+    Self is Shape                   // Error: write contract Named: Shape.
 ```
 
 ### 8.7.2. Sealed
