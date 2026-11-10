@@ -116,7 +116,7 @@ internal sealed partial class MirBuilder
             place = this.body.Project(view, MirProjectionKind.Deref, 0);
         }
 
-        return this.Inspected(this.Follow(place, 16, type), node);
+        return this.Inspected(this.Follow(place, type), node);
     }
 
     // SPEC 13.4: a tuple operator is one Requirement call of its Contract's own requirement on its Self (TyCtxt.Synthesized) under the
@@ -130,8 +130,8 @@ internal sealed partial class MirBuilder
         var view = this.Operand(left.Source!, left.AdaptedType ?? left.ParameterType);
         this.arguments.Add(Builds(right.Source!) ? this.Secure(view, left.Source!) : view);
         view = this.Operand(right.Source!, right.AdaptedType ?? right.ParameterType);
-        this.arguments[start] = this.Inspected(this.Follow(this.arguments[start].Place, 16, self), node);
-        this.arguments.Add(this.Inspected(this.Follow(view.Place, 16, self), node));
+        this.arguments[start] = this.Inspected(this.Follow(this.arguments[start].Place, self), node);
+        this.arguments.Add(this.Inspected(this.Follow(view.Place, self), node));
         var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.
         var mode = relation is MirBinaryOp.Gt or MirBinaryOp.Ge ? ComparisonMode.Reversed : ComparisonMode.Operator;
         var subst = compilation.Types.Synthesized(requirement, self, contract.Type!);

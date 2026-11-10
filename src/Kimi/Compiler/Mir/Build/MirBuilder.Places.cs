@@ -72,14 +72,25 @@ internal sealed partial class MirBuilder
         => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, MirCases.Binder(this.body, this.body.TypeOf(place)))
             : this.body.Project(place, MirProjectionKind.Deref, 0);
 
-    // SPEC 3.4.3, 13.5.5: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type, which
-    // Binding names as the body's premises make it (SPEC 8.2.3: MirTypes.Agrees).
-    private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
+    // SPEC 3.4.3, 13.5.5: the Place below the layers Binding counted for a consumer (a PlaceShape's Layers, a Pattern position's
+    // ImplicitFollows, an adaptation's one).
+    private MirPlace Follow(MirPlace place, int count)
     {
-        for (; count > 0 && !(target is not null && MirTypes.Agrees(this.body, target, this.body.TypeOf(place))) && TyCtxt.Layer(
-            this.body.TypeOf(place),
-            out _,
-            out _) is var kind and not HirPlaceKind.Value; count--)
+        for (; count > 0 && TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value; count--)
+        {
+            place = this.Layer(place, kind);
+        }
+
+        return place;
+    }
+
+    // SPEC 3.4.3, 13.5.5: the Place of the target Type Binding names for a consumer, below the layers selection follows implicitly, or, no
+    // target named, the value Place below every layer (TyCtxt.Layer's Value). Each step descends into a part of the Place's Type, so the
+    // walk ends within the Type's height (IMPL A.4) and needs no count.
+    private MirPlace Follow(MirPlace place, BoundType? target = null)
+    {
+        while (!(target is not null && MirTypes.Agrees(this.body, target, this.body.TypeOf(place))) &&
+            TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value)
         {
             place = this.Layer(place, kind);
         }
@@ -115,7 +126,7 @@ internal sealed partial class MirBuilder
             return this.Static(property, node);
         }
 
-        return receiver is { } place ? this.Field(this.Follow(place, 16), property, node) : this.Unsupported(node);
+        return receiver is { } place ? this.Field(this.Follow(place), property, node) : this.Unsupported(node);
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
@@ -137,7 +148,7 @@ internal sealed partial class MirBuilder
             index--;
         }
 
-        return index < 0 ? null : this.body.Project(this.Follow(new(this.receiver), 16), MirProjectionKind.Field, index);
+        return index < 0 ? null : this.body.Project(this.Follow(new MirPlace(this.receiver)), MirProjectionKind.Field, index);
     }
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its

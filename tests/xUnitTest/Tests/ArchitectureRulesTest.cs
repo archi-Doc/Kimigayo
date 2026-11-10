@@ -201,6 +201,13 @@ public class ArchitectureRulesTest
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
     [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
+    // PLAN G647: a walk of one Type's parts has no count of its own, so a depth or count compared with a literal stays at the census's
+    // sites, over the whole compiler (Mir/Build and Mir/Analysis are in scope and have none): Origin-term nesting (FunctionTypes'
+    // inner Origin, TypeRelations' InstanceOutlives), syntax-path walks (ElementAccess, PlaceAuthority, PlaceOrigins, OriginDiagnostics'
+    // RootLocal, Diagnostics' `+` chain), a record path's length (TypeRelations.Walk) and sizes that bound no walk (Attributes' stackalloc
+    // threshold, SlotSet's word count, TemporaryKotoList's inline slots, a Markdown heading level). A walk across a declaration names its
+    // bound, which this pattern does not read.
+    [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=1;Binding/Binding.PlaceAuthority.cs=2;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;Documentation/DocumentationMarkdownDocument.Items.cs=1;ElementAccess.cs=6;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
