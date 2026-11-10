@@ -216,9 +216,9 @@ fn same @128
       StorageDead(_5) @140 s1
       StorageDead(_4) @139 s1
       StorageDead(_3) @138 s1
-      drop _2 -> bb10 @134
+      drop _2 -> bb10 [keep] @134
   bb10:
-      drop _1 -> bb11 @133
+      drop _1 -> bb11 [keep] @133
   bb11:
       unreachable @136
 fn apply @141
