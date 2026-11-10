@@ -17,48 +17,65 @@ public sealed partial class Binding
     // incomplete or the projection has an abstract part (a use scope may carry a premise the declaration's lacks: `T is PrimitiveInteger`
     // for `Wrapping<T>.Output`), else none, final, whatever the reason: the projection names no Type, and the records are the
     // declarations' and the use's (SPEC 23.1.2). No subject-kind test decides pending or none.
+    // W5 (ContractSolver's Completion): Complete only where no route applies (each route's static gate, no chain path naming the
+    // receiver, no registered conformance for it), Provisional past any gate.
     private ProjectionOutcome ProjectionSpecification(BoundType projection, BindingScope scope)
     {
-        if ((this.BuiltinArithmeticOutput(projection, scope) ?? this.FixedArrayIteratorType(projection)) is { } builtin)
+        var builtin = this.BuiltinArithmeticOutput(projection, scope, out var completion);
+        if (builtin is null)
         {
-            return new(builtin, null, false, null, default);
+            builtin = this.FixedArrayIteratorType(projection, out var iterator);
+            completion = Meet(completion, iterator);
+        }
+
+        if (builtin is not null)
+        {
+            return new(builtin, null, false, null, default, completion);
         }
 
         var subject = projection.Components[0];
         var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
-        if (this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier, out var pending) is not { } resolved)
+        var resolved = this.ResolveAssociated(subject, projection.Symbol!, scope, qualifier);
+        completion = Meet(completion, resolved.Completion);
+        if (resolved.Type is not { } binding)
         {
             // A projection is itself abstract.
-            return new(null, null, pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }, null, default);
+            return resolved with { Pending = resolved.Pending || subject.HasAbstractPart || qualifier is { HasAbstractPart: true }, Completion = completion };
         }
 
-        var specified = this.SubstituteStoredOrigins(resolved.Binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments);
-        return new(specified, subject, false, resolved.Path, resolved.Identity);
+        return resolved with { Type = this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments) };
     }
 
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
     // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
     // conditions the receiver meets must agree (PathsAgree), else none. The path the binding comes from is returned with it, its Scope the
-    // conformance scope (SPEC 8.8.2, D + P) the binding was formed in, and the path's associated identity it binds.
-    private (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? ResolveAssociated(
-        BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier, out bool pending)
+    // conformance scope (SPEC 8.8.2, D + P) the binding was formed in, and the path's associated identity it binds, as the outcome's
+    // Type (the binding in the subject declaration's terms), Path and Identity. W5: Complete when no chain path names the receiver and no
+    // conformance is registered for it by declaration.
+    private ProjectionOutcome ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier)
     {
-        pending = this.AssociatedEvidencePending;
+        var pending = this.AssociatedEvidencePending;
+        var named = false;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
-                this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol))
             {
-                return this.ResolveAssociated(path, selected, out pending) is { } found ? (found, path, selected) : null;
+                named = true;
+                if (this.AssociatedInPath(path, receiver, associated, qualifier, scope) is { } selected)
+                {
+                    var found = this.ResolveAssociated(path, selected, out pending);
+                    return found is null ? new(null, null, pending, null, default, Completion.Provisional) : new(found, receiver, false, path, selected, Completion.Provisional);
+                }
             }
         }
 
+        var constructed = qualifier is { Kind: BoundTypeKind.Constructed };
         if (receiver.Symbol is not { } owner ||
-            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
-                : this.ConformanceByReference(owner, receiver, associated, qualifier, scope)) is not { } identity)
+            (!constructed ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _)
+                : this.ConformanceByReference(owner, receiver, associated, qualifier!, scope)) is not { } identity)
         {
-            return null;
+            return new(null, null, pending, null, default, named || (receiver.Symbol is not null && constructed) ? Completion.Provisional : Completion.Complete);
         }
 
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? available = null;
@@ -70,7 +87,7 @@ public sealed partial class Binding
             var condition = this.ProveConformanceConditions(path, receiver, scope);
             if (condition == ConstraintProof.Error)
             {
-                return null;
+                return new(null, null, pending, null, default, Completion.Provisional);
             }
 
             if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier, scope) is not { } selected)
@@ -88,7 +105,7 @@ public sealed partial class Binding
             {
                 if (available is { } agreed && !this.PathsAgree(agreed.Binding, binding, receiver, scope))
                 {
-                    return null;
+                    return new(null, null, pending, null, default, Completion.Provisional);
                 }
 
                 available = (binding, path, selected);
@@ -100,7 +117,8 @@ public sealed partial class Binding
 
         // Explicit header metadata may normalize a common binding before witnesses are ready.
         // The separately retained projection obligation must still prove conformance at finalization.
-        return available ?? (conflicting ? null : unproven);
+        return (available ?? (conflicting ? null : unproven)) is { } chosen ? new(chosen.Binding, receiver, false, chosen.Path, chosen.Identity, Completion.Provisional)
+            : new(null, null, pending, null, default, Completion.Provisional);
     }
 
     // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are
@@ -142,6 +160,6 @@ public sealed partial class Binding
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
     // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a
-    // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none.
-    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity);
+    // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none; with its Completion (W5).
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity, Completion Completion);
 }

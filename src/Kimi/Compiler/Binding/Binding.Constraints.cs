@@ -601,7 +601,7 @@ public sealed partial class Binding
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
-        var normalized = this.NormalizeProofConstraint(proposition, scope);
+        var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
         if (evidence.Invalid)
         {
@@ -638,8 +638,11 @@ public sealed partial class Binding
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
 
-    private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope)
+    // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
+    // Type (CallableContractType) is Provisional.
+    private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
+        completion = Completion.Complete;
         if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
         {
             return constraint;
@@ -647,13 +650,14 @@ public sealed partial class Binding
 
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.NormalizeProofConstraint(constraint.Left!, scope));
+            return this.NegateConstraint(this.NormalizeProofConstraint(constraint.Left!, scope, out completion));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            var left = this.NormalizeProofConstraint(constraint.Left!, scope);
-            var right = this.NormalizeProofConstraint(constraint.Right!, scope);
+            var left = this.NormalizeProofConstraint(constraint.Left!, scope, out var a);
+            var right = this.NormalizeProofConstraint(constraint.Right!, scope, out var b);
+            completion = Meet(a, b);
             return ReferenceEquals(left, constraint.Left) && ReferenceEquals(right, constraint.Right) ? constraint : this.InternConstraint(new(constraint.Kind, left: left, right: right));
         }
 
@@ -662,21 +666,31 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.NormalizeProofType(constraint.Subject, scope);
-        var required = constraint.RequiredType is { } type ? constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(type, scope) : this.NormalizeProofType(type, scope) : null;
+        var subject = this.NormalizeProofType(constraint.Subject, scope, out completion);
+        var required = constraint.RequiredType;
+        if (required is not null)
+        {
+            var part = Completion.Provisional;
+            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.NormalizeProofType(required, scope, out part);
+            completion = Meet(completion, part);
+        }
+
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
-    private BoundType NormalizeProofType(BoundType type, BindingScope scope)
+    private BoundType NormalizeProofType(BoundType type, BindingScope scope, out Completion completion)
     {
+        completion = Completion.Complete;
         if (type.ContainsParameter && HasParameterIdentity(scope))
         {
-            type = this.SubstituteIdentity(type, scope, parametersOnly: true);
+            type = this.SubstituteIdentity(type, scope, parametersOnly: true, out completion);
         }
 
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
-            return this.ContractType(type, scope);
+            var projected = this.ContractTypeAnswer(type, scope);
+            completion = Meet(completion, projected.Completion);
+            return projected.Image;
         }
 
         // Keep symbolic subjects symbolic: share facts within a parameter equivalence class, but do not turn a
@@ -693,7 +707,8 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.NormalizeProofType(type.Components[i], scope);
+                components[i] = this.NormalizeProofType(type.Components[i], scope, out var part);
+                completion = Meet(completion, part);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 

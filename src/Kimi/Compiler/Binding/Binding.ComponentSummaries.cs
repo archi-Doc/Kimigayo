@@ -434,7 +434,7 @@ public sealed partial class Binding
             return;
         }
 
-        var resolved = this.ContractType(projection, this.ConstraintScope(summary.Declaration.Declaration), out var hops);
+        (var resolved, var hops, _) = this.ContractTypeAnswer(projection, this.ConstraintScope(summary.Declaration.Declaration));
         if (resolved.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(resolved, projection))
         {
             summary.Unresolved = true; // No conformance binding resolves it: Unknown, as an unresolved stored Type is.

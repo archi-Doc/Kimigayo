@@ -756,6 +756,11 @@ internal sealed class BindingScope(Koto owner)
     // The number of changes of this scope's link.
     internal int LinkVersion { get; private set; }
 
+    // The view this scope last denoted (ContractSolver.SerialOf): its serial and the chain state it named.
+    internal int ViewSerial { get; set; }
+
+    internal (int Environment, int Link, int Parent) ViewState { get; set; }
+
     internal FunctionKoto? Function { get; set; }
 
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);

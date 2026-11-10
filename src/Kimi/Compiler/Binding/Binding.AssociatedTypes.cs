@@ -82,7 +82,7 @@ public sealed partial class Binding
             return null;
         }
 
-        reference = context is null ? reference : this.SubstituteContractReference(reference, context);
+        reference = context is null ? reference : this.SubstituteContractReference(reference, context, out _);
         var declaration = reference.Symbol!;
         return new(associated, ReferenceEquals(reference, this.SelfType(declaration)) ? declaration : this.BoundContractReference(reference));
     }
@@ -499,7 +499,7 @@ public sealed partial class Binding
             else if (constraint is { Kind: ConstraintKind.TypeIdentity, RequiredType: { } required } &&
                 this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.associatedBindings.TryGetValue((path, identity), out var binding))
             {
-                required = context is null ? required : this.SubstituteContractReference(required, context);
+                required = context is null ? required : this.SubstituteContractReference(required, context, out _);
                 if (!binding.Candidates.Contains(required))
                 {
                     binding.Candidates.Add(required);
