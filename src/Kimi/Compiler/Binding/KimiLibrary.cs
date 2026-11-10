@@ -190,6 +190,18 @@ public sealed partial class KimiLibrary
     /// table's String row selects; string gains no members from it.</summary>
     internal DeclarationContainerKoto? StringWitnessMembers { get; private set; }
 
+    /// <summary>Gets the internal Kimi group whose receiver function is bool's built-in formatting body (SPEC 22.10.2), which the witness
+    /// table's BoolFormat row selects; bool gains no members from it.</summary>
+    internal DeclarationContainerKoto? BoolFormatMembers { get; private set; }
+
+    /// <summary>Gets the internal Kimi group whose receiver function is char's built-in formatting body (SPEC 22.10.2), which the witness
+    /// table's CharFormat row selects; char gains no members from it.</summary>
+    internal DeclarationContainerKoto? CharFormatMembers { get; private set; }
+
+    /// <summary>Gets the internal Kimi group whose receiver function is Unit's built-in formatting body (SPEC 22.10.2), which the witness
+    /// table's UnitFormat row selects; Unit gains no members from it.</summary>
+    internal DeclarationContainerKoto? UnitFormatMembers { get; private set; }
+
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
@@ -204,6 +216,9 @@ public sealed partial class KimiLibrary
         WitnessMembers.FixedArray => this.FixedArrayMembers,
         WitnessMembers.IntegerPosition => this.IntegerPositionMembers,
         WitnessMembers.String => this.StringWitnessMembers,
+        WitnessMembers.BoolFormat => this.BoolFormatMembers,
+        WitnessMembers.CharFormat => this.CharFormatMembers,
+        WitnessMembers.UnitFormat => this.UnitFormatMembers,
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
@@ -409,6 +424,9 @@ public sealed partial class KimiLibrary
         this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
         this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
+        this.BoolFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "BoolFormat", false) as DeclarationContainerKoto;
+        this.CharFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "CharFormat", false) as DeclarationContainerKoto;
+        this.UnitFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "UnitFormat", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
     }
 

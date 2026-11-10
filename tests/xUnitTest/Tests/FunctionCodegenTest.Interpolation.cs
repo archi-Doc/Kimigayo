@@ -127,7 +127,12 @@ public sealed partial class FunctionCodegenTest
         var shims = ShimsOf(ir, text);
         foreach (var write in FunctionsOf(ir, c, "write"))
         {
-            var shim = Assert.Single(CallsOf(write), x => shims.Contains(x.Callee!)).Callee!;
+            // ipShow(true)'s instance calls BoolFormat's body, no shim (R8-S2a); it is no step of these functions.
+            if (CallsOf(write).SingleOrDefault(x => shims.Contains(x.Callee!))?.Callee is not { } shim)
+            {
+                continue;
+            }
+
             routines[write] = "write " + Regex.Match(Assert.Single(CallsOf(shim)).Shape, @", i32 (\d+), ").Groups[1].Value;
         }
 
