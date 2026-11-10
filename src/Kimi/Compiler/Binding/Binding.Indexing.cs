@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings), its scopes
 //   created and its symbols declared (containers, functions, parameters, locals, generic and length parameters, enum cases,
 //   pattern bindings and guard candidates); a test function the build does not include is resolved without indexing its signature
-//   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes.
+//   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes; a valid one is still declared, so its
+//   declaration is judged in every build (SPEC 6.7.2, 18.6), and access keeps it from every product candidate set.
 // - Inputs: the numbered source trees and the restored library (Library.Restore); the scopes and symbols kept across passes.
 // - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and the failures recorded in this file: Duplicate (Declare,
 //   a repeated Semantics parameter), InvalidTypeFormation (a second self parameter, a property with neither storage nor getter),
@@ -213,11 +214,19 @@ public sealed partial class Binding
                 test.BindingState = BindingState.Resolved;
                 if (!TestDefinition.IsValidSyntax(test))
                 {
+                    // Its signature has names to bind, so it stays undeclared: its declaration's own records appear only in a Test
+                    // build (PLAN G660's records-only part).
                     binding.IndexInvalidTestAttribute(marker);
                     binding.InvalidateAttributeTarget(marker);
                 }
                 else
                 {
+                    // A valid definition's header holds no name to bind: its declaration is declared and judged like any function's
+                    // (kind conflicts, signatures, inherited Names, virtual eligibility, protected placement); access keeps it from every
+                    // product candidate set.
+                    this.DeclareFunction(test);
+                    binding.GetScope(test, this.Scope);
+                    binding.nodes.Add(test);
                     for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
                     {
                         if (!ReferenceEquals(attribute, marker))
@@ -411,32 +420,7 @@ public sealed partial class Binding
 
                     if (!function.IsGenerated && !function.IsAnonymous)
                     {
-                        var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
-                        var conditional = this.Scope.Owner as SyntaxFormKoto;
-                        if (IsRootMain(function))
-                        {
-                            memberScope = binding.ModuleScope(node);
-                        }
-
-                        var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
-                        symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-                        // The members of the fixed array and the integer Position witness are receiver functions of internal
-                        // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
-                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
-                        {
-                            for (var p = 0; p < function.Parameters.Count; p++)
-                            {
-                                if (function.Parameters[p].InternalName == "self")
-                                {
-                                    if (symbol.ReceiverIndex >= 0)
-                                    {
-                                        binding.Fail(function, BindingFailure.InvalidTypeFormation);
-                                    }
-
-                                    symbol.ReceiverIndex = p;
-                                }
-                            }
-                        }
+                        this.DeclareFunction(function);
                     }
 
                     this.Scope = binding.GetScope(node, this.Scope);
@@ -546,6 +530,37 @@ public sealed partial class Binding
             if (accessor.StorageSymbol is { } storage)
             {
                 storage.Type = null;
+            }
+        }
+
+        // A named function's symbol in its member scope, an excluded test's included (G660): the declaration is judged in every build.
+        private void DeclareFunction(FunctionKoto function)
+        {
+            var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
+            var conditional = this.Scope.Owner as SyntaxFormKoto;
+            if (IsRootMain(function))
+            {
+                memberScope = binding.ModuleScope(function);
+            }
+
+            var symbol = binding.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
+            symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
+            // The members of the fixed array and the integer Position witness are receiver functions of internal
+            // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
+            if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
+            {
+                for (var p = 0; p < function.Parameters.Count; p++)
+                {
+                    if (function.Parameters[p].InternalName == "self")
+                    {
+                        if (symbol.ReceiverIndex >= 0)
+                        {
+                            binding.Fail(function, BindingFailure.InvalidTypeFormation);
+                        }
+
+                        symbol.ReceiverIndex = p;
+                    }
+                }
             }
         }
     }

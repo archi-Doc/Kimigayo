@@ -88,6 +88,34 @@ public sealed partial class MirBuildTest
         bool Indexes(MirPlace place) => place.Root == values && body.Projections[place.Projection].Kind == MirProjectionKind.Index;
     }
 
+    // SPEC 14.2.4, 5.2.3, 5.2, 4.7.4 (PLAN G670): a discarded Take of a raw Place, or of a Field or element of one, transfers nothing: the
+    // Place's raw address-of designates it (an element's position checked where it is formed) and its Drop, built where its Type may need
+    // drop, destroys the value in that Place (fail-before: a Move into a temp and the temp's Drop, so `drop`'s self was the temp). A
+    // local's Take still moves into a temp. A default's copy keeps the designation where it removes the Drop of a Type without drop, here
+    // in the instance T = i32 (the review's X16: its bounds check). Each row: the body's Drop Places | its raw address-of Places.
+    [Fact]
+    public void ADiscardedRawTakeDestroysThePlaceItself()
+    {
+        const string Source = "struct Res\n    drop => ()\nfunc whole(p: raw/Res)\n    unsafe => _ = (*p)@move\n" +
+            "func part(p: raw/(i64, Res))\n    unsafe => _ = ((*p).1)@move\nfunc element(p: raw/[2 of i32], i: isize)\n    unsafe => _ = (*p)[i]@move\n" +
+            "func local(r: Res)\n    _ = r@move\nfunc touch<T>(p: raw/[2 of T], i: isize, u: () = do => unsafe => _ = (*p)[i]@move) => ()\n" +
+            "func call(p: raw/[2 of i32]) => touch(p, 5)\n";
+        Assert.Equal("_1* | _1*", Rows(Body(Source, "whole")));
+        Assert.Equal("_1*.1 | _1*.1", Rows(Body(Source, "part")));
+        Assert.Matches(@"^ \| _1\*\?Index\d+$", Rows(Body(Source, "element")));
+        Assert.Matches(@"^_\d+(, _\d+)* \| $", Rows(Body(Source, "local")));
+        Assert.Matches(@"^ \| _\d+\*\*\?Index\d+$", Rows(Body(Source, "call"))); // p through its prepared slot (plan 5.6.2).
+
+        static string Rows(MirBody body)
+        {
+            var drops = body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Drop).Select(x => Steps(body, x.Terminator.Place));
+            var addresses = body.Statements.ToArray()
+                .Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Rvalue.Op == (byte)MirRefKind.Raw)
+                .Select(x => Steps(body, x.Rvalue.Place));
+            return $"{string.Join(", ", drops)} | {string.Join(", ", addresses)}";
+        }
+    }
+
     // SPEC 15.1.3: a fixed-array element at a literal position is projected at the position its index keeps on its own plan row, so the
     // literal's own row, here an Error, is never read.
     [Fact]
@@ -243,6 +271,57 @@ public sealed partial class MirBuildTest
         var dump = text.ToString();
         var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
         Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+    }
+
+    // SPEC 8.2.3, 3.5.1, 13.5.6, 9.6.1 (DECISIONS R8-M9; PLAN G593): a Place whose own Type agrees with the Type Binding names for it only
+    // under the body's identity premises (`uniq/One<T>` against `uniq/One<uniq/Meter during a>`) is Reborrowed and borrowed as it is: the
+    // Reborrow's contract and the Place walks read MirTypes.Agrees, so indexUniq's receiver is a Reborrow at `*_1` (for an argument, a
+    // receiver, or an explicit Type argument's parameter), `one@ref` borrows `_1` itself, under a premise of any Type, and a base's method
+    // borrows the base subobject whose Type agrees (`HBase<T>` against `HBase<i32>`), with no record or finding (fail-before:
+    // InternalInvariant_Kd at the receiver, and a borrow the validator rejects at `one@ref`); a conflict through such a Place is the
+    // analysis' record, as its concrete twin's. Each row: f's parameters, the premise, the statements, a statement of f's MIR and the
+    // module-0 problems.
+    [Theory]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "g(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "one[0].bump()\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "gg<Meter>(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is i32", "let view = one@ref\n    return take(view)", "= &_1: ref/uniq/One<i32>", "")]
+    [InlineData(
+        "one: uniq/One<T>, w: ref/i32 during a",
+        "T is uniq/Meter during a",
+        "let view = one@ref\n    g(one[0])\n    return take(view)",
+        "= &_1: ref/uniq/One<uniq/Meter>",
+        "CallActivationConflict_Kd one[0]|CallActivationConflict_Kd g(one[0])")]
+    [InlineData("x: ref/HLeaf<T>", "T is i32", "return x.read()", "= &(*_1).base1: ref/HBase<i32>", "")]
+    [InlineData("x: uniq/HLeaf<T>", "T is i32", "let p = x.peek()\n    let k = take(p)\n    x.poke()\n    return k", "= &(*_1).base1: ref/HBase<i32>", "")]
+    [InlineData(
+        "x: uniq/HLeaf<T>",
+        "T is i32",
+        "let p = x.peek()\n    x.poke()\n    return take(p)",
+        "= &(*_1).base1: ref/HBase<i32>",
+        "CallActivationConflict_Kd x.poke()")]
+    public void APlaceAgreeingUnderPremisesIsBorrowedAsItIs(string parameters, string premise, string statements, string statement, string problems)
+    {
+        var c = Compile("struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+            "struct One<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n" +
+            "    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            "open struct HBase<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\n    public func read(self) -> i32 => 0\n" +
+            "    public func peek(self) -> ref/T during self => self.v@ref\nstruct HLeaf<T>: HBase<T>\n    public init(v: T): base(v@move) => ()\n" +
+            "    public func poke(self: uniq/Self) => ()\n" +
+            "func g(m: uniq/Meter) => m.bump()\nfunc gg<V>(m: uniq/V) -> () => ()\nfunc take<V>(v: ref/V) -> i32 => 0\n" +
+            $"func f<T>({parameters}) -> i32\n    {premise}\n    {statements}\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        Assert.Contains(statement, dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], StringComparison.Ordinal);
     }
 
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one

@@ -91,6 +91,40 @@ public class ProductTestMembershipTest
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }
 
+    // SPEC 6.7.2, 18.6: a Product build excludes a test's body, not its declaration (PLAN G660: dev's Product build accepted the eight
+    // Binding rows). Each marked declaration has the same records in either build mode, and its unmarked twin has its own.
+    [Theory]
+    [InlineData("group G\n    #Test\n    virtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
+    [InlineData("open struct B\n    var x: i32\n    #Test\n    public virtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
+    [InlineData("#Test\nvirtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
+    [InlineData("group G\n    func t() => ()\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("group G\n    #Test\n    protected func t() => ()", "ProtectedPlacement_Kd", "ProtectedPlacement_Kd")]
+    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("enum E\n    T\n    #Test\n    func T() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("struct S\n    var t: i32\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("group G\n    #Test\n    static func t() => ()", "MisplacedSyntax_Kd", "MisplacedSyntax_Kd")]
+    [InlineData("group G\n    #Test\n    override func t() => ()", "InvalidVirtualDeclaration_Kd MisplacedSyntax_Kd", "InvalidVirtualDeclaration_Kd")]
+    public void ATestDeclarationIsJudgedInEitherBuildMode(string source, string codes, string twinCodes)
+    {
+        var twin = source.Replace("    #Test\n", string.Empty).Replace("#Test\n", string.Empty);
+        var product = DeclarationErrors(source, false);
+        Assert.Equal(codes, string.Join(' ', product.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+        Assert.Equal(product.Select(static x => (x.Code, x.Span)), DeclarationErrors(source, true).Select(static x => (x.Code, x.Span)));
+        Assert.Equal(twinCodes, string.Join(' ', DeclarationErrors(twin, false).Select(static x => x.Code).Order(StringComparer.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData("group G\n    #Test\n    func t() => ()")]
+    [InlineData("#Test\nfunc t() => ()")]
+    [InlineData("struct S\n    var x: i32\n    #Test\n    func t() => ()")]
+    [InlineData("open struct B\n    var x: i32\n    #Test\n    public func t() => ()")]
+    [InlineData("group Outer\n    func t() -> i32 => 1\n    group Inner\n        #Test\n        func t() => ()\n        func use() -> i32 => t()")] // SPEC 9.5: access filters the test.
+    public void AValidTestDeclarationIsAcceptedInEitherBuildMode(string source)
+    {
+        Assert.Empty(DeclarationErrors(source, false));
+        Assert.Empty(DeclarationErrors(source, true));
+    }
+
     [Fact]
     public void TestMembershipDoesNotRecognizeOtherMarkers()
     {
@@ -159,6 +193,14 @@ public class ProductTestMembershipTest
 
         Analyze();
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
+    }
+
+    private static TestDiagnostic[] DeclarationErrors(string source, bool testBuild)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        c.IsTestBuild = testBuild;
+        c.Bind();
+        return CompilationTestHelper.BindingErrors(c);
     }
 
     private static FunctionKoto? FindFunction(Koto node, string name)
