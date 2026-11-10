@@ -52,9 +52,19 @@ public class DirectCallFunctionValueBindingTest
     // library's) and after its group's selection; the positions are the unsafe rows' (the complement of the callee).
     [Theory]
     [InlineData("unsafe func raw() -> i32 => 1\nlet g = raw", "DirectCallFunctionValue_Kd", "raw")]
-    [InlineData("unsafe func raw<T>(value: T) -> T => value@move\nfunc raw(value: i32, other: i32) -> i32 => value\nlet g = raw<i32>", "DirectCallFunctionValue_Kd", "raw<i32>")]
-    [InlineData("unsafe func raw(value: i32) -> i32 => value\nfunc raw(value: bool) -> bool => value\nlet g: (i32) -> i32 = raw", "DirectCallFunctionValue_Kd", "raw")]
-    [InlineData("contract Reader\n    unsafe func read(self: ref/Self) -> i32\nfunc use<T>(value: ref/T) -> i32\n    T is Reader\n    let f = T.read\n    return 0", "DirectCallFunctionValue_Kd", "T.read")]
+    [InlineData(
+        "unsafe func raw<T>(value: T) -> T => value@move\nfunc raw(value: i32, other: i32) -> i32 => value\nlet g = raw<i32>",
+        "DirectCallFunctionValue_Kd",
+        "raw<i32>")]
+    [InlineData(
+        "unsafe func raw(value: i32) -> i32 => value\nfunc raw(value: bool) -> bool => value\nlet g: (i32) -> i32 = raw",
+        "DirectCallFunctionValue_Kd",
+        "raw")]
+    [InlineData(
+        "contract Reader\n    unsafe func read(self: ref/Self) -> i32\nfunc use<T>(value: ref/T) -> i32\n    T is Reader\n" +
+        "    let f = T.read\n    return 0",
+        "DirectCallFunctionValue_Kd",
+        "T.read")]
     [InlineData("unsafe func raw(value: i32) -> i32 => value\nfunc raw(value: bool) -> bool => value\nlet g = raw", "AmbiguousBinding_Kd", "raw")]
     [InlineData(Native + "let f = Native.value", "DirectCallFunctionValue_Kd", "Native.value")]
     [InlineData(Native + "    public func get() -> u32\n        let f = value\n        return f()", "DirectCallFunctionValue_Kd", "value")]
@@ -63,7 +73,11 @@ public class DirectCallFunctionValueBindingTest
     [InlineData(Clock + "    public func twice() -> u32\n        let f = Self.now\n        return f()", "DirectCallFunctionValue_Kd", "Self.now")]
     [InlineData("let f = Kimi.Windows.queryPerformanceCounter", "DirectCallFunctionValue_Kd", "Kimi.Windows.queryPerformanceCounter")]
     [InlineData(Native + "    public func value(seed: u32) -> u32 => seed\nlet g: () -> u32 = Native.value", "DirectCallFunctionValue_Kd", "Native.value")]
-    [InlineData(Native + "    public func value(seed: u32) -> u32 => seed\nfunc run<F>(action: F) -> u32\n    F is Callable<() -> u32>\n    return action()\nlet n = run(Native.value)", "DirectCallFunctionValue_Kd", "Native.value")]
+    [InlineData(
+        Native + "    public func value(seed: u32) -> u32 => seed\nfunc run<F>(action: F) -> u32\n    F is Callable<() -> u32>\n" +
+        "    return action()\nlet n = run(Native.value)",
+        "DirectCallFunctionValue_Kd",
+        "Native.value")]
     public void TheReferenceIsTheOneRecord(string source, string code, string text)
     {
         var c = MinimalEmissionTest.Analyze(source);

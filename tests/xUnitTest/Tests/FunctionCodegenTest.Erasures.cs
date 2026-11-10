@@ -166,7 +166,8 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Analyze(
             "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
-            "    public func now() -> u32\nfunc erased<C>() -> () -> u32\n    C is Clock\n    C is Owned\n    return C.now\nfunc h() -> () -> u32 => erased<Win>()\n",
+            "    public func now() -> u32\nfunc erased<C>() -> () -> u32\n    C is Clock\n    C is Owned\n    return C.now\n" +
+            "func h() -> () -> u32 => erased<Win>()\n",
             OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
