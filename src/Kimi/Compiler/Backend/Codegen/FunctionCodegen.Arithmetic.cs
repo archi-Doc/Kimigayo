@@ -123,7 +123,7 @@ internal sealed partial class FunctionCodegen
         return type.IsFloatingPoint ? 4 : 1;
     }
 
-    // The row of a MIR operator, a statement's or an arithmetic shim's (BuiltinArithmetic): MirBinaryOp's members, then MirUnaryOp's.
+    // The row of a MIR operator, a statement's or an arithmetic shim's (MirTypes.ArithmeticOperation): MirBinaryOp's members, then MirUnaryOp's.
     private static int RowOf(MirRvalueKind kind, byte op) => (kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + op;
 
     // The table, whose rows follow the operator enums' order with an entry per column; a row or an entry missing is a broken contract.
@@ -186,9 +186,8 @@ internal sealed partial class FunctionCodegen
         var check = proven ? Check.None : entry.Check;
         if (entry.Operator is null)
         {
-            // No entry: an operator Binding admits on no operand of this terminal Type (a raw pointer's ordering, product, negation or
-            // bitwise operator, a floating-point remainder, bitwise or shift operator, a Type outside the operator's domain), so no
-            // accepted program reaches it: a broken contract (DECISIONS R5-M143).
+            // No entry: a Type outside the operator's domain (Column, by MirTypes.Operates, which MirValidator reads), so no accepted
+            // program reaches it: a broken contract (DECISIONS R5-M143).
             this.Report(DiagnosticCode.InternalInvariant_Kd, source);
             return null;
         }

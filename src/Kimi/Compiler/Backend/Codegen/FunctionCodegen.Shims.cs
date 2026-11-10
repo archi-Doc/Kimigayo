@@ -15,7 +15,7 @@ namespace Kimi.Compiler.Backend;
 //   each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
 //   layer's referent; a Builtin leaf through the operator table's column of its Type under the item's mode (Leaf); any other part its
 //   target's run (Witness: a comparison item, a Mapping item or a witness body, its virtual slot included) on the two part addresses.
-// - BuiltinArithmetic: its Contract's MIR operator (BuiltinArithmetic, SPEC 13.3.3) through the operator table's row, as a statement's, on
+// - BuiltinArithmetic: its Contract's MIR operator (MirTypes.ArithmeticOperation, SPEC 13.3.3) through the operator table's row, as a statement's, on
 //   the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // - BuiltinFormat: the built-in formatting witness, its parameters forwarded to P1d's BuiltinFormat routine with its Self's kind (Format).
 // A node the collector refuses (a None leaf, no node) is its record at the item's admission, which stops generation; an arithmetic
@@ -170,7 +170,6 @@ internal sealed partial class FunctionCodegen
     // (the row's Reflexive). Null after a record.
     private Value? Leaf(BoundType type, KimiDeclarationId? contract, ComparisonMode mode, Value left, Value right)
     {
-        var column = Column(MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Eq, type); // The Types with built-in equality, every Builtin leaf's.
         var equality = contract == KimiDeclarationId.Equatable;
         if (this.Laid(type) is not { } lowering)
         {
@@ -179,8 +178,8 @@ internal sealed partial class FunctionCodegen
 
         var a = this.Loaded(type, lowering, left);
         var b = this.Loaded(type, lowering, right);
-        if (this.Apply((int)(equality ? MirBinaryOp.Eq : MirBinaryOp.Gt), column, a, b, proven: false, default) is not { } first ||
-            (equality ? first : this.Apply((int)MirBinaryOp.Lt, column, a, b, proven: false, default)) is not { } less)
+        if (this.LeafOperator(equality ? MirBinaryOp.Eq : MirBinaryOp.Gt, type, a, b) is not { } first ||
+            (equality ? first : this.LeafOperator(MirBinaryOp.Lt, type, a, b)) is not { } less)
         {
             return null; // Recorded.
         }
@@ -190,8 +189,7 @@ internal sealed partial class FunctionCodegen
             return equality ? first : this.Ordered(first, less); // IEEE equality; the mapping's order, which no float has (SPEC 13.4.1).
         }
 
-        if (this.Apply((int)MirBinaryOp.Ne, column, a, a, proven: false, default) is not { } leftNaN ||
-            this.Apply((int)MirBinaryOp.Ne, column, b, b, proven: false, default) is not { } rightNaN)
+        if (this.LeafOperator(MirBinaryOp.Ne, type, a, a) is not { } leftNaN || this.LeafOperator(MirBinaryOp.Ne, type, b, b) is not { } rightNaN)
         {
             return null; // Recorded.
         }
@@ -205,6 +203,11 @@ internal sealed partial class FunctionCodegen
         return mode == ComparisonMode.Operator ? this.Ordered(this.Combine("or", "i1", first, unordered), less)
             : this.Ordered(first, this.Combine("or", "i1", less, unordered));
     }
+
+    // A Builtin leaf's comparison operator at its operand Type's column for that operator, whose domain it checks (Column; -1 outside it,
+    // which Apply reports).
+    private Value? LeafOperator(MirBinaryOp op, BoundType type, in Computed left, in Computed right)
+        => this.Apply((int)op, Column(MirRvalueKind.BinaryOp, (byte)op, type), left, right, proven: false, default);
 
     // compare's i32 of a greater and a less bit: the greater's zext less the less's.
     private Value Ordered(Value greater, Value less)
@@ -233,7 +236,7 @@ internal sealed partial class FunctionCodegen
         return this.CallWitness(run, [left, right], null, site, out var value) ? value : null;
     }
 
-    // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (BuiltinArithmetic) through the operator
+    // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (MirTypes.ArithmeticOperation) through the operator
     // table's row (RowOf), on its loaded operands (a unary one's on both sides), with its check, which Aborts at the location the shim
     // received (Apply, Location).
     private Value? Arithmetic(BindingSymbol contract, BoundType self)
@@ -243,7 +246,7 @@ internal sealed partial class FunctionCodegen
             return null; // A broken contract, recorded.
         }
 
-        var (kind, op) = BuiltinArithmetic.Operation(contract.LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(contract.LibraryDeclaration);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
         return this.Apply(RowOf(kind, op), Column(kind, op, self), left, right, proven: false, default);

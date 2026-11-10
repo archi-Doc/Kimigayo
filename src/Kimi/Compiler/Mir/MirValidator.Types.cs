@@ -143,7 +143,7 @@ internal sealed partial class MirValidator
         // SPEC 13.2-13.4, 5.3, 8.2.3: an operator rvalue's operation takes its operand at its premised terminal (PremisedTerminal; the
         // Backend's column reads the instance's terminal too), the right one's where the left is the Never value, whose unknown Type takes
         // it: the operator table's domain (MirTypes.Operates, a Never terminal's comparison included; a string's comparison is its library
-        // witness's, R8-S1e-b), an abstract operand's or Wrapping over one's on Binding's proof.
+        // witness's, R8-S1e-b), an abstract operand's or Wrapping over one's on Binding's proof per group.
         private readonly bool Operates(in MirRvalue rvalue, BoundType? first, BoundType? second)
             => (this.PremisedTerminal(first) ?? this.PremisedTerminal(second)) is not { } type || MirTypes.Operates(rvalue.Kind, rvalue.Op, type);
 
