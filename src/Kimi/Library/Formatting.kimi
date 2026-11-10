@@ -108,10 +108,11 @@ public struct Utf8Writer {target}
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
-    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a nested write
-    /// recorded being recorded and returned (SPEC 22.10.1).
+    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
+    /// nested write recorded being recorded and returned (SPEC 22.10.1).
     ///
-    /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller (SPEC 22.5.1).
+    /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
+    ///   (SPEC 22.5.1).
     public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
         T is Utf8Format
         if self.failed => return .Err(BufferFull.init())
