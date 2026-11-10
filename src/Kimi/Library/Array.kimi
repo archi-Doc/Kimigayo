@@ -263,6 +263,7 @@ public struct Array<T>
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
             let length = (*handle).length
             require length > 0 else => return .None
+            // The guard `length > 0` bounds the difference.
             let last = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize
             (*handle).length = last
             return .Some((*handle).data[last]@move)

@@ -568,7 +568,8 @@ internal group StringBytes
 
     /// Returns the sign of the order of the two ranges (SPEC 13.4.1): unsigned bytes, the shorter first on a tie.
     ///
-    /// - safety: each range lies within its pointer's provenance and is readable.
+    /// - safety: `leftLength >= 0` and `rightLength >= 0`, and each range lies within its pointer's provenance and is
+    ///   readable.
     internal unsafe func order(left: raw/u8, leftLength: isize, right: raw/u8, rightLength: isize) -> i32
         unsafe
             let count = if leftLength < rightLength => leftLength else => rightLength

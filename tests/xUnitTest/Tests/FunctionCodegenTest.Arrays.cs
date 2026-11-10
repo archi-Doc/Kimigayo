@@ -131,6 +131,8 @@ public sealed partial class FunctionCodegenTest
             "func abFilter(values: uniq/Array<i32>) => values.removeAll(matching: abLarge)\n" +
             "func abTurn(values: uniq/Array<i32>) => values.reverse()\n" +
             "func abSort(values: uniq/Array<i32>) => values.sort()\n" +
+            "func abOrder(left: ref/i32, right: ref/i32) -> i32 => if left < right => -1 else if left > right => 1 else => 0\n" +
+            "func abSortBy(values: uniq/Array<i32>) => values.sort(by: abOrder)\n" +
             "func abDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n";
         var c = Analyze(Source, OutputKind.Library);
         AssertNoCheckedArithmetic(c, "swapRemove", "truncate", "initRepeating", "pop", "removeAt", "removeAll", "reverse", "sort", "next");
