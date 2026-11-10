@@ -594,14 +594,6 @@ public class ContractBindingTest
     [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
     public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
 
-    // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
-    private static void AssertBindingCodes(string source, string codes)
-    {
-        var c = CompilationTestHelper.ParseSuccess(source);
-        Assert.Equal(codes.Length == 0, c.Bind().IsComplete);
-        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Distinct().Order()));
-    }
-
     // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
     // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).
     // A Contract that requires Copy, as a parent or a clause, never opts a conforming Type in: the Type's own `Self is Copy` does (3.5.2).
@@ -642,7 +634,10 @@ public class ContractBindingTest
     [InlineData("contract C\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "ArithmeticSelection_Kd")]
     [InlineData("contract C: PrimitiveInteger\nfunc same<T>(a: T, b: T) -> bool\n    T is C\n    return a == b", "")]
     [InlineData("contract C: PrimitiveInteger\nfunc zero<T>() -> T\n    T is C\n    return 0", "")]
-    public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes)
+    public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
+    private static void AssertBindingCodes(string source, string codes)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(codes.Length == 0, c.Bind().IsComplete);
