@@ -126,7 +126,7 @@ internal static partial class LegacyRuntimeHelpers
     /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
     internal static int FormatKind(BoundType type)
     {
-        var width = ScalarTypes.Width(type);
+        var width = type.Width;
         if (width != 0)
         {
             return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (type.IsSigned ? 1 : 2);

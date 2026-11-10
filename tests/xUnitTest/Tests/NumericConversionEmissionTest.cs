@@ -36,7 +36,7 @@ public class NumericConversionEmissionTest
     public void EveryPairChecksTruncationAtAdjacentSourceValues(string floating, string integer)
     {
         var signed = integer[0] == 'i';
-        var width = ScalarTypes.Width(BoundType.Primitives[integer]);
+        var width = BoundType.Primitives[integer].Width;
         var upper = BigInteger.One << (width - (signed ? 1 : 0));
         var minimum = signed ? -upper : BigInteger.Zero;
         var maximum = upper - 1;
@@ -85,7 +85,7 @@ public class NumericConversionEmissionTest
     public void IntegerExtremaRoundIntoBothFloatingFormats(string floating, string integer)
     {
         var signed = integer[0] == 'i';
-        var width = ScalarTypes.Width(BoundType.Primitives[integer]);
+        var width = BoundType.Primitives[integer].Width;
         var limit = BigInteger.One << (width - (signed ? 1 : 0));
         var minimum = signed ? -limit : BigInteger.Zero;
         var maximum = limit - 1;
