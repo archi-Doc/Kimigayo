@@ -5935,6 +5935,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rejected.** One loop at each entry (four copies of one rule, C-172 N5); per-key selection with the call's Types (O-109 (b));
     entering a specialization at no substitution (design revision 0: every Container case, review 1 F1).
 
+  - Its Open sentence (a requirement call on a closed Self records no own Type arguments) is closed by R4-M197.
 - **R4-M190 A5's must-facts: a body's direct store of an input's own part where its contract refuses it (PLAN G581-1)** (2026-11-09;
   Middle; Major, an acceptance mover; design review 2 ACCEPT, implementation review ACCEPT after REVISE; the owner's O-110 (a), verbatim
   「O-110 (a)」, approving the vocabulary, and O-103 (a), verbatim 「どちらもaでお願いします」; O-72 (a), O-58 (a), O-62 (a), O-56 (a); commits 45e713ed3
@@ -6094,6 +6095,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     dictionary's order is observable); the width or category from the name's text (G659); one byte encoding both the category and
     the width (each of six category readers would decode it, and the padding absorbs the byte); Layout's integer rows or
     `ScalarCode` derived from `Width`.
+- **R4-M197 A4: a requirement call on a closed Self enters its witness at the call's own Types and lengths (PLAN G663)**
+  (2026-11-10; Middle; Major, records only; design review ACCEPT, implementation reviews ACCEPT; the Front's C-213, the Back's
+  C-216) SPEC 7.2.3, 8.6.3, 15.6.4. A4's Requires item keeps the call's substitution (`MirEffects.Atom.Call`, replacing
+  `Atom.Reference`): its Contract reference, read in the selected view, and the requirement's own Types and lengths.
+  `TyCtxt.Witnesses` (`Binding.Witnesses`) takes the call's substitution (A4 passes it in the view, `TyCtxt.InView`, built in
+  `MirEffects.Terminator`; a requirement no call names passes `Synthesized(requirement, self, reference)`); a Conformance target's
+  instance is the witness under its declaring instance at them, as `TyCtxt.Witness`'s `Conformance` binds them; a built-in target, a
+  library witness, an accessor and a comparison leaf bind no own slot of the requirement and are unchanged. `TyCtxt.Synthesized`'s
+  span form takes the lengths as a required parameter (the Front's C-213; one form with R8-W2 a2's). A summary's atom and a
+  published row's item keep no call: their requirement has no own slot (no library Contract declares a generic requirement); one
+  that had would end in the Limit, never an empty effect.
+  - **Reason.** The witness's parameter-dependent atoms over its own slots composed to null at an instance that bound none: a Limit
+    (`Unsupported_Kd` at the conformance) on valid programs and instead of the conflict on invalid ones.
+  - **Two producers.** The Conformance row builds what `TyCtxt.Witness`'s `Conformance` builds, without Origins (the analyses relate
+    them); `TyCtxtTest.AConformanceWitnessIsGivenItsCallsOwnTypesAndLengths` holds the two equal but for Origins, and A-12 (PLAN
+    G186), which reads `TyCtxt.Witness` with the item's substitution, removes the row with its reader.
+  - **Rejected.** A4 reading `TyCtxt.Witness` now (A-12's unit, not before H11; this entry's item is its input); A4 building the
+    instance from the call's Types itself (Binding's 8.6.3 correspondence decided in a consumer); the MIR builder resolving the
+    witness in the copy (a responsibility moved between phases for one consumer).
+  - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
+    parameter-dependent atom ...").
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -16910,6 +16932,18 @@ R8-M* and R9-M* by the stage of the recording unit.
     bound stated in a comment; an operation with no such bound stays checked and keeps its Abort (SPEC 22.5.1). A caller's input is
     not special: under a dominating guard it wraps. Every guard and every Abort stays where it is. `Formatting.kimi` follows it; the
     remaining sites are PLAN G693.
+  - **Scope (PLAN G693, 2026-11-10; the Back; Q-270):** R8-M2's rule, as R8-M18 amended it, now governs every library body over a
+    runtime representation: the Storage remainders and splits with `Slice.kimi`, the Dictionary slots and growth, `Array.kimi` and
+    `Core.kimi`'s `StringBytes.equal` and `order` write bounded steps in `Wrapping<isize>` with the bound stated (the remainder
+    invariant `position + count`, the slot invariant of `DictionaryStorage`, a closed `Position`/`PositionRange` resolution, `0 <=
+    length <= capacity`, or a dominating guard), in `Formatting.kimi`'s form; a step no invariant or guard bounds keeps its Abort
+    with its reason (the slot stride from the Types' strides). `DictionaryStorage.slotOffset(link, stride)` is the slot rule's one
+    statement beside `slotStride`, `keyAt` and `valueAt` (R8-M8); `compact`'s `position * stride` is its by-index form over packed
+    slots. Bodies that are not over a runtime representation (the range iterators, `FromEnd`, `ClosedRange.tryResolve`,
+    `ResolvedRange.length`) are outside the rule's scope. An RP8 exception until R8-L1 (the owner's O-150 (a), verbatim 「(a) 例外で着地」,
+    2026-11-11): about 935 library nodes raise warm Bind B/A' to 1.034 (Hello), 1.040 (Milestone26) and 1.026 (Strings) against an
+    A'/A spread of 0.996-1.010, the per-compilation rebinding of the library (PLAN G337) that R8-L1 removes; the unit's purpose, the
+    Dictionary kernel at O2, runs 0.61x.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -17470,6 +17504,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Utf8Writer.reserve`), pinned by `FunctionCodegenTest.BufferAndWindowBodiesCheckNoBoundedArithmetic` (no `with.overflow` in
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
 
+  - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
+    O-150 (a)).
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,

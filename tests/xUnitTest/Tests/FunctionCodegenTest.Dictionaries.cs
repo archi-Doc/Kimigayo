@@ -100,6 +100,26 @@ public sealed partial class FunctionCodegenTest
     public void DictionaryProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): a slot's offset (slotOffset), a remainder's count and the capacity arithmetic are bounded by the
+    // slot invariant or a dominating guard, so those bodies check no arithmetic; the slot rule's sums over the Types' strides stay checked.
+    [Fact]
+    public void SlotBodiesCheckNoBoundedArithmetic()
+    {
+        const string Source =
+            "func slPut(d: uniq/Dictionary<i32, i32>, k: i32, v: i32)\n    _ = d.insertOrReplace(k, v)\n" +
+            "func slCut(d: uniq/Dictionary<i32, i32>)\n    _ = d.remove(4)\n" +
+            "func slRead(d: ref/Dictionary<i32, i32>) -> i32 => d[8]\n" +
+            "func slEmpty(d: uniq/Dictionary<i32, i32>) => d.clear()\n" +
+            "func slRoom(d: uniq/Dictionary<i32, i32>) => d.reserve(8)\n" +
+            "func slFit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n" +
+            "func slTotal(d: ref/Dictionary<i32, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d => sum += v\n    return sum\n" +
+            "func slBump(d: uniq/Dictionary<i32, i32>)\n    for (k, v) in d\n        v@follow += 1\n" +
+            "func slDrain(d: Dictionary<i32, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d@move => sum += v\n    return sum\n";
+        var c = Analyze(Source, OutputKind.Library);
+        AssertNoCheckedArithmetic(c, "slotOffset", "splitFirst", "takeFirst", "tryGet", "destroyDictionaryEntries", "clearEntries");
+        AssertNoCheckedArithmetic(c, "removeEntry", "replaceValue", "reserve", "grow", "shrinkToFit", "compact", "appendSlot", "unlink");
+    }
+
     // SPEC 4.7.3, 22.2 (DECISIONS R5-M124, R8-K1a): the storage bodies read the Handle's words: borrowStorage and borrowStorageUniq the
     // first link (32) and the live count (24), no remainder's init storing the slot stride (slotStride's, 24 for Small and i32, is computed
     // where a slot is addressed), ownStorage moving the 56-byte Handle whole into its remainder; the bodies keyAt and valueAt (R8-K1b)

@@ -39,6 +39,23 @@ public sealed partial class MirEffectsTest
         Assert.Equal(["pong:x!,y"], Sites(effects, flow, program, "ping"));
     }
 
+    // SPEC 7.2.3, 8.6.3, 15.6.4 (PLAN G663): the site of a default's copy's requirement call on a closed Self has the keys its witness
+    // runs at the call's own Types: none at i32, the static Bump's destructor writes at Bump (fail-before: each, no key and a limit).
+    [Theory]
+    [InlineData("1", "f:")]
+    [InlineData("Bump.init()", "f:n!")]
+    public void ADefaultsCopysRequirementCallHasItsWitnessesKeys(string argument, string expected)
+    {
+        var c = MirBuildTest.Compile(
+            "group G\n    public var n: i32 = 0\nstruct Bump\n    public var k: i32 = 0\n    drop => G.n = 1\n" +
+            "contract Gen\n    func f<T>(self: ref/Self, x: T) -> bool\nstruct S\n    Self is Gen\n" +
+            "    public func f<T>(self: ref/Self, x: T) -> bool => true\n" +
+            $"group D\n    public func d<C>(c: ref/C, seen: bool = c.f({argument})) -> i32\n        C is Gen\n        return 1\n" +
+            "func use(s: ref/S) -> i32 => D.d(s)\n");
+        var (effects, flow, program) = Analyzed(c);
+        Assert.Contains(expected, Sites(effects, flow, program, "use"));
+    }
+
     // R4-M91 (R4-M38's Open, R4-M74 OQ6): a site's classes stay apart, so A5 can tell an unknown effect (a call through a common Function
     // value or its destruction) from a limit (a call through an input with several Callable signatures) and from a dependent of an error
     // (a callee with an Opaque site), whose own keys stay. A plain write and read are their Field's two bits; a static that is not

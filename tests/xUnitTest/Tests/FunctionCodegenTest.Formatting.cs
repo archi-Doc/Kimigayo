@@ -218,12 +218,7 @@ public sealed partial class FunctionCodegenTest
     public void BufferAndWindowBodiesCheckNoBoundedArithmetic()
     {
         var c = Analyze(Buffers, OutputKind.Library);
-        foreach (var name in new[] { "push", "append", "limit", "commit", "advance", "end", "next", "reserve", "validSuffix", "validUtf8" })
-        {
-            var texts = ItemTexts(c, name);
-            Assert.NotEmpty(texts);
-            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
-        }
+        AssertNoCheckedArithmetic(c, "push", "append", "limit", "commit", "advance", "end", "next", "reserve", "validSuffix", "validUtf8");
     }
 
     // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128, R8-W1c): an erased Text.fixed Item's adapter calls the body instance of its entry's own input
