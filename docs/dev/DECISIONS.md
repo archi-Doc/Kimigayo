@@ -10871,6 +10871,8 @@ resumed by R4-M86 (2026-10-20).
     beside the Language record (PLAN G631's remaining part).
   - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
     on P6); the record at `path.Use` before the base clause's checks (P5: independent records lost, design review 1's B1).
+  - Amended by BU-148 (PLAN G665): the inherited registrar composes an inherited path's declared path and its Self once, at
+    registration (`DeclaredPath`, `DeclaredSelf`); the scope's readers read them.
 - **BU-139 A fixed array's projection in a declaration position: the formation maps through a declared subject only, and the
   witness's Signature is demanded (PLAN G578)** (2026-11-09; G578-1; Major; design review 1 ACCEPT, implementation review ACCEPT; the
   Front's ruling 1) SPEC 8.5.2, 8.5.4, 22.1.
@@ -11043,6 +11045,33 @@ resumed by R4-M86 (2026-10-20).
     d3; the query deciding a reading's finality from the clause's own state (a second copy of BaseLayers' rule; the prototype read a
     failed clause in progress as final and accepted rx2m: B inherited A's declared HasBase); `InvalidTypeFormation_Kd` at the
     projection (SPEC 9.5 calls the case a cycle).
+- **BU-148 An inherited path's declared path and Self are composed once, at registration (PLAN G665)** (2026-11-10; Front, Binding,
+  the Back's implementer under Q18; Major, behavior-preserving; design review 3 ACCEPT, implementation review 1 REVISE then re-check
+  ACCEPT) SPEC 8.6.2, 8.8.2. Amends BU-141's "Scope" bullet (who composes the premises' Self).
+  - Rule (SPEC 8.8.2): an inherited path's conformance scope and its conditions at a use are its declared path's premises, stated at
+    the declared path's Self in the heir's parameters (the declaring layer).
+  - Representation: `BoundConformancePath.DeclaredPath` (the end of the `InheritedFrom` chain) and `DeclaredSelf` (that layer), read
+    only on an inherited path; `ImplTable.Register` resets them with `InheritedBase`. The rule is stated once, at the field.
+  - Owner: the inherited registrar (`Binding.InheritedConformances`) composes both from the path's first source when it registers
+    the path, telling a declared source by its kind (no `InheritedFrom`): a declared source gives itself and the base clause's
+    instance; an inherited source gives its `DeclaredPath` and `StoredType(source.DeclaredSelf, InheritedBase)`. Every source of one
+    path has the path's declaration (ImplTable's key), so the same declaring Type, premises and declaring scope.
+  - Refused composition (design reviews 1-2, B1 and B2; the Front's ruling on B2): where the generic substitution is refused
+    (SubstituteType's siteless record, PLAN G651's) the path has no generic layer (null), and so has every heir below it: never a
+    fallback layer. The generic layer caches the instances' layers and never refuses one: at an instance, the conditions form its
+    layer one base clause at a time inside the use's frame, so an instance within H is judged and one past H is refused at the use's
+    site (`TypeHeightLimit_Kd`). A path with premises states P at the generic layer at definition, so its scope is a conformance the
+    limit refused, read through `Binding.TypeHeight`'s one reader rule (`RefusedConformance`): a reader at a site is refused there.
+  - Readers, one step each within H: `PrepareInheritedScopes` (the scope, once per pass), `ProveConformanceConditions`' inherited
+    arm (the conditions at a use) and `VerifyInheritedConformance` (through `RefusedConformance`). `AddInheritedPremises`' recursion
+    and the arm's recursion over the sources go.
+  - Measure: `InheritedPremiseWork`, linear in a deep-heir chain (`TypeDagScalingTest.InheritedPremiseStepsAreLinearInTheChain`); a
+    warm rebind of that chain allocates nothing (`AWarmRebindOfAnInheritanceChainAllocatesNothing`); the cold Bind of an inheritance
+    chain (G631's allocation row) no longer depends on `TyCtxt.types`' resize schedule.
+  - Rejected: a per-pass memo beside ImplTable (a side table for one feature); building the heir's scope from its source's built
+    scope (expanded facts under substitution not shown equal; the conditions still walk); composing only the Self and reaching the
+    declaring scope by syntax (a consumer deciding by syntax); presizing `TyCtxt.types` or relaxing the row (moves the resize; the
+    factor is never relaxed).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
