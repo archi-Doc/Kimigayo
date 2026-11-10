@@ -406,7 +406,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 3.1.3, 3.8: whether a Place is the Never value, a temp of Type Never, which carries no Loan and fits any operand position; only
     // an unadapted Copy or Move of a Never Place (Acquire), an Opaque value of Type Never and a diverging Call write it (DECISIONS R4-M62,
-    // R5-M38, R5-M33; MirValidator).
+    // R5-M38, R5-M33; MirValidator). It tests the temp's own Type by reference and never premises: the builder declares the Never value
+    // with BoundType.Never itself, and a Place the premises make Never becomes it only through Acquire (IsNever below).
     private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.

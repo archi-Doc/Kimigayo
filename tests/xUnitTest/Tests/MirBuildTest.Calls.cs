@@ -270,9 +270,11 @@ public sealed partial class MirBuildTest
     // (a: T under `T is Never`, through `owner/`, the root path or a chain) is a Place of Type Never (MirTypes.IsNever): a Never form
     // acquires it into the Never value and a call whose result the premises make Never diverges, so each body validates and gets the
     // records of its non-generic twin (a: Never), the first form; `let b: i32 = a` leaves b uninitialized (fail-before: the Place's Copy
-    // at T where another Type is expected, MirValidator's Type or Operation finding, InternalInvariant_Kd). The assumed path after the value
-    // is still checked (14.10.3; the last rows, design review 2's adversarial twins L1-L4, M1, M2): a Loan conflict across a `let`, an
-    // argument, a comparison or a `return`, and a read after a Move, stay rejected.
+    // at T where another Type is expected, MirValidator's Type or Operation finding, InternalInvariant_Kd). A call of `k: () -> T` diverges
+    // (fail-before: a returning Call wrote the Never value, MirValidator's NeverWrite; the Middle's f37), and a local it or the value
+    // initializes stays uninitialized (f33, f38: accepted on dev under `owner/Never`). The assumed path after the value is still checked
+    // (14.10.3; the last rows, design review 2's adversarial twins L1-L4, M1, M2): a Loan conflict across a `let`, an argument, a
+    // comparison or a `return`, and a read after a Move, stay rejected. `{A}` in a row is the value's Type.
     [Theory]
     [InlineData("return a", "i32", "clean")]
     [InlineData("return a + 1", "i32", "clean")]
@@ -286,6 +288,9 @@ public sealed partial class MirBuildTest
     [InlineData("let t: (i32, i32) = (a, 2)\n    return 0", "i32", "clean")]
     [InlineData("while a\n        ()\n    return 0", "i32", "clean")]
     [InlineData("return id(a)", "i32", "clean")]
+    [InlineData("return k()", "i32", "clean")]
+    [InlineData("let b = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: {A} = k()\n    return b", "i32", "1*UninitializedPlace_Kd")]
     [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let b: i32 = a\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
     [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = g(a@move)\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
     [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = a == 1\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
@@ -295,15 +300,14 @@ public sealed partial class MirBuildTest
     public void APlaceThePremisesMakeNeverIsAcquiredAsTheNeverValue(string statements, string result, string records)
     {
         const string helpers = "func g(x: i32) -> i32 => x\nfunc id<U>(x: U) -> U => x@move\nfunc use(r: uniq/i32) -> () => ()\nfunc pass(x: i32, y: i32) -> () => ()\n";
-        (string Signature, string Premises)[] forms =
+        (string Generics, string Type, string Premises)[] forms =
         [
-            ("func f(a: Never, c: bool)", string.Empty), ("func f<T>(a: T, c: bool)", "    T is Never\n"),
-            ("func f<T>(a: T, c: bool)", "    T is owner/Never\n"), ("func f<T>(a: T, c: bool)", "    T is ::Kimi.Never\n"),
-            ("func f<T, U>(a: T, c: bool)", "    T is U\n    U is Never\n"),
+            (string.Empty, "Never", string.Empty), ("<T>", "T", "    T is Never\n"), ("<T>", "T", "    T is owner/Never\n"),
+            ("<T>", "T", "    T is ::Kimi.Never\n"), ("<T, U>", "T", "    T is U\n    U is Never\n"),
         ];
-        foreach (var (signature, premises) in forms)
+        foreach (var (generics, type, premises) in forms)
         {
-            var source = $"{helpers}{signature} -> {result}\n{premises}    {statements}\n";
+            var source = $"{helpers}func f{generics}(a: {type}, c: bool, k: () -> {type}) -> {result}\n{premises}    {statements.Replace("{A}", type)}\n";
             Assert.Empty(Compile(source).BuildMir().Findings);
             Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
         }
