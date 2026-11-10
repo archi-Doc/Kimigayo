@@ -8,7 +8,9 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BindingSymbol, AssociatedInference> associatedInference = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), RequirementMatch> requirementMatches = new();
-    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
+
     private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundConformancePath, List<BoundConformancePath>> inferenceConsumers = new(ReferenceEqualityComparer.Instance);
     private readonly Queue<BoundConformancePath> inferenceInvalidation = new();
