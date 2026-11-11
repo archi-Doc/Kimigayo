@@ -168,7 +168,7 @@ internal sealed partial class ModuleCodegen
                 }
                 else if (signature is not null)
                 {
-                    this.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
+                    this.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(root, program.Body(this.set.Items[root].BodyOrdinal), default));
                 }
             }
 

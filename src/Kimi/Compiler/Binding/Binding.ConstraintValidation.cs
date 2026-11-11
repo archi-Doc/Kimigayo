@@ -54,7 +54,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     admitted &= SemanticsSet(fact);
                 }
@@ -356,7 +356,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Invalid = true;
+                            (scope.Constraints ??= new()).Invalidate();
                             break;
                         }
 

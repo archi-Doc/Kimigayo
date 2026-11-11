@@ -233,12 +233,10 @@ public sealed partial class Binding
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
         var head = AssociatedHead(declaration);
-        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head;
-        if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
-        {
-            return; // A qualified specification refines an existing requirement.
-        }
+        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type)! : head!;
 
+        // Only a declaration reaches here, and its head is a Name: the parser places every specification among the members.
+        var spelling = TypeSpelling(name) ?? throw new InvalidOperationException($"`{declaration}` declares no Name (InternalInvariant; G683).");
         var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
         symbol.Type = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
@@ -361,6 +359,12 @@ public sealed partial class Binding
                 AddAssociated(new(associated, shape.Symbol));
                 Complete(member, BoundType.Unit);
             }
+            else if (member is IsKoto { IsAssociatedConstraint: true } specification)
+            {
+                // SPEC 8.5.3: a specification constrains an inherited associated Type; its bound requirement (BindAssociatedSpecification)
+                // is one of the Contract's clauses, inherited and checked as they are.
+                shape.ClauseStorage.Add(specification);
+            }
             else if (member is not EffectBoundKoto)
             {
                 // An effect specification is checked with the bounds of the Contract (BindEffectBound).
@@ -445,7 +449,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact, out _) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
                 {
                     premise = true;
                     break;
@@ -474,7 +478,7 @@ public sealed partial class Binding
         return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
 
         BoundType Instantiate(BoundType type)
-            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
+            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
     private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
@@ -583,7 +587,7 @@ public sealed partial class Binding
 
                     if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
-                        environment.Invalid = true;
+                        environment.Invalidate();
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
                     }
 
@@ -652,7 +656,7 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract), scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), a, b);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 

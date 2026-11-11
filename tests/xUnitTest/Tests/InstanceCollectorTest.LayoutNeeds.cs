@@ -129,7 +129,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
-        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => program.Bodies[set.Items[x].BodyOrdinal].Locals[0].Role == MirLocalRole.Receiver);
+        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => program.Body(set.Items[x].BodyOrdinal).Locals[0].Role == MirLocalRole.Receiver);
         Assert.Equal(generated, collector.Generates(program, init));
     }
 }

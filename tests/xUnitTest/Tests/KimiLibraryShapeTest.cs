@@ -32,6 +32,9 @@ public partial class KimiLibraryShapeTest
         (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
         (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
         (WitnessMembers.String, KimiDeclarationId.Comparable, "func compare(self: ref/string, other: ref/string) -> i32"),
+        (WitnessMembers.BoolFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/bool, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.CharFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/char, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.UnitFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
     ];
 
     // Code generation and the runtime call these bodiless functions by position: parameter order,
@@ -99,7 +102,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(181, KimiLibraryCatalog.Entries.Length); // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704).
+        Assert.Equal(184, KimiLibraryCatalog.Entries.Length); // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a).
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -155,7 +158,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), c.SourceModules.Length + 1);
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), SyntaxTable.LibraryModule + 1);
         Assert.Empty(c.BuildMir().Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }
@@ -627,7 +630,8 @@ public partial class KimiLibraryShapeTest
         Assert.DoesNotContain("%buffer = alloca", ir, StringComparison.Ordinal);
     }
 
-    // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows.
+    // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows. The signature is the first
+    // line before an expression body's `=>` (STYLE: a short single-item body).
     [Fact]
     public void EachWitnessGroupDeclaresItsContractsRequirements()
     {
@@ -637,7 +641,7 @@ public partial class KimiLibraryShapeTest
         {
             var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;
             var overloads = Declarations(library.Members(group)!, requirement.Name, true);
-            Assert.Equal(header, Line(Assert.Single(overloads, static x => x is FunctionKoto { IsSpecialization: false })));
+            Assert.Equal(header, Line(Assert.Single(overloads, static x => x is FunctionKoto { IsSpecialization: false })).Split(" => ", 2)[0]);
         }
     }
 
