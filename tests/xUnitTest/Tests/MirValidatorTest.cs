@@ -400,7 +400,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var c = MirBuildTest.Compile(
             "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
-            "func both<s/T, t/U, r/V>(a: s/T, b: t/U, c: r/V, o: obj/Node) -> ()\n    s is owner or uniq\n    t is owner or ref\n    r is objref or objuniq\n" +
+            "func both<s/T, t/U, r/V>(a: s/T, b: t/U, c: r/V, o: obj/Node) -> ()\n    s is owner or uniq\n    t is owner or ref\n    r is uniq or objuniq\n" +
             "    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n    var p = o@move\n    let y = p@r\n    _ = y\n");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
         var body = new MirBody();
