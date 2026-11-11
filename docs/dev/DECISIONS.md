@@ -11615,6 +11615,30 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+- **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
+  (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
+  Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
+  - **Rule.** Where a declaration's header starts after its prelude (SPEC 2.3: the Attributes, blank lines and comments before it)
+    is the item prefix's fact: `Parser.ConsumeAttributeAndModifier` records, at each line of the prefix and after each `#` form, the
+    token position of that line's first word (`TokenReader.HeaderPosition`); the item's is the last, the first word of its line
+    after the Attributes and directives: its first modifier or else its introducer. `TokenContext` carries it, so an item list
+    nested in a header (a function value's body in an initializer or a default) restores the outer item's, and taking the context
+    keeps it. `TokenReader.Document(declaration, headerEnd, attributes)` passes it to the association
+    (`DocumentationSource.Associate(declaration, headerPosition, headerEnd, ...)`: a token position and a source offset), whose
+    header runs from that token to `headerEnd`.
+  - **Removed.** `DocumentationSource.IsHeaderPrefix` (a second header-word set: it omitted `static` and `abstract`, added `func`,
+    took `specialize` without the `func` look-ahead and `unsafe` before any declaration), the association's token search and
+    walk-back, and the `Math.Max` guards that could only hide a stale start (a violation now fails `SourceSpan.FromBounds`).
+  - **Invalid headers.** The header starts at the first word of the item's line after its last `#` form, valid or not (a `static`, a
+    misplaced `open`, a rejected access word; in `public #Test func f()` at `func`, as before). Each such word is a syntax Error, so
+    `DocumentationSource.Finish` drops every association of that source and no published documentation changes; only
+    `DeclarationSpan` of a comment left without a Declaration now covers a `static` header too, as it already did for the other
+    invalid words.
+  - **Cost.** One int store per prefix line; `TokenContext` stays 48 bytes, `TokenReader` grows from 200 to 208 bytes (copied by
+    each lookahead); the association loses a binary search and a walk-back per documented declaration. No allocation.
+  - **Rejected:** keeping a word set in the association aligned with the parser's (two copies of one rule); passing the header start
+    from each `Document` caller (eight sites would each pass the same fact, and an enum Case and `associate` take no context);
+    recording only the first modifier word with the introducer as each caller's default (a fallback at eight sites).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
