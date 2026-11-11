@@ -18583,8 +18583,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     U0 does not move this boundary.
   - Rejected: a `SyntaxId` type holding the constant (a wrapper without semantics).
 - **R8-M32 The library's program independence is a test, with two temporary expectations** (Back, 2026-11-11; R8-L1 U1; the design
-  `back\l1-design\design.md` §2 C9, §5 (a), M-B3, M-N4/R2-N5, §8 U1; implementation reviews 1 (B's REVISE) and 2; extends R8-M31).
-  Tests only; no compiler change.
+  `back\l1-design\design.md` §2 C9, §5 (a), M-B3, M-N4/R2-N5, §8 U1; implementation reviews 1 REVISE and 2 ACCEPT (B's reviewer),
+  the Front's ACCEPT (C-249); extends R8-M31). Tests only; no compiler change.
   - **Adopted.** Each row of `KimiLibraryShapeTest` checks a fresh compilation with `Compilation.Check`: the Final Bind, the startup
     check, then Analyze (the MIR's construction, validation, A1-A5 and the collector). The collector's id writes are therefore
     inside the comparison. The row is compared with the empty program's check on:
@@ -18634,7 +18634,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause.
 - **R8-M33 One MIR ordinal space with a library prefix, owned by `MirProgram`** (Back, 2026-11-11; R8-L1 U5a-1; the design
   `back\l1-design\design.md` M-B1, R2-N1, R3-N6, §8 U5a as B split it on 2026-11-11; the Middle's consent with conditions, C-248;
-  implementation review 1; extends R8-M31).
+  implementation review 1 ACCEPT (B's reviewer); extends R8-M31).
   - **Adopted.** `MirProgram` owns the ordinal space and numbers every body (`Begin`). The library's bodies hold ordinals 0 to
     `MirProgram.LibraryCount` - 1, and the program's follow. `MirBuilder.Build` builds the library's module first (its default
     templates, then its bodies), calls `EndLibrary`, then builds the source modules (templates, then bodies). Templates still
