@@ -566,7 +566,7 @@ public sealed partial class Binding
 
             if (environment.Invalid)
             {
-                return ConstraintProof.Error;
+                return this.InvalidEnvironment(environment);
             }
 
             foreach (var available in environment.Facts)

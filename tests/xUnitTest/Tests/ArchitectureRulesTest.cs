@@ -46,7 +46,7 @@ public class ArchitectureRulesTest
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
-    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
@@ -222,7 +222,7 @@ public class ArchitectureRulesTest
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=11;Binding/Binding.OriginDeclarations.cs=30;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

@@ -354,6 +354,10 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
+    // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
+    private static bool IsMissingInformation(Koto? node)
+        => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
     // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
     {
@@ -483,12 +487,12 @@ public sealed partial class Binding
     private DiagnosticCode OriginRelationCode(Koto node)
         => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
 
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only, or one taking its own clause's resting
-    // InvalidOrigin (SlotTaken), so the facts are recorded only with the failure the slot takes: a fact in a publication table always
-    // explains the failure of its node, whatever the failure's code.
+    // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
+    // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
+    // failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (!this.SlotTaken(node))
+        if (node.BindingFailure == BindingFailure.None)
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }
@@ -758,9 +762,9 @@ public sealed partial class Binding
         }
 
         this.Fail(use, BindingFailure.InvalidConstraint);
-        if (diagnosticCause is null && use is IsKoto clause)
+        if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
-            diagnosticCause = this.FindMissingConformanceName(clause);
+            diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
         if (diagnosticCause is not null)

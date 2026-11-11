@@ -56,15 +56,17 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.program.Clear();
         this.visited.Clear();
         this.omissions.Clear();
-        // The default templates first, which the bodies that omit them copy.
+        // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
+        // the bodies that omit them copy: a library body omits the library's only.
+        this.Module(compilation.Library.Kotonoha.Syntax, templates: true);
+        this.Module(compilation.Library.Kotonoha.Syntax, templates: false);
+        this.program.EndLibrary();
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var module in compilation.SourceModules)
             {
                 this.Module(module.Syntax, pass == 0);
             }
-
-            this.Module(compilation.Library.Kotonoha.Syntax, pass == 0);
         }
 
         this.validator.Validate(this.program); // What the bodies require of each other (G191).

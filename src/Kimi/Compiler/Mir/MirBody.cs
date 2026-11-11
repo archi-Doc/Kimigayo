@@ -50,7 +50,7 @@ internal sealed class MirBody
 
     internal MirDefKey Key { get; private set; }
 
-    /// <summary>Gets or sets the body's position in its program (<see cref="MirProgram.Bodies"/>), set where the program begins it.</summary>
+    /// <summary>Gets or sets the body's ordinal in its program (<see cref="MirProgram.Body"/>), set where the program begins it.</summary>
     internal int Ordinal { get; set; }
 
     /// <summary>Gets the syntax of the body, where a finding without a statement is located.</summary>
@@ -215,15 +215,15 @@ internal sealed class MirBody
         switch (kind)
         {
             case MirProjectionKind.Deref or MirProjectionKind.PairLayer:
-                // TyCtxt.Layer: a pair layer names its binder and a reference or object handle has its referent below it; a raw pointer
-                // is followed only explicitly (SPEC 5.4).
-                _ = TyCtxt.Layer(type, out var below, out var binder);
+                // TyCtxt.Layer: a pair layer (its binder TyCtxt.PairBinder's) and a reference or object handle have their target below
+                // them; a raw pointer is followed only explicitly (SPEC 5.4).
+                var layer = TyCtxt.Layer(type, out var below, out _);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return this.Binds(arg, binder) ? below : null;
+                    return layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
                 }
 
-                if (binder is null && !ReferenceEquals(below, type))
+                if (layer == HirPlaceKind.Deref)
                 {
                     return below;
                 }
@@ -237,7 +237,7 @@ internal sealed class MirBody
         }
     }
 
-    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.Layer"/>).</summary>
+    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.PairBinder"/>).</summary>
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
     /// <param name="target">The pair layer's binder.</param>
     /// <returns>Whether the index names that binder.</returns>

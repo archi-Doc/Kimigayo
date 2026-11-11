@@ -2,8 +2,8 @@
 
 // Owns the site templates of the checked set (R5 package K 4.5, 4.7 and 4.8): one per body and program version, the body's sites in
 // location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
-// Input: a built, validated MirProgram; the number of root modules; the Target and Need columns of the intrinsic rows; LayoutNeeds and
-// Layout.Indirect (DECISIONS R5-M149).
+// Input: a built, validated MirProgram; the root range (the bodies whose Source.Module is below it are roots); the Target and Need columns
+// of the intrinsic rows; LayoutNeeds and Layout.Indirect (DECISIONS R5-M149).
 // Output: each body's sites (none for a body with a finding, MirBody.HasFinding, whose operations take no A3b check; a static's
 // declaration row reads no body and stays), `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads;
 // and its layout needs past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.

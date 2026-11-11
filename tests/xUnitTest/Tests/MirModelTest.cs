@@ -20,16 +20,23 @@ public sealed class MirModelTest
 
     private static readonly SourceInfo At = default;
 
-    // The source modules hold their positions as ordinals and the library the next one, so a SourceRef finds its node again.
-    [Fact]
-    public void SourceRefNamesANodeByModuleAndId()
+    // The source modules hold their positions as ordinals and the library the fixed SyntaxTable.LibraryModule whatever the program's module
+    // count, so a SourceRef finds its node again and names a library node by its module alone.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void SourceRefNamesANodeByModuleAndId(int count)
     {
-        var c = MinimalEmissionTest.Analyze(Source);
-        var modules = c.SourceModules.Append(c.Library.Kotonoha).ToArray();
-        Assert.Equal(Enumerable.Range(0, modules.Length).Select(static x => (ushort)x), modules.Select(static x => x.Syntax.Module));
-        foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto).Take(500)))
+        var c = count == 1 ? MinimalEmissionTest.Analyze(Source) : ModuleBindingTest.Create(Source, "public func lib() => ()\n", "public func child() => ()\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(
+            Enumerable.Range(0, count).Select(static x => (ushort)x).Append(SyntaxTable.LibraryModule),
+            c.SourceModules.Append(c.Library.Kotonoha).Select(static x => x.Syntax.Module));
+        foreach (var node in c.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto).Take(500)))
         {
-            Assert.Same(node, c.SyntaxOf(SourceRef.Of(node)));
+            var source = SourceRef.Of(node);
+            Assert.Equal(ReferenceEquals(node.Kotonoha, c.Library.Kotonoha), source.IsLibrary);
+            Assert.Same(node, c.SyntaxOf(source));
         }
     }
 

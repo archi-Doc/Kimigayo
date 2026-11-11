@@ -404,8 +404,7 @@ public sealed partial class Binding
                     var clause = container.ConstraintNodes[c];
                     // Self conformances have the intersection of the Type and
                     // Contract domains; their separate witness checks own this case.
-                    if (!IsSelfConstraint(clause) && !clause.IsAssociatedConstraint &&
-                        clause.BoundConstraint is { } constraint &&
+                    if (!IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint &&
                         (!this.ConstraintAccessCovers(constraint, domain) ||
                             (clause.Left.BoundType is { } subject && !this.TypeAccessCovers(subject, domain, domain))))
                     {

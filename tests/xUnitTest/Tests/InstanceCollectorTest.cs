@@ -444,7 +444,7 @@ public sealed partial class InstanceCollectorTest
         {
             var targets = set.Targets(item).ToArray();
             Assert.Equal(targets.OrderBy(static x => x.At.Block).ThenBy(static x => x.At.Index), targets);
-            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            var body = program.Body(set.Items[item].BodyOrdinal);
             Assert.All(targets, x => Assert.True(x.At.Index == body.Blocks[x.At.Block].Count
                 ? body.Blocks[x.At.Block].Terminator.Kind == MirTerminatorKind.Call
                 : body.Statements[body.Blocks[x.At.Block].Start + x.At.Index] is
@@ -574,7 +574,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        var items = set.Items[set.RootCount..].ToArray().Where(x => x.BodyOrdinal >= 0 && program.Bodies[x.BodyOrdinal].Source.Module == 0).ToArray();
+        var items = set.Items[set.RootCount..].ToArray().Where(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Source.Module == 0).ToArray();
         Assert.Equal(instances, string.Join(" | ", items.Where(static x => x.Key.Body.Def.Kind == MirBodyKind.Fn && x.Representative is not null)
             .Select(x => Label(program, x)).Order(StringComparer.Ordinal)));
         Assert.Equal(closures, items.Count(static x => x.Key.Body.Def.Kind == MirBodyKind.Closure));
@@ -1390,7 +1390,7 @@ public sealed partial class InstanceCollectorTest
         Assert.All(
             set.Targets(Item(program, set, "Fn pick [Stamp]")).ToArray().Where(x => set.Items[x.Item].BodyOrdinal >= 0),
             x => Assert.Equal(witness, x.Item));
-        Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Bodies[set.Items[witness].BodyOrdinal].Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
+        Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Body(set.Items[witness].BodyOrdinal).Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
         var item = set.Items[adapter].RepresentativeType!;
         Assert.Same(c.Types.SubstOfItem(item), c.Types.Witness(item)!.Value.Subst);
     }
@@ -1411,7 +1411,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn area"], Targets(program, set, "Fn measure [Leaf]"));
         Assert.Equal(["Fn area [Held<i32>]"], Targets(program, set, "Fn measure [Held<i32>]"));
         var inherited = set.Items[set.Targets(Item(program, set, "Fn measure [Leaf]"))[0].Item];
-        Assert.Equal("struct Base", $"{program.Bodies[inherited.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal("struct Base", $"{program.Body(inherited.BodyOrdinal).Key.Decl!.Scope.Owner}");
         Assert.Equal(
             ["PropertyWitness Tally StorageCopy", "PropertyWitness Tally StorageSet", "PropertyWitness Tally StorageCopy"],
             Targets(program, set, "Fn bump [Tally]"));
@@ -1514,7 +1514,7 @@ public sealed partial class InstanceCollectorTest
         var (program, set) = Collect(FormatSource);
         Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
         var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
-        Assert.Equal("struct Sink", $"{program.Bodies[reserve.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal("struct Sink", $"{program.Body(reserve.BodyOrdinal).Key.Decl!.Scope.Owner}");
         Assert.Equal(["library Fn fixed in group Text [Text, ]", "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
     }
 
@@ -1547,7 +1547,7 @@ public sealed partial class InstanceCollectorTest
             ["struct Box", "struct Rank", "struct Box"],
             new[] { "Builtin ref/Box BuiltinEquals", "Builtin ref/Rank BuiltinCompare", "Builtin ref/Box BuiltinEquals Operator" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
-                .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
+                .Select(x => $"{program.Body(set.Items[x.Item].BodyOrdinal).Key.Decl!.Scope.Owner}"));
         var template = set.Items[Item(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator")].Key;
         Assert.True(template.Type!.ContainsParameter && template.Body.Erased is not null, $"{template}");
     }
@@ -1870,7 +1870,7 @@ public sealed partial class InstanceCollectorTest
         // The labels of an item's targets at its one Value call, joined.
         string AtValueCall(int item)
         {
-            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            var body = program.Body(set.Items[item].BodyOrdinal);
             var block = Enumerable.Range(0, body.Blocks.Length)
                 .Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
             return string.Join("|", set.Targets(item).ToArray().Where(x => x.At == new MirLocation(block, body.Blocks[block].Count))
@@ -2582,7 +2582,7 @@ public sealed partial class InstanceCollectorTest
     private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
     {
         var item = Item(program, set, label);
-        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var body = program.Body(set.Items[item].BodyOrdinal);
         var sites = new List<string>();
         for (var b = 0; b < body.Blocks.Length; b++)
         {
@@ -2604,7 +2604,7 @@ public sealed partial class InstanceCollectorTest
     // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a type-driven
     // item has none).
     private static bool Closed(Compilation c, MirProgram program, in MonoItem item)
-        => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Bodies[item.BodyOrdinal], representative);
+        => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Body(item.BodyOrdinal), representative);
 
     // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
@@ -2627,7 +2627,7 @@ public sealed partial class InstanceCollectorTest
             return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}{variant}";
         }
 
-        var body = program.Bodies[item.BodyOrdinal];
+        var body = program.Body(item.BodyOrdinal);
         var name = body.Key.Decl?.Declaration switch
         {
             null => "top",

@@ -552,8 +552,8 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
             ],
-            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Bodies[x.Body].Source)}: {x.Views}"));
-        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Bodies[x.Body])));
+            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Body(x.Body).Source)}: {x.Views}"));
+        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Body(x.Body))));
     }
 
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
@@ -604,7 +604,7 @@ public sealed class MirAnalysisTest
                 "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
             program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
 
@@ -615,7 +615,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Body(0).Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -664,7 +664,7 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             expected.Split('|'),
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
         views[broken.Ordinal] = 0; // MirDrops.Exclude: an empty entry, every other body's unshifted.
         Assert.Equal(views, program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)));
@@ -766,13 +766,12 @@ public sealed class MirAnalysisTest
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
         Assert.True(c.Bind().IsComplete);
         var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
-        var library = c.SourceModules.Length;
-        Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
-        new MirAnalysis(c.Types).Run(program, library + 1);
+        Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        new MirAnalysis(c.Types).Run(program, SyntaxTable.LibraryModule + 1);
         Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
             .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
-                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Body(x.Body).Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.

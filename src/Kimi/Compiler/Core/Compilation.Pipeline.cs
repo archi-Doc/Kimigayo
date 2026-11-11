@@ -168,7 +168,7 @@ public partial class Compilation
     /// <param name="source">The reference.</param>
     /// <returns>The node.</returns>
     internal Koto SyntaxOf(SourceRef source)
-        => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
+        => (source.IsLibrary ? this.Library.Kotonoha : this.SourceModules[source.Module]).Syntax.Nodes[source.Id]!;
 
     /// <summary>Analyzes the MIR of the latest Binding pass that <see cref="ConstructMir"/> builds and validates, once per pass, and
     /// collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
