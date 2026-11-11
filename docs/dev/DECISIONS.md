@@ -9751,9 +9751,10 @@ resumed by R4-M86 (2026-10-20).
   and 2)
   - Subject source and owner: `Binding.Transfers`. After a Final pass's publication (BU-81's seam), `CheckTransfers` scans each
     module's published Op, Adjust and PlaceShape rows once (0 B). S1 is a written Place in a value Op whose Adjust is `Move` and
-    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof other
-    than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
-    acquisition is not Copy, fails the Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
+    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof
+    other than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
+    acquisition is not Copy (amended by BU-168: whose Type does not Copy in every admitted case, `CopiesInEveryCase`), fails the
+    Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
   - Records: requirement `Binding.TransferRequired`, at the Place, Take's repair (`ReportAcquisition`). A pair-layer Place carries the
     case fact over the definition's full case set through BU-82's renderer (Q14 run 2): the cases whose complete Type (`CaseType`,
     which names each layer by its own binder, a nested layer's included) the rows of SPEC 3.5 move. A prepared parameter or its owned
@@ -11031,9 +11032,10 @@ resumed by R4-M86 (2026-10-20).
     `ContainsPairLayer` is each case's Type proven. Where the cases exceed `PairBinder.CaseBound` (64 inclusive; 65 are not
     analyzed), the 8.3 proof decides alone; that definition records `OwnershipCaseLimit_Kd` (`CheckCaseBound`). A warm query
     allocates nothing.
-  - Binding readers (7): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s per-case
-    plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion; the explicit
-    adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part.
+  - Binding readers (8): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s
+    per-case plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion;
+    the explicit adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part; S3
+    (an omitted capture list, BU-84; added by BU-168).
   - MIR readers (5), through `TyCtxt.CopyFacts`: the validator's Copy rule (`MirValidator.Rvalues.cs`), A5's effects
     (`MirEffects.Solve.cs`), drop observation (`MirTypes.Destruction.cs`), drop retention (`MirBorrows.Destructions.cs`) and the
     object payload copy (`ModuleCodegen.Objects.cs`).
@@ -11698,6 +11700,29 @@ resumed by R4-M86 (2026-10-20).
     one silently gives every case).
   - Kept: `SubstituteFamily` re-keys a family by the substituted binder's declared set intersected with the mask (no point exists in
     a substitution); `LayerAdmitted` (BU-3) and the AssociatedOrigins support gate are declaration facts by contract.
+- **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
+  G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
+  ACCEPT, the Middle's reviewer ACCEPT on the MIR hunks and RP17's A5 oracle (C-238); the owner's O-166 (a), narrowed by O-171 (a);
+  amends BU-84's S3 and BU-138's readers) SPEC 3.5, 7.7.2, 8.3.4, 8.14, 8.15.2, 13.5.5.
+  - Plan (owner `Binding.PairCases`): each admitted case of a pair layer takes its complete Type (`CaseType`), planned by
+    `BareAcquire`'s rows under the case (SPEC 3.5.1), for every node form: the original `s/T`, an application `s/U`, an adaptation
+    family `p@s` (`TryAdaptationSelector`). The hand-written ref/uniq/owner rows are gone. Readers: `BareAcquire`,
+    `BareAcquisition`, `BareReborrows`, `CopiesInEveryCase` (BU-138) and `FailingCaseNote`.
+  - Reading: BU-84's S3 accepts an omitted-list capture that Copies in every admitted case (`CopiesInEveryCase`), the answer MIR
+    validates its Copy by; the admitted set is SPEC 7.7.2's declared evidence (8.3.4).
+  - Fact: `TyCtxt.PairBinder` is MIR's one binder fact for every node form of a pair layer; `TyCtxt.Layer` keeps the follow kind and
+    the Type below, and its binder output is `PairBinder`'s. Its readers:
+    - `MirCases.Binder`, so a family-typed call input reserves (A3 E13 (4));
+    - the validator's PairAcquire and PairLayer checks (`MirBody.ProjectedType`);
+    - `MirTypes.IsReference`, so an abandoned family temp ends its borrow, and A5's Borrows and Storing rows count it.
+  - Not covered (O-171 (a)): a layer an identity premise makes (SPEC 8.2.3) is planned by its stored Type, as before. Its plan needs
+    the identical Type for Binding and MIR alike (PLAN G355 / G170).
+  - Rejected:
+    - `BareAcquire` answering Copy for an all-Copy pair layer: it moves HIR and MIR of valid programs.
+    - A family branch beside the pair rows: a second form of one rule.
+    - A family row in `TyCtxt.Layer`: a family has no single target.
+    - A premise reading with a Binding or MIR interim (design rounds 1 and 2): each interim approximated "a layer only the premises
+      make" by a Type comparison, because no component publishes that fact.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
