@@ -265,6 +265,59 @@ public class PairFollowTest
         "    require pick(n@ref, b@ref) == 3 and call(n@ref) == 3 else => $abort(\"pick\")\n" +
         "    Console.writeLine(\"Implicit outer Origin.\")\n";
 
+    // PLAN G703 (SPEC 3.5.3, 8.7.4, 10.2, 13.5.2): each read position through a qualifying pair layer and a pair target's operators, in
+    // owner, ref and uniq instances, ref then pair, two binders (design review 1's native program).
+    private const string Reads =
+        "func h(v: i32) -> i32 => v\n" +
+        "func add<s/T>(a: s/T, b: s/T) -> T\n" +
+        "    s is value or valueborrow\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a + b\n" +
+        "func read<s/T>(x: s/i32, m: s/T) -> i32\n" +
+        "    s is value or valueborrow\n" +
+        "    let v: i32 = x\n" +
+        "    return h(x) + v\n" +
+        "func wide<s/T>(x: s/i32, m: s/T) -> i64\n" +
+        "    s is value or valueborrow\n" +
+        "    return x@i64\n" +
+        "func deep<s/T>(x: ref/(s/i32 during a), m: s/T) -> i32\n" +
+        "    s is owner or ref\n" +
+        "    let v: i32 = x\n" +
+        "    return v + x\n" +
+        "func alone<s/T>(a: T, b: T, m: s/T) -> T\n" +
+        "    s is owner or ref\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a * b + 1\n" +
+        "func two<s/T, t/U>(x: s/(t/i32 during a), m: s/T, n: t/U) -> i32\n" +
+        "    s is owner or ref\n" +
+        "    t is owner or ref\n" +
+        "    let v: i32 = x\n" +
+        "    return v\n" +
+        "func cmp<s/T>(a: s/T, b: s/T) -> bool\n" +
+        "    s is value or valueborrow\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a < b\n" +
+        "public func main()\n" +
+        "    var n: i32 = 20\n" +
+        "    let one: i32 = 1\n" +
+        "    var m: i32 = 2\n" +
+        "    let a = add(n, one)\n" +
+        "    let b = add(n@ref, one@ref)\n" +
+        "    let c = add(n@uniq, m@uniq)\n" +
+        "    let d = read(n, n) + read(n@ref, n@ref)\n" +
+        "    let e = read(n@uniq, m@uniq)\n" +
+        "    let rn = n@ref\n" +
+        "    let w = wide(n, one) + wide(n@ref, one@ref)\n" +
+        "    let p = deep(n@ref, one)\n" +
+        "    let q = deep(rn@ref, one@ref)\n" +
+        "    let r = alone(3, 4, one)\n" +
+        "    let r2 = alone(3, 4, one@ref)\n" +
+        "    let t = two(n, one, one)\n" +
+        "    let t2 = two(rn, one@ref, one)\n" +
+        "    let k = cmp(one, n)\n" +
+        "    let k2 = cmp(n@ref, one@ref)\n" +
+        "    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(w) \\(p) \\(q) \\(r) \\(r2) \\(t) \\(t2) \\(k) \\(k2)\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "ImplicitOuterOrigin", ImplicitOuterOrigin, "Implicit outer Origin.\n" },
@@ -283,6 +336,7 @@ public class PairFollowTest
         { "Positions", Positions, "Positions.\n" },
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
         { "Scaled", Scaled, "Scaled.\n" },
+        { "Reads", Reads, "21 21 22 80 40 40 40 40 13 13 20 20 true false\n" },
         { "Collected", Collected, "Owned elements total 6.\nBorrowed elements total 30.\nExclusive elements total 73.\n" },
     };
 
