@@ -242,6 +242,55 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
+    // SPEC 15.4.2, 15.6.5 (PLAN G758): a `var` local's pair slot, the original's `o` or an annotation, is a region of the local as a
+    // concrete layer's Origin is, in every pair set; a written original keeps `o` (qb7) and a `let` local is not opened (qb8). Each row's
+    // records by code, its concrete twin beside it. Dev gave UnprovenOriginRelation_Kd on the clean qb1, k01, k02, k03v and e2v rows, and
+    // at k03's valid reassignment, whose true record is the parent's Loan conflict (SPEC 3.5.1).
+    [Theory]
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is uniq\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is ref or uniq\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-PRU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is owner or uniq\n    T is Copy\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-POU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is ref\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-PR
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is owner or ref\n    T is Copy\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-POR
+    [InlineData("func f<T>(value: uniq/T, other: uniq/T during a) -> ()\n    var local = value\n    local = other\n    _ = local\n", "clean")] // qb1-cu
+    [InlineData("func f<s/T>(value: s/T during a, h: uniq/(s/T during a) during c) -> ()\n    s is uniq\n    var local = value\n    local = h@follow\n    _ = local\n", "clean")] // qb3-PU
+    [InlineData("func f<s/T>(value: s/T during a, g: uniq/(uniq/(s/T during a) during c) during d) -> ()\n    s is ref or uniq\n    var local = value\n    local = g@follow@follow\n    _ = local\n", "clean")] // qb4-PRU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is ref or uniq\n    var local: s/T = value\n    local = other\n    _ = local\n", "1*UnprovenOriginRelation_Kd")] // qb7-ann-PRU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> ()\n    s is ref or uniq\n    let local = value\n    _ = local\n    _ = other\n", "clean")] // qb8-let-PRU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> s/T during a\n    s is uniq\n    var local = other\n    local = value\n    return local\n", "1*UnprovenOriginRelation_Kd")] // esc-PU
+    [InlineData("func f<T>(value: uniq/T, other: uniq/T during a) -> uniq/T during a\n    var local = other\n    local = value\n    return local\n", "1*UnprovenOriginRelation_Kd")] // esc-cu
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a, q: uniq/(s/T during a)) -> ()\n    s is uniq\n    var local = other\n    local = value\n    q@follow = local\n", "1*UnprovenOriginRelation_Kd")] // esc2-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> s/T during a\n    s is ref or uniq\n    var local = value\n    local = other\n    return local\n", "1*UnprovenOriginRelation_Kd")] // esc3-PRU
+    [InlineData("func f<s/T>(value: s/T, x: T) -> ()\n    s is uniq\n    T is Copy\n    var local = value\n    let c = local\n    local@follow = x\n    _ = c\n", "1*ComparisonLoanConflict_Kd")] // wb2-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n    T is Copy\n    var local = value\n    local = other\n    other@follow = x\n    _ = local\n", "1*ComparisonLoanConflict_Kd")] // wb3-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T, x: T) -> ()\n    s is uniq\n    T is Copy\n    var local = value\n    local = other\n    _ = local\n    other@follow = x\n", "clean")] // wb3-ok-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is owner or ref\n    T is Copy\n    var local = value\n    local = other\n    let k = local\n    return 0\n", "clean")] // k01-por-reassign-copy
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    var local = value\n    var go = true\n    while go\n        local = other\n        go = false\n    _ = local\n    return 0\n", "clean")] // k02-pr-loop-reassign
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is uniq\n    var local = value\n    local = other\n    let k = other\n    _ = local\n    _ = k\n    return 0\n", "1*ComparisonLoanConflict_Kd")] // k03-pu-parent-use-live
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is uniq\n    var local = value\n    local = other\n    _ = local\n    let k = other\n    _ = k\n    return 0\n", "clean")] // k03v-pu-parent-use-after
+    [InlineData("func f<s/T>(value: s/T) -> s/T\n    s is ref or uniq\n    var local = value\n    return local\n", "clean")] // k10-pru-var-return
+    [InlineData("func f(value: uniq/i32 during b) -> uniq/i32 during b\n    var local = value\n    return local\n", "clean")] // k10c-concrete-var-return
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> s/T\n    s is ref or uniq\n    var local = value\n    local = other\n    return local\n", "1*UnprovenOriginRelation_Kd")] // k11-pru-reassign-return
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> s/T\n    s is ref\n    var local = value\n    var g = func [local@uniq] (y: s/T during a) => local@follow = y\n    g(other)\n    return local\n", "2*ComparisonLoanConflict_Kd 1*UnprovenOriginRelation_Kd")] // e1-closure-store-escape
+    [InlineData("func f(value: ref/i32 during b, other: ref/i32 during a) -> ref/i32 during b\n    var local = value\n    var g = func [local@uniq] (y: ref/i32 during a) => local@follow = y\n    g(other)\n    return local\n", "2*ComparisonLoanConflict_Kd 1*UnprovenOriginRelation_Kd")] // e1c-concrete
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> s/T\n    s is ref\n    var local = value\n    let r = local@uniq\n    r@follow = other\n    return local\n", "1*UnprovenOriginRelation_Kd")] // e2-alias-write-escape
+    [InlineData("func f(value: ref/i32 during b, other: ref/i32 during a) -> ref/i32 during b\n    var local = value\n    let r = local@uniq\n    r@follow = other\n    return local\n", "1*UnprovenOriginRelation_Kd")] // e2c-concrete
+    [InlineData("func f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    var local = value\n    let r = local@uniq\n    r@follow = other\n    _ = local\n    return 0\n", "clean")] // e2v-alias-write-local
+    public void AVarPairLocalsSlotIsALocalRegion(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
+
+    // PLAN G572's recorded limit, a region at the shorter end (DECISIONS BU-127; the owner's O-174 (a), PLAN G758): with the slot a
+    // region, a Closure writing `o` into its `[var last]` capture of a `var` pair local (r18) and BU-127's i1 have their concrete twins'
+    // records. Valid forms rejected, accepted on dev only because the slot stayed `o`; G572's lift accepts them.
+    [Theory]
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-PR
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    var last = x\n    var c = func [var last] (value: s/T) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-POR
+    [InlineData("func f<s/T>(x: s/T) -> ()\n    s is ref\n    var r = x\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(s/T) = u\n        _ = h@follow\n    outer()\n", "2*UnprovenOriginRelation_Kd")] // m-t12-i1-PR
+    [InlineData("func f(x: ref/i32) -> ()\n    var last = x\n    var c = func [var last] (value: ref/i32 during x) -> ()\n        last = value\n    c(x)\n", "1*UnprovenOriginRelation_Kd")] // m-t1-r18-cr
+    [InlineData("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n", "2*UnprovenOriginRelation_Kd")] // m-t12-i1-cr
+    public void AVarPairLocalsRegionAtTheShorterEndIsG572sLimit(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmConstraintsLoansAndEmissionReuseStorage()
