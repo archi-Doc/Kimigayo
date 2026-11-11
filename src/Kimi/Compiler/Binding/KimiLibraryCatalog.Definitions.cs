@@ -31,6 +31,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
+        new(KimiDeclarationId.Never, "Never", ManagedRepresentation: true),
         new(KimiDeclarationId.Array, "Array", ManagedRepresentation: true),
         new(KimiDeclarationId.FromEnd, "FromEnd"),
         new(KimiDeclarationId.Wrapping, "Wrapping", ManagedRepresentation: true),
