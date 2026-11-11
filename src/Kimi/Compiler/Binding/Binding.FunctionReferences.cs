@@ -181,9 +181,9 @@ public sealed partial class Binding
         }
 
         var target = (FunctionKoto)selected.Declaration;
-        if ((target.Modifier & ModifierKind.Unsafe) != 0)
+        if (DirectCallOnly(target))
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
         if (target.GenericArguments.Count != 0)

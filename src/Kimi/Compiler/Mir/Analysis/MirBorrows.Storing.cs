@@ -298,8 +298,8 @@ internal sealed partial class MirBorrows
             return this.slots[place.Root] >= 0 ? this.must[this.slots[place.Root]] : 0;
         }
 
-        if (this.StoringInput(place.Root) && this.TypeOf(index) is var type &&
-            (MirTypes.IsReference(type) || type?.Semantics == Parsing.SemanticsKind.Raw) && this.Depth(place) == 0)
+        if (this.StoringInput(place.Root) && cases.TypeOf(this.body.Operands[index]) is var type &&
+            (MirTypes.IsReference(type) || type.Semantics == Parsing.SemanticsKind.Raw) && this.Depth(place) == 0)
         {
             return this.sets.Add(0, this.Own(place.Root, place.Projection));
         }

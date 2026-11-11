@@ -71,9 +71,8 @@ internal sealed partial class FunctionCodegen
     // R5-M116); and the payload of a creating adaptation, a statement whose factory call passes it as a creation call does (CreationSlot;
     // DECISIONS R5-M111). A Value call's callee operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a
     // Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy),
-    // since a block's terminator is its one call. The same pass gives an interpolation buffer its Region home when its estimate places it on
-    // the frame (FunctionCodegen.Interpolation's Region) and a segment step's non-empty literal text the slots of its record and of its
-    // write's result (TextSlots).
+    // since a block's terminator is its one call. The same pass gives a segment step's non-empty literal text the slots of its record and of
+    // its write's result (TextSlots).
     private void Copies()
     {
         var count = this.body.Operands.Length + this.body.Blocks.Length;
@@ -115,8 +114,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand; an interpolation
-    // buffer's Region home (FunctionCodegen.Interpolation's Region) and a segment step's text slots (TextSlots).
+    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand; a segment step's text
+    // slots (TextSlots).
     private void CopySlots(in MirTerminator call, int block)
     {
         if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
@@ -138,9 +137,6 @@ internal sealed partial class FunctionCodegen
                 // A creation's factory takes its payload at its kind, as a body callee does (ModuleCodegen.Factory; DECISIONS R5-M110).
                 var payload = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
                 this.CopySlot(this.body.Operands[payload], payload);
-                return;
-            case IntrinsicWriter.Buffer:
-                this.Region(call); // An interpolation buffer's home: its frame's region when its estimate places it there (DECISIONS R5-M131).
                 return;
             case IntrinsicWriter.Segment:
                 this.TextSlots(call, block); // A segment's literal text's record and its write's result (DECISIONS R5-M133).

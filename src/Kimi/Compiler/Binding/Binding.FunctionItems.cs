@@ -185,7 +185,7 @@ public sealed partial class Binding
     {
         if (function.IsRequirement && item.Components is [var self, var reference])
         {
-            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference)), this.ConstraintScope(function), self);
+            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference), out _), this.ConstraintScope(function), self);
         }
 
         if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
@@ -385,9 +385,9 @@ public sealed partial class Binding
         }
 
         var target = (FunctionKoto)selected!.Declaration;
-        if ((target.Modifier & ModifierKind.Unsafe) != 0)
+        if (DirectCallOnly(target))
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
         var arguments = this.typeScratch.Rent(count);

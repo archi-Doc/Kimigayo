@@ -109,7 +109,7 @@ public class TypeArityBindingTest
     [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D<i32>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is D<i32>\n    return|TypeMismatch_Kd D<i32>")]
     [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D<Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is D<Missing>\n    return|TypeMismatch_Kd D<Missing>|UnresolvedBinding_Kd Missing")]
     [InlineData(Contract + "struct S\n    Self is C<i32, Missing>\n    public func get(self) -> i32 => 1", "InvalidConstraint_Kd Self is C<i32, Missing>|InvalidConstraint_Kd struct S|TypeMismatch_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
-    [InlineData(Contract + "contract D : C<i32, Missing>\n    func put(self) -> i32", "InvalidConstraint_Kd C<i32, Missing>|InvalidConstraint_Kd contract D|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "contract D : C<i32, Missing>\n    func put(self) -> i32", "InvalidConstraint_Kd C<i32, Missing>|InvalidConstraint_Kd contract D|TypeMismatch_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
     [InlineData("struct T<U>\nfunc f(b: T<i32, bool>) => ()", "InvalidTypeFormation_Kd T<i32, bool>")]
     [InlineData("struct T<U>\nfunc f(b: T<i32>) => ()", "")]
     [InlineData(Contract + "func f<X>(x: X)\n    X is C<i32>\n    return", "")]

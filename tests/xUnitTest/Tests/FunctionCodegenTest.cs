@@ -1387,19 +1387,6 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
-    // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
-    [Fact]
-    public void AnImportsItemCallsTheImport()
-    {
-        var c = Analyze(
-            "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public func lastError() -> u32\nfunc last() -> u32\n" +
-            "    let f = Native.lastError\n    return f()\n",
-            OutputKind.Library);
-        _ = Generate(c);
-        Assert.Single(Regex.Matches(Assert.Single(ItemTexts(c, "last")), @"= call i32 @GetLastError\(\)\n"));
-    }
-
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
     // binding's own slot; in the uniq case the referent of the reference that slot holds.
     [Fact]
@@ -1836,6 +1823,10 @@ public sealed partial class FunctionCodegenTest
             return writer.ToString();
         })];
     }
+
+    // The functions of a definition's body items, one per instance (ItemTexts).
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
+        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
 
     // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
     internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)

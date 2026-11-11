@@ -24,6 +24,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string LiteralAtReference = "func see(target: ref/i32) -> i32 => 0\nfunc mk() -> i32 => 1\nfunc k() -> i32\n";
 
+    private const string FunctionContracts = "func kg(c: bool, y: i32, s: ref/i32 during j, t: ref/i32 during k, fa: (ref/i32 during j) -> ref/i32 during j, fb: (ref/i32 during k) -> ref/i32 during k) -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -220,6 +222,18 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "e13n", Sources + SourcesBody + "    r = ga<i64>(if c => [u@ref] else => [y])\n    return r\n", "*: r = ga<i64>(if c => [u@ref] else => [y]) | ...")]
     [InlineData("guard", "e17n", Sources + SourcesBody + "    let a: Array<i64> = if c => [u@ref] else => [y]\n    return r\n", "*: let a: Array<i64> = if c => [u@ref] else => [y] | ...")]
 
+    // SPEC 14.9.2 steps 2-3 (PLAN G443): the twins of ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443's forms. Valid where no such
+    // Origin is needed: one Loan (h7), a value read (h8), part by part (h9), a declared Type (h10). Structural misfits keep their record (h11 to
+    // h13), as does a Function component's Origin part, a whole-contract comparison (SPEC 10.7, 15.6.1) the element's own fit judges (h14).
+    [InlineData("guard", "g586h7", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, u@ref)\n    return r\n", "")]
+    [InlineData("guard", "g586h8", Sources + SourcesBody + "    let j = if c => (y, u) else => (2, v@ref)\n    return r\n", "")]
+    [InlineData("guard", "g586h9", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (v@ref, 2)\n    return r\n", "")]
+    [InlineData("guard", "g586h10", Sources + SourcesBody + "    let j: (i32, i32) = if c => (y, u@ref) else => (2, v@ref)\n    return r\n", "")]
+    [InlineData("guard", "g586h11", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, x)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@ref) else => (2, x)")]
+    [InlineData("guard", "g586h12", Sources + SourcesBody + "    let j = if c => (y, u@uniq) else => (2, v)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@uniq) else => (2, v)")]
+    [InlineData("guard", "g586h13", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, b)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@ref) else => (2, b)")]
+    [InlineData("guard", "g586h14", FunctionContracts + "    let w = if c => (y, fa@move) else => (2, fb@move)\n    return 0\n", "UnprovenOriginContract_Kd: let w = if c => (y, fa@move) else => (2, fb@move)")]
+
     // SPEC 14.9.2 steps 2-4 (PLAN G540): x13o's other order, and its invalid twin, where no source supplies a Type.
     [InlineData("I2", "x13r", "func k(c: bool, w: ref/i32) -> i32\n    let j = if c => Option.None else => Option.Some(w)\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "x13n", "func k(c: bool) -> i32\n    let j = if c => Option.None else => Option.None\n    return 0\n", "*: let j = if c => Option.None else => Option.None | ...")]
@@ -251,4 +265,19 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "h_dictf", HeldDeclarations + "    return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3])\n", "UnresolvedBinding_Kd: return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3]) | ...")]
     public void AHeldJoinKeepsItsVerdictThroughWhatDeliversIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // These rows pin a temporary record, not a SPEC verdict (DECISIONS BU-156): each program is valid (SPEC 14.9.2 step 2: a source's fit to the
+    // common Type is never a Type mismatch), but the step-2 Type keeps one typed source's own Origins (PLAN G443), so a source that takes it late
+    // and differs from it in Origins alone is the located Unsupported_Kd at that source, never an internal fault: another Loan (h1, its other
+    // order h2, the argument h3), a new shared borrow (h4), uniq (h5), a call that defaults first (h6). Removal: G443's unit (R7-I2 d) deletes
+    // the interim and moves these forms to ACommonTypeFormationHasItsVerdict with no records.
+    [Theory]
+    [InlineData("g586h1", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, v@ref)\n    return r\n", "Unsupported_Kd: let j = if c => (y, u@ref) else => (2, v@ref)")]
+    [InlineData("g586h2", Sources + SourcesBody + "    let j = if c => (2, v@ref) else => (y, u@ref)\n    return r\n", "Unsupported_Kd: let j = if c => (2, v@ref) else => (y, u@ref)")]
+    [InlineData("g586h3", Sources + SourcesBody + "    r = g(if c => (y, u@ref) else => (2, v@ref))\n    return r\n", "Unsupported_Kd: r = g(if c => (y, u@ref) else => (2, v@ref))")]
+    [InlineData("g586h4", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, y)\n    return r\n", "Unsupported_Kd: let j = if c => (y, u@ref) else => (2, y)")]
+    [InlineData("g586h5", Sources + SourcesBody + "    let j = if c => (y, u@uniq) else => (2, v@uniq)\n    return r\n", "Unsupported_Kd: let j = if c => (y, u@uniq) else => (2, v@uniq)")]
+    [InlineData("g586h6", Sources + SourcesBody + "    let j = if c => (identity(1), u@ref) else => (2, y)\n    return r\n", "Unsupported_Kd: let j = if c => (identity(1), u@ref) else => (2, y)")]
+    public void ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
 }
