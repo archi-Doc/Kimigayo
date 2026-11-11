@@ -11877,6 +11877,20 @@ resumed by R4-M86 (2026-10-20).
   - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
   - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
     takes this form.
+- **BU-176 A case that Reborrows an object view lends the object (PLAN G766)** (2026-11-12; Front, Binding; Major; design and
+  implementation reviews ACCEPT) SPEC 3.4.2, 13.5.5, 13.5.6, 15.6.2.
+  - Rule: a case adaptation whose case Reborrows an object view (`objuniq/T` or `objref/T` to an object view, an upcast to a base's
+    view included) lends the object as the view and its path allow, judged by `PlaceAuthority.LendsView`, the judge the concrete
+    `@objref`/`@objuniq` reads (`AdaptObjectBorrow`'s object-borrow arm); every other borrowing case lends the written slot
+    (`BorrowablePlace`) or a Temporary. The failure record stays the slot judge's (`BorrowFailure`: a shared layer on the path is
+    `SharedPathAccess_Kd`).
+  - Moves: valid, newly accepted (were `InvalidAssignment_Kd`): a01-a04, a06, a07, a09-a11, x12b (`q@s/Base` on `q: objuniq/Derived`
+    over a `let` slot) and the review's valid twins x06v, x16b, x20; i05 and i08 now `ComparisonLoanConflict_Kd` (were
+    `InvalidAssignment_Kd`), the concrete twins' record. Remainders: a05 (q03's conditional member) is G764's family (BU-172); i01's
+    write record and `y.n` on `y = r@s/Base` (x12d) stay with PLAN G760; `q@objref` on a pair operand (b01, i04) with G762.
+  - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
+    would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
+    read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
