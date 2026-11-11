@@ -17110,6 +17110,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     publication is B/A′ > 1.03 and outside the same measurement's A′/A spread, or when warm allocation grows; cold allocation and
     retained memory are recorded per unit and compared at the stage exit; a back unit stops when an O2 kernel moves beyond the A=A
     variance after an address-matched control (R5-M147) or an allocation count changes; O0 is recorded.
+    - Amended by R7-M21 (the owner, 2026-11-11): an open-issue fix books no timing slot; timing stays for a fix that changes a
+      hot path's complexity or per-use work, a back unit's generated code and a plan unit; a checkpoint every fifth landed
+      window watches the sum.
   - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
   - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
     blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
@@ -17382,6 +17385,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Temporary structures and removal: the serial changes inside a pass for a declaration's scope only because of the two fills,
     which c3 removes; the key's readings are replaced by C3a's class ids at c2; `Completion` is permanent: e2 gives it more carriers
     and raises judgment answers to Complete where final; f adds Resource.
+- **R7-M21 RP8 times what can cost: an open-issue fix rests on the Session's deterministic checks, and a checkpoint watches the
+  sum** (owner, 2026-11-11, in the Coordinator's dialog, verbatim 「1 open issue の修正は T スロット不要にします 2 例外として計時を残す 3 積み重なりの監視:
+  上記を採用します。各種文書の修正をお願いします。また、予約済みスロットのうち、例外にあたらないものは解放してください。」, on K's proposal; amends R7-M3's RP8 and the plan's RQ8; plan
+  revision 60).
+  - (1) An open-issue fix (a unit whose purpose is a PLAN G row) books no timing slot. Its gate is the Session's deterministic
+    checks: warm allocation 0 B where a test pins it, the `Purpose=Allocation` tests and the scaling classes. Cold allocation and
+    retained memory are read at the checkpoints and compared at the stage exit.
+  - (2) RP8's timing, as R7-M3 states it, stays for: a fix whose design review states that it changes a hot path's complexity or
+    adds work per use (the review names the program that measures it); a back unit that changes generated code (the O2 corpus A/B
+    with R5-M147's control: native O2 run time and allocation are AGENTS constraints); and a unit of the R7, R8 or R9 plan (§5).
+  - (3) A checkpoint: after every fifth landed window K books one slot (its row names A, the previous checkpoint's dev, and B, dev
+    now), and the Middle runs it with its T-145 harness: Bind, Analyze and Generate, cold and warm, on Hello, Milestone26 and
+    RawStores, A/B/A′ with A′ A's byte copy, CPU pinned, tiering off, six rounds, under RP8's bounds (its A′/A spreads stayed within
+    a few percent in T-110, T-120 and T-145). A stop is bisected over the landed windows' merges; the unit found becomes an open
+    issue (a PLAN row) for its owner, and the owner is told. The first baseline is dev after W-169, the window of this decision.
+  - Reason: a fix lands whatever it costs (AGENTS: SPEC correctness first, compile speed last), so an RP8 stop on a fix changed no
+    outcome (O-150, O-172, O-176 and O-179 all landed), while the quiet slots serialized about twelve fixes for hours and the host's
+    slow episodes (PLAN G754) stopped units falsely. One stop on a fix found a real per-use cost (G707, O-155), the case (2) keeps.
+  - With the decision K released the booked slots of open-issue fixes (T-125, T-128 to T-131, T-135, T-137, T-139, T-143, T-144,
+    T-146, T-147) and stale rows, and kept T-127 (G707, case (2)) and T-138 (R7-N1e2-2b-1, an R7 plan unit).
+  - Rejected: RP8's timing for every unit (above); no timing at all (the generated code's O2 guarantees are constraints, and a plan
+    unit's design may trade compile time).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
