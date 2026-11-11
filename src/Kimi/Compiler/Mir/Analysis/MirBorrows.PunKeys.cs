@@ -6,8 +6,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's pun rule, its Place keys (PLAN G667b; contract in MirBorrows.Puns.cs; SPEC 5.7 Calls). Responsibility: Binding's facts at a
 // Place's key (TyCtxt.OwnLayers), folded once per program version (R4-M140): whether a raw layer is at the Place's own address, what
-// its layers state, the Types a write through them writes and the keys past them; an entry's key (TyCtxt.Select, TyCtxt.Base along
-// its Place's steps) once per run; the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
+// its layers state (Stated, which A5's storing rule reads at a store's destination too, MirBorrows.Storing), the Types a write through
+// them writes and the keys past them; a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run;
+// the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<PlaceKey, int> punKeyIndex = []; // The version's keys, indexed.

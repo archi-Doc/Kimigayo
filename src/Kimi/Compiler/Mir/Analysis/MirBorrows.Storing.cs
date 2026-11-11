@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // call retain there. It reads the direct stores of a safe Fn or Test body whose contract writes an untied storage, on two must-facts;
 // where either is lost it says nothing (O-62 (a)).
 // Input: the body's own CallRetention (TyCtxt.Retains over its declaration), its records (Own, the Reached entry of a storage's erased
-// case Type, All), the exposed holders (MirBorrows.Loans' Exposed) and the checks replay's chains (MirDataflow.Head).
+// case Type, All), the exposed holders (MirBorrows.Loans' Exposed), the checks replay's chains (MirDataflow.Head) and the facts at a
+// store's destination key (MirBorrows.PunKeys' Stated, folded from TyCtxt.OwnLayers, which A5's pun rule reads too).
 // The value fact, M(h): by holder slot, the elements its whole value certainly holds, a MirLoanSets set in a namespace of its own (never
 // joined with σ): Own(i, part), input i's own part, an address or borrow of the storage i's layer at `part` refers to (a parameter's own
 // pointer is the layer at the root, part 0; a by-value input's layer is the part a Place names before its first layer Deref), or of
@@ -31,7 +32,9 @@ namespace Kimi.Compiler.Mir;
 // layer stepping Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair:
 // UnretainedRawStore_Kd at the store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part
 // formed by `@raw` has none).
-// Never where the value's own part is the destination's layer, not Payload (a self-link, O-56 (a), SPEC 5.2.1: not through an own step).
+// Never where the value's own part is the destination's layer, not Payload (a self-link, O-56 (a), SPEC 5.2.1: not through an own step),
+// nor where every raw layer at the destination's own address states an Origin other than `static` (SPEC 5.2.1: rule A governs only a
+// layer stating none; a stated one, `during self` included, retains as its Origin's borrow would, which Binding's fits check, 5.7).
 // Storage a raw Field declares `during self` is reached only through a raw Place (its Deref a layer here): a store there lies in an
 // `unsafe` scope, and an address of it gives Past(i).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
@@ -387,6 +390,11 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
+        if (this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))].Stated)
+        {
+            return; // Every raw layer the store writes states an Origin other than `static`: rule A does not govern it.
+        }
+
         var last = -1;
         for (var i = 0; i < count; i++)
         {

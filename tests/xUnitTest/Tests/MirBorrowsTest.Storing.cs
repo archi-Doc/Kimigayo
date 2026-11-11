@@ -47,11 +47,14 @@ public sealed partial class MirBorrowsTest
         ["payloadLocal"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@uniq\n    r@follow.p = v",
         ["payloadBorrow"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow.q@raw@raw/u8\n    let r = t@follow.p@uniq\n    r@follow = v",
 
-        // Valid: another input's part (rule A), a read through the input (Chain), a self-link (O-56 (a)), a redirected landing.
+        // Valid: another input's part (rule A), a read through the input (Chain), a self-link (O-56 (a); through objuniq, a dereference,
+        // not an own step), a redirected landing; a store into a stated layer, also a payload's `during self` Field (5.2.1, 5.7).
         ["other"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    t@follow@follow = u@follow@raw@raw/u8",
         ["reached"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@follow@raw@raw/u8",
         ["selfLink"] = "func st(t: uniq/(raw/u8))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@uniq\n    r@follow = v",
         ["selfLinkPart"] = "func st(p: (uniq/(raw/u8) during a, uniq/u8 during a))\n    p.0@follow = p.0@follow@raw@raw/u8",
+        ["fieldPartSelfLink"] = PayloadType + "func st(t: uniq/PR)\n    t@follow.p = t@follow.q@raw@raw/u8",
+        ["objuniqSelfLink"] = PayloadType + "func st(t: objuniq/PR)\n    t@follow.p = t@follow.q@raw@raw/u8",
         ["redirectOther"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8) during a)\n    t@follow = u@follow@uniq\n" +
             "    t@follow@follow = t@follow@raw@raw/u8",
         ["redirectSelfCell"] = "func st(t: uniq/((raw/u8, uniq/(raw/u8) during a)) during a)\n    let v = t@follow@raw@raw/u8\n" +
@@ -91,6 +94,8 @@ public sealed partial class MirBorrowsTest
         ["statedOwnByValue"] = "struct SS {s}\n    public var c: uniq/(raw/u8 during s) during s\n    public var d: uniq/(raw/u8) during s\n" +
             "    public init(c: uniq/(raw/u8 during s) during s, d: uniq/(raw/u8) during s)\n        self.c = c\n        self.d = d\n" +
             "func st(p: SS during a)\n    p.c@follow = p.d@follow@raw@raw/u8",
+        ["statedPayload"] = "struct NS\n    public var p: raw/u8 during self\n    public var x: raw/u8\n    public var q: u8\n    public init()\n" +
+            "        self.p = null\n        self.x = null\n        self.q = 0\nfunc st(t: uniq/(obj/NS))\n    t@follow.p = t@follow.q@raw@raw/u8",
         ["selfLinkField"] = "func st(p: (uniq/((raw/u8, u8)) during a, i32))\n    p.0@follow.0 = p.0@follow.1@raw@raw/u8",
         ["callStore"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = u@follow@raw@raw/u8\n" +
             "    let old = Kimi.Intrinsics.exchange(v@uniq, with: t@follow@raw@raw/u8)\n    t@follow@follow = v",
@@ -129,6 +134,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
     [InlineData("selfLinkPart", "")]
+    [InlineData("fieldPartSelfLink", "")]
+    [InlineData("objuniqSelfLink", "")]
     [InlineData("redirectOther", "")]
     [InlineData("redirectSelfCell", "")]
     [InlineData("redirectSelfLocal", "")]
@@ -150,6 +157,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("statedTupleElem", "")]
     [InlineData("statedSibling", "")]
     [InlineData("statedOwnByValue", "")]
+    [InlineData("statedPayload", "")]
     [InlineData("selfLinkField", "")]
     [InlineData("callStore", "")]
     [InlineData("partStore", "")]
