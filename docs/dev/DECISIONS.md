@@ -11638,8 +11638,11 @@ resumed by R4-M86 (2026-10-20).
     TypeMismatch_Kd: `return v` at `v: T.K.Item` (q03; dev read it as `T.(K).Item`). Valid, rejected before, now accepted:
     `T.(C).X.Y` with a `contract X` in scope (q01), `T.K.Item` through T's associated `K` (q02); valid, CheckFaulted_Kd before, now
     accepted: `T.(C).X.(D).Y` (q01p). Records: `S.C.Item(source)` stays rejected, now as an ordinary path (UnresolvedBinding_Kd at
-    `S.C`); its twin `S.(C).Item(source)` is valid. Milestone20 and the Benchmark corpus are respelled, so the snapshot has no
-    difference.
+    `S.C`); its twin `S.(C).Item(source)` is valid. Likewise G747's
+    AssociatedOriginBindingTest.AnApplicationRestsOnItsFirstFailedPart row `U.L.Item(static)` (`U is L`, written after 2b-1's base):
+    InvalidAssociatedType_Kd before (that deleted Origins failure), now UnresolvedBinding_Kd at `U.L` (the application rests on its
+    failed target); its twin `U.(L).Item(static)` is valid. Milestone20 and the Benchmark corpus are respelled, so the snapshot has
+    no difference.
   - Tests (the owner's O-157 (a)): every row dev read in the unparenthesized form is respelled `T.(C).X` in behavior-preserving
     commits first, found by a throwaway trace of that reading over the whole suite (every purpose), the snapshot corpus and the
     Benchmark corpora: 704 rows in 57 classes, Milestone20 (x6), `Iterators.kimi`, BindingBenchmark "Contracts", and
@@ -11648,7 +11651,12 @@ resumed by R4-M86 (2026-10-20).
     ConstraintProjectionApiAccessBindingTest's subject filter (`T.(C).Element` is a Type node wrapping the member access). Kept:
     `associate C.X` and `P.C.X` heads, `Self is P.C`, StructuredConstraintSubjectBindingTest's `W<Y>.C.A` and `Q.L.Item(a)` (that
     method pins both spellings) and AssociatedOriginBindingTest's `S.C.Item(source)` row. Rows with each valid twin:
-    AssociatedTypeFormationBindingTest.OnlyTheParenthesizedSuffixNamesAProjectionsContract.
+    AssociatedTypeFormationBindingTest.OnlyTheParenthesizedSuffixNamesAProjectionsContract. Refresh onto dev 4f70e6bd1: the trace
+    rerun on the merged tree read three more rows, G683's
+    ApiAccessBindingTest.AContractsAssociatedSpecificationUsesTheContractsDomain (`Source.Hidden.Element`), respelled
+    `Source.(Hidden).Element` (707 rows in 57 classes); as written they are newly invalid tests (the valid row, public `Hidden`, is
+    rejected, and the two invalid rows lose their Access record). Refresh 2 onto dev 3f391cb35: a scan of every line dev added since
+    4f70e6bd1 finds G747's `U.L.Item(static)` row, kept with its record moved and its valid twin added (Moves).
   - Rejected: keeping the reading for a module-qualified `C` (a second rule for one form); finding the rewrite set by failing rows
     (misses rows that pass for another cause and Allocation rows) or by a text grep (nested paths, module paths, `associate` heads).
 - **BU-162 An associate item is read once for every owner (PLAN G683)** (2026-11-11; Front, Parsing and Binding; Major; design
