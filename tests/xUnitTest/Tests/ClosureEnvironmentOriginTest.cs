@@ -517,10 +517,6 @@ public class ClosureEnvironmentOriginTest
             "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n",
         "x.s>")]
     [InlineData(
-        NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n        origin q == x.s\n        slot@follow.append(v)\n" +
-            NestedStore,
-        "x.s\n")]
-    [InlineData(
         "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n" +
             "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
             "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
@@ -535,6 +531,23 @@ public class ClosureEnvironmentOriginTest
             Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), errors[i].Code);
             Assert.StartsWith(at[i], source[errors[i].Span.Start..], StringComparison.Ordinal);
         }
+    }
+
+    // An Unsupported clause naming a body local fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1), so `put` is checked: the store of the
+    // block's `inner` through it is the leak's own record, which the clause-free twin reports too.
+    [Fact]
+    public void AnUnsupportedClauseLeavesTheLeaksOwnRecord()
+    {
+        const string Clause = "        origin q == x.s\n";
+        var source = NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n" + Clause + "        slot@follow.append(v)\n" + NestedStore;
+        var twin = source.Replace(Clause, string.Empty, StringComparison.Ordinal);
+        Assert.Equal(
+            [$"{nameof(DiagnosticCode.Unsupported_Kd)} x.s", $"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
+            ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span.Start)
+                .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}"));
+        Assert.Equal(
+            [$"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
+            ContextualCaptureTest.PublishedRecords(twin).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(x => $"{x.Code} {twin.Substring(x.Span.Start, x.Span.Length)}"));
     }
 
     // The forms BU-56 leaves to their judges: an enclosing parameter's Origin, also through a local annotated with it (d6b's store of the

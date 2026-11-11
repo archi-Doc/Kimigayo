@@ -534,7 +534,6 @@ public sealed partial class Binding
     {
         var state = this.TryCandidate(
             solution,
-            evaluation.ExplicitLengths,
             evaluation.Mapping,
             evaluation.Evaluated[winner].ArgumentMap,
             evaluation.Expected,
