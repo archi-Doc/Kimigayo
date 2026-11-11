@@ -557,6 +557,40 @@ public sealed partial class MirBuildTest
     public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
+    // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
+    // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
+    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), FormatBuffer,
+    // its writer, the writes, FormatFinish and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
+    // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
+    // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
+        "[13 of u8]",
+        new[] { "fixed", "ErasedWriter", "FormatSegment \"n=\" 0 1", "FormatSegment \"\" 0 0", "write", "text", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine" })]
+    [InlineData(
+        "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
+        null,
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"s=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "write", "writeLine" })]
+    [InlineData(
+        "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
+        "[(2 + bound(T)) of u8]",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"v=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine", "writeLine" })]
+    public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
+    {
+        var body = Body(source, "f");
+        Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
+        Assert.Equal(calls, body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(x => Step(body, x.Terminator).Split(' ')[0])
+            .Where(static x => x != "Fail").Order(StringComparer.Ordinal));
+        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type)
+            .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
+        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        Assert.Single(writers); // One writer local, both arms' (consent 1).
+    }
+
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
     // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
     [Fact]
@@ -592,19 +626,21 @@ public sealed partial class MirBuildTest
         }
 
         return path;
+    }
 
-        static string Step(MirBody body, in MirTerminator call)
+    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its text, later bytes and later values' count; another call
+    // by its function's name.
+    private static string Step(MirBody body, in MirTerminator call)
+    {
+        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
-            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
-            {
-                return call.Callee.Symbol!.Name;
-            }
-
-            var id = (IntrinsicId)call.Callee.Arg;
-            var operands = body.Operands.Slice(call.Start, call.Count);
-            return id != IntrinsicId.FormatSegment ? id.ToString()
-                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+            return call.Callee.Symbol!.Name;
         }
+
+        var id = (IntrinsicId)call.Callee.Arg;
+        var operands = body.Operands.Slice(call.Start, call.Count);
+        return id != IntrinsicId.FormatSegment ? id.ToString()
+            : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
     }
 
     // A function f of the temporaries' program that runs a statement, built without validator findings.

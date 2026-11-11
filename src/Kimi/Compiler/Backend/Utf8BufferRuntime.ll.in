@@ -2,16 +2,6 @@
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
 ; The adapter's routine __kimi_text_writer is the kept ErasedWriterRuntime.ll.in's.
 
-{{__kimi_write_line_utf8}}
-entry:
-  %data = load ptr, ptr %self, align 8
-  %len = getelementptr i8, ptr %self, i64 8
-  %length = load i64, ptr %len, align 8
-  call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
-  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
-  ret void
-}
-
 {{__kimi_text_fixed}}
 entry:
   store ptr %self, ptr %ret, align 8
@@ -43,13 +33,7 @@ invalid:
   unreachable
 }
 
-{{__kimi_text_release}}
-entry:
-  call void @__kimi_free(ptr %self, ptr %location, i64 %location_length)
-  ret void
-}
-
-; The committed bytes as a Slice, for the formatting adapter and the conversions until W1c and W2.
+; The committed bytes as a Slice, for the formatting adapter's end (__kimi_format_take_string) until W2.
 define internal void @__kimi_buffer_bytes(ptr %ret, ptr %self) #0 {
 entry:
   %data = load ptr, ptr %self, align 8
@@ -58,98 +42,6 @@ entry:
   store ptr %data, ptr %ret, align 8
   %outlen = getelementptr i8, ptr %ret, i64 8
   store i64 %length, ptr %outlen, align 8
-  ret void
-}
-
-{{__kimi_text_utf8}}
-entry:
-  call void @llvm.memcpy.p0.p0.i64(ptr %ret, ptr %self, i64 16, i1 false)
-  ret void
-}
-
-; Strict Unicode Scalar Value validation; NUL is ordinary ASCII. Bounds precede each sequence.
-define internal i1 @__kimi_utf8_valid(ptr %data, i64 %length) #0 {
-entry:
-  br label %loop
-loop:
-  %index = phi i64 [ 0, %entry ], [ %next, %ascii ], [ %end, %scalar ]
-  %done = icmp eq i64 %index, %length
-  br i1 %done, label %yes, label %read
-read:
-  %at = getelementptr i8, ptr %data, i64 %index
-  %lead8 = load i8, ptr %at, align 1
-  %lead = zext i8 %lead8 to i32
-  %simple = icmp ult i32 %lead, 128
-  br i1 %simple, label %ascii, label %classify
-ascii:
-  %next = add i64 %index, 1
-  br label %loop
-classify:
-  %low = icmp ult i32 %lead, 194
-  %high = icmp ugt i32 %lead, 244
-  %badlead = or i1 %low, %high
-  br i1 %badlead, label %no, label %width
-width:
-  %two = icmp ult i32 %lead, 224
-  %three = icmp ult i32 %lead, 240
-  %wide = select i1 %three, i64 3, i64 4
-  %count = select i1 %two, i64 2, i64 %wide
-  %mask3 = select i1 %three, i32 15, i32 7
-  %mask = select i1 %two, i32 31, i32 %mask3
-  %min3 = select i1 %three, i32 2048, i32 65536
-  %minimum = select i1 %two, i32 128, i32 %min3
-  %initial = and i32 %lead, %mask
-  %remaining = sub i64 %length, %index
-  %short = icmp ult i64 %remaining, %count
-  br i1 %short, label %no, label %prepare
-prepare:
-  %end = add i64 %index, %count
-  %first = add i64 %index, 1
-  br label %continuation
-continuation:
-  %cursor = phi i64 [ %first, %prepare ], [ %advance, %accumulate ]
-  %prefix = phi i32 [ %initial, %prepare ], [ %codepoint, %accumulate ]
-  %address = getelementptr i8, ptr %data, i64 %cursor
-  %byte = load i8, ptr %address, align 1
-  %top = and i8 %byte, -64
-  %valid = icmp eq i8 %top, -128
-  br i1 %valid, label %accumulate, label %no
-accumulate:
-  %bits8 = and i8 %byte, 63
-  %bits = zext i8 %bits8 to i32
-  %shifted = shl i32 %prefix, 6
-  %codepoint = or i32 %shifted, %bits
-  %advance = add i64 %cursor, 1
-  %last = icmp eq i64 %advance, %end
-  br i1 %last, label %scalar, label %continuation
-scalar:
-  %overlong = icmp ult i32 %codepoint, %minimum
-  %excess = icmp ugt i32 %codepoint, 1114111
-  %surrogate_offset = sub i32 %codepoint, 55296
-  %surrogate = icmp ult i32 %surrogate_offset, 2048
-  %bad_range = or i1 %overlong, %excess
-  %bad_scalar = or i1 %bad_range, %surrogate
-  br i1 %bad_scalar, label %no, label %loop
-yes:
-  ret i1 true
-no:
-  ret i1 false
-}
-
-{{__kimi_text_validate_utf8}}
-entry:
-  %data = load ptr, ptr %self, align 8
-  %len = getelementptr i8, ptr %self, i64 8
-  %length = load i64, ptr %len, align 8
-  %ok = call i1 @__kimi_utf8_valid(ptr %data, i64 %length)
-  br i1 %ok, label %success, label %failure
-success:
-  store i32 0, ptr %ret, align 4
-  %payload = getelementptr i8, ptr %ret, i64 8
-  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %self, i64 16, i1 false)
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
   ret void
 }
 

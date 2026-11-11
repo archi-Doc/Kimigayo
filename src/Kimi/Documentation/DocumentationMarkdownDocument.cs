@@ -11,7 +11,8 @@ namespace Kimi.Documentation;
 
 #pragma warning disable SA1201, SA1202, SA1204, SA1600, SA1649 // Compact syntax model and allocation-free enumeration.
 
-/// <summary>The node kinds of the limited documentation Markdown profile.</summary>
+/// <summary>The node kinds of the limited documentation Markdown profile. The block kinds precede <see cref="Text"/>, which
+/// begins the inline kinds; a new kind keeps this order (the HTML renderer ends a block element's line by it).</summary>
 public enum DocumentationMarkdownKind : byte
 {
     Document,
@@ -71,7 +72,8 @@ public sealed partial class DocumentationMarkdownDocument
     /// <param name = "cancellationToken">Cancellation before publishing any result.</param>
     /// <param name = "maximumDepth">Maximum tree depth, excluding the document root; default 256.</param>
     /// <returns>A completed snapshot safe for concurrent reads.</returns>
-    public static DocumentationMarkdownDocument Parse(string text, CancellationToken cancellationToken = default, int maximumDepth = 256) => ParseCore(text, null, cancellationToken, maximumDepth);
+    public static DocumentationMarkdownDocument Parse(string text, CancellationToken cancellationToken = default, int maximumDepth = 256)
+        => ParseCore(text, null, cancellationToken, maximumDepth);
 
     /// <summary>Parses a source-backed comment into an immutable documentation snapshot.</summary>
     /// <param name = "comment">The source-backed comment.</param>
@@ -172,7 +174,8 @@ public sealed partial class DocumentationMarkdownDocument
     // would otherwise be paid by the allocation-free plain-paragraph path too.
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static DocumentationMarkdownDocument ParseGeneral(string text, DocumentationText? source, CancellationToken cancellationToken, int maximumDepth, bool hasNul)
+    private static DocumentationMarkdownDocument ParseGeneral(
+        string text, DocumentationText? source, CancellationToken cancellationToken, int maximumDepth, bool hasNul)
     {
         // Typical comments fit in this frame's scratch; only larger ones touch the pool.
         // The buffers expose only written elements, so the stack need not be zeroed.
@@ -279,7 +282,11 @@ public sealed partial class DocumentationMarkdownDocument
             var last = line == lineCount - 1;
             var contentStart = start + bounds[line * 3];
             var contentEnd = start + bounds[(line * 3) + 1];
-            nodes[id] = new() { Kind = DocumentationMarkdownKind.Text, Parent = 1, Start = contentStart, End = contentEnd, TextStart = contentStart, TextLength = contentEnd - contentStart, Next = last ? 0 : id + 1 };
+            nodes[id] = new()
+            {
+                Kind = DocumentationMarkdownKind.Text, Parent = 1, Start = contentStart, End = contentEnd, TextStart = contentStart,
+                TextLength = contentEnd - contentStart, Next = last ? 0 : id + 1,
+            };
             if (!last)
             {
                 var lf = start + bounds[(line * 3) + 2];
@@ -323,9 +330,13 @@ public readonly record struct DocumentationMarkdownNode
 
     public bool IsTight => (this.Data.Flags & MarkdownNodeFlags.Loose) == 0;
 
-    public string? Destination => this.Kind is DocumentationMarkdownKind.Link or DocumentationMarkdownKind.AutoLink ? this.document.GetValue(this.Data.Argument) : null;
+    public string? Destination
+        => this.Kind is DocumentationMarkdownKind.Link or DocumentationMarkdownKind.AutoLink ? this.document.GetValue(this.Data.Argument) : null;
 
-    public string? Title => this.Kind == DocumentationMarkdownKind.Link && (this.Data.Flags & MarkdownNodeFlags.HasTitle) != 0 ? this.document.GetValue(this.Data.Argument + 1) : null;
+    public string? Title
+        => this.Kind == DocumentationMarkdownKind.Link && (this.Data.Flags & MarkdownNodeFlags.HasTitle) != 0
+            ? this.document.GetValue(this.Data.Argument + 1)
+            : null;
 
     public DocumentationMarkdownNode? Parent => this.id == 0 ? null : new(this.document, this.Data.Parent);
 
@@ -400,7 +411,8 @@ public readonly record struct DocumentationMarkdownNode
 }
 
 /// <summary>Reports an explicit resource limit without changing Markdown interpretation.</summary>
-public sealed class DocumentationMarkdownLimitException(int maximumDepth) : OperationCanceledException($"Documentation Markdown exceeded the configured depth limit ({maximumDepth}).")
+public sealed class DocumentationMarkdownLimitException(int maximumDepth)
+    : OperationCanceledException($"Documentation Markdown exceeded the configured depth limit ({maximumDepth}).")
 {
     public int MaximumDepth { get; } = maximumDepth;
 }

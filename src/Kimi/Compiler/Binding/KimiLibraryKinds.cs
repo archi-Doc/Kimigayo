@@ -24,14 +24,17 @@ public enum IntrinsicKind : byte
 
 // The intrinsic Contract table (SPEC 8.7.1; DECISIONS R4-M89, package 2b-D §3.4): how Binding decides each compiler-intrinsic Contract.
 // Input: an IntrinsicKind. Output: its row, which ProveConstraint, a Contract's Self clause, a struct's or enum's Self clause (plain
-// or conditional) and conformance verification read.
+// or conditional), conformance verification and inheritance (VerifyConformance, InheritedConformances, VerifyInheritedConformance) and
+// KimiLibrary's registration (the judged intrinsics' empty shapes, which make them refinement parents) read.
 // Invariants: one row per IntrinsicKind, None (a declared Contract) included; a new intrinsic adds a row, never a case at a reader.
 // Must not: judge a capability (the capability engine's) or decide a conformance's members (contract matching's).
 
 /// <summary>A row of the intrinsic Contract table.</summary>
 internal readonly record struct IntrinsicContract
 {
-    /// <summary>Gets a value indicating whether the capability engine judges <c>T is K</c> (SPEC 8.7.2–8.7.4, 15.2.3).</summary>
+    /// <summary>Gets a value indicating whether the capability engine judges <c>T is K</c> (SPEC 8.7.2–8.7.4, 15.2.3): K is then a
+    /// refinement parent without members (SPEC 8.4.3), and a conformance to K, an ancestor's included, is that judgment, as a Contract's
+    /// <c>Self is K</c> is (SPEC 8.7.1): neither form opts the conforming Type in.</summary>
     internal bool Judged { get; init; }
 
     /// <summary>Gets the failure of <c>Self is K</c> in a struct or enum declaration; None when it declares a conformance (SPEC 8.7.1).</summary>
@@ -40,16 +43,13 @@ internal readonly record struct IntrinsicContract
     /// <summary>Gets a value indicating whether a Contract's <c>Self is K</c> is a requirement and a premise (SPEC 8.7.1, 8.7.3).</summary>
     internal bool SelfRequirement { get; init; }
 
-    /// <summary>Gets a value indicating whether a conformance to K, declared or an ancestor's, is decided by the judgment, not by matching.</summary>
-    internal bool ConformanceJudged { get; init; }
-
     internal static IntrinsicContract Of(IntrinsicKind kind) => kind switch
     {
         IntrinsicKind.None => default,
-        IntrinsicKind.Copy => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // Derived Copy (SPEC 3.5.2).
-        IntrinsicKind.Owned => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // A checked assertion.
+        IntrinsicKind.Copy => new() { Judged = true, SelfRequirement = true }, // Derived Copy (SPEC 3.5.2).
+        IntrinsicKind.Owned => new() { Judged = true, SelfRequirement = true }, // A checked assertion.
         IntrinsicKind.Callable => new() { Declaration = BindingFailure.InvalidConstraint }, // Bound as a Callable Constraint, never a Contract one.
-        IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint, ConformanceJudged = true },
+        IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint },
         IntrinsicKind.ObjectPayload => new() { Judged = true, Declaration = BindingFailure.InvalidSelfClause, SelfRequirement = true }, // Never granted.
         IntrinsicKind.PrimitiveInteger => new() { Judged = true, Declaration = BindingFailure.ClosedContractConformance }, // Twelve integer Types (8.7.4).
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
@@ -61,22 +61,14 @@ public enum CompilerFunctionKind : byte
 {
     None,
     WriteLine,
+    ConsoleWriteStdout,
     Abort,
     MakeObj,
     MakeRc,
     MakeArc,
     Clone,
     TestTempDirectory,
-    TextFixed,
-    TextHeap,
     TextWriter,
-    TextUtf8,
-    TextValidateUtf8,
-    TextToString,
-    TextTryFormat,
-    TextRelease,
-    WriterWrite,
-    WriteLineUtf8,
     BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
@@ -170,9 +162,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or
-            CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
-            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.WriterWrite => default,
+        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -181,6 +171,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.Clone => Intrinsic(IntrinsicId.Clone),
         CompilerFunctionKind.TestTempDirectory => Intrinsic(IntrinsicId.TestTempDirectory),
         CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
+        CompilerFunctionKind.ConsoleWriteStdout => Intrinsic(IntrinsicId.WriteStdout),
         CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
         CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
@@ -200,14 +191,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. The formatting entries are
-    // unclassified: A4 composes their published rows (Formats) first.
+    // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
+    // built-in items (BuiltinFormat alone formats) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.TextValidateUtf8 =>
-            CompilerFunctionEffect.Inputs,
-        CompilerFunctionKind.TextRelease or
+        CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
             >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,

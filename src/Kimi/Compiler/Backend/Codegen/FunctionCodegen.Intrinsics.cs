@@ -4,7 +4,7 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130, R5-M131): a call of
+// The intrinsic rows of FunctionCodegen (R5 plans C8a, C5c, C6a, C9b and C9c, package C 3.2; DECISIONS R5-M92, R5-M108, R5-M110, R5-M130): a call of
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
@@ -77,9 +77,9 @@ internal sealed partial class FunctionCodegen
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its Item's adapter entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
     // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem), a Body disposition's legacy routine (LegacyRuntimeHelpers.Row); null
-    // for any other row, which is not one routine call (a Shim's, an instruction writer's, an Unproduced row's), and after a record at the
-    // source.
-    private FunctionAbi? Routine(BoundType item, BoundType? result, int target, SourceInfo source, out ReadOnlySpan<Value> given)
+    // for any other row, which is not one routine call (a Shim's, an instruction writer's, an Unproduced row's), and after a broken
+    // contract's record (an intrinsic row's, below).
+    private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
@@ -87,17 +87,8 @@ internal sealed partial class FunctionCodegen
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } =>
                 this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind) is { } row ? this.Routine(row, target, source, out given) : null,
+            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
         };
-    }
-
-    // A legacy row's routine (DECISIONS R5-M116, R5-M128), the one path its direct call, its Item's Value call and its
-    // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
-    // (FunctionCodegen.Formatting); null after a record at the source.
-    private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
-    {
-        given = default;
-        return row.Writer == LegacyWriter.Formatting ? this.Formatting(row, target, source, out given) : row.Routine;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in

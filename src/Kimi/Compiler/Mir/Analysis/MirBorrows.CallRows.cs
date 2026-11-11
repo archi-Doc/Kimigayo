@@ -107,7 +107,7 @@ internal sealed partial class MirBorrows
     // callee's strongest receiver, and a Consuming one never depends on a case).
     private int Receiver(in MirTerminator call)
     {
-        if (call.Callee.Kind != MirCalleeKind.Value || this.TypeOf(call.Operand) is not { } callee || !types.HasReceiverInput(callee))
+        if (call.Callee.Kind != MirCalleeKind.Value || cases.TypeOf(call.Operand) is not { } callee || !types.HasReceiverInput(callee))
         {
             return -1;
         }
@@ -131,7 +131,7 @@ internal sealed partial class MirBorrows
     {
         this.covering.Clear();
         this.ownLayers.Clear();
-        var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
+        var item = call.Callee.Kind == MirCalleeKind.Value ? types.CalledItem(cases.TypeOf(call.Operand)) : null;
         var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
             : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
         if (symbol is null || this.CoverInput(symbol, subst, output) is not { } written || !types.OwnLayers(PlaceKey.Root(written), this.ownLayers))
@@ -202,7 +202,7 @@ internal sealed partial class MirBorrows
         }
 
         return callee.Kind == MirCalleeKind.Value
-            ? types.Retains(this.TypeOf(call.Operand)!, this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
+            ? types.Retains(cases.TypeOf(call.Operand), this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
             : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
     }
 }
