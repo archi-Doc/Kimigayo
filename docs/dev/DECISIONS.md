@@ -7421,6 +7421,36 @@ resumed by R4-M86 (2026-10-20).
   `TransferRequired_Kd` (no acceptance changes); that clause should read StoredReborrow's predicate, with the re-read 2's w4 (`return
   h.o` from `h: uniq/(H2 during a) during s` as `objuniq/P during a`, a leak) and w12v (the same under `origin s outlives a`, valid) as
   its failing-first rows (PLAN G232).
+  - Amended (2026-11-11; PLAN G254, unit G254a; design reviews 1-3, ACCEPT; the Front's consent C-236 for the test rows; C-238,
+    alignment with G755; the owner's O-168 (a); SPEC 3.5.1, 7.7.2, 8.1.1, 8.1.2, 8.14, 15.6.3, 15.8.2): a pair layer acquired by
+    case is Reborrowed in its own Semantics. The bare same-Semantics Reborrow by the per-case plan is one rule in two steps
+    (`Binding.BareAcquisition`): `BareReborrowLayer(stored, node)`, the Origin of the layer the plan Reborrows (a stored `uniq` or
+    `objuniq` whose plan Reborrows, or a pair layer that `BareAcquisition`'s plan, G755's one fact, Reborrows in an exclusive
+    admitted case: its outer-Origin slot), then `ReborrowedType`, the stored Type with that Origin met with the layers that reach
+    the Place (`WithOrigins`). Readers: AdaptInput's non-reference branch at a body Place (reach `ReachOf`, PathReborrowOrigin's
+    walk, only when the plan names a layer), hence StoredReborrow and the fixed-expected clause (shape gate
+    `StoresExclusiveReference`), and CaptureEntry for a nested entry (reach `EnvironmentContainment`; R4-M133 P4's own meet
+    deleted). An argument at a non-reference parameter moves from Exact to SameSemanticsReborrow (SPEC 10.2.2: a required exclusive
+    Reborrow is never Exact; every non-reference candidate of one Place gets the same class, so no ranking changes; N7). HIR's plan
+    stays ByCase; MirBuilder's ByCase builds at the consumer's Type where `MirTypes.Agree` holds (Binding's name, BU-27's HIR
+    contract; no identity premise). A case that Copies keeps the met slot (8.15.2). A written original `s/T` carries the binder's
+    `o` (8.1.1, 8.1.2, 15.4.2, 15.6.4 step 2). Limits: the rule names no family (`OuterOrigin` has no family row, so G721's revision
+    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1). Interim (the
+    owner's O-168 (a); removal condition: PLAN G758 opens a `var` local's pair slot as a local region): `LocalBorrowType` notes each
+    (`var` local, unopened Parameter-kind pair slot) per pass (cleared in `ResetLocalRegions`); a relation whose shorter end is that
+    slot and that was formed against the local itself, an assignment whose target is the local's own Place (`FailExplained`) or a
+    call relation whose shorter end the local's own input fixed (`EqualitySource`, `SlotEqualitySource` in `JudgeCallPosition`), is
+    one located `Unsupported_Kd` at the relation's `At`; any other relation on the same atom keeps its Language record. Moves: Q17
+    class 1 forms newly `UnprovenOriginRelation_Kd` (a use-after-free reachable on dev closed); 8 test rows (C-236); valid
+    `var`-local pair forms newly `Unsupported_Kd` (2 rows and the probes qb3-PU, qb3-PRU, qb-cl-PRU, qbp-put-PU, qb4-PRU, tl1-PRU;
+    qb1 from a Language error); the semantic snapshot's one moved case, `pair/B1-capture-exclusive` (a captured pair local's Field
+    Type with its Reborrow's Origin intersection), is the intended HIR. RP8 (T-145, dev 706b9f2ba vs 1e149c3bb): Hello warm Bind
+    1.032 and Milestone26 cold Bind 1.080 above their A'/A spreads (0.659-1.002, up to 1.064), other Bind rows within; the owner's
+    O-179 (a) lands it with that record; allocation warm 0 B, cold Bind +40 B. Rejected: a Closure-only rule; a per-case Type; a
+    second containment walk; opening the slot as a region here (G758's design); the interim keyed on the slot's atom (design review
+    2 B4), on a walk through the local (review 3 B7, w1) or on the published FixedBy (an outlives relation has none: qbp-put). Open:
+    O1 (G254b); edge (ii), a further chain resting on a noted local, not reached by any probe; G757 (the generic-slot order,
+    cu-id-v).
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
