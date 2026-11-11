@@ -79,10 +79,10 @@ public class Utf8ConsoleTest
         var c = MinimalEmissionTest.Analyze(source);
         var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c));
         var instructions = ir.Functions.SelectMany(static x => x.Instructions).ToArray();
-        var region = Assert.Single(instructions, static x => x.Opcode == "alloca" && x.Shape.StartsWith("alloca { [0 x i8], [", StringComparison.Ordinal));
-        var borrow = Assert.Single(instructions, x => x.Opcode == "store" && x.Operands[0] == region).Operands[1]; // Text.fixed's argument.
-        var call = Assert.Single(instructions, x => x.Opcode == "call" && x.Operands.Any(y => y.Opcode == "load" && y.Operands[0] == borrow));
-        Assert.Contains(call.Callee, FunctionCodegenTest.FunctionsOf(ir, c, "fixed"));
+        var fixedBodies = FunctionCodegenTest.FunctionsOf(ir, c, "fixed");
+        var call = Assert.Single(instructions, x => x.Opcode == "call" && fixedBodies.Contains(x.Callee!)); // Not by shape: CharFormat's array shares it.
+        var borrow = Assert.Single(call.Operands, static x => x.Opcode == "load").Operands[0]; // Text.fixed's argument.
+        var region = Assert.Single(instructions, x => x.Opcode == "store" && x.Operands[^1] == borrow).Operands[0];
         Assert.Equal($"alloca {{ [0 x i8], [{Encoding.UTF8.GetByteCount(text)} x i8] }}, align 1", region.Shape);
     }
 

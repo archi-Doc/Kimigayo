@@ -1491,6 +1491,21 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 
+    // SPEC 22.10.2 (R8-S2a): bool's, char's and Unit's format witness is the witness table's library body, not the BuiltinFormat routine,
+    // and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
+    [Theory]
+    [InlineData("bool", "BoolFormat")]
+    [InlineData("char", "CharFormat")]
+    [InlineData("()", "UnitFormat")]
+    public void ABuiltinFormatCallIsItsTablesBody(string type, string group)
+    {
+        var (program, set) = Collect($"func emit(writer: uniq/Utf8Writer, value: {type}) -> Result<(), BufferFull> => writer.write(value)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var body = $"library Fn format in group {group}";
+        Assert.Contains(body, Calls(program, set, $"library Fn write in struct Utf8Writer [Utf8Writer, {type}]"));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, body));
+    }
+
     // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a
     // fixed buffer has none, though its reserve is a body: the runtime's standard-buffer arm reserves for it (R8-W1a, until W2).
     [Fact]

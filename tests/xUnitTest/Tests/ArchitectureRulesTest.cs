@@ -46,7 +46,7 @@ public class ArchitectureRulesTest
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
-    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
@@ -211,6 +211,14 @@ public class ArchitectureRulesTest
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
     [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
+    // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
+    // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
+    [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")]
+    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")]
+    // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
+    // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
+    // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=2;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.cs=2")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
