@@ -1,16 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
-// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the erased writer's kept runtime
-// (ErasedWriterRuntime.ll.in: the ErasedWriter and ErasedReserve intrinsics' routines, a module part on request), the float formatting
-// part (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the
-// 128-bit integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine, the same), the runtime routines a module
-// defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
-// every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too), the external declarations, the overflow and memory
-// intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
-// numbers formatted on the stack and the bits of a floating constant's
-// hexadecimal spelling. Code generation writes the frame through it (PD2: promoted, never copied; Name came from the old writer with
-// ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
+// Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled constants, the
+// Windows runtime template with its ABI definitions spliced in and its test variant, the erased writer's kept runtime
+// (ErasedWriterRuntime.ll.in: the ErasedWriter and ErasedReserve intrinsics' routines, a module part on request), the float formatting part
+// (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
+// integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine and its division by ten, a module part
+// on request), the runtime routines a module defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte
+// copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too),
+// the external declarations, the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external
+// symbols, numbered names, numbers formatted on the stack and the bits of a floating constant's hexadecimal spelling. Code generation
+// writes the frame through it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69; Hexadecimal from
+// FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
 // floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records and constants (RuntimeAbi), the abort reasons (AbortReasons)
 // and the target profile (WindowsProfile).

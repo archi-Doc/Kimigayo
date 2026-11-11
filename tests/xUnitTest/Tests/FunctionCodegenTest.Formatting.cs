@@ -63,7 +63,8 @@ public sealed partial class FunctionCodegenTest
         "func usErased() -> (ref/Shown) -> string => Text.toString<Shown>\n";
 
     // A Library calling the format requirement at i128 and u128: a generic body's Requirement call at both and a requirement Item's Value
-    // call at i128, which reach IntegerFormat's specializations (R8-S2b2), generation coverage.
+    // call at i128, which reach IntegerFormat's specializations (R8-S2b2); GenerationIsDeterministic and WarmGenerationAllocatesNothing
+    // (FunctionCodegenTest.cs) generate it, so it covers the specializations' warm generation path.
     private const string FormatShims =
         "func apAppend<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    return value.format(writer)\n" +
         "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
