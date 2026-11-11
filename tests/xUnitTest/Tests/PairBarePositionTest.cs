@@ -64,9 +64,21 @@ public sealed class PairBarePositionTest
 
     // SPEC 8.14, 8.15.2 (G642): an acquisition's Copy evidence is the 8.3 proof of the complete Type in each Semantics case, at every
     // reader: a bare Place (a Tuple, a Closure), a Consuming call (7.7.3), `@copy` (13.5.3), a special receiver's part (6.3.4), and at
-    // 64 cases, the bound, inclusive. Labels from SPEC: the first five are valid (owner or ref, T is Copy: `(T, i32)`, `(ref/T, i32)`
-    // and the Closure over them are Copy); each other row is invalid in one case (a uniq case, 3.5.2) with its record.
+    // 64 cases, the bound, inclusive, and an omitted capture list (7.7.2, BU-84 S3; PLAN G748). Labels from SPEC: rows 1, 2 and 5-9 are
+    // valid (owner or ref, T is Copy: an omitted list's Copy, nested too, `(T, i32)`, `(ref/T, i32)` and the Closure over them); each
+    // other row is invalid in one case (a uniq case, or an owner case without Copy evidence, 3.5.2) with its record.
     [Theory]
+    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let g = func () -> i32\n        let z = value\n        return 0\n    _ = g()\n", "")]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let g = func () -> i32\n        let k = func () -> i32\n" +
+        "            let z = value@follow\n            return 0\n        return k()\n    _ = g()\n",
+        "")]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    let g = func () -> i32\n        let z = value\n        return 0\n    _ = g()\n",
+        nameof(DiagnosticCode.TransferRequired_Kd))]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let g = func () -> i32\n        _ = value\n        return 0\n    _ = g()\n",
+        nameof(DiagnosticCode.TransferRequired_Kd))]
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let t = (value, 1)\n    let u = t\n    let w = t\n", "")]
     [InlineData(
         "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let c = func [value] () -> ()\n        takeOR(value@move)\n" +
@@ -96,6 +108,54 @@ public sealed class PairBarePositionTest
             "six uniq" => string.Format(CultureInfo.InvariantCulture, Six, "uniq"),
             _ => Sink + program + Main,
         };
+        AssertCheck(source, code);
+    }
+
+    // SPEC 13.5.5, 8.14, 8.15.2 (PLAN G755): `p@s` under `s is objref or objuniq` forms an adaptation family, a pair layer whose bare
+    // acquisition is planned per case (objref Copies, objuniq Reborrows), its PairAcquire naming the family's binder in MIR. Labels from
+    // SPEC: the first four are valid (a `let`, sequential Reborrows, a call argument, a discard); the others are invalid in the objuniq
+    // case, a Reborrow of `y` while an earlier one lives (8.15.2), with that case's Loan conflict.
+    [Theory]
+    [InlineData("    let z = y\n    return 0\n", "")]
+    [InlineData("    let z = y\n    _ = z\n    let w = y\n    _ = w\n    return 0\n", "")]
+    [InlineData("    return h(y)\n", "")]
+    [InlineData("    _ = y\n    return 0\n", "")]
+    [InlineData("    let z = y\n    let w = y\n    _ = z\n    _ = w\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let z = y\n    _ = y\n    _ = z\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let z = y\n    _ = h(y)\n    _ = z\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AnAdaptationFamilyIsAcquiredPerCase(string body, string code)
+        => AssertCheck(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h<U>(u: U) -> i32 => 0\n" +
+            "func f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n" + body +
+            "public func main()\n    Console.writeLine(\"p\")\n",
+            code);
+
+    // SPEC 15.6.7, 8.14 (A3 E13 (4); PLAN G755): a family `p@s` passed as a call's input is exclusive only by case and reserves where
+    // it is acquired, so the call's later operand may read `p` (f5); a family a call result keeps is that result's Loan (f6, f7). Labels
+    // from SPEC: the first two are valid; the third moves `p` while `r`, which keeps the objuniq case's Reborrow, lives.
+    [Theory]
+    [InlineData("    return h2(p@s, p.n)\n", "")]
+    [InlineData("    let r = id(p@s)\n    _ = r\n    let q = p@move\n    return 0\n", "")]
+    [InlineData("    let r = id(p@s)\n    let q = p@move\n    _ = r\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AFamilyCallInputReservesWhereItIsAcquired(string body, string code)
+        => AssertCheck(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h2<U>(u: U, k: i32) -> i32 => 0\n" +
+            "func id<V>(x: V) -> V => x@move\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n" + body +
+            "public func main()\n    Console.writeLine(\"p\")\n",
+            code);
+
+    // SPEC 7.7.2, 3.5, 8.2.3: a bare entry of a written exclusive layer Reborrows whatever its referent, an identity premise on the
+    // referent included, and a written shared layer Copies (dev's verdict, kept by PLAN G748/G755, which plan node-form pair layers only).
+    [Theory]
+    [InlineData("var g = func [x] () -> i32 => 0", "uniq", "\n    U is i32")]
+    [InlineData("var g = func [x] () -> i32 => 0", "uniq", "")]
+    [InlineData("var g = func [x] () -> i32 => 0", "uniq", "\n    U is (i32, i32)")]
+    [InlineData("let g = func [x] () -> i32 => 0", "ref", "\n    U is i32")]
+    public void AWrittenLayerUnderAnIdentityPremiseIsCapturedAsWritten(string closure, string layer, string premise)
+        => AssertCheck($"func f<U>(x: {layer}/U during a) -> i32{premise}\n    {closure}\n    return g()\npublic func main()\n    Console.writeLine(\"p\")\n", string.Empty);
+
+    private static void AssertCheck(string source, string code)
+    {
         var check = DiagnosticCorpus.Check(source);
         var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
         Assert.True(

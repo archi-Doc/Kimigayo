@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
+using Kimi.Documentation;
 using Tinyhand;
 using Xunit;
 
@@ -218,12 +218,15 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         Assert.Equal("edited", Assert.Single(Assert.Single(edited.DocumentationSources).Comments).GetText().Text);
     }
 
-    [Fact]
-    public void RecoveryDefersUncertainAssociationsWithoutSuppressingLanguageErrors()
+    // An invalid header word (`static`) starts the header too; the source's syntax Error leaves its comment unassociated.
+    [Theory]
+    [InlineData("/// broken\nfunc f(\n/// following\nfunc g() => ()")]
+    [InlineData("/// d\nstatic func f() => ()")]
+    public void RecoveryDefersUncertainAssociationsWithoutSuppressingLanguageErrors(string text)
     {
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
-        c.Kotonoha.AddSource(new SourceDocument("broken.kimi", "/// broken\nfunc f(\n/// following\nfunc g() => ()"));
+        c.Kotonoha.AddSource(new SourceDocument("broken.kimi", text));
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         var source = Assert.Single(c.Kotonoha.DocumentationSources);
         Assert.All(source.Comments, x => Assert.Null(x.Declaration));

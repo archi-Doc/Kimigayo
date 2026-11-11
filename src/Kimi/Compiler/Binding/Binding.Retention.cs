@@ -170,12 +170,12 @@ public sealed partial class Binding
 
             foreach (var fact in constraints.Facts)
             {
-                if (fact.Kind == ConstraintKind.Callable && this.AvailableConstraintFact(constraints, fact))
+                if (fact.Kind == ConstraintKind.Callable && this.AvailableConstraintFact(constraints, fact, out _))
                 {
                     handed.Add(new(fact.RequiredType!, FunctionTypeBinder(fact.RequiredType!)));
                 }
                 else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } &&
-                    this.AvailableConstraintFact(constraints, fact) && !this.HandedContract(subject, contract, scope, handed))
+                    this.AvailableConstraintFact(constraints, fact, out _) && !this.HandedContract(subject, contract, scope, handed))
                 {
                     return false;
                 }
@@ -355,7 +355,7 @@ public sealed partial class Binding
         }
 
         this.AddResultPremises(environment, result);
-        if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.State == 3)
+        if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
             {

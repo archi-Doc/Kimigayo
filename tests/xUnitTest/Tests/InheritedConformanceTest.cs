@@ -424,7 +424,7 @@ public class InheritedConformanceTest
     [InlineData(true)]
     public void RefinementDoesNotInheritCopyWithoutTheDerivedOptIn(bool optIn)
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nopen struct Base\n    Self is C\nstruct Derived: Base\n" + (optIn ? "    Self is Copy\n" : string.Empty) + "func use<T>(value: ref/T)\n    T is C\n    ()\nfunc test(value: ref/Derived) => use(value)");
+        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nopen struct Base\n    Self is Copy\n    Self is C\nstruct Derived: Base\n" + (optIn ? "    Self is Copy\n" : string.Empty) + "func use<T>(value: ref/T)\n    T is C\n    ()\nfunc test(value: ref/Derived) => use(value)");
         Assert.Equal(optIn, c.Bind().IsComplete);
     }
 

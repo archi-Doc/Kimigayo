@@ -3,10 +3,10 @@
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
 // R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
-// Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
+// Input: a built, validated MirProgram; the root range (Source.Module below it, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
-// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
+// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
 // MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the
 // compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
@@ -25,7 +25,7 @@
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
 // and the erased Self, or a gap); a Dictionary from none targets the body of DictionaryStorage.initialize (Declared); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
+// a DropGlue's level, DropGlue.Level, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
 // comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a property-witness setter's Field glue;
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
@@ -45,7 +45,7 @@
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
 // (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
 // (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
-// an instance at its site through In, Below or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
+// an instance at its site through In or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
 // under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
 // environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
 // argument, a part of the Item Type its site made).
@@ -69,7 +69,7 @@
 // that holds its subject (Declaration; an import's own).
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
-// targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
+// targets are at its default site, a DropGlue's in DropGlue.Level's order, a ClosureErasure's body before its environment's glue; a repeated
 // run of a version is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS R5-M183: the Templates
 // walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
 // an earlier one allocates nothing.
@@ -93,7 +93,8 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
-    private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's scratch.
+    private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's and DropGlue.Level's steps.
+    private readonly List<MirDropStep> walk = new(); // Their scratch of Mir's steps.
     private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
@@ -120,7 +121,8 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
-    /// <param name="rootModules">The number of root modules: the bodies of modules below it are roots.</param>
+    /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
+    /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies.</param>
     /// <returns>The checked set.</returns>
     internal CheckedSet Run(MirProgram program, int rootModules)
     {

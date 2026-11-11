@@ -170,9 +170,10 @@ public sealed partial class Binding
     // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
     // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot. A bare entry that
-    // Reborrows, in every or some admitted case, an enclosing Closure's environment binding `u: uniq/T during o` is contained in that
-    // Closure's call receiver too, so its binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot
-    // (DECISIONS R4-M123's 7.7.2, R4-M126 P4); an enclosing local's or parameter's keeps its Type (BU-28).
+    // Reborrows an enclosing Closure's environment binding `u: uniq/T during o` is contained in that Closure's call receiver too, so its
+    // binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot where its plan Reborrows the layer: the bare
+    // Reborrow's one rule, BareReborrowLayer and ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
+    // or parameter's keeps its Type (BU-28).
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
     {
         var type = source.Type!;
@@ -190,10 +191,10 @@ public sealed partial class Binding
                 }
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
-                if ((bare == HirAcquire.Reborrow || (bare == HirAcquire.ByCase && this.BareReborrows(type, function))) &&
-                    this.EnvironmentContainment(source) is { } receiver && this.OuterOrigin(type) is { } outer)
+                if (bare is HirAcquire.Reborrow or HirAcquire.ByCase && this.EnvironmentContainment(source) is { } receiver &&
+                    this.BareReborrowLayer(type, function) is { } layer)
                 {
-                    environment.Type = this.types.Rebuild(type, (BoundType[])type.Components, this.Meet(outer, receiver), (BoundOrigin[])type.OriginArguments);
+                    environment.Type = this.ReborrowedType(type, layer, receiver);
                 }
 
                 return null;

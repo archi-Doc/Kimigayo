@@ -50,7 +50,7 @@ internal sealed class MirBody
 
     internal MirDefKey Key { get; private set; }
 
-    /// <summary>Gets or sets the body's position in its program (<see cref="MirProgram.Bodies"/>), set where the program begins it.</summary>
+    /// <summary>Gets or sets the body's ordinal in its program (<see cref="MirProgram.Body"/>), set where the program begins it.</summary>
     internal int Ordinal { get; set; }
 
     /// <summary>Gets the syntax of the body, where a finding without a statement is located.</summary>
@@ -100,6 +100,40 @@ internal sealed class MirBody
     /// body, unlike one with <see cref="HasFinding"/>; a record made without a body in hand (a module's broken HIR contract, a collection
     /// record) marks none.</summary>
     internal bool HasConstructionRecord { get; set; }
+
+    /// <summary>Gets the Type a move-path step selects from a value of a Type, the arms of <see cref="ProjectedType"/> that read no fact
+    /// of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts a level of
+    /// <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <param name="type">The Type of the value.</param>
+    /// <param name="kind">The step.</param>
+    /// <param name="arg">Its argument.</param>
+    /// <returns>The part's Type, or null when the Type does not have the part.</returns>
+    internal static BoundType? PartType(BoundType? type, MirProjectionKind kind, int arg)
+    {
+        switch (kind)
+        {
+            case MirProjectionKind.Field:
+                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
+                {
+                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
+                }
+
+                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
+            case MirProjectionKind.Base:
+                for (var depth = arg; depth > 0 && type is not null; depth--)
+                {
+                    type = AdtDef.Base(type);
+                }
+
+                return arg > 0 ? type : null;
+            case MirProjectionKind.ConstIndex:
+                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+            case MirProjectionKind.Downcast:
+                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
+            default:
+                return null;
+        }
+    }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
     /// <param name="source">The source of a statement, a terminator or a local.</param>
@@ -181,47 +215,29 @@ internal sealed class MirBody
         switch (kind)
         {
             case MirProjectionKind.Deref or MirProjectionKind.PairLayer:
-                // TyCtxt.Layer: a pair layer names its binder and a reference or object handle has its referent below it; a raw pointer
-                // is followed only explicitly (SPEC 5.4).
-                _ = TyCtxt.Layer(type, out var below, out var binder);
+                // TyCtxt.Layer: a pair layer (its binder TyCtxt.PairBinder's) and a reference or object handle have their target below
+                // them; a raw pointer is followed only explicitly (SPEC 5.4).
+                var layer = TyCtxt.Layer(type, out var below, out _);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return this.Binds(arg, binder) ? below : null;
+                    return layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
                 }
 
-                if (binder is null && !ReferenceEquals(below, type))
+                if (layer == HirPlaceKind.Deref)
                 {
                     return below;
                 }
 
                 return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
-            case MirProjectionKind.Field:
-                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
-                {
-                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
-                }
-
-                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
-            case MirProjectionKind.Base:
-                for (var depth = arg; depth > 0 && type is not null; depth--)
-                {
-                    type = AdtDef.Base(type);
-                }
-
-                return arg > 0 ? type : null;
             case MirProjectionKind.Index:
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
-            case MirProjectionKind.ConstIndex:
-                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
-            case MirProjectionKind.Downcast:
-                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
             default:
-                return null;
+                return PartType(type, kind, arg);
         }
     }
 
-    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.Layer"/>).</summary>
+    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.PairBinder"/>).</summary>
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
     /// <param name="target">The pair layer's binder.</param>
     /// <returns>Whether the index names that binder.</returns>

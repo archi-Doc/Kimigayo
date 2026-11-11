@@ -177,7 +177,7 @@
 
   + Name="ClosedContractConformance_Kd"
     Category="Language"
-    Message="Only the Types that the language designates conform to this Contract, such as Position, PositionRange or PrimitiveInteger, or to a Contract that refines it; a user Type cannot declare the conformance"
+    Message="Only the Types that the language designates conform to this Contract, such as PrimitiveInteger, Position, PositionRange or a Contract that refines Position or PositionRange; a user Type cannot declare the conformance"
 
   + Name="NotIndexable_Kd"
     Category="Language"
@@ -546,9 +546,10 @@
     Category="Language"
     Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
 
-  + Name="UnsafeFunctionValue_Kd"
+  + Name="DirectCallFunctionValue_Kd"
     Category="Language"
-    Message="An unsafe function supports direct calls only; it cannot be acquired as a value, assigned or passed as an argument"
+    Message="A function that may only be called directly is used as a value"
+    Note="An unsafe function, whose call carries its caller's obligation, and a LibraryImport function, which is foreign code, support direct calls only: neither can be acquired as a value, assigned, passed as an argument or converted"
 
   + Name="UnavailableReservedImport_Kd"
     Category="Language"

@@ -25,7 +25,6 @@ public sealed partial class Binding
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
-        BoundLength?[] explicitLengths,
         int[] mapping,
         CallArgumentMap argumentMap,
         BoundType? expected,
@@ -55,7 +54,6 @@ public sealed partial class Binding
         {
             var result = this.TryCandidateCore(
                 ref solution,
-                explicitLengths,
                 mapping,
                 argumentMap,
                 expected,
@@ -119,7 +117,6 @@ public sealed partial class Binding
 
     private CandidateApplicability TryCandidateCore(
         ref SlotSolution solution,
-        BoundLength?[] explicitLengths,
         int[] mapping,
         CallArgumentMap argumentMap,
         BoundType? expected,
@@ -170,8 +167,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Error;
             }
 
-            this.InitializeCallSlots(call, function, declaringType, frame, solution.FixedConstruction);
-            frame.ClearLengths(CallSlotCount(function));
+            solution.Fixed = this.FixCallSlots(call, function, declaringType, solution.ExplicitTypes, solution.ExplicitLengths, frame, solution.FixedConstruction);
             Array.Clear(origins, 0, function.Origins.Count);
             Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
 
@@ -185,21 +181,14 @@ public sealed partial class Binding
 
             if (generic is not null)
             {
-                if (!ExplicitTypeArgumentsFit(function, generic, explicitLengths))
+                if (!ExplicitTypeArgumentsFit(function, generic, solution.ExplicitLengths))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
 
                 for (var i = 0; i < generic.TypeArguments.Count; i++)
                 {
-                    if (CallOwnSlots(function)[i] is LengthParameterKoto)
-                    {
-                        frame.SetLength(i, explicitLengths[i]);
-                        continue;
-                    }
-
-                    frame.SetType(i, generic.TypeArguments[i].BoundType);
-                    if (frame.Types[i] is null)
+                    if (CallOwnSlots(function)[i] is not LengthParameterKoto && solution.ExplicitTypes[i] is null)
                     {
                         this.trialPending = new(PendingJudgmentKind.FailedTypeArgument, generic.TypeArguments[i]) { Epoch = this.frameEpoch };
                         return CandidateApplicability.Pending;
@@ -333,7 +322,7 @@ public sealed partial class Binding
                 // SPEC 15.6.1: applicability uses the structural part of each fit; its Origin relations are judged after selection.
                 if (!this.AdaptInput(
                         receiver!,
-                        requiredReceiver,
+                        FixedPattern.Open(requiredReceiver),
                         receiver!.BoundType!,
                         scope,
                         receiverPath,
@@ -638,7 +627,7 @@ public sealed partial class Binding
         this.CollectPositionPremises(ref solution);
         try
         {
-            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function) is { Relations.Length: > 0 })
             {
                 solution.OriginInference = this.BeginOriginInference(call, function);
             }

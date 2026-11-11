@@ -181,6 +181,44 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"group H\n    public func d<C>(c: ref/C, v: ref/{key}, seen: bool = c.f(v)) -> i32\n        C is Gen\n        return 1\n" +
                 $"struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/{key}) -> i32\n        _ = H.d(s, v)\n        return 1\n"));
 
+    // SPEC 7.2.3, 8.6.3, 15.6.4 (PLAN G663): a default's copy calls a requirement with own Type parameters on a closed Self, a generic
+    // Type's instance: A4 enters the witness at the call's own Types, its own slots the requirement's by position (the witness names them
+    // `X` and `Y`), so its `Drop(X)` composes at the call: nothing at a Copy Type or one without a destructor, also beside a Loud the witness
+    // only borrows or the Self only holds (fail-before: a limit, `Unsupported_Kd` at the conformance), and Loud's console write at Loud
+    // (fail-before: the same limit instead of the conflict). Only the conformance's records are asserted: the call's depth record is G664's.
+    [Theory]
+    [InlineData("S<Loud>", "1, v", "")]
+    [InlineData("S<i32>", "Quiet.init(), v", "")]
+    [InlineData("S<i32>", "Loud.init(), v", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void ADefaultsCopyEntersTheWitnessAtTheCallsOwnTypes(string self, string arguments, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Loud + "struct Quiet\n    public var n: i32 = 0\ncontract Gen\n    func f<T, U>(self: ref/Self, x: T, y: ref/U) -> bool\n" +
+                "struct S<A>\n    Self is Gen\n    public var item: Option<A> = .None\n" +
+                "    public func f<X, Y>(self: ref/Self, x: X, y: ref/Y) -> bool => true\n" +
+                $"contract Work\n    func run(self: ref/Self, s: ref/{self}, v: ref/Loud) -> i32\n        effect confined\n" +
+                $"group H\n    public func d<C>(c: ref/C, v: ref/Loud, seen: bool = c.f({arguments})) -> i32\n        C is Gen\n        return 1\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/{self}, v: ref/Loud) -> i32 => H.d(s, v)\n")
+                .Where(static x => x.Contains("Self is Work", StringComparison.Ordinal)).ToArray());
+
+    // SPEC 8.6.3 (PLAN G663): the witness's own slots are its requirement's by position, names not counting, a length slot among them: a
+    // witness that names its Type slots in the other order destroys its first slot's Type, the call's first (by name the two rows would
+    // swap verdicts), and one with a length slot destroys the call's elements at the call's length (fail-before: each row the limit,
+    // `Unsupported_Kd` at the conformance).
+    [Theory]
+    [InlineData("f<T, U>(self: ref/Self, x: T, y: ref/U)", "f<U, T>(self: ref/Self, x: U, y: ref/T)", "1, v", "")]
+    [InlineData("f<T, U>(self: ref/Self, x: T, y: ref/U)", "f<U, T>(self: ref/Self, x: U, y: ref/T)", "Loud.init(), n", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[1, 2]", "")]
+    [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[Loud.init(), Loud.init()]", "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void ADefaultsCopyBindsTheWitnessesOwnSlotsByPosition(string requirement, string witness, string arguments, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Loud + $"contract Gen\n    func {requirement} -> bool\nstruct S\n    Self is Gen\n    public func {witness} -> bool => true\n" +
+                "contract Work\n    func run(self: ref/Self, s: ref/S, v: ref/Loud, n: ref/i32) -> i32\n        effect confined\n" +
+                $"group H\n    public func d<C>(c: ref/C, v: ref/Loud, n: ref/i32, seen: bool = c.f({arguments})) -> i32\n        C is Gen\n        return 1\n" +
+                "struct W\n    Self is Work\n    public func run(self: ref/Self, s: ref/S, v: ref/Loud, n: ref/i32) -> i32 => H.d(s, v, n)\n")
+                .Where(static x => x.Contains("Self is Work", StringComparison.Ordinal)).ToArray());
+
     // SPEC 7.2.3, 8.11.2, 13.4.1: a default's copy compares the call's closed Self, a Tuple with a string part: A4 reads each leaf the
     // comparison runs, the string's library witness among them, which has no environment effect; a leaf that writes to the console has one,
     // a conflict under `confined`.
@@ -590,7 +628,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
     // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
-    // its confined bound where Text.writer erases it. No body reaches the call before S2a's built-in bodies, its first callers.
+    // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
     public void AnErasedReserveCallIsClassedByItsStorageFamily()
     {
@@ -600,10 +638,24 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
-    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
-    // an interpolation (fail-before: each, a limit).
+    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
+    // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
+    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
+    [Theory]
+    // A growing writer, Text.heap(0): allocation permitted (SPEC 8.11.2), nothing reported.
+    [InlineData("        var buffer = Text.heap(0)\n")]
+    // A fixed buffer of 3 bytes, which the reserve of 4 fails with BufferFull (SPEC 22.9.4): nothing reported.
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n")]
+    public void AConfinedLeafWriteReportsNothing(string buffer)
+        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
+
+    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
+    // for bool, char and Unit (R8-S2a), Shown's printing one, also in an interpolation (fail-before: each, a limit).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
+    [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
+    [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
+    [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]
     [InlineData("        _ = Text.toString(Shown.init())\n", Failed)]
     [InlineData("        let shown = Shown.init()\n        _ = \"\\(shown)\"\n", Failed)]
     public void FormattingRunsTheValuesWitness(string body, string expected)

@@ -27,7 +27,7 @@ internal struct HirTables
     internal BindingFailure[] Failures;
     internal object?[] Meanings;
     internal BindingSymbol?[] Symbols;
-    internal UseLookup[] Lookups; // A Type-name use's published lookup (Binding.NamePath, R7-N1e2-1R).
+    internal PathEnd[] Lookups; // How a Type-name use's published lookup ended (Binding.NamePath, R7-N1e2-1R); None before it.
     internal BoundType?[] ErasedTypes;
     internal int[] PlanIndexes;
     internal HirOp[]? Ops;
@@ -52,7 +52,7 @@ internal struct HirTables
         this.Failures = new BindingFailure[length];
         this.Meanings = new object?[length];
         this.Symbols = new BindingSymbol?[length];
-        this.Lookups = new UseLookup[length];
+        this.Lookups = new PathEnd[length];
         this.ErasedTypes = new BoundType?[length];
         this.PlanIndexes = new int[length];
         this.Plans = new PlanRow[plans + 1];
@@ -73,7 +73,7 @@ internal struct HirTables
 
     internal static BindingSymbol? Symbol(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Symbols[node.SyntaxId] : null;
 
-    internal static UseLookup LookupOf(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Lookups[node.SyntaxId] : default;
+    internal static PathEnd LookupOf(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Lookups[node.SyntaxId] : default;
 
     // The Symbols column's one writer and its contract (R7-N1e2-1R): a use whose published lookup selected keeps its selection
     // (Binding.NamePath), so a later write must be equal; and no node's entry is a bound Contract reference, which is a use's Type
@@ -81,7 +81,7 @@ internal struct HirTables
     internal static void WriteSymbol(Koto node, BindingSymbol? symbol)
     {
         ref var hir = ref Of(node);
-        if ((hir.Lookups[node.SyntaxId].End == PathEnd.Selected && !ReferenceEquals(hir.Symbols[node.SyntaxId], symbol)) ||
+        if ((hir.Lookups[node.SyntaxId] == PathEnd.Selected && !ReferenceEquals(hir.Symbols[node.SyntaxId], symbol)) ||
             (symbol is { Declaration: ContractKoto, Type: { } bound } && !ReferenceEquals(bound.Symbol, symbol)))
         {
             throw new InvalidOperationException($"`{node}` held {hir.Symbols[node.SyntaxId]}, then was written {symbol} (InternalInvariant; R7-N1e2-1R).");

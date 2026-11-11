@@ -378,7 +378,7 @@ public sealed partial class Binding
     // SPEC 15.3.7, 15.6.4 step 3: whether a use of a named function must prove Origin conditions beyond its inputs' Types: a declared
     // relation, or a result premise that its inputs and clauses do not prove.
     private bool HasOriginConditions(FunctionKoto function)
-        => this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0 ||
+        => this.originDeclarations.GetValueOrDefault(function) is { Relations.Length: > 0 } ||
             (CarriesResultPremises(function) && !this.VisitWellFormedPremises(
                 function.BoundSymbol!.Type!,
                 function.BoundSymbol!.Type!,
@@ -483,7 +483,7 @@ public sealed partial class Binding
                 if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j] is { Pattern: { } pattern, Part: var part } &&
                     KotoHelper.UnwrapParentheses(part).BoundType is { } typed && !ReferenceEquals(typed, BoundType.Never) &&
                     !this.WaitsForValueCallSolve(part, pattern) &&
-                    this.AdaptInput(part, pattern, this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                    this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.CollectOriginInference(pattern, adapted, inference);
                 }
@@ -541,7 +541,7 @@ public sealed partial class Binding
 
         if (visit.Subject == WellFormedSubject.Input && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
             !SameOriginArguments(result, actual) &&
-            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
+            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
             {

@@ -57,7 +57,7 @@ internal sealed partial class ModuleCodegen
             return current;
         }
 
-        var body = this.program.Bodies[this.set.Items[item].BodyOrdinal];
+        var body = this.program.Body(this.set.Items[item].BodyOrdinal);
         if (this.Inputs(item, body, out var count) is not { } result)
         {
             return null; // Recorded.
@@ -220,7 +220,7 @@ internal sealed partial class ModuleCodegen
         return result;
     }
 
-    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row, Wrapper) is for a Generated item, the only
+    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row) is for a Generated item, the only
     // items the module defines; another is a broken contract, recorded at the item's site. Release names the item
     // being written, which the Write's loop chose by its mark.
     private void Requested(int item)

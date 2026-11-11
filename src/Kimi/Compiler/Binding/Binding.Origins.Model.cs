@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -496,65 +497,144 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 
 // The Origin declaration of a definition, a Type or a local (SPEC 15.3.1-15.3.6): its binding sets, the replacements that resolve its
 // omitted Origins, its pending slots and its clauses, with the records they are made of (Binding.OriginDeclarations.cs binds them).
+// OriginDeclaration's contract (its state has one read path, its members below, and one formation, `Forming`):
+// - Responsibility: the state of one owner's Origin declaration across a bind, and every answer another component reads from it.
+// - Inputs: the formation's writes (BeginOriginDeclaration, CompleteOriginDeclaration and its failure scope, the local and initializer
+//   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
+//   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
+// - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
+//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure`, `PendingCause` and `FailedClauses`; `Set`;
+//   `InferredVariance`. Each is the state as the formation left it, with no judgment.
+// - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
+//   declaration's other clauses. `Failure` is the first failed clause and `FailedClauses` each failed clause with the Origins it bound;
+//   neither is a premise or an obligation anywhere, and only the dependence query reads them (DependenceCause's repairs). Every other
+//   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s,
+//   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
+//   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
+//   before completion (RestPendingOn).
+// - Before completion ends: begun, `Set` answers and `Relations` is empty; during completion `Relations` holds the clauses bound so far.
+// - Invariants: a state member is private; every read outside the formation's files is one of the read members, so the readers of a
+//   declaration are their callers; Reset returns every answer to the unbegun declaration's (not `Resolves`, not `Completed`, empty).
+// - Prohibitions: no read member writes or decides; no second copy of a state member; `Forming` outside the formation's files.
 public sealed partial class Binding
 {
     private sealed class OriginDeclaration(Koto owner)
     {
+        private readonly Dictionary<string, TypeSemanticsKoto> sets = new(StringComparer.Ordinal);
+        private readonly Dictionary<BoundOrigin, BoundOrigin> replacements = new(ReferenceEqualityComparer.Instance);
+        private readonly List<PendingOriginSlot> pending = new(2);
+        private readonly List<OriginRelation> relations = new(2);
+        private BindingScope? scope;
+
+        // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
+        private ExecutableBody body;
+
+        // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed.
+        private int state;
+        private Koto? failure;
+
+        // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
+        // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
+        // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
+        private Koto? pendingFailure;
+
+        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
+        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and the dependence query repairs it (DECISIONS
+        // BU-69). Kept across binds.
+        private List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
+
+        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
+        // allocated only for a local that has such Origins and kept across binds.
+        private Dictionary<BoundOrigin, OriginVariance>? inferred;
+
         internal Koto Owner { get; } = owner;
 
         // A local's (a FieldKoto, the parser's local declaration), whose clauses are checks that assume nothing (SPEC 15.3.3); every
         // other owner's clauses are its contract.
         internal bool IsLocal => this.Owner is FieldKoto;
 
-        internal BindingScope? Scope { get; set; }
+        // The formation's view of the state, named only in the formation's files.
+        internal Formation Forming => new(this);
 
-        // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
-        internal ExecutableBody Body { get; set; }
+        internal ExecutableBody Body => this.body;
 
-        internal int State { get; set; }
+        // Whether its substitutions are published: its pending slots are completing or it is completed.
+        internal bool Resolves => this.state >= 2;
 
-        internal Koto? Failure { get; set; }
+        // Whether its completion ended: its clauses are bound (each failed one aside) and its substitutions made.
+        internal bool Completed => this.state == 3;
 
-        // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
-        // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
-        // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
-        internal Koto? PendingFailure { get; set; }
+        // The number of substitutions, ResolveOrigin's bound on a chain.
+        internal int Substitutions => this.replacements.Count;
 
-        // The clauses that bound in a declaration whose contract failed: never premises of its uses (the contract is unavailable), only of
-        // the dependence queries (ReadFailedContract while readingFailedContracts; DECISIONS BU-62, BU-69).
-        internal List<OriginRelation>? RejectedRelations { get; set; }
+        // Each substitution, an Origin and what replaces it: what a function's inherited contract copies from its original's.
+        internal SubstitutionList SubstitutionPairs => new(this.replacements);
 
-        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): a local's failed clause
-        // leaves Unbound only the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and a contract's is repaired by
-        // the dependence query (DECISIONS BU-69). Kept across binds.
-        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses { get; set; }
+        // The clauses that bound, in order, each failed one aside: empty before completion, which adds them one by one.
+        internal ReadOnlySpan<OriginRelation> Relations => CollectionsMarshal.AsSpan(this.relations);
 
-        internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
+        // The first failed clause, or null. The declaration goes on without it.
+        internal Koto? Failure => this.failure;
 
-        internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
+        // The failed part its Unbound pending Origins rest on (RestPendingOn), or null.
+        internal Koto? PendingCause => this.pendingFailure;
 
-        internal List<PendingOriginSlot> Pending { get; } = new(2);
+        internal ReadOnlySpan<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)> FailedClauses => CollectionsMarshal.AsSpan(this.failedClauses);
 
-        internal List<OriginRelation> Relations { get; } = new(2);
+        // One step of ResolveOrigin: the Origin an equality, a completed pending slot or an inferred bound substitutes for `origin`.
+        internal BoundOrigin? Substitution(BoundOrigin origin) => this.replacements.GetValueOrDefault(origin);
 
-        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
-        // allocated only for a local that has such Origins and kept across binds.
-        internal Dictionary<BoundOrigin, OriginVariance>? Inferred { get; set; }
+        // The binding set the declaration holds under `label` (SPEC 15.3.4), whatever its completion's outcome.
+        internal TypeSemanticsKoto? Set(string label) => this.sets.GetValueOrDefault(label);
+
+        // The variance of an Origin a local's Type omits and its initializer supplies, or null for any other Origin.
+        internal OriginVariance? InferredVariance(BoundOrigin origin)
+            => this.inferred is { } slots && slots.TryGetValue(origin, out var position) ? position : null;
 
         internal void Reset()
         {
-            this.State = 0;
-            this.Failure = null;
-            this.PendingFailure = null;
-            this.RejectedRelations?.Clear();
-            this.FailedClauses?.Clear();
-            this.Scope = null;
-            this.Body = default;
-            this.Sets.Clear();
-            this.Replacements.Clear();
-            this.Pending.Clear();
-            this.Relations.Clear();
-            this.Inferred?.Clear();
+            this.state = 0;
+            this.failure = null;
+            this.pendingFailure = null;
+            this.failedClauses?.Clear();
+            this.scope = null;
+            this.body = default;
+            this.sets.Clear();
+            this.replacements.Clear();
+            this.pending.Clear();
+            this.relations.Clear();
+            this.inferred?.Clear();
+        }
+
+        internal readonly struct Formation(OriginDeclaration declaration)
+        {
+            internal ref BindingScope? Scope => ref declaration.scope;
+
+            internal ref ExecutableBody Body => ref declaration.body;
+
+            internal ref int State => ref declaration.state;
+
+            internal ref Koto? Failure => ref declaration.failure;
+
+            internal ref Koto? PendingFailure => ref declaration.pendingFailure;
+
+            internal ref List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
+
+            internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
+
+            internal Dictionary<string, TypeSemanticsKoto> Sets => declaration.sets;
+
+            internal Dictionary<BoundOrigin, BoundOrigin> Replacements => declaration.replacements;
+
+            internal List<PendingOriginSlot> Pending => declaration.pending;
+
+            internal List<OriginRelation> Relations => declaration.relations;
+        }
+
+        // The substitutions as pairs for `foreach`, in the order the formation made them; it hands out no collection.
+        internal readonly struct SubstitutionList(Dictionary<BoundOrigin, BoundOrigin> pairs)
+        {
+            public Dictionary<BoundOrigin, BoundOrigin>.Enumerator GetEnumerator() => pairs.GetEnumerator();
         }
     }
 

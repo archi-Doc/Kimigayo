@@ -11,8 +11,9 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1202 // Parsing helpers are grouped by syntax.
 
 // What comes before an item: attributes (SPEC 6.7), declaration modifiers (Appendix F.3.3) and the compile-time directives before it.
-// Input: a reader at an item's start. Output: the pending prefix in the reader, which the item takes (TokenReader.TakeContext); whether an
-// unavailable declaration header was recognized, which its caller skips; an attribute chain's nodes.
+// Input: a reader at an item's start. Output: the pending prefix in the reader, which the item takes (TokenReader.TakeContext), and where
+// its written header starts (TokenReader.HeaderPosition); whether an unavailable declaration header was recognized, which its caller skips;
+// an attribute chain's nodes.
 // Invariants: a modifier shares the line of the word that introduces its declaration, and modifiers that end their line are dropped with one
 // report; a static, and an open anywhere but before struct, is reported where it is read and kept only for recovery (Judged); the prefix's
 // attributes attach only to the declaration that takes the prefix, and a misplaced or rejected attribute attaches to nothing.
@@ -132,16 +133,21 @@ public static partial class Parser
                 return false;
             }
 
-            if (inspectHeader && allowCompileTimeDirectives)
+            if (inspectHeader)
             {
-                var header = ScanHeaderModifiers(ref reader, HeaderWord.DeclarationIntroducer);
-                if (header == HeaderScan.Reported)
+                // A line of the prefix, or what follows a `#` form, may start the header: the item's is the last one (Appendix F.6).
+                reader.HeaderPosition = reader.Position;
+                if (allowCompileTimeDirectives)
                 {
-                    isEnd = false;
-                    return true;
-                }
+                    var header = ScanHeaderModifiers(ref reader, HeaderWord.DeclarationIntroducer);
+                    if (header == HeaderScan.Reported)
+                    {
+                        isEnd = false;
+                        return true;
+                    }
 
-                functionModifiers = header == HeaderScan.FunctionModifiers;
+                    functionModifiers = header == HeaderScan.FunctionModifiers;
+                }
             }
 
             inspectHeader = false;

@@ -110,8 +110,9 @@ public sealed partial class Binding
     }
 
     // S3 (SPEC 7.7.2): an omitted capture list captures each binding only by Copy; it never infers a Move, a borrow or a Reborrow. At
-    // the end of the Closure's binding, a capture whose bare acquisition is not Copy fails the Closure's creation, once, at its first
-    // such capture in occurrence order (ReportCaptureEntry's omitted-list form); each proven one is a Copy, set explicitly.
+    // the end of the Closure's binding, a capture that does not Copy in every admitted case (CopiesInEveryCase, SPEC 8.14, 8.15.2, 8.3.4:
+    // the admitted set is declared evidence) fails the Closure's creation, once, at its first such capture in occurrence order
+    // (ReportCaptureEntry's omitted-list form); each proven one is a Copy, set explicitly.
     private void JudgeOmittedCaptures(FunctionKoto function, BoundClosure plan)
     {
         if (function.Captures is not null)
@@ -127,7 +128,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.BareAcquire(type, function, out _) == HirAcquire.Copy)
+            if (this.CopiesInEveryCase(type, this.ConstraintScope(function)))
             {
                 environment.CaptureAcquisition = CaptureAcquisition.Copy;
             }

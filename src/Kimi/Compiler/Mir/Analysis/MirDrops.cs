@@ -20,6 +20,9 @@
 // naming another requirement); generation's gate reads the mark.
 // A Drop only check edges reach (SPEC 14.10.3) with a Move Path gets the group of what it would destroy from its assumed paths, by the
 // same rules but flagless (check-only code has no flags, R4-M6a), so the instance collector reads it; one without a Move Path has none.
+// The table also states what a row of a group destroys, in destruction order (MirDrops.Destroyed.cs: MirDropTable.Destroyed, a
+// group's walk, and MirDropTable.Level, the level no row governs, as MirDropSteps over MirTypes.LevelPart's order), which A4 and the
+// Backend's drop glue read.
 // Must not rewrite MIR, judge a check-only Drop (no problem, no mark), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
@@ -61,16 +64,19 @@ internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdic
 /// <param name="Views">The views, bit i for view i.</param>
 internal readonly record struct MirFlagPoint(MirLocation At, int First, int Count, bool Set, ulong Views);
 
-/// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (its index in
-/// <see cref="MirProgram.Bodies"/>): the body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
+/// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (<see cref="MirProgram.Body"/>): the
+/// body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
 /// points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
 /// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none. A group
 /// says what its Drop destroys, the statement every walk of it cites: a Keep or Flag row its Type whole (its drop, then every part); an
-/// Open row its child rows, its parts without a row and a base without one, never a drop of its own; an Elide row nothing. A Drop only the
+/// Open row its child rows, its parts without a row and a base without one, never a drop of its own; an Elide row nothing
+/// (<see cref="Destroyed"/> is that statement as steps in destruction order). A child row of an Open row names a direct part of that
+/// row's Type (its step a Field, the base, a fixed array's element or a Case's payload of it): A2's writer meets it by construction,
+/// writing a child path's row by its step from its parent's Place, and the walk trusts it. A Drop only the
 /// checks reach has the group of what it would destroy (SPEC 14.10.3, 8.15.3), flagless, where a layer with its own drop that may be
 /// incomplete is a Keep row with no child rows; one without a Move Path has none; A4 runs no destructor for it (R4-M6a). R5 code
 /// generation, A4, A5, the instance collector and the dump read it.</summary>
-internal sealed class MirDropTable
+internal sealed partial class MirDropTable
 {
     private readonly List<End> ends = []; // Each closed body's ends, judged views and first problem.
 
@@ -140,8 +146,7 @@ internal sealed class MirDropTable
     }
 
     /// <summary>Gets whether a Drop destroys nothing under a view: its group is Elide (SPEC 16.2.1, 14.10.3), the one
-    /// statement A5 (Dropping) reads; the Backend's walk of a group (DropGlue.Destroyed) gives an Elide row no
-    /// step.</summary>
+    /// statement A5 (Dropping) reads; the walk of a group (<see cref="Destroyed"/>) gives an Elide row no step.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="view">The view.</param>

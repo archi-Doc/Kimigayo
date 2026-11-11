@@ -173,8 +173,8 @@ public sealed partial class Binding
         MemberSelection typeSelection = default;
         MemberSelection valueSelection = default;
         BoundType? qualified = null; // The Type path's binding of the qualifier.
-        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-        if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
+        var qualifier = this.TypeName(member.Left, scope);
+        if (qualifier?.Type is { } type && !qualifier.IsContract)
         {
             typeMember = this.RequirementMember(member, scope, type, true);
         }
@@ -340,7 +340,7 @@ public sealed partial class Binding
         if (node is MemberAccessKoto member)
         {
             return this.MayBeValueQualifier(member.Left, scope) ||
-                (this.TypeName(member.Left, scope, LookupRole.Any) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) &&
+                (this.TypeName(member.Left, scope) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) &&
                 member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
         }
 

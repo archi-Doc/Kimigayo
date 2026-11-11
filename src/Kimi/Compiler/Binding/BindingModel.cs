@@ -187,7 +187,7 @@ internal enum BindingFailure : byte
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,
-    UnsafeFunctionValue,
+    DirectCallFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidInlineLayout,
@@ -338,6 +338,15 @@ public sealed class BindingSymbol
     // The stored shape of a struct or enum declaration, refilled by each pass.
     internal AdtDef? Adt { get; set; }
 
+    // SPEC 8.4, 9.2: whether this symbol names a Contract: a Contract declaration or a bound reference to one, never a Contract's Self Type
+    // parameter, which the Contract declares too.
+    internal bool IsContract => this.Declaration is ContractKoto && this.SelfOf is null;
+
+    // SPEC 8.1.1, 8.2.3, 9.1: whether this symbol is a generic input of its declaration: a Type parameter, a pair target or a Semantics
+    // parameter. A Contract's Self Type parameter is none: it stands for the conforming Type, so a condition on it is an implementation
+    // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
+    internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
+
     // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 
@@ -404,6 +413,7 @@ public sealed class BindingSymbol
 public sealed record BoundType
 {
     private readonly NumericCategory numeric;
+    private readonly byte width;
 
     // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1); the Type itself otherwise.
     private readonly BoundType underlying;
@@ -443,7 +453,7 @@ public sealed record BoundType
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
         this.ClosureContext = closureContext;
-        this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+        (this.numeric, this.width) = kind == BoundTypeKind.Primitive ? Row(name) : default;
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
@@ -512,6 +522,7 @@ public sealed record BoundType
         this.Components = [];
         this.OriginArguments = [];
         this.numeric = integer.numeric;
+        this.width = integer.width;
         this.underlying = integer;
     }
 
@@ -641,11 +652,16 @@ public sealed record BoundType
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
     internal bool IsSigned => this.numeric == NumericCategory.Signed;
 
+    /// <summary>Gets the width in bits of an integer or wrapping integer Type (SPEC 3.1's storage size; <c>Wrapping&lt;T&gt;</c> has T's,
+    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="ScalarTypes.SizeWidth"/>); 0 for every other Type, among them
+    /// a Type whose instance decides its width (SPEC 8.7.4).</summary>
+    internal int Width => this.width;
+
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
 
-    /// <summary>Gets the integer Type whose representation and width a wrapping integer Type shares, or this Type itself. Every
-    /// Scalar query about width, layout or formatting goes through it; its signedness is <see cref="IsSigned"/>.</summary>
+    /// <summary>Gets the integer Type whose representation a wrapping integer Type shares, or this Type itself; its signedness and
+    /// width are the Type's own, <see cref="IsSigned"/> and <see cref="Width"/>.</summary>
     internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
@@ -679,12 +695,24 @@ public sealed record BoundType
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
 
-    private static NumericCategory Categorize(string name) => name switch
+    // SPEC 3.1's row of a numeric Core, the one table of its category and an integer Core's width in bits; isize and usize have the
+    // profile's (SPEC 22; DECISIONS BU-130). A wrapping integer Type copies its argument's row (SPEC 3.1.1).
+    private static (NumericCategory Numeric, byte Width) Row(string name) => name switch
     {
-        "i8" or "i16" or "i32" or "i64" or "i128" or "isize" => NumericCategory.Signed,
-        "u8" or "u16" or "u32" or "u64" or "u128" or "usize" => NumericCategory.Unsigned,
-        "f32" or "f64" => NumericCategory.Float,
-        _ => NumericCategory.None,
+        "i8" => (NumericCategory.Signed, 8),
+        "i16" => (NumericCategory.Signed, 16),
+        "i32" => (NumericCategory.Signed, 32),
+        "i64" => (NumericCategory.Signed, 64),
+        "i128" => (NumericCategory.Signed, 128),
+        "isize" => (NumericCategory.Signed, (byte)ScalarTypes.SizeWidth),
+        "u8" => (NumericCategory.Unsigned, 8),
+        "u16" => (NumericCategory.Unsigned, 16),
+        "u32" => (NumericCategory.Unsigned, 32),
+        "u64" => (NumericCategory.Unsigned, 64),
+        "u128" => (NumericCategory.Unsigned, 128),
+        "usize" => (NumericCategory.Unsigned, (byte)ScalarTypes.SizeWidth),
+        "f32" or "f64" => (NumericCategory.Float, 0),
+        _ => default,
     };
 
     private static Dictionary<string, BoundType> CreatePrimitives()
@@ -692,7 +720,6 @@ public sealed record BoundType
         var result = new Dictionary<string, BoundType>(StringComparer.Ordinal)
         {
             ["()"] = Unit,
-            ["Never"] = Never,
             ["bool"] = Boolean,
         };
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
@@ -718,11 +745,29 @@ public sealed record BoundType
     }
 }
 
+// A scope's link (Parent, the Constraints object, ConformancePath) is written only through its setters, each counting a change in
+// LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private BindingScope? parent;
+    private ConstraintEnvironment? constraints;
+    private BoundConformancePath? conformancePath;
+
     internal Koto Owner { get; } = owner;
 
-    internal BindingScope? Parent { get; set; }
+    internal BindingScope? Parent
+    {
+        get => this.parent;
+        set => this.Link(ref this.parent, value);
+    }
+
+    // The number of changes of this scope's link.
+    internal int LinkVersion { get; private set; }
+
+    // The view this scope last denoted (ContractSolver.SerialOf): its serial and the chain state it named.
+    internal int ViewSerial { get; set; }
+
+    internal (int Environment, int Link, int Parent) ViewState { get; set; }
 
     internal FunctionKoto? Function { get; set; }
 
@@ -734,12 +779,20 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
 
-    internal ConstraintEnvironment? Constraints { get; set; }
+    internal ConstraintEnvironment? Constraints
+    {
+        get => this.constraints;
+        set => this.Link(ref this.constraints, value);
+    }
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
-    internal BoundConformancePath? ConformancePath { get; set; }
+    internal BoundConformancePath? ConformancePath
+    {
+        get => this.conformancePath;
+        set => this.Link(ref this.conformancePath, value);
+    }
 
     internal void Reset()
     {
@@ -748,6 +801,16 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+    }
+
+    private void Link<T>(ref T? field, T? value)
+        where T : class
+    {
+        if (!ReferenceEquals(field, value))
+        {
+            field = value;
+            this.LinkVersion++;
+        }
     }
 }
 

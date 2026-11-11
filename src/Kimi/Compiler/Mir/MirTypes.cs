@@ -3,12 +3,12 @@
 #pragma warning disable SA1402 // The walks' outcome belongs to the Type facts.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types, their stored shapes, Binding's Copy and Sealed proofs and the root Type statements the operator domain composes
-// (ArithmeticContracts.Supports, ComparisonTypes.OperatorCompares, ReferenceTypes.IsPointer). Output: the destruction walk and the drop,
-// observation, Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, view-start,
-// agreement, borrow-kind, pointer-cast, integer and operator-domain facts (Operates, the operator table's domain, which the Backend's
-// operator columns read too), and the pairing of the arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract
-// through ArithmeticOperation).
+// Input: published Types, their stored shapes, a body's identity premises (TyCtxt.Premised, read through Premised), Binding's Copy and
+// Sealed proofs and the root Type statements the operator domain composes (ArithmeticContracts.Supports, ComparisonTypes.OperatorCompares,
+// ReferenceTypes.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
+// (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
+// operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
+// arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract through ArithmeticOperation).
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
@@ -21,8 +21,11 @@
 // read, MirHoldingKey), so the answer is the same in every order of the parts; a reader asks the published answer and never ranks two
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
-// Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer, operator-domain and agreement facts.
+// Its concerns: the destruction walk and the facts over it, with the order of a level's parts (LevelCount, LevelPart: the direct parts
+// of a Type in destruction order, SPEC 16.3.2's one statement, which A2's walk and the builder's Field cleanup read)
+// (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
+// here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer, operator-domain, agreement and Never
+// facts.
 
 using Kimi.Compiler.Parsing;
 
@@ -56,7 +59,7 @@ internal static partial class MirTypes
     /// <returns>Whether the value is a reference.</returns>
     internal static bool IsReference(BoundType? type)
         => (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics)) ||
-            (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
+            TyCtxt.PairBinder(type) is not null;
 
     /// <summary>Gets whether a Semantics is a borrow's: ref, uniq, objref or objuniq (SPEC 15.6.5's borrow cases).</summary>
     /// <param name="semantics">The Semantics.</param>
@@ -220,6 +223,14 @@ internal static partial class MirTypes
     // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
     // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
     internal static BoundType Premised(MirBody body, BoundType type) => body.Key.Decl is { } definition ? TyCtxt.Premised(definition, type) : type;
+
+    // SPEC 3.1.3, 8.2.3: whether a Type is Never in the body: Never itself, or an abstract Type the body's identity premises make Never (T
+    // under `T is Never`; only an abstract Type takes another's head, so a concrete Type is answered by the reference test alone and costs
+    // no premising), since MIR Types keep a premised parameter (DECISIONS BU-72). The one statement the Never value's rules read, the
+    // builder's and the validator's (DECISIONS R4-M62, R5-M38). PLAN G355's interim (G704): removed when MIR Types are the identical Types
+    // (R7-Y5), where this is the reference test again.
+    internal static bool IsNever(MirBody body, BoundType? type)
+        => ReferenceEquals(type, BoundType.Never) || (type is { IsAbstract: true } && ReferenceEquals(Premised(body, type), BoundType.Never));
 
     // SPEC 8.2: the one agreement under premises: Types agree as they are (Agree) or as the body's premises make them (E and S under
     // `E is S`), which the validator checks every Type by.

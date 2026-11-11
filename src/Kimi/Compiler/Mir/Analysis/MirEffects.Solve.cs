@@ -122,7 +122,7 @@ internal sealed partial class MirEffects
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
-        var body = this.program.Bodies[this.owners[node]];
+        var body = this.program.Body(this.owners[node]);
         this.Evaluations++;
         cases.Select(body, node - this.bases[this.owners[node]]);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
@@ -147,7 +147,7 @@ internal sealed partial class MirEffects
         for (var i = item; i < itemEnd; i++)
         {
             var local = this.items[i];
-            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Reference);
+            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Call);
         }
 
         for (var e = edge; e < edgeEnd; e++)
@@ -179,7 +179,7 @@ internal sealed partial class MirEffects
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
                 // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
+                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Call);
             }
         }
     }
@@ -187,11 +187,11 @@ internal sealed partial class MirEffects
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
     // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
     {
         if (type is not null && kind == Requires)
         {
-            this.Require(type, requirement!, contract, reference);
+            this.Require(type, requirement!, contract, call);
             return;
         }
 
@@ -279,12 +279,14 @@ internal sealed partial class MirEffects
     // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
     // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
     // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
-    // target Binding resolves under that reference and those premises, at the instance Binding gives it (TyCtxt.Witnesses: a compiler
-    // function, a composite comparison's leaf witnesses, a witness body, a library witness at the Self's arguments among them, or an
-    // accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in target keeps its requirement's
-    // declaration), each entered at that instance as a call enters it (its declaration's summary, specializations included: SPEC 15.6.4),
-    // and none resolving (a composite with an abstract part, a standard Property witness) is a limit.
-    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
+    // target Binding resolves under that reference and those premises, at the instance Binding gives it for the call (a conformance witness
+    // at the call's own Types and lengths, SPEC 8.6.3; TyCtxt.Witnesses: a compiler function, a composite comparison's leaf witnesses, a
+    // witness body, a library witness at the Self's arguments among them, or an accessor as a dynamic edge, a virtual witness by its slot's
+    // bound, DispatchBounds: a built-in target keeps its requirement's declaration), each entered at that instance as a call enters it (its
+    // declaration's summary, specializations included: SPEC 15.6.4), and none resolving (a composite with an abstract part, a standard
+    // Property witness) is a limit. The call is the item's, in its view (Terminator); a requirement no call names (a summary's atom, a
+    // published row's) is the requirement on the Type under its own Contract, which binds no own slot.
+    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, Subst? call)
     {
         if (type.IsAbstract)
         {
@@ -297,7 +299,8 @@ internal sealed partial class MirEffects
         }
 
         var start = this.targets.Count;
-        this.found |= types.Witnesses(requirement, type, contract, reference, this.definition, this.targets) ? (byte)0 : Limit;
+        call ??= types.Synthesized(requirement, type, TyCtxt.Contract(requirement).Type!);
+        this.found |= types.Witnesses(requirement, contract, call, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, instance) = this.targets[i];
@@ -338,7 +341,7 @@ internal sealed partial class MirEffects
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
+            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, [], []), destructor);
         }
     }
 

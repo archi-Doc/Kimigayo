@@ -481,10 +481,6 @@ public sealed partial class FunctionCodegenTest
         return test?.Terminator.Operands[0].Operands[0].Operands[0];
     }
 
-    // The functions of a definition's body items, one per instance (ItemTexts).
-    private static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
-        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
-
     // A function's drop flags (DECISIONS R5-M99): its entry block's i8 slots, each stored only the constants 0 and 1.
     private static IrValue[] FlagsOf(IrFunction function) => [.. function.Blocks[0].Instructions.Where(x => x.Shape == "alloca i8, align 1" &&
         StoresOf(function.Instructions, x).All(static x => x is "store i8 0, ptr %, align 1" or "store i8 1, ptr %, align 1") &&

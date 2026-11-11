@@ -35,7 +35,7 @@ internal sealed partial class FunctionCodegen
         switch (callee.Kind)
         {
             case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row, this.Target(new(this.at, this.body.Blocks[this.at].Count)));
+                this.Legacy(call, row);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -72,7 +72,7 @@ internal sealed partial class FunctionCodegen
         if (this.Witness(target, call.Source) is { } run)
         {
             var ordinal = this.collector.Set.Items[target].BodyOrdinal; // A shim's operands are its requirement's, in their own order.
-            var key = ordinal >= 0 ? this.program.Bodies[ordinal].Key : new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+            var key = ordinal >= 0 ? this.program.Body(ordinal).Key : new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
             this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
         }
     }
@@ -109,14 +109,14 @@ internal sealed partial class FunctionCodegen
             return null; // Recorded.
         }
 
-        var function = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key.Decl;
+        var function = this.program.Body(this.collector.Set.Items[target].BodyOrdinal).Key.Decl;
         return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
     }
 
-    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf, a
-    // user formatter's write wrapper), each parameter by its kind: the result slot the slot given, a location parameter the site given, any
-    // other the input at its logical index; the call of the callee value its slot, if any, makes (EntryOf); its value into `result` (none for
-    // a void callee). False, with InternalInvariant_Kd, for a parameter the caller does not supply (a witness's signature is its requirement's).
+    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf),
+    // each parameter by its kind: the result slot the slot given, a location parameter the site given, any other the input at its logical
+    // index; the call of the callee value its slot, if any, makes (EntryOf); its value into `result` (none for a void callee). False, with
+    // InternalInvariant_Kd, for a parameter the caller does not supply (a witness's signature is its requirement's).
     private bool CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site, out Value? result)
     {
         result = null;
@@ -168,12 +168,11 @@ internal sealed partial class FunctionCodegen
 
     // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6), a Call terminator's or a creating
     // adaptation's in that form (FunctionCodegen.Objects' Creation, without a callee or a target), of which it reads the Place, the
-    // operands' Start and the Source only: each parameter's argument (Argument),
-    // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
-    // R5-M92, R5-M93), a capacity Context the length of the fixed array its operand refers to (Measure; DECISIONS R5-M128), a parameter
-    // without an operand (Given: a runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the
-    // next of the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
-    // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
+    // operands' Start and the Source only: each parameter's argument (Argument), the destination's address as the result slot, the call's
+    // location for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92, R5-M93), a parameter without an operand (Given: a
+    // runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the next of the given values. The
+    // operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a
+    // pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
     private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
         var parameters = signature.Parameters;
@@ -200,17 +199,6 @@ internal sealed partial class FunctionCodegen
             }
 
             var index = call.Start + ArgumentPosition(callee, parameter.LogicalIndex);
-            if (parameter.Kind == AbiParameterKind.Context)
-            {
-                if (this.Measure(this.InstanceType(this.body.Operands[index])) is not { } length)
-                {
-                    return false; // Recorded.
-                }
-
-                this.arguments[i] = length;
-                continue;
-            }
-
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
                 : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)
@@ -241,17 +229,10 @@ internal sealed partial class FunctionCodegen
     }
 
     // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
-    // DECISIONS R5-M116), by the row's writer, at its direct call and at its Item's Value call (SPEC 7.7.4), with the target the call site
-    // carries: a runtime routine through the one call writer (Invoke), the row's (Routine) or a formatting routine
-    // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
-    // site's location.
-    private void Legacy(in MirTerminator call, LegacyRow row, int target)
-    {
-        if (this.Routine(row, target, call.Source, out var given) is { } routine)
-        {
-            this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
-        }
-    }
+    // DECISIONS R5-M116), at its direct call and at its Item's Value call (SPEC 7.7.4): the row's runtime routine through the one call
+    // writer (Invoke), the call's operands at its parameters' slots placed by the call's own key and the call site's location.
+    private void Legacy(in MirTerminator call, LegacyRow row)
+        => this.Invoke(call, row.Routine, new(call.Callee.Symbol, MirBodyKind.Fn));
 
     // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
     // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an

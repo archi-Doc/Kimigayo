@@ -60,6 +60,10 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
+/// The uninhabited value Type (SPEC 3.1.3): it has no values, members or constructors. `return`, `exit`, `continue`,
+/// `yield` and `$abort(...)` have it, and a function that never returns states it as its result.
+public struct Never
+
 /// A zero-sized Field that keeps the dependency of a borrow value of Type `T` without storing it (SPEC 15.3.5). `T` is a
 /// complete `ref`, `uniq`, `objref` or `objuniq` borrow Type. A `Loan<T>` Field is analyzed as storing a `T`, so the slots
 /// it uses take their Loan requirements and variance from it; it has no address, reads nothing and grants no access.
@@ -550,37 +554,42 @@ internal group StringBytes
         unsafe
             if leftLength != rightLength => return false
             if leftLength >= 8
-                let last = leftLength - 8
+                // `leftLength >= 8` bounds the difference, and `index < last` the step.
+                let last = (leftLength@Wrapping<isize> - 8@Wrapping<isize>)@isize
                 var index: isize = 0
                 while index < last
                     if word(left + index) != word(right + index) => return false
-                    index += 8
+                    index = (index@Wrapping<isize> + 8@Wrapping<isize>)@isize
                 return word(left + last) == word(right + last)
             if leftLength >= 4
                 return half(left) == half(right) and half(left + leftLength - 4) == half(right + leftLength - 4)
             var index: isize = 0
             while index < leftLength
                 if *(left + index) != *(right + index) => return false
-                index += 1
+                // `index < leftLength` bounds the step.
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             return true
 
     /// Returns the sign of the order of the two ranges (SPEC 13.4.1): unsigned bytes, the shorter first on a tie.
     ///
-    /// - safety: each range lies within its pointer's provenance and is readable.
+    /// - safety: `leftLength >= 0` and `rightLength >= 0`, and each range lies within its pointer's provenance and is
+    ///   readable.
     internal unsafe func order(left: raw/u8, leftLength: isize, right: raw/u8, rightLength: isize) -> i32
         unsafe
             let count = if leftLength < rightLength => leftLength else => rightLength
+            // A range's length is not negative, which bounds the difference; each loop's guard bounds its step.
+            let lastWord = (count@Wrapping<isize> - 8@Wrapping<isize>)@isize
             var index: isize = 0
-            while index <= count - 8
+            while index <= lastWord
                 if word(left + index) != word(right + index) => exit
-                index += 8
+                index = (index@Wrapping<isize> + 8@Wrapping<isize>)@isize
             while index < count
                 let leftByte = *(left + index)
                 let rightByte = *(right + index)
                 if leftByte != rightByte
                     if leftByte < rightByte => return -1
                     return 1
-                index += 1
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             if leftLength == rightLength => return 0
             if leftLength < rightLength => return -1
             return 1

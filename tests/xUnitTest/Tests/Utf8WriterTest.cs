@@ -49,4 +49,21 @@ public class Utf8WriterTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
+
+    // SPEC 22.5.1, 22.10.1 (R8-W1b-4, R8-S2a): Utf8Writer.write and the witness table's bool, char and Unit bodies have CallerLocation
+    // rows, so an allocation that fails inside a built-in write, in the shim or in a table body's leaf write, Aborts at the user's write,
+    // not at a library line.
+    [Theory]
+    [InlineData("", "12345")]
+    [InlineData("Bool", "true")]
+    [InlineData("Char", "'é'")]
+    [InlineData("Unit", "()")]
+    public void AFailedAllocationInsideABuiltinWriteReportsTheWrite(string name, string value)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var buffer = Text.heap(0)\nvar writer = Text.writer(buffer@uniq)\n_ = writer.write(" + value + ")"));
+        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        ScalarEmissionTest.WriteFixture("Utf8WriterBuiltinWriteFailure" + name, ir, string.Empty, 1, "Hello.kimi:3:5: abort KIMI_E_ALLOC: Failed to allocate memory\n");
+    }
 }

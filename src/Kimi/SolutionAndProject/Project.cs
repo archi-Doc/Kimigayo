@@ -5,6 +5,7 @@ namespace Kimi;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
+using Kimi.Build;
 using Kimi.Checking;
 using Kimi.Command;
 using Kimi.Compiler;

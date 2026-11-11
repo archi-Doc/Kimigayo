@@ -49,7 +49,7 @@ internal sealed partial class InstanceCollector
             return this.Generates(program, own);
         }
 
-        var locals = program.Bodies[this.Set.Items[root].BodyOrdinal].Locals;
+        var locals = program.Body(this.Set.Items[root].BodyOrdinal).Locals;
         var receiver = locals is [{ Role: MirLocalRole.Receiver }, ..] ? 0 : locals is [_, { Role: MirLocalRole.Receiver }, ..] ? 1 : -1;
         if (receiver >= 0 && this.layout.Of(locals[receiver].Type).Outcome != Layout.Outcome.Ok)
         {
@@ -101,7 +101,7 @@ internal sealed partial class InstanceCollector
             else if (applies.Value)
             {
                 var implementation = table.Implementations[slot];
-                this.Target(item, this.Implementation(program, item, site, implementation, this.types.Synthesized(implementation, layer!, [])));
+                this.Target(item, this.Implementation(program, item, site, implementation, this.types.Synthesized(implementation, layer!, [], [])));
             }
         }
     }

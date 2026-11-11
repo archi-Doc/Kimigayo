@@ -9,9 +9,16 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
 
+    // SPEC 8.5.1, 8.5.4: a Contract's associated Type declaration with Origin parameters, read from where the parser placed it
+    // (Parser.ParseAssociatedTypeItem): one without a requirement is a member form, one with a requirement is among the Contract's
+    // Constraints; a specification, a member, is none, whatever its head.
     private static bool IsAssociatedRequirement(Koto node)
-        => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
-            UnwrapTransparentType(application.Type) is IdentifierNameKoto or TypeSemanticsKoto { Type: null };
+        => AssociatedHead(node) is OriginApplicationKoto && node switch
+        {
+            SyntaxFormKoto { Parent: ContractKoto } => true,
+            IsKoto { Parent: ContractKoto contract } clause => contract.ConstraintNodes.Contains(clause),
+            _ => false,
+        };
 
     private static Koto? AssociatedHead(Koto declaration)
     {
@@ -137,39 +144,6 @@ public sealed partial class Binding
             ? constraint : this.InternConstraint(new(constraint.Kind, constraint.Subject, required, constraint.Contract, constraint.Mask, left, right));
     }
 
-    // SPEC 8.5.1 Qualification, 8.5.3: a Contract's associated specification `associate C.X is R`, with Origin arguments or without,
-    // constrains its Self's `Self.(C).X` for C a proper ancestor, with its Type arguments, that has the associated Type X.
-    private BoundType? BindAssociatedRefinement(IsKoto clause, MemberAccessKoto member, BindingScope scope)
-    {
-        var application = AssociatedHead(clause) as OriginApplicationKoto;
-        var owner = scope.Owner.BoundSymbol!;
-        if (this.TypeName(member.Left, scope, LookupRole.Any) is not { Declaration: ContractKoto } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
-            ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
-        {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
-        }
-
-        var self = this.ContractSelfType(owner);
-        var associated = this.FindAssociated(self, scope, name, qualifier, clause, out var reference);
-        if (associated is null || this.AssociatedParameters(associated.Declaration).Length != (application?.ArgumentNodes.Count ?? 0))
-        {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
-        }
-
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
-        clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = associated;
-        CompleteQualifier(member.Left, selection, qualifier);
-        Complete(member.Right, projection);
-        Complete(member, projection);
-        if (application is not null)
-        {
-            application.BoundSymbol = associated;
-            Complete(application, projection);
-        }
-
-        return projection;
-    }
-
     private void PrepareAssociatedOrigins()
     {
         for (var n = 0; n < this.nodes.Count; n++)
@@ -205,7 +179,7 @@ public sealed partial class Binding
                     if (enclosing.Origins?.ContainsKey(name.IdentifierName) == true ||
                         (enclosing.Values.TryGetValue(name.IdentifierName, out var value) && value.Kind is BindingSymbolKind.Parameter or BindingSymbolKind.Local or BindingSymbolKind.Capture) ||
                         enclosing.OriginSets?.ContainsKey(name.IdentifierName) == true ||
-                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Sets.ContainsKey(name.IdentifierName) == true)
+                        this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Set(name.IdentifierName) is not null)
                     {
                         this.Fail(node, BindingFailure.Duplicate);
                     }

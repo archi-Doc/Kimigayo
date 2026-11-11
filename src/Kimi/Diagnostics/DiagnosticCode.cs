@@ -180,7 +180,7 @@ public enum DiagnosticCode
     ConflictingImportSignature_Kd,
     ConflictingRuntimeSymbol_Kd,
     ConflictingImportSupply_Kd,
-    UnsafeFunctionValue_Kd,
+    DirectCallFunctionValue_Kd,
     UnavailableReservedImport_Kd,
     SplitCLayoutStorage_Kd,
     InvalidCLayout_Kd,

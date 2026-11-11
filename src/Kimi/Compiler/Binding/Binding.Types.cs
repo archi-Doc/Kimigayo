@@ -161,7 +161,7 @@ public sealed partial class Binding
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
                 return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
-                var rootDefinition = this.TypeName(root, scope, LookupRole.NoContainer);
+                var rootDefinition = this.TypeName(root, scope);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
@@ -191,7 +191,7 @@ public sealed partial class Binding
                             targetSyntax = grouped.Type;
                         }
 
-                        var target = this.TypeName(targetSyntax, scope, LookupRole.NoContainer);
+                        var target = this.TypeName(targetSyntax, scope);
                         if (target?.Kind == BindingSymbolKind.SemanticsTarget &&
                             targetSyntax is not TypeSemanticsKoto { HasOrigin: true })
                         {
@@ -217,7 +217,7 @@ public sealed partial class Binding
                         }
 
                         var mark = this.nameSteps.Count;
-                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.Semantics, 0), mark);
+                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.TypeSemantics, 0), mark);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -313,7 +313,7 @@ public sealed partial class Binding
     // qualification stop, an ambiguity) are the ones FailMissing explains.
     private BoundType? BindNamedType(Koto syntax, BindingScope scope, TypeBindingContext context, bool applyingOrigins)
     {
-        var head = this.NamePath(syntax, scope, UseRow(syntax));
+        var head = this.NamePath(syntax, scope);
         if (syntax is GenericsKoto generic)
         {
             return this.BindConstructedType(generic, head.Symbol, scope, context);
@@ -342,7 +342,7 @@ public sealed partial class Binding
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
-        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.IsContract)
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
@@ -379,9 +379,15 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
+        if (symbol.Kind == BindingSymbolKind.TypeParameter)
+        {
+            // A Type parameter is its own Type, a Contract's Self among them (SPEC 9.1).
+            return symbol.Type;
+        }
+
         if (isSelf)
         {
-            return this.DeclarationSelf(symbol);
+            return this.SelfType(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto
