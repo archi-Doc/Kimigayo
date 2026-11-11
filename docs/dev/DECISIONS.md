@@ -18514,6 +18514,28 @@ R8-M* and R9-M* by the stage of the recording unit.
     valid program rejected; prototype evidence); twelve plain integer rows (a second treatment of G589's cause); a byte write chosen
     by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
     all scalars (R8-M4: one function per requirement).
+- **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
+  `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
+  implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
+  spelling. The first of R8-L1's entries; later units extend it.
+  - **Adopted.** The Kimi library's `SyntaxTable.Module` is the constant `SyntaxTable.LibraryModule` (`ushort.MaxValue`) in every
+    compilation, above every source module's ordinal (its position).
+    - `SyntaxTable` owns the constant, as it owns module ordinals. The design's `SyntaxId.LibraryModule` names no type (a SyntaxId
+      is `Koto.SyntaxId`, an int), so the constant takes its owner's name.
+    - `SourceRef.IsLibrary` is the one test of it. `Compilation.SyntaxOf` and `MirDump` decode by it.
+    - The `rootModules` argument of `MirAnalysis.Run` and `InstanceCollector.Run` is a range, as in R5-M168: the bodies whose module
+      is below it are judged or rooted. Any bound is a range. Compilation passes the source modules' count (R5-M168's "every caller
+      passes `SourceModules.Length`" still holds for the non-test callers), and `LibraryModule + 1` includes the library.
+  - **Reason.** The ordinal was `modules.Length`, the program's module count, so a library `SourceRef` depended on the program
+    (design C2). A library shared across compilations (R8-L1) cannot carry that.
+  - **Declared difference.** MirDump spells a library location `@Kimi:id` (was `@<module count>:id`).
+    `MirDumpTest.BodyDumpsEveryForm` pins it (`tests/mir/every-form.mir`).
+  - **Open (pre-existing; PLAN G761).** Nothing bounds the source module count. At 65,536 source modules the ordinals collide,
+    before and after U0:
+    - before U0, the library's `(ushort)65536` was 0, module 0's ordinal;
+    - after U0, module 65,535's ordinal is `LibraryModule`.
+    U0 does not move this boundary.
+  - Rejected: a `SyntaxId` type holding the constant (a wrapper without semantics).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
