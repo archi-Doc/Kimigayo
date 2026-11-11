@@ -1349,7 +1349,8 @@ public sealed partial class TyCtxtTest
     // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
     // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type. The corpus's string, view and wrapping
     // integer format calls resolve to bodies since R8-S2d1 (114 of them: Builtin 173 -> 59, Body 38 -> 152), and the integers' up to 64
-    // bits since R8-S2b1 (56 more: Builtin 59 -> 3, Body 152 -> 208).
+    // bits since R8-S2b1 (56 more: Builtin 59 -> 3, Body 152 -> 208). The 3 left are a tuple's Comparable (Milestone25), u128's format
+    // (DECISIONS R8-M30, temporary 7) and Wrapping<u8>'s Equatable (Milestone31).
     [Fact]
     public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {

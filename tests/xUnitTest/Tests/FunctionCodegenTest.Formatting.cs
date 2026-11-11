@@ -33,8 +33,9 @@ public sealed partial class FunctionCodegenTest
         "func itFixed(storage: uniq/[4 of u8]) -> isize\n    let f = Text.fixed<4>\n    return f(storage).capacity\n" +
         "func itErasedFixed() -> (uniq/[4 of u8]) -> Text.FixedBuffer => Text.fixed<4>\n";
 
-    // A Library formatting built-in values: written, converted and formatted into an array (their BuiltinFormat items admitted and
-    // defined, R5-M130), toString's Item called.
+    // A Library formatting built-in values: written, converted and formatted into an array, toString's Item called. The i128 and u128
+    // writes reach their BuiltinFormat items (R5-M130); the integers up to 64 bits reach the IntegerFormat body (R8-S2b1), generation
+    // coverage that no assertion here reads.
     private const string Formats =
         "func ctWriteI64(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU8(writer: uniq/Utf8Writer, n: u8) -> Result<(), BufferFull> => writer.write(n)\n" +
@@ -61,8 +62,8 @@ public sealed partial class FunctionCodegenTest
         "func usItem(s: ref/Shown) -> string\n    let show = Text.toString<Shown>\n    return show(s)\n" +
         "func usErased() -> (ref/Shown) -> string => Text.toString<Shown>\n";
 
-    // A Library calling the format requirement on built-in Types: a generic body's Requirement call at six Selves and a requirement Item's
-    // Value call at i32.
+    // A Library calling the format requirement on the built-in Types still on the shim: a generic body's Requirement call at i128 and u128
+    // and a requirement Item's Value call at i128 (R8-S2b1; temporary 7 until R8-S2b2).
     private const string FormatShims =
         "func apAppend<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    return value.format(writer)\n" +
         "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
@@ -329,6 +330,34 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(Assert.Single(FunctionsOf(ir, c, "apItem")), callers);
     }
 
+    // SPEC 22.10.1-22.10.2, 22.5.1, 7.7.4 (R8-S2b1, implementation review I-N1): at an integer of at most 64 bits, a generic body's
+    // Requirement call (apAppend<i32>) and a requirement Item's Value call (apItem<i32>, `let show = T.format`) reach the same IntegerFormat
+    // instance, each call with its own location pair, and the body forwards the location it received to the leaf writeUtf8
+    // (fail-before: both reach i32's BuiltinFormat shim).
+    [Fact]
+    public void ARequirementItemAtAnIntegerReachesItsTableBody()
+    {
+        const string Source = "func apAppend<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
+            "    return value.format(writer)\n" +
+            "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
+            "    return show(value, writer)\n" +
+            "func apI32(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
+            "func apItemOf(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
+        var c = Analyze(Source, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        Assert.Empty(ShimsOf(ir, text));
+        var body = Assert.Single(FunctionsOf(ir, c, "format"));
+        var direct = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "apAppend"))), x => x.Callee == body);
+        Assert.EndsWith($", ptr @, i64 {Located(Source, "value.format(writer)")})", direct.Shape, StringComparison.Ordinal);
+        var item = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "apItem"))), x => x.Callee == body);
+        Assert.EndsWith($", ptr @, i64 {Located(Source, "show(value, writer)")})", item.Shape, StringComparison.Ordinal);
+        var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
+        var leafCalls = CallsOf(body).Where(x => x.Callee == leaf).ToArray();
+        Assert.NotEmpty(leafCalls);
+        Assert.All(leafCalls, x => Assert.Equal(body.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
+    }
+
     // SPEC 22.10.1 (DECISIONS R5-M130): a module whose only formatting is one direct write of an i128 through a writer adapter reaches the
     // i128 BuiltinFormat item once (K row 2's Builtin target) and defines its function once, with no record.
     [Fact]
@@ -362,9 +391,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.5.1, 22.10.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1): bool's, char's, Unit's, f32's, f64's, string's and an integer's up to 64
     // bits format witnesses are the witness table's bodies, and the view's its declared member, each with a CallerLocation row, so the
-    // write instance forwards the location it
-    // received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose reservation Aborts there
-    // (fail-before: no body instance; without the rows, no location pair).
+    // write instance forwards the location it received, its last two parameters, to the body, and the body forwards its own to the leaf
+    // writeUtf8, whose reservation Aborts there (fail-before: no body instance; without the rows, no location pair).
     [Theory]
     [InlineData("bool")]
     [InlineData("char")]
