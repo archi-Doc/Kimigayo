@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns MIR bodies by definition key, the validator's findings, the drop table the analyses find, and the version's MirReport: the records
-// of construction and collection (MirRecordClass; R6-check H3-1) and the analyses' problems.
+// Owns MIR bodies by definition key, the validator's findings, the drop table the analyses find, the builder's layer-walk work and the
+// version's MirReport: the records of construction and collection (MirRecordClass; R6-check H3-1) and the analyses' problems.
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
@@ -52,6 +52,11 @@ internal sealed class MirProgram
     /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
     internal MirDropTable Drops { get; } = new();
 
+    /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): a step of a walk and an agreement test of
+    /// a targeted walk one each, a premising the premised Type's height and one more, the parts of its layer spine it rewrites; the walks'
+    /// scaling rows read it, and <see cref="Clear"/> resets it.</summary>
+    internal long LayerWalkWork { get; set; }
+
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
 
     /// <summary>Gets the body of an ordinal, the library's or the program's, the one read by ordinal.</summary>
@@ -87,6 +92,7 @@ internal sealed class MirProgram
         this.Problems.Clear();
         this.Findings.Clear();
         this.count = this.LibraryCount = 0;
+        this.LayerWalkWork = 0;
     }
 
     /// <summary>Ends the library's prefix: the bodies begun so far are the library's (<see cref="LibraryCount"/>).</summary>
