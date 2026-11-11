@@ -61,7 +61,7 @@ internal sealed partial class MirBorrows
             return AccessKind.Destroy;
         }
 
-        return this.Destruction(cases.Type(this.body.TypeOf(place)!));
+        return this.Destruction(cases.TypeOf(place));
     }
 
     // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,

@@ -449,5 +449,5 @@ internal sealed partial class MirBorrows
 
     // A direct Loan's Place's case Type under the view, Origin-erased (TyCtxt.Erase): the storage a call's write past a holder reaches
     // through it, whose Reached entry the holder receives (MirBorrows.Calls).
-    private BoundType PlaceType(in Loan loan) => types.Erase(cases.Type(this.body.TypeOf(loan.Place)!));
+    private BoundType PlaceType(in Loan loan) => types.Erase(cases.TypeOf(loan.Place));
 }

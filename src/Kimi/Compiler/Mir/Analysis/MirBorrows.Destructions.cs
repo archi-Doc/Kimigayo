@@ -50,7 +50,7 @@ internal sealed partial class MirBorrows
         if (this.receivers[block] >= 0)
         {
             var call = drop with { Operand = MirOperand.Copy(drop.Place) };
-            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.Type(this.body.TypeOf(drop.Place)!), checks);
+            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.TypeOf(drop.Place), checks);
         }
     }
 

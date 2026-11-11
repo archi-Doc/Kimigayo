@@ -5,12 +5,13 @@ namespace Kimi.Compiler.Mir;
 // A body's tables and the Places that index them (plan 5.4).
 // - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
 //   local a Temp of local 0's Type), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and
-//   each projection step admitted by the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range
-//   (IsValid), its first step admitted by its root's Type, and a Result local read only by the whole Move that delivers it into _0
-//   (DECISIONS R4-M132).
-// - Inputs: the body's tables; each location's Places with their access. Outputs: Local, TargetRange, Scope, Opaque, Projection,
-//   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs); a valid
-//   Place for G191's rule of its static root (MirValidator.Statics) and for the shared layers it passes (MirValidator.SharedPaths).
+//   each projection step admitted by the Type of the step it extends (Tables, Admits); each Place a location names (Names): in range
+//   (IsValid) and its first step admitted by its root's Type, each Place MirUses reports (Place) and a diverging Call's destination,
+//   which it does not (MirValidator.Calls); and a Result local read only by the whole Move that delivers it into _0 (DECISIONS R4-M132).
+// - Inputs: the body's tables; each location's Places with their access, and a diverging Call's destination without one. Outputs:
+//   Local, TargetRange, Scope, Opaque, Projection, UnknownKind and Place findings; a written root's write bits for G131 and G136
+//   (MirValidator.Diverged, MirValidator.Inputs); a valid Place for G191's rule of its static root (MirValidator.Statics) and for the
+//   shared layers it passes (MirValidator.SharedPaths).
 // - Invariants: Tables returns false exactly when a projection chain or an Opaque site cannot be walked, and Validate then stops; a
 //   scope chain that cannot be walked marks the body Unscoped, so Validate runs every check but Entries and SharedPath.
 // - Prohibitions: no rule of the operation a location performs (MirValidator.Blocks, .Rvalues, .Calls) and no Type agreement.
@@ -18,12 +19,11 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // The table checked each step against the step it extends; the first step is checked against the root's Type.
+        // A Place MirUses reports: a Place the body names (Names), then the rules of its access.
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            if (!this.IsValid(place))
+            if (!this.Names(place))
             {
-                this.Report(MirViolation.Place);
                 return;
             }
 
@@ -39,18 +39,6 @@ internal sealed partial class MirValidator
             {
                 writes[place.Root] |= OtherWrite;
                 this.Write(place);
-            }
-
-            var projections = body.Projections;
-            var first = place.Projection;
-            while (first != 0 && projections[first].Prefix != 0)
-            {
-                first = projections[first].Prefix;
-            }
-
-            if (first != 0 && !this.Admits(place.Root >= 0 ? body.Locals[place.Root].Type : body.Statics[~place.Root].Type, projections[first]))
-            {
-                this.Report(MirViolation.Projection);
             }
 
             this.SharedPath(place, access, kind);
@@ -139,6 +127,32 @@ internal sealed partial class MirValidator
             }
 
             return walkable;
+        }
+
+        // A Place a location names, whether MirUses reports it (Place) or not (a diverging Call's destination, Call): in range, else a Place
+        // finding and false, and its first step admitted by its root's Type, else a Projection finding (Tables checks each later step
+        // against the step it extends).
+        private readonly bool Names(MirPlace place)
+        {
+            if (!this.IsValid(place))
+            {
+                this.Report(MirViolation.Place);
+                return false;
+            }
+
+            var projections = body.Projections;
+            var first = place.Projection;
+            while (first != 0 && projections[first].Prefix != 0)
+            {
+                first = projections[first].Prefix;
+            }
+
+            if (first != 0 && !this.Admits(place.Root >= 0 ? body.Locals[place.Root].Type : body.Statics[~place.Root].Type, projections[first]))
+            {
+                this.Report(MirViolation.Projection);
+            }
+
+            return true;
         }
 
         private readonly bool IsValid(MirPlace place)
