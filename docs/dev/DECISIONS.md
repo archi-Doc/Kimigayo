@@ -15007,6 +15007,10 @@ structure is recorded here by the unit that first implements it.
   - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
   - Superseded in part by BU-67: under SPEC 15.6 (the owner's 「(B)」, G264 S1, 2026-10-30) litDropOk, lit2DropOk and litObjOk are invalid;
     MIR's E is the verdict.
+  - Amended (2026-11-11; PLAN G730, the Middle's unit): every `MirDescriptors` intrinsic row states the Abort and Allocation its
+    lowering can perform (WriteStdout, RawAllocate, RawRelease, MakeObj, MakeRc, MakeArc, Clone, FormatBuffer and the Adapt rvalue
+    gain Abort; TestTempDirectory gains Allocation), pinned by `MirValidatorTest.AnIntrinsicsRowStatesItsLoweringsEffects`; a new
+    intrinsic row updates the pinned sets.
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26; under R5-M18
   form 2 (G:format), R5-M30, R5-M67, R5-M92, R5-M108, R5-M114, R5-M126 and R5-M128; PLAN G157 (10), (22), (28))
   - BuiltinFormat shim: a BuiltinFormat item is C8f's `__kimi_builtin<item>` (R5-M126's form and signature, caller-location), the built-in
