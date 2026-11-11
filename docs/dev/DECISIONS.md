@@ -11639,6 +11639,7 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+  - Extended by BU-173 (PLAN G740): the effect target's group is read through `WrittenReference` too.
 - **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
   (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
   Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
@@ -11837,6 +11838,39 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+- **BU-173 An effect target's group is a grouped Contract reference (PLAN G740)** (2026-11-11; Front, Parsing and Binding; Major;
+  design review 1 REVISE (B1), design review 2 ACCEPT, implementation review ACCEPT; the owner's O-160 (a); commit 6d91ceb9a on
+  `claude/f-g740`; extends BU-162) SPEC F.6.2, F.5, 8.11.1.
+  - Rule: `ParseEffectTarget` reads a ContractSelector's group as F.6.2 writes it, `"(" ContractReference ")"`: one Type and its
+    closer in every position (an empty group or a list is a syntax Error, applying item or not), written as every grouped Contract
+    reference's node (`ParenthesizedTypeKoto`). `EffectTarget` looks the selector up once in its row and forms its reference from
+    `WrittenReference` (one group around a NamedReference): a group inside the group names no Contract (`NotContract`, the item's
+    one `InvalidEffectBound_Kd`).
+  - Removed: `EffectTarget`'s walk over every group and wrapper; the effect target's `ParenthesizedKoto`; `CompleteQualifier`'s
+    `ParenthesizedKoto` arm.
+  - Moves: invalid newly rejected (class 1): `effect ((A)).r`, `(((A)))`, `((P<i32>))`, `((::A))`, `((G.A))`, `((Outer<i32>.C))` in
+    a Contract; records on invalid programs only otherwise (Q13): the Label of `((C)).r` and `((A)).zz` ("names no Contract").
+  - Rejected: a second group kind in `WrittenReference` (two representations of one form); a parser rejection of the inner group
+    (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
+    empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
+    1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
+
+- **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
+  design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
+  - Cause: a rejected call's candidates, a Phantom or static slot's failing Semantics cases and a capture list's repeats were arrays
+    formed at the failing check on every pass (32-720 B a warm Bind of a rejected program), although their dictionaries were reused.
+  - Decision: each is now a `(Start, Count)` range of one row list per row type (`rejectedRows`, `pairCaseRows`,
+    `captureRepeatRows`), appended by the check and cleared by ResetPrerequisites with its capacity kept (a bounded warm reuse: each
+    list keeps its high-water capacity across passes, as the prerequisite store does; unmeasured); the adapter reads the span. The
+    form is the existing one: six dictionary-and-rows pairs now (the prerequisites, the parameter shapes, the callable selection and
+    the three new ones).
+  - Invariant: a range is contiguous because a check appends its rows with no other append to the same list between its first row
+    and its record (stated at each rows field).
+  - Rejected: forming the facts at reporting (re-runs selection over released scratch); facts cached per node across passes (a
+    second lifetime, stale after an edit); a generic row-store type (a wrapper without semantics over a List and a tuple).
+  - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
+  - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
+    takes this form.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18259,9 +18293,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     adapter's reservation for the runtime's own callers: W2 (each caller's unit, W2 last); the formatting runtime's expansion
     skipping the kept file's definitions (`LegacyRuntimeHelpers.ReadFormattingRuntime` seeds its symbol set with them): with
     `LegacyRuntimeHelpers` (X1) or when the TextWriter row's ABI moves into `IntrinsicRows` (W2); `utf8_commit`'s restated commit:
-    with `utf8_commit` (W2, the float reduction); `window_address` and `window_advance`: with their last runtime caller (W2);
-    `BufferRepr`'s pairing with the runtime's offsets: W2; the reservation's kind switch restating `WriterKind`'s 0/1/2, the hint
-    arm and the unreachable kind Abort: W2.
+    with `utf8_commit` (W2; the float reduction removed its float caller at R8-S2c); `window_address` and `window_advance`: with
+    their last runtime caller (W2); `BufferRepr`'s pairing with the runtime's offsets: W2; the reservation's kind switch restating
+    `WriterKind`'s 0/1/2, the hint arm and the unreachable kind Abort: W2.
   - **Not yet observed:** no program reaches `writeUtf8` or `Storage.erasedReserve` before S2a, so W1b-3's behavior rows (the
     Middle's two `MirEffectsTest` rows from C-188, the IR row "a module calling `writeUtf8` defines the kept runtime once", the
     natives over the leaf path, `BoundedGrowsByItsHint`) land with S2a, its first caller, named in S2a's Q row. W1b-3 lands first
@@ -18793,9 +18827,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     5. `FormatKind` for `SegmentText` and `FormatLiteral`: removed at W2.
     6. The `Utf8Format` part of `IsGenericWrapping`'s premise and of `RequirementMember` (a second statement of `Wrapping<T>`'s
        formatting conformance once S2d1 declares it): removed at S2d1.
-  - **Vocabulary.** `CompilerFunctionKind` unchanged at S2a; S2c +`FormatFloat` and S2b2 +`FormatInteger128` (producers of plan-kept
-    intrinsics, R8-M5's precedent; removed at R8-G1), S2d2 −`BuiltinFormat`. `KimiDeclarationId` +3 and catalog entries +3 at S2a
-    (180 → 183 on dev 947b2de43, after R8-W2 a2's +2): the three groups' `format` functions, until G1 (RQ9; not a closed
+  - **Vocabulary.** `CompilerFunctionKind` unchanged at S2a; S2c +`StorageFormatFloat` and S2b2 +`FormatInteger128` (producers of
+    plan-kept intrinsics, R8-M5's precedent; removed at R8-G1), S2d2 −`BuiltinFormat`. `KimiDeclarationId` +3 and catalog entries +3
+    at S2a (180 → 183 on dev 947b2de43, after R8-W2 a2's +2): the three groups' `format` functions, until G1 (RQ9; not a closed
     vocabulary). `WitnessMembers` +3 (local, R8-M4).
   - **Moves.** None in acceptance or records; `.ll` only; the census Builtin → Body (Body 37 → 38, Builtin 174 → 173);
     `Utf8ConversionBool`: none. `FunctionCodegenTest`'s bool, char and Unit shim rows are re-pointed at `i16`/`u16`, still on the
@@ -18812,6 +18846,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     valid program rejected; prototype evidence); twelve plain integer rows (a second treatment of G589's cause); a byte write chosen
     by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
     all scalars (R8-M4: one function per requirement).
+  - Extended by R8-M34 (R8-S2c, 2026-11-11): the `F32Format` and `F64Format` rows over the producer kind `StorageFormatFloat`.
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
@@ -18913,6 +18948,75 @@ R8-M* and R9-M* by the stage of the recording unit.
     - a physical two-segment layout of every table now, with both segments built per compilation: a temporary writer path that U5b
       would remove;
     - a `MirValidator` check of the prefix: the owner assigns the ordinals, so the rule holds by construction.
+- **R8-M34 f32 and f64 format through the witness table's bodies on the writer's leaf, over `Storage.formatFloat`** (Back,
+  2026-11-11; R8-S2c, plan §5.2 S2; Major; family `G:R8-format`, B's reviewer's design review 1 REVISE (B1-B4), revision 1 checked
+  by B, implementation review 1 ACCEPT; the Front's C-243 and the Middle's C-244; the owner's O-177 (a); extends R8-M30; amends
+  R8-M18) SPEC 8.7.4, 13.5.4, 22.5.1.
+  - **Owner.** `F32Format` and `F64Format` (two rows of no parameter, `Binding.WitnessGroup`), each `format` body on the leaf
+    `Utf8Writer.writeUtf8` with a `SourceFunction, CallerLocation` catalog row (SPEC 22.5.1, until G1): the value's IEEE 754
+    encoding by SPEC 13.5.4's `self@follow@bits<u64>` (f32: `(self@follow@bits<u32>)@u64`), formatted into a local `[24 of 0@u8]` by
+    `Storage.formatFloat`, then one exact reservation through the leaf. No `unsafe` block, no reliance on a float representation.
+  - **Two plain rows, not a generic row.** No Contract holds exactly f32 and f64 (SPEC 8.7.4's `PrimitiveInteger` is the only closed
+    scalar Contract; a float one would be a new `IntrinsicKind`); SPEC 13.5.4's `@bits` is unavailable while a Type depends on a
+    Type parameter, so a generic body could read the bits only by a pun whose width `stride<F>()` decides; `specialize` rows would
+    leave a dead generic body. R7-P5 (G589) is on the base, so it is not the reason.
+  - **The producer** (the owner's O-177 (a), verbatim 「O-177 a」 in B's dialog and 「O-177（Back） a」 in K's; the class of O-108 (a) and
+    R8-M5): `internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize` (`StorageOperations.kimi`),
+    a safe declaration like `erasedReserve`: the `uniq` destination is the one statement of its write, which Binding, A4 and A5 read
+    from the signature (no `WritesThrough` arm, no MIR-side case; C-244). Kind `CompilerFunctionKind.StorageFormatFloat` inside the
+    Storage range (effect `Inputs` by the family, which A4 reads through `TyCtxt.Bodyless`), disposition `Intrinsic(FormatFloat)`;
+    `IntrinsicId.FormatFloat`'s first producer. `MirDescriptors`: `FormatFloat => Intrinsic(MirEffect.None, 3)` (the bits, the width
+    flag, the destination; C-244). Lasting until G1 deletes the vocabulary (RP20).
+  - **The routine's contract** (`__kimi_format_float`, `RuntimeAbi.FormatFloat`: `i64 (i64 bits, i1 narrow, ptr destination)`): when
+    `narrow` it reads only the low 32 bits of `bits`; it writes exactly the returned count of bytes (1 to 24, at most 17 when
+    `narrow`) at the destination's start and no other byte: the shortest round-trip digits, fixed for `-4 <= e < 16`, else
+    scientific; `NaN`, `Infinity`, `-Infinity`, `0`, `-0`; ASCII, so valid UTF-8 (`Utf8Slice.init` relies on it). It reserves,
+    commits and records nothing and has no location: the plan's reduction (no `utf8_commit`, `format_bytes`, `window_address` or
+    `writer_reserve` call). The part declares no memory intrinsic: the special values and zero runs are copied by a byte-copy loop
+    (one helper; O2's loop-idiom pass may turn it into memcpy or memset).
+  - **The module part.** `Utf8FloatRuntime.ll.in` and `Utf8FloatRyu.ll.in` leave the formatting runtime's joined text: a lazy nested
+    `LlvmModuleText.FormatFloat` expands them once, on first use (`LlvmModuleText.FormatFloatRuntime`), and the frame writes them
+    under `ModuleCodegen.Needs.FormatFloat` (16), which `IntrinsicRows`' FormatFloat row (`Requested`) requests (R8-M18's `Requests`
+    column). A module without a float write holds no Ryu (census 2b, 2e). `Needs` is a byte and now full: the next part widens it.
+  - **Temporaries.**
+    - "Beside 3" (R8-M30's temporary 3) extends to f32 and f64: `LegacyRuntimeHelpers.FormatKind` still answers 11 and 12,
+      `FormatKindsAreTheRuntimesNumbering` pins them (it ties `FormatKind >= 0` to `FormattingTypes.IsBuiltin`, which temporary 2
+      keeps true), and the shim guard no longer sees floats; `FormatKind`'s summary states that 11 to 15 have no runtime arm.
+      Removed at S2d2 with temporary 2.
+    - R8-M18's temporary line on `utf8_commit` ("with `utf8_commit` (W2, the float reduction)") becomes: "with `utf8_commit` (W2;
+      the float reduction removed its float caller at R8-S2c)" (amended there); `utf8_commit`, `format_bytes` and `window_address`
+      keep only W2's callers.
+  - **Order.** Unchanged: S2c, then S2d1, S2b1, S2b2, S2d2, W2. S2b2's producer kind for `FormatInteger128` is approved by the same
+    O-177 (a), after its design review.
+  - **Rejected:** `#LibraryImport` for the routine (classed `Environment`, so every `confined` float formatter would be newly
+    rejected; its Import item's `declare` collides with the part's `define`); waiting for G1's `#Intrinsic` (O-177 (c): S2's end and
+    W2 behind G1); Ryu in Kimigayo (RP9); an `unsafe` producer over `raw/u8` with a `WritesThrough` arm (its obligation is statable
+    in the signature, STYLE §4.5) and a punned bits read (SPEC 13.5.4's `@bits` is the canonical form), both review B1;
+    `llvm.memset` in the part (only the kept erased-writer file declares it; a second `declare` is not possible).
+  - **Counts (RQ9)**, on S2a's head d6e59633e: `CompilerFunctionKind` 28 → 29 (+`StorageFormatFloat`; S2d2's `BuiltinFormat`
+    deletion returns it to 28); `KimiDeclarationId` +3 and catalog entries 183 → 186 on S2a's head, 184 → 187 on dev 882eebcd8
+    (`F32FormatFormat`, `F64FormatFormat`, `StorageFormatFloat`); `IntrinsicId` unchanged (`FormatFloat` `Unproduced` →
+    `Requested`); `WitnessMembers` +2.
+  - **Moves.** None in acceptance or records (diagnostic snapshot 0 differences against shared-base/706b9f2ba; RP14's generated
+    gate, CLI copies eb2c39f3e against 1cc90244c: the float family of 48 programs, all labeled valid, 0 record differences, 48
+    builds pass on both; the A5 oracle family of 1,764 programs, 0 record differences, no TIMEOUT or EXIT; Unit snapshots 0
+    differences against shared-base/706b9f2ba (1cc90244c) and shared-base/882eebcd8 (the merge ca6810c6d)); `.ll` only: float writes
+    call the F32Format/F64Format instances, which call `__kimi_format_float` and the leaf, and the formatting runtime no longer
+    carries the float routine or Ryu (written as their own part only where a float is written). Natives `Utf*.ll` 312 executions
+    pass. The Strings kernel's checksum 2957240673 from both compilers.
+  - **Tests.** Utf8FloatTest's T17 (0/0/0) and T2 (1/1/17, 1/1/24) rows unchanged; its oracle calls the routine directly (the
+    returned count, the canaries before, after and at byte 25; a binary32 case's high word is noise). f32/f64 rows:
+    `Utf8FormatBindingTest.ATableTypesFormatRequirementSelectsItsGroupsFunction` and
+    `InstanceCollectorTest.ABuiltinFormatCallIsItsTablesBody` (fail at d6e59633e: Builtin),
+    `Utf8WriterTest.AFailedAllocationInsideABuiltinWriteReportsTheWrite` (Abort at the user's write; without the rows'
+    `CallerLocation` both abort at `Formatting.kimi:518:16`), `MirEffectsTest.AFormatFloatCallIsClassedByItsStorageFamily` (Inputs,
+    (None, 3); the descriptor was (None, -1) before) and two confined rows in `FormattingRunsTheValuesWitness` (no record, SPEC
+    8.11.2); `FunctionCodegenTest.AFloatWriteDefinesTheFloatPartOnce` (fails before: the formatting runtime held Ryu) and a
+    FormatFloat arm in `ARequestedRowRequestsItsRoutinesModulePart`; the f64 shim rows re-pointed at u32 and u64 (still on the
+    shim); `KimiLibraryShapeTest` rows, catalog 186; `DirectBuiltinRequirementSelection` gains `1.5.format(writer@uniq)` (a guard:
+    it asserts completion, which also holds before). Open for S2d1 (I-N1): f32/f64 rows in
+    `FunctionCodegenTest.ATableBodyWriteReportsItsCallersLocation` (the IR layer of revision 3's CallerLocation rule); S2c pins it
+    by the native Abort rows.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
