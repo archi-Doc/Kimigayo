@@ -173,27 +173,6 @@ public sealed class SemanticSnapshotTest
         return (printer.ToString(), printer.Hir, dump.ToString());
     }
 
-    /// <summary>Prints the facts the snapshot compares for each node of a tree, one line per node in pre-order, without its
-    /// compilation's outcome and records.</summary>
-    /// <param name="root">The tree's root.</param>
-    /// <returns>The lines.</returns>
-    internal static string Tree(Koto root)
-    {
-        var printer = new SemanticPrinter(false);
-        printer.Visit(root);
-        return printer.ToString();
-    }
-
-    /// <summary>Prints the facts the snapshot compares for one node, without its subtree.</summary>
-    /// <param name="node">The node.</param>
-    /// <returns>The line, without its line break.</returns>
-    internal static string Line(Koto node)
-    {
-        var printer = new SemanticPrinter(false);
-        printer.Line(node);
-        return printer.ToString().TrimEnd('\n');
-    }
-
     private static PairCaseRow[] PairCases()
         => JsonSerializer.Deserialize<PairCaseRow[]>(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "diagnostics", "pair-cases.json")))!;
 
@@ -221,14 +200,9 @@ public sealed class SemanticSnapshotTest
     // A case's semantic snapshot (kind 0), HIR snapshot (1) or MIR dump (2).
     private static string Of((string Text, string Hir, string Mir) snapshot, int kind) => kind switch { 0 => snapshot.Text, 1 => snapshot.Hir, _ => snapshot.Mir };
 
-    /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
-    /// <param name="Name">The case name.</param>
-    /// <param name="Source">The source text.</param>
-    private sealed record PairCaseRow(string Name, string Source);
-
     /// <summary>Prints one line per node in pre-order and then the published records. Every fact the snapshot compares is read here,
     /// so a change of where the compiler stores a fact changes only this printer.</summary>
-    private sealed class SemanticPrinter(bool hir) : KotoVisitor
+    internal sealed class SemanticPrinter(bool hir) : KotoVisitor
     {
         private readonly StringBuilder text = new();
         private readonly StringBuilder? hir = hir ? new() : null;
@@ -253,6 +227,28 @@ public sealed class SemanticSnapshotTest
 
         public override string ToString()
             => this.text.ToString();
+
+        internal static string Origin(BoundOrigin origin)
+        {
+            var builder = new StringBuilder();
+            builder.Append(origin.Kind);
+            if (origin.Name != origin.Kind.ToString())
+            {
+                builder.Append(':').Append(origin.Name);
+            }
+
+            if (origin.Binder is { } binder)
+            {
+                builder.Append('@').Append(CompilationTestHelper.Location(binder)).Append('#').Append(origin.Slot);
+            }
+
+            if (origin.Operands.Count != 0)
+            {
+                builder.Append('(').AppendJoin('&', origin.Operands.Select(Origin)).Append(')');
+            }
+
+            return builder.ToString();
+        }
 
         // The tree, the outcome of each phase, the MIR side (MirTargetSide.MirSide: Binding's records without the twins, then the MIR's
         // rows; R6-check H10a D8) and the published records.
@@ -288,38 +284,7 @@ public sealed class SemanticSnapshotTest
         internal void Fail(Exception exception)
             => this.text.Append("exception ").Append(exception.GetType().Name).Append(": ").Append(exception.Message.Split('\n')[0]).Append('\n');
 
-        internal void Line(Koto node) => this.Node(node);
-
-        private static string Symbol(BindingSymbol? symbol)
-            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
-
-        private static string Length(BoundLength? length)
-            => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
-                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + CompilationTestHelper.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
-
-        private static string Origin(BoundOrigin origin)
-        {
-            var builder = new StringBuilder();
-            builder.Append(origin.Kind);
-            if (origin.Name != origin.Kind.ToString())
-            {
-                builder.Append(':').Append(origin.Name);
-            }
-
-            if (origin.Binder is { } binder)
-            {
-                builder.Append('@').Append(CompilationTestHelper.Location(binder)).Append('#').Append(origin.Slot);
-            }
-
-            if (origin.Operands.Count != 0)
-            {
-                builder.Append('(').AppendJoin('&', origin.Operands.Select(Origin)).Append(')');
-            }
-
-            return builder.ToString();
-        }
-
-        private string Type(BoundType? type)
+        internal string Type(BoundType? type)
         {
             if (type is null)
             {
@@ -378,7 +343,7 @@ public sealed class SemanticSnapshotTest
             return known;
         }
 
-        private void Node(Koto node)
+        internal void Node(Koto node)
         {
             if (this.hir is { } hir)
             {
@@ -530,6 +495,13 @@ public sealed class SemanticSnapshotTest
             text.Append('\n');
         }
 
+        private static string Symbol(BindingSymbol? symbol)
+            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
+
+        private static string Length(BoundLength? length)
+            => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
+                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + CompilationTestHelper.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
+
         // The call facts: callee kind, target, result Type and mode, Type and length arguments, and the argument mapping.
         private void Call(string label, InvocationKoto? invocation)
         {
@@ -565,4 +537,9 @@ public sealed class SemanticSnapshotTest
             }
         }
     }
+
+    /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
+    /// <param name="Name">The case name.</param>
+    /// <param name="Source">The source text.</param>
+    private sealed record PairCaseRow(string Name, string Source);
 }
