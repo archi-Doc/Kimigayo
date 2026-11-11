@@ -31,6 +31,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
+        new(KimiDeclarationId.Never, "Never", ManagedRepresentation: true),
         new(KimiDeclarationId.Array, "Array", ManagedRepresentation: true),
         new(KimiDeclarationId.FromEnd, "FromEnd"),
         new(KimiDeclarationId.Wrapping, "Wrapping", ManagedRepresentation: true),
@@ -118,6 +119,9 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.WriterReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterWriteUtf8, "writeUtf8", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, SourceFunction: true, CallerLocation: true, Overload: 0),
+        new(KimiDeclarationId.BoolFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "BoolFormat"), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.CharFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "CharFormat"), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.UnitFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "UnitFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: Equality),
         new(

@@ -346,7 +346,7 @@ public group Text
         Self is Copy
         let value: Slice<u8> during source
 
-        /// Views `value`, which the caller has validated as UTF-8 (SPEC 22.9.3).
+        /// Views `value`, bytes the caller guarantees are valid UTF-8 (SPEC 22.9.3); nothing checks them.
         internal init(value: Slice<u8> during source) => self.value = value
         public computed length: isize
             get() -> isize => self.value.length
@@ -459,3 +459,44 @@ public group Console
         unsafe
             Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
             Console.writeStdout(feed@raw, 1)
+
+// SPEC 22.10.2, 22.1: the bodies of bool's, char's and Unit's built-in conformances to Utf8Format, which the witness
+// table's BoolFormat, CharFormat and UnitFormat rows select (Binding.WitnessGroup). Each writes its text once through
+// the writer's leaf, writeUtf8; its catalog row's CallerLocation passes the user's location to the leaf (SPEC 22.5.1,
+// until G1).
+internal group BoolFormat
+    func format(self: ref/bool, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        if self@follow => return writer.writeUtf8(Text.utf8("true"))
+        return writer.writeUtf8(Text.utf8("false"))
+
+internal group CharFormat
+    /// Writes the scalar's UTF-8 encoding: one to four bytes, encoded into a local array.
+    func format(self: ref/char, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        var scalar: u32 = 0
+        unsafe
+            // IMPL 21.1: a char is its scalar value's u32, read through a punned access (SPEC 5.2); a char holds a
+            // Unicode scalar value (SPEC 3.1.2), so the bytes are valid UTF-8.
+            scalar = *(self@follow@raw@raw/u32)
+        var bytes: [4 of u8] = [0, 0, 0, 0]
+        var count: isize = 4
+        if scalar < 128
+            bytes[0] = scalar@u8
+            count = 1
+        else if scalar < 2048
+            bytes[0] = (192 | (scalar >> 6))@u8
+            bytes[1] = (128 | (scalar & 63))@u8
+            count = 2
+        else if scalar < 65536
+            bytes[0] = (224 | (scalar >> 12))@u8
+            bytes[1] = (128 | ((scalar >> 6) & 63))@u8
+            bytes[2] = (128 | (scalar & 63))@u8
+            count = 3
+        else
+            bytes[0] = (240 | (scalar >> 18))@u8
+            bytes[1] = (128 | ((scalar >> 12) & 63))@u8
+            bytes[2] = (128 | ((scalar >> 6) & 63))@u8
+            bytes[3] = (128 | (scalar & 63))@u8
+        return writer.writeUtf8(Text.Utf8Slice.init(bytes.slice(..count)))
+
+internal group UnitFormat
+    func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.writeUtf8(Text.utf8("()"))

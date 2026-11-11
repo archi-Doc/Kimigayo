@@ -9,8 +9,28 @@
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply; availability
 //   is asked per fact, lazily, in the caller's order.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here; no mode or bool parameter; no answer kept across
-//   requests; no second scheduler; no read sets. From C3 (C1 §5), broken until then by the eager derivation moved here: no Binding
-//   writes, syntax-triggered supply, DerivedFacts or fallback scan.
+//   requests but a Complete reading (below); no second scheduler; no read sets. From C3 (C1 §5), broken until then by the eager
+//   derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or fallback scan.
+//
+// The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
+// Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
+// boundary's normalization of a fact (NormalizeProofConstraint): in the capability phase, with normalizingAssociated and
+// identityExpansions empty, it keeps the reading per (view scope, fact, requirement Contract) under the serial taken before the
+// formation, for one pass (ResetCapabilities), when its derivation is Complete. Any other request forms its readings itself.
+// - Completion (C1 §5's, without Resource until f): each function of the normalization gives its answer with one; its zero is
+//   Provisional, a composite rule's answer is the meet of its parts', and only these members give Complete (W1-W6;
+//   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); SubstituteIdentity (W2); IdentityPremise (W3);
+//   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
+//   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
+//   AvailableConstraintFact (W6). Provisional is a conservative superset of C1's: the derivation took a route not shown final in the
+//   pass (a derived fact's availability; a projection route past its gate; the batched route; a Callable fact; StoredType's null).
+// - Within a member an unthreaded call counts as Complete, so a member calls only these besides the members above, each pure or
+//   final in the capability phase; each change to a member is reviewed against this list: the view's reads (HasParameterIdentity,
+//   EnclosingContractSelf, a chain environment's sets), FactStates, NegateConstraint, InternConstraint, interning and Type rewriting
+//   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
+//   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
+//   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
+//   and the PrepareTypeStorage memo (per storageVersion).
 
 using Kimi.Compiler.Parsing;
 
@@ -18,6 +38,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The closure's kept readings (Reading), emptied with the capability results each pass (ResetCapabilities), capacity kept.
+    private readonly Dictionary<(BindingScope View, BoundConstraint Fact, BindingSymbol? Requirement), (int Serial, BoundConstraint Reading)> readings = new();
+
     private BoundConstraint[] contractFactScratch = [];
 
     // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
@@ -36,7 +59,55 @@ public sealed partial class Binding
         internal bool Invalid { get; init; }
     }
 
+    // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero).
+    private enum Completion : byte
+    {
+        Provisional,
+        Complete,
+    }
+
+    private static Completion Meet(Completion a, Completion b) => a < b ? a : b;
+
+    // The serial of the view `scope` denotes: changed when the scope's environment, its link or its parent's view changed since the
+    // scope last denoted a view; so one serial of one scope names one state of its chain.
+    private static int SerialOf(BindingScope scope)
+    {
+        var parent = scope.Parent is { } next ? SerialOf(next) : 0;
+        var state = (scope.Constraints?.Version ?? 0, scope.LinkVersion, parent);
+        if (state != scope.ViewState)
+        {
+            scope.ViewState = state;
+            scope.ViewSerial++;
+        }
+
+        return scope.ViewSerial;
+    }
+
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
+
+    // The reading of `fact` in the view `scope` denotes (the class header's closure).
+    private BoundConstraint Reading(BoundConstraint fact, BindingScope scope)
+    {
+        if (!this.capabilitiesReady || this.normalizingAssociated.Count != 0 || this.identityExpansions.Count != 0)
+        {
+            return this.NormalizeProofConstraint(fact, scope, out _);
+        }
+
+        var serial = SerialOf(scope);
+        var key = (scope, fact, this.activeRequirementContract);
+        if (this.readings.TryGetValue(key, out var kept) && kept.Serial == serial)
+        {
+            return kept.Reading;
+        }
+
+        var reading = this.NormalizeProofConstraint(fact, scope, out var completion);
+        if (completion == Completion.Complete && SerialOf(scope) == serial)
+        {
+            this.readings[key] = (serial, reading);
+        }
+
+        return reading;
+    }
 
     // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only under the presence gate.
     private Evidence Supply(BoundConstraint proposition, EvidenceView view)
@@ -57,18 +128,18 @@ public sealed partial class Binding
                 return new() { Invalid = true };
             }
 
-            positive |= this.AvailableConstraintFact(environment, proposition);
-            negative |= this.AvailableConstraintFact(environment, negation);
+            positive |= this.AvailableConstraintFact(environment, proposition, out _);
+            negative |= this.AvailableConstraintFact(environment, negation, out _);
             if (environment.HasAssociatedProjection || parameterIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
             {
                 foreach (var fact in environment.Facts)
                 {
-                    if (!this.AvailableConstraintFact(environment, fact))
+                    if (!this.AvailableConstraintFact(environment, fact, out _))
                     {
                         continue;
                     }
 
-                    var identity = this.NormalizeProofConstraint(fact, view.Premises);
+                    var identity = this.Reading(fact, view.Premises);
                     positive |= SameProofPremise(identity, proposition);
                     negative |= SameProofPremise(identity, negation);
                 }
@@ -96,8 +167,10 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact)
+    // W6: Complete when the fact is not in the environment or is direct; a derived fact's availability reads its sources' states.
+    private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
+        completion = Completion.Complete;
         if (!environment.Facts.Contains(fact))
         {
             return false;
@@ -108,6 +181,7 @@ public sealed partial class Binding
             return true;
         }
 
+        completion = Completion.Provisional;
         for (var i = 0; i < environment.DerivedFacts.Count; i++)
         {
             var derived = environment.DerivedFacts[i];
