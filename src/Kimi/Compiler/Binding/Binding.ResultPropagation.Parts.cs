@@ -16,7 +16,8 @@ namespace Kimi.Compiler;
 // - Outputs: the formed Type, or none with the conflict that prevents it (PartsConflict); a judged join's outcome (Conflict, Dependent).
 // - Invariants: a part of Type Never is no part; a failed part is no part either (the join rests on it); the walk binds nothing and
 //   removes the parts it appended.
-// - Prohibitions: no record here; the join (AwaitsWithoutCandidate) and the argument walks decide what the Type is to them.
+// - Prohibitions: no record here but one: a held join judged Conflict writes its own `TypeMismatch` once (ReportHeldConflicts, as
+//   DecideWaiting does); otherwise the join (AwaitsWithoutCandidate) and the argument walks decide what the Type is to them.
 public sealed partial class Binding
 {
     // The scratch of a position's typed Types or literal defaults, used by one SelectCommonType at a time.
