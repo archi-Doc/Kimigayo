@@ -148,8 +148,6 @@ public sealed partial class Binding
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
                         return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
-                            : structure && contract.Kind == ComparisonFailureKind.None && this.FailedOriginClause(function) is { } clause
-                            ? this.CompleteDependent(use, clause)
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
                 }
