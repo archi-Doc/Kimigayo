@@ -14,7 +14,8 @@ public class ContractSelfTest
     private const string Needs = "func needs<V, W>(v: ref/V)\n    V is D<W>\n    ()\n";
     private const string Clause = Generic + "contract C\n    associate X is D<Self>\n";
     private const string Ancestor = Generic + "contract C: D<Self>\n";
-    private const string Concrete = "struct S\n    Self is C\n    associate C.X is XI\nstruct XI\n    associate D.N is i32\n    Self is D<";
+    private const string Concrete = "struct S\n    Self is C\n    associate C.X is XI\nstruct XI\n    Self is D<";
+    private const string ConcreteN = ">\n    associate D<";
     private const string Refined = Generic + "contract C2<U>: D<U>\ncontract C\n";
     private const string Inner = Refined + "    func f<T>(value: T.(D<Self>).N) -> ()\n        T is C2<Self>\n";
     private const string Pair = "contract D2<U, W>\n    associate N\ncontract C2<U>: D2<Self, U>\ncontract C\n    func f<T>(value: T.(D2<T, ";
@@ -89,8 +90,8 @@ public class ContractSelfTest
     [InlineData(Clause + "contract B: C\n" + Needs + "func probe<T>(value: ref/T.(C).X)\n    T is B\n    needs<T.(C).X, i32>(value)", "UnprovenConstraint_Kd")]
     [InlineData(Expansion + "T.(C).Y>(value)", "")]
     [InlineData(Expansion + "T>(value)", "UnprovenConstraint_Kd")]
-    [InlineData(Clause + Concrete + "S>", "")]
-    [InlineData(Clause + Concrete + "i32>", "UnsatisfiedConstraint_Kd")]
+    [InlineData(Clause + Concrete + "S" + ConcreteN + "S>.N is i32", "")]
+    [InlineData(Clause + Concrete + "i32" + ConcreteN + "i32>.N is i32", "UnsatisfiedConstraint_Kd")]
 
     // Inside a Contract, `T is C2<Self>` supplies C2's ancestors with T for C2's Self only; the enclosing Contract's Self, an argument, stays
     // (SPEC 8.3.2's refinement row), for a parameter, a clause, an associated Type and an ancestor naming both, and in implementation matching.
@@ -176,7 +177,7 @@ public class ContractSelfTest
     [Theory]
     [InlineData(Expansion + "T.(C).Y>(value)")]
     [InlineData(Ancestor + Needs + "func probe<T>(value: ref/T)\n    T is C\n    needs<T, T>(value)")]
-    [InlineData(Clause + Concrete + "S>")]
+    [InlineData(Clause + Concrete + "S" + ConcreteN + "S>.N is i32")]
     public void WarmInstantiatedContractReferencesAllocateNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nlet x = 1");
