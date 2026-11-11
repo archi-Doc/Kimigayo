@@ -160,7 +160,7 @@ Exit:
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
         fieldKoto.SetAttributeChain(variableContext.AttributeKoto);
-        reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameKoto.Span.End), variableContext.AttributeKoto);
+        reader.Document(fieldKoto, nameKoto.Span.End, variableContext.AttributeKoto);
 
         ParseAttachedOriginBlock(ref reader, fieldKoto);
         reader.ExpectLineEnd();
