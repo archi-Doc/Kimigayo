@@ -30,7 +30,7 @@ public sealed partial class Binding
     private static void CompleteQualifier(Koto qualifier, BindingSymbol selection, BindingSymbol reference)
     {
         var type = IsBoundContractReference(reference) ? reference.Type! : BoundType.Unit;
-        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedKoto grouped => grouped.Operand, ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
+        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
         {
             level.BoundSymbol = selection;
             Complete(level, type);

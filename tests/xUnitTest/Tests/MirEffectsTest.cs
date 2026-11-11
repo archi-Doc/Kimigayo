@@ -638,6 +638,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
+    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, by its kind's family, Inputs; its
+    // descriptor states no effect of its own over its three operands (the bits, the width flag and the destination), and its signature's
+    // `uniq` destination states the one write (fail-before: the descriptor's arity was -1, the kind did not exist).
+    [Fact]
+    public void AFormatFloatCallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
+        Assert.Equal(
+            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
+            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+    }
+
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
     // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
     // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
@@ -650,12 +663,16 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
 
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
-    // for bool, char and Unit (R8-S2a), Shown's printing one, also in an interpolation (fail-before: each, a limit).
+    // for bool, char and Unit (R8-S2a) and for f32 and f64 (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's
+    // Allocation and Abort are permitted under confined, SPEC 8.11.2, so no record), Shown's printing one, also in an interpolation
+    // (fail-before: each, a limit).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
     [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
     [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
     [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]
+    [InlineData("        _ = Text.toString(1.5@f32)\n        let narrow = value@f32\n        _ = \"\\(narrow)\"\n", "")]
+    [InlineData("        _ = Text.toString(1.5)\n        let wide = value@f64\n        _ = \"\\(wide)\"\n", "")]
     [InlineData("        _ = Text.toString(Shown.init())\n", Failed)]
     [InlineData("        let shown = Shown.init()\n        _ = \"\\(shown)\"\n", Failed)]
     public void FormattingRunsTheValuesWitness(string body, string expected)
