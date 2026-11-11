@@ -86,7 +86,9 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (qualifier == "C")
         {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+            // SPEC 8.5.1, 9.7 (the owner's O-145 (a)): a Contract with Type parameters named without them names no reference.
+            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd && x.Node.ToString() == "C");
+            Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
         }
     }
 
@@ -179,7 +181,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     [Fact]
     public void AmbiguityExplainsBothBoundReferencesInCliAndLsp()
     {
-        const string Source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C.Item(a) is i32\nlet present = 1";
+        const string Source = "contract C<E>\n    associate Item\nfunc f<U>(x: U.Item) -> i32\n    U is C<i32>\n    U is C<i64>\n    return 0\nlet present = 1";
         var path = Path.GetFullPath("associated-identity.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
         c.Binding.ReportDiagnostics();
@@ -188,7 +190,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal("AmbiguousBinding_Kd", record.Code);
         Assert.Equal("no unique best candidate among 2 candidates", record.Label);
-        Assert.Equal(new SourceSpan(Source.IndexOf("C.Item", StringComparison.Ordinal), "C.Item".Length), record.Span);
+        Assert.Equal(new SourceSpan(Source.IndexOf("U.Item", StringComparison.Ordinal), "U.Item".Length), record.Span);
         Assert.Equal(["C<i32>.Item", "C<i64>.Item"], record.Related!.Select(static x => x.Label));
         Assert.Contains("distinct associated-Type identities", record.Note);
         Assert.Empty(record.Repairs ?? []);
@@ -208,18 +210,19 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     [Fact]
     public void AnAmbiguousSubjectKeepsIndependentRequirementAndExpressionFailures()
     {
-        const string Source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C.Item(a) is Missing\nlet wrong: i32 = true";
+        const string Source = "contract C<E>\n    associate Item\nfunc f<U>(x: i32) -> i32\n    U is C<i32>\n    U is C<i64>\n    U.Item is Missing\n    return x\nlet wrong: i32 = true";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding.
-        Assert.Equal(["AmbiguousBinding_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
+        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding. The clause adds its own
+        // InvalidConstraint_Kd over the ambiguous subject (the Constraint owner's record on this form).
+        Assert.Equal(["AmbiguousBinding_Kd", "InvalidConstraint_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AmbiguousBindingsCountDistinctReferencesAndReuseFailureStorage()
     {
-        const string Source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>, C<i16>\n    associate C.Item(a) is i32\nlet present = 1";
+        const string Source = "contract C<E>\n    associate Item\nfunc f<U>(x: U.Item) -> i32\n    U is C<i32>\n    U is C<i64>\n    U is C<i16>\n    return 0\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete);
         var bytes = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));

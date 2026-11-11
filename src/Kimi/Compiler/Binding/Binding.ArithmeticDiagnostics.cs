@@ -78,7 +78,7 @@ public sealed partial class Binding
         {
             if (fact.Kind != ConstraintKind.Contract || fact.Subject is not { } subject || fact.Contract is not { Type.Components: [var counterpart] } contract ||
                 ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable ||
-                !this.AvailableConstraintFact(environment, fact))
+                !this.AvailableConstraintFact(environment, fact, out _))
             {
                 continue;
             }
@@ -96,7 +96,7 @@ public sealed partial class Binding
                 {
                     if (oppositeFact.Kind == ConstraintKind.Contract && oppositeFact.Contract is { Type.Components: [var oppositeCounterpart] } opposite &&
                         ArithmeticContractSyntax.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) &&
-                        AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact))
+                        AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact, out _))
                     {
                         var here = this.ArithmeticFactUse(fact, scope);
                         var there = this.ArithmeticFactUse(oppositeFact, current);

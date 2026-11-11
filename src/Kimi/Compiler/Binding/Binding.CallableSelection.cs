@@ -62,7 +62,7 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
-                    if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact))
+                    if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact, out _))
                     {
                         continue;
                     }
