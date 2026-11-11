@@ -437,8 +437,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var argument in written.TypeArguments)
+        for (var i = 0; i < written.TypeArguments.Count; i++)
         {
+            var argument = written.TypeArguments[i];
             this.BindType(argument, scope, context);
         }
     }

@@ -336,8 +336,9 @@ public sealed partial class Binding
     // independent written-Type error stays its own record.
     private void MarkOmittedHeaders(FunctionKoto closure, Koto cause)
     {
-        foreach (var parameter in closure.Parameters)
+        for (var i = 0; i < closure.Parameters.Count; i++)
         {
+            var parameter = closure.Parameters[i];
             if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
             {
                 this.CompleteDependent(inferred, cause);
