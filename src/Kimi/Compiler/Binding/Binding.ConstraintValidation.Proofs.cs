@@ -321,6 +321,19 @@ public sealed partial class Binding
         return proof;
     }
 
+    // The answer of a proof that read an Invalid environment (the one proof read of it): Error resting on the environment, whose Use is
+    // the node that made it Invalid; inside a combined proof it joins the proof in progress (ReadVerdict), else the channel.
+    private ConstraintProof InvalidEnvironment(ConstraintEnvironment environment)
+    {
+        if (this.proofNesting != 0 || this.capabilityConsumer is not null)
+        {
+            return this.ReadVerdict(ConstraintProof.Error, environment, null);
+        }
+
+        this.failedCause ??= environment;
+        return ConstraintProof.Error;
+    }
+
     private void ClearProofScopes()
     {
         this.failedCause = null;
