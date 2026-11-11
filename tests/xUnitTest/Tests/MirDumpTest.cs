@@ -45,7 +45,7 @@ public sealed class MirDumpTest
         body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.TwoPhaseUniq, index, body.TypeOf(reference)!), library));
         body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Raw, index, body.TypeOf(reference)!), new(new(1, 5), 1, true)));
         var text = new StringBuilder();
-        MirDump.Write(body, text, new MirDropTable(), 0);
+        MirDump.Write(body, text, new MirDropTable());
         Golden("every-form", text.ToString());
     }
 
@@ -57,7 +57,7 @@ public sealed class MirDumpTest
     public void AKeyedStorageDumpsItsStartAndKey(string key, string expected)
     {
         var text = new StringBuilder();
-        MirDump.Write(MirValidatorTest.KeyedStorage(key, 2).Body, text, new MirDropTable(), 0);
+        MirDump.Write(MirValidatorTest.KeyedStorage(key, 2).Body, text, new MirDropTable());
         Assert.Contains(expected, text.ToString(), StringComparison.Ordinal);
     }
 
@@ -70,7 +70,7 @@ public sealed class MirDumpTest
         c.Bind();
         _ = c.Binding.CheckStartup(OutputKind.Application);
         var program = c.BuildMir();
-        var main = Array.FindIndex(program.Bodies.ToArray(), static x => x.Key.Decl?.Name == "main");
+        var main = Array.Find(program.Bodies.ToArray(), static x => x.Key.Decl?.Name == "main")!;
         Assert.Equal(
             """
             fn main
@@ -127,10 +127,10 @@ public sealed class MirDumpTest
     }
 
     // One body's dump without its sites (` @` and a syntax id), which a spelling or an edit changes (R6-check H8a D10).
-    internal static string Unsited(MirProgram program, int ordinal)
+    internal static string Unsited(MirProgram program, MirBody body)
     {
         var text = new StringBuilder();
-        MirDump.Write(program.Bodies[ordinal], text, program.Drops, ordinal);
+        MirDump.Write(body, text, program.Drops);
         return Regex.Replace(text.ToString(), @" @\d+", string.Empty);
     }
 

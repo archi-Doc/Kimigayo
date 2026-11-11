@@ -122,7 +122,7 @@ internal sealed partial class MirEffects
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
-        var body = this.program.Bodies[this.owners[node]];
+        var body = this.program.Body(this.owners[node]);
         this.Evaluations++;
         cases.Select(body, node - this.bases[this.owners[node]]);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
