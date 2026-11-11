@@ -7,8 +7,18 @@ namespace Kimi.Compiler;
 // The Types of locals over the local-region graph (SPEC 15.4.4): a mutable local's Type opened into region slots (LocalBorrowType), a
 // result's own body's regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
 // (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf).
+// - Interim (PLAN G758; the owner's O-168 (a), 2026-11-11; removal: G758 opens the slot as a region): a mutable unannotated local's pair
+//   layer of Parameter kind (the original `s/T`, annotated or not) keeps the outer-Origin slot its initializer gave it, which SPEC 15.4.2
+//   makes an inferred region, so a relation that fails on that slot where it was formed against that local itself is the analysis limit,
+//   one located Unsupported_Kd at the relation's `At`, never its Language record: an assignment whose target is the local's own Place
+//   (UnregionedPairSlot, read where every Origin relation record takes its node's failure, FailExplained), or a call relation whose
+//   shorter end the local's own input fixed (the input EqualitySource or SlotEqualitySource names; JudgeCallPosition, which publishes
+//   that input as FixedBy for an equality only). The predicate of both is NotedLocal. Notes are per pass.
 public sealed partial class Binding
 {
+    // The interim's notes (PLAN G758): each mutable local and an unopened pair slot of its Type; per pass (ResetLocalRegions).
+    private readonly List<(VariableKoto Local, BoundOrigin Slot)> unregionedPairSlots = new();
+
     // Whether an Origin of the Type's parts, a raw layer's included, is a local region or a pending atom; a Function or Function Item part
     // keeps its own, so no Origin summary answers it, and each distinct part is visited once per query (DECISIONS BU-19, BU-63).
     internal bool HasLocalRegion(BoundType type) => this.LocalRegionPart(type, this.visitedParts.Begin(this.storageVersion));
@@ -130,9 +140,71 @@ public sealed partial class Binding
         return false;
     }
 
+    // Interim (PLAN G758; file contract): whether a failed relation is an assignment's whose target is a noted local's own Place and whose
+    // shorter end is that local's slot (not a Place reached through it: `local@follow = v` relates the referent's slot, which the layer's
+    // invariance fixes). The slot's atom alone decides nothing (design reviews 2 B4, 3 B7); a call's case is JudgeCallPosition's.
+    private bool UnregionedPairSlot(Koto use, in OriginRelationFact recorded)
+        => (use as BinaryKoto ?? Grouped(use).Parent as BinaryKoto) is { Akind: KotoKind.Equals } assignment &&
+            this.NotedLocal(assignment.Left, recorded.Shorter);
+
+    // Interim (PLAN G758): whether a node is a noted local's own Place, or an explicit borrow of it, whose slot is `slot`.
+    private bool NotedLocal(Koto place, BoundOrigin slot)
+    {
+        if (this.unregionedPairSlots.Count == 0)
+        {
+            return false;
+        }
+
+        var own = KotoHelper.UnwrapParentheses(place);
+        own = own is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? KotoHelper.UnwrapParentheses(borrow.Left) : own;
+        if (own is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto local } })
+        {
+            return false;
+        }
+
+        foreach (var noted in this.unregionedPairSlots)
+        {
+            if (ReferenceEquals(noted.Local, local) && ReferenceEquals(noted.Slot, slot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Interim (PLAN G758): notes each pair layer of Parameter kind in a mutable local's Type, whose slot LocalBorrowType leaves unopened.
+    private void NoteUnregionedPairSlots(BoundType type, VariableKoto owner)
+    {
+        if (!type.ContainsPairLayer)
+        {
+            return;
+        }
+
+        if (type.Kind == BoundTypeKind.Parameter)
+        {
+            if (TryPairLayer(type, out _, out _) && this.OuterOrigin(type) is { } slot)
+            {
+                this.unregionedPairSlots.Add((owner, slot));
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.NoteUnregionedPairSlots(type.Components[i], owner);
+        }
+    }
+
     // `slot` is the local's next region slot (BindVariableCore).
     private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value, int slot)
     {
+        if (IsMutableDeclaration(owner))
+        {
+            this.NoteUnregionedPairSlots(type, owner);
+        }
+
         if (!IsMutableDeclaration(owner) || !type.StoresOrigin)
         {
             return type;
