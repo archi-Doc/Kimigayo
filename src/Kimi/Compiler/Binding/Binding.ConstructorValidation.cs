@@ -97,6 +97,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(argumentCount);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -245,6 +246,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.argumentOperationScratch.Return(checkedOperations, clearArray: true);
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }

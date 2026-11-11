@@ -24,6 +24,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string LiteralAtReference = "func see(target: ref/i32) -> i32 => 0\nfunc mk() -> i32 => 1\nfunc k() -> i32\n";
 
+    private const string ElementRanks = "func fq(p: (i32, i32)) -> bool => true\nfunc fq(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fg(p: (i32, i32)) -> bool => true\nfunc fg<T>(p: (T, i32)) -> i32 => 0\nfunc fb(p: (i32, i32)) -> i32 => 0\nfunc fb(p: (i32, i64)) -> i32 => 1\nfunc fo(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fo(p: (i32, ref/i32 during a)) -> bool => true\nfunc fn2(p: ((i32, i32), i32)) -> bool => true\nfunc fn2(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc fa(x: Array<i32>) -> bool => true\nfunc fa(x: Array<ref/i32 during a>) -> i32 => 0\nfunc ff(x: [2 of i32]) -> bool => true\nfunc ff(x: [2 of ref/i32 during a]) -> i32 => 0\nfunc cc(x: Array<i32>) -> i32 => 0\nfunc cc<length N>(x: [N of i32]) -> i32 => 1\nfunc fk(! p: (i32, i32), x: i32) -> bool => true\nfunc fk(! p: (ref/i32 during a, i32), x: i32) -> i32 => 0\nfunc fe(p: (i32, i32)) -> bool => true\nfunc fe(p: (ref/i32 during a, i32), w: i32 = 0) -> i32 => 0\nfunc cd(x: Array<i32>) -> bool => true\nfunc cd<length N>(x: [N of ref/i32 during a]) -> i32 => 0\nfunc sel(p: (i32, i32)) -> i32 => 0\nfunc sel(p: (ref/i32 during a, i32)) -> i32 => 1\nfunc fg2<T>(p: (T, i32)) -> i32 => 0\nfunc fg2<T>(p: (ref/T during a, i32)) -> bool => true\nfunc inc(x: i32) -> i32 => x\nfunc fy(p: (ref/i32 during a, (i32) -> i32)) -> i32 => 0\nfunc fy<F>(p: (i32, F)) -> bool => true\nstruct S\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: (i32, i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/i32 during a, i32)) -> i32 => 0\nstruct P\n    public var k: i32\n    public init(p: (i32, i32)) => self.k = 0\n    public init(p: (ref/i32 during a, i32)) => self.k = 1\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -250,5 +252,40 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "h_arrf", HeldDeclarations + "    return fa(if c => [(if d => identity(1) else => undefinedName), 1] else => [3])\n", "UnresolvedBinding_Kd: return fa(if c => [(if d => identity(1) else => undefinedName), 1] else => [3]) | ...")]
     [InlineData("guard", "h_dictf", HeldDeclarations + "    return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3])\n", "UnresolvedBinding_Kd: return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3]) | ...")]
     public void AHeldJoinKeepsItsVerdictThroughWhatDeliversIt(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.4 step 1 (the owner's O-162 (A), PLAN G743): a Tuple or array literal argument is ranked by each element position as an argument
+    // there, recursively, beside its own fit (receivers excluded, named arguments by source, before defaults, across the Array and [N of]
+    // pair, inside a nested call and an init); a fill stays one argument (e7n) and step 2 is unchanged (e6n). A join formed part by part
+    // ranks each position as one control-flow argument (SPEC 10.5.1; e9 once PLAN G729 lands). e17 selects fq(i32) as its element twin
+    // e16 does, but passes today only because the join leaves the ref candidate inapplicable (PLAN G729's cause); it guards the ranking
+    // once G729 ranks a join's position as one argument. The result Type shows the selected candidate; the n rows tie, oppose or meet an
+    // erasure.
+    [Theory]
+    [InlineData("guard", "e1", ElementRanks + "    let q = fq((n, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e2", ElementRanks + "    let q = fq((v, 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "e3", ElementRanks + "    let q = fg((n, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e4", ElementRanks + "    let q = fo((n, v))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e5", ElementRanks + "    let q = fn2(((n, 1), 2))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e6", ElementRanks + "    let q = fa([n, m])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e7", ElementRanks + "    let q = ff([n, m])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e8", ElementRanks + "    let q = fq(if c => (n, 1) else => (m, 2))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("G729", "e9", ElementRanks + "    let q = fq(if c => (n, 1) else => ((return 0), 2))\n    let z: i32 = q\n    return z\n", "", Explicit = true)]
+    [InlineData("guard", "e10", ElementRanks + "    let s = S.init(1)\n    let q = s.m((n, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e11", ElementRanks + "    let q = fk(x: v, p: (n, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e12", ElementRanks + "    let q = fe((n, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e13", ElementRanks + "    let q = cd([n, m])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e14", ElementRanks + "    let q = fq((n, sel((m, 1))))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "e15", ElementRanks + "    let s = P.init((n, 1))\n    return s.k\n", "")]
+    [InlineData("guard", "e16", ElementRanks + "    let q = fq((if c => n else => v, 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "e17", ElementRanks + "    let q = fq(if c => (n, 1) else => (v, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "e1n", ElementRanks + "    let q = fb((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fb((n, 1))")]
+    [InlineData("guard", "e4n", ElementRanks + "    let q = fo((n, n))\n    return 0\n", "AmbiguousBinding_Kd: let q = fo((n, n))")]
+    [InlineData("guard", "e6n", ElementRanks + "    let q = cc([n, m])\n    return 0\n", "AmbiguousBinding_Kd: let q = cc([n, m])")]
+    [InlineData("guard", "e7n", ElementRanks + "    let q = ff([2 of n])\n    return 0\n", "AmbiguousBinding_Kd: let q = ff([2 of n])")]
+    [InlineData("guard", "e8n", ElementRanks + "    let q = fa([n, 1])\n    return 0\n", "AmbiguousBinding_Kd: let q = fa([n, 1])")]
+    [InlineData("guard", "e10n", ElementRanks + "    let q = fy((n, inc))\n    return 0\n", "AmbiguousBinding_Kd: let q = fy((n, inc))")]
+    [InlineData("guard", "e11n", ElementRanks + "    let q = fg2((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fg2((n, 1))")]
+    public void ALiteralArgumentRanksElementByElement(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }
