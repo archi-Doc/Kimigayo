@@ -637,12 +637,13 @@ public sealed partial class MirBorrowsTest
                 """));
 
     // SPEC 15.6 Holders, 15.6.4, 5.2.1 (PLAN G582): a keeper held by value (no dereference: a Field or a Tuple element of the argument)
-    // is that argument's own value, so storage the call writes through it never keeps the keeper's Loan, and `usep(slot)` is valid
-    // (keeperOk, keeperTupOk, as uBad's `usep(slot)`; keeperSelfLinkOk stores that storage's own address there, 5.2.1's self-link). A
-    // keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the drop forms of
-    // ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of reads through
-    // the argument carries, so that storage keeps it. Another argument's storage (keeperOtherBad) and a raw result (keeperResultBad,
-    // keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    // is that argument's own value, so a raw layer without an Origin that the call writes through it never keeps the keeper's Loan, and
+    // `usep(slot)` is valid (keeperOk, keeperTupOk, as uBad's `usep(slot)`). That exclusion is 15.6.4's raw-layer sentence only: safe
+    // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
+    // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
+    // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
+    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
+    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
     [Fact]
     public void AByValueKeeperIsItsArgumentsOwnValue()
         => Assert.Equal(
@@ -657,8 +658,6 @@ public sealed partial class MirBorrowsTest
                     public init(r: uniq/(raw/u8) during s) => self.r = r
                 func f(w: K during a) => ()
                 func fTup(w: (uniq/(raw/u8) during a, i32)) => ()
-                func fLink(w: K during a)
-                    w.r@follow = w.r@follow@raw@raw/u8
                 func fBorrowed(w: uniq/(K during a)) => ()
                 func fChain(w: (uniq/(K during a) during b, i32)) => ()
                 func fOther(w: K during a, t: uniq/(raw/u8)) => ()
@@ -674,11 +673,6 @@ public sealed partial class MirBorrowsTest
                 func keeperTupOk()
                     var slot: raw/u8 = null
                     fTup((slot@uniq, 1))
-                    usep(slot)
-                func keeperSelfLinkOk()
-                    var slot: raw/u8 = null
-                    var w = K.init(r: slot@uniq)
-                    fLink(w@move)
                     usep(slot)
                 func keeperBorrowedBad()
                     var slot: raw/u8 = null
