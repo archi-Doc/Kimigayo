@@ -7421,6 +7421,36 @@ resumed by R4-M86 (2026-10-20).
   `TransferRequired_Kd` (no acceptance changes); that clause should read StoredReborrow's predicate, with the re-read 2's w4 (`return
   h.o` from `h: uniq/(H2 during a) during s` as `objuniq/P during a`, a leak) and w12v (the same under `origin s outlives a`, valid) as
   its failing-first rows (PLAN G232).
+  - Amended (2026-11-11; PLAN G254, unit G254a; design reviews 1-3, ACCEPT; the Front's consent C-236 for the test rows; C-238,
+    alignment with G755; the owner's O-168 (a); SPEC 3.5.1, 7.7.2, 8.1.1, 8.1.2, 8.14, 15.6.3, 15.8.2): a pair layer acquired by
+    case is Reborrowed in its own Semantics. The bare same-Semantics Reborrow by the per-case plan is one rule in two steps
+    (`Binding.BareAcquisition`): `BareReborrowLayer(stored, node)`, the Origin of the layer the plan Reborrows (a stored `uniq` or
+    `objuniq` whose plan Reborrows, or a pair layer that `BareAcquisition`'s plan, G755's one fact, Reborrows in an exclusive
+    admitted case: its outer-Origin slot), then `ReborrowedType`, the stored Type with that Origin met with the layers that reach
+    the Place (`WithOrigins`). Readers: AdaptInput's non-reference branch at a body Place (reach `ReachOf`, PathReborrowOrigin's
+    walk, only when the plan names a layer), hence StoredReborrow and the fixed-expected clause (shape gate
+    `StoresExclusiveReference`), and CaptureEntry for a nested entry (reach `EnvironmentContainment`; R4-M133 P4's own meet
+    deleted). An argument at a non-reference parameter moves from Exact to SameSemanticsReborrow (SPEC 10.2.2: a required exclusive
+    Reborrow is never Exact; every non-reference candidate of one Place gets the same class, so no ranking changes; N7). HIR's plan
+    stays ByCase; MirBuilder's ByCase builds at the consumer's Type where `MirTypes.Agree` holds (Binding's name, BU-27's HIR
+    contract; no identity premise). A case that Copies keeps the met slot (8.15.2). A written original `s/T` carries the binder's
+    `o` (8.1.1, 8.1.2, 15.4.2, 15.6.4 step 2). Limits: the rule names no family (`OuterOrigin` has no family row, so G721's revision
+    4 keeps its family capture row; N8); the owner case's Reborrow of a nested layer is not named (PLAN G254b, O1). Interim (the
+    owner's O-168 (a); removal condition: PLAN G758 opens a `var` local's pair slot as a local region): `LocalBorrowType` notes each
+    (`var` local, unopened Parameter-kind pair slot) per pass (cleared in `ResetLocalRegions`); a relation whose shorter end is that
+    slot and that was formed against the local itself, an assignment whose target is the local's own Place (`FailExplained`) or a
+    call relation whose shorter end the local's own input fixed (`EqualitySource`, `SlotEqualitySource` in `JudgeCallPosition`), is
+    one located `Unsupported_Kd` at the relation's `At`; any other relation on the same atom keeps its Language record. Moves: Q17
+    class 1 forms newly `UnprovenOriginRelation_Kd` (a use-after-free reachable on dev closed); 8 test rows (C-236); valid
+    `var`-local pair forms newly `Unsupported_Kd` (2 rows and the probes qb3-PU, qb3-PRU, qb-cl-PRU, qbp-put-PU, qb4-PRU, tl1-PRU;
+    qb1 from a Language error); the semantic snapshot's one moved case, `pair/B1-capture-exclusive` (a captured pair local's Field
+    Type with its Reborrow's Origin intersection), is the intended HIR. RP8 (T-145, dev 706b9f2ba vs 1e149c3bb): Hello warm Bind
+    1.032 and Milestone26 cold Bind 1.080 above their A'/A spreads (0.659-1.002, up to 1.064), other Bind rows within; the owner's
+    O-179 (a) lands it with that record; allocation warm 0 B, cold Bind +40 B. Rejected: a Closure-only rule; a per-case Type; a
+    second containment walk; opening the slot as a region here (G758's design); the interim keyed on the slot's atom (design review
+    2 B4), on a walk through the local (review 3 B7, w1) or on the published FixedBy (an outlives relation has none: qbp-put). Open:
+    O1 (G254b); edge (ii), a further chain resting on a noted local, not reached by any probe; G757 (the generic-slot order,
+    cu-id-v).
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -11564,6 +11594,27 @@ resumed by R4-M86 (2026-10-20).
   - Open: design review 1's N3, triaged 2026-11-11: c01 `keep<() -> u32>(zero)` has G719's cause and joins PLAN G719; c02 is invalid
     as written (SPEC 6.1.1, 9.5: a root function is not visible from a group), so its `UnresolvedBinding_Kd` is correct and its two
     `Unsupported_Kd` are the existing P42 limits (R5-M82).
+- **BU-162 An associate item is read once for every owner (PLAN G683)** (2026-11-11; Front, Parsing and Binding; Major; design
+  revision 2, design review 2 and implementation review ACCEPT; the owner's O-160 (a)) SPEC F.6.2, 8.5.1, 8.5.3, 8.5.4, F.5.
+  - Rule: `associate` before any start of an AssociatedTypeName introduces the item (`StartsType`, the one start predicate of
+    `IsTypeConstraintStart`). `ParseAssociatedConstraint` reads the head once, its selector one node before its `. Name` (a group, a
+    rooted first segment or a Type head, then `ParseTypeSuffixes`), and `IsAssociatedTypeName` judges it once: any other head, in
+    every owner, is `ExpectedSyntax_Kd` ("Expected Name") at the head and the item a recovery. In a Contract a Name with `is`
+    declares its associated Type with that requirement (8.5.1) and stays among the Contract's Constraints; every other item is an
+    associated specification and a member of its owner, whatever the owner (struct, enum, conditional block, Contract).
+  - `BindAssociatedSpecification` binds every specification; `BindAssociatedName` judges its name once: the selector's one lookup in
+    its `UseRow` row, its Contract reference formed from `WrittenReference` (one group around a NamedReference, F.5, F.6.2; also the
+    `.(C).` suffix's), and `SelectorQualifies` on the selector (a Contract's proper ancestor; a Type's declared conformance or its
+    ancestor), never on the identity found. A Contract's bound specification is a premise of the Contract (its environment and its
+    clauses), not a Constraint clause. `IsAssociatedRequirement` reads the parser's placement.
+  - Removed: `BindAssociatedRefinement`; `BindConstraint`'s specification arm and its Type-path lookup of the name;
+    `DeclareAssociatedType`'s qualified return; `Access.cs`'s dead half.
+  - Moves: valid newly accepted (class 3): `(C).X`, `(C<T>).X`, `::C.X`, `::C<i32>.X`, `Self.Inner.X`, `(G.C).X` in every owner kind
+    (37 probes); invalid newly rejected (class 1): a descendant selector (`associate D.Item` with D a child of the conformance;
+    g34c), `T.((C)).Item` in a signature, a function's Constraint region and a Contract's Constraint (g36, t40, t41), and
+    `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
+  - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
+    effect target in this unit (PLAN G740).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -17089,6 +17140,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     publication is B/A′ > 1.03 and outside the same measurement's A′/A spread, or when warm allocation grows; cold allocation and
     retained memory are recorded per unit and compared at the stage exit; a back unit stops when an O2 kernel moves beyond the A=A
     variance after an address-matched control (R5-M147) or an allocation count changes; O0 is recorded.
+    - Amended by R7-M21 (the owner, 2026-11-11): an open-issue fix books no timing slot; timing stays for a fix that changes a
+      hot path's complexity or per-use work, a back unit's generated code and a plan unit; a checkpoint every fifth landed
+      window watches the sum.
   - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
   - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
     blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
@@ -17361,6 +17415,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Temporary structures and removal: the serial changes inside a pass for a declaration's scope only because of the two fills,
     which c3 removes; the key's readings are replaced by C3a's class ids at c2; `Completion` is permanent: e2 gives it more carriers
     and raises judgment answers to Complete where final; f adds Resource.
+- **R7-M21 RP8 times what can cost: an open-issue fix rests on the Session's deterministic checks, and a checkpoint watches the
+  sum** (owner, 2026-11-11, in the Coordinator's dialog, verbatim 「1 open issue の修正は T スロット不要にします 2 例外として計時を残す 3 積み重なりの監視:
+  上記を採用します。各種文書の修正をお願いします。また、予約済みスロットのうち、例外にあたらないものは解放してください。」, on K's proposal; amends R7-M3's RP8 and the plan's RQ8; plan
+  revision 60).
+  - (1) An open-issue fix (a unit whose purpose is a PLAN G row) books no timing slot. Its gate is the Session's deterministic
+    checks: warm allocation 0 B where a test pins it, the `Purpose=Allocation` tests and the scaling classes. Cold allocation and
+    retained memory are read at the checkpoints and compared at the stage exit.
+  - (2) RP8's timing, as R7-M3 states it, stays for: a fix whose design review states that it changes a hot path's complexity or
+    adds work per use (the review names the program that measures it); a back unit that changes generated code (the O2 corpus A/B
+    with R5-M147's control: native O2 run time and allocation are AGENTS constraints); and a unit of the R7, R8 or R9 plan (§5).
+  - (3) A checkpoint: after every fifth landed window K books one slot (its row names A, the previous checkpoint's dev, and B, dev
+    now), and the Middle runs it with its T-145 harness: Bind, Analyze and Generate, cold and warm, on Hello, Milestone26 and
+    RawStores, A/B/A′ with A′ A's byte copy, CPU pinned, tiering off, six rounds, under RP8's bounds (its A′/A spreads stayed within
+    a few percent in T-110, T-120 and T-145). A stop is bisected over the landed windows' merges; the unit found becomes an open
+    issue (a PLAN row) for its owner, and the owner is told. The first baseline is dev after W-169, the window of this decision.
+  - Reason: a fix lands whatever it costs (AGENTS: SPEC correctness first, compile speed last), so an RP8 stop on a fix changed no
+    outcome (O-150, O-172, O-176 and O-179 all landed), while the quiet slots serialized about twelve fixes for hours and the host's
+    slow episodes (PLAN G754) stopped units falsely. One stop on a fix found a real per-use cost (G707, O-155), the case (2) keeps.
+  - With the decision K released the booked slots of open-issue fixes (T-125, T-128 to T-131, T-135, T-137, T-139, T-143, T-144,
+    T-146, T-147) and stale rows, and kept T-127 (G707, case (2)) and T-138 (R7-N1e2-2b-1, an R7 plan unit).
+  - Rejected: RP8's timing for every unit (above); no timing at all (the generated code's O2 guarantees are constraints, and a plan
+    unit's design may trade compile time).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -18514,6 +18590,28 @@ R8-M* and R9-M* by the stage of the recording unit.
     valid program rejected; prototype evidence); twelve plain integer rows (a second treatment of G589's cause); a byte write chosen
     by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
     all scalars (R8-M4: one function per requirement).
+- **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
+  `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
+  implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
+  spelling. The first of R8-L1's entries; later units extend it.
+  - **Adopted.** The Kimi library's `SyntaxTable.Module` is the constant `SyntaxTable.LibraryModule` (`ushort.MaxValue`) in every
+    compilation, above every source module's ordinal (its position).
+    - `SyntaxTable` owns the constant, as it owns module ordinals. The design's `SyntaxId.LibraryModule` names no type (a SyntaxId
+      is `Koto.SyntaxId`, an int), so the constant takes its owner's name.
+    - `SourceRef.IsLibrary` is the one test of it. `Compilation.SyntaxOf` and `MirDump` decode by it.
+    - The `rootModules` argument of `MirAnalysis.Run` and `InstanceCollector.Run` is a range, as in R5-M168: the bodies whose module
+      is below it are judged or rooted. Any bound is a range. Compilation passes the source modules' count (R5-M168's "every caller
+      passes `SourceModules.Length`" still holds for the non-test callers), and `LibraryModule + 1` includes the library.
+  - **Reason.** The ordinal was `modules.Length`, the program's module count, so a library `SourceRef` depended on the program
+    (design C2). A library shared across compilations (R8-L1) cannot carry that.
+  - **Declared difference.** MirDump spells a library location `@Kimi:id` (was `@<module count>:id`).
+    `MirDumpTest.BodyDumpsEveryForm` pins it (`tests/mir/every-form.mir`).
+  - **Open (pre-existing; PLAN G761).** Nothing bounds the source module count. At 65,536 source modules the ordinals collide,
+    before and after U0:
+    - before U0, the library's `(ushort)65536` was 0, module 0's ordinal;
+    - after U0, module 65,535's ordinal is `LibraryModule`.
+    U0 does not move this boundary.
+  - Rejected: a `SyntaxId` type holding the constant (a wrapper without semantics).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

@@ -61,7 +61,7 @@ internal static class PairCaseMeasurements
             var (mirBodies, views) = (0, 0L);
             foreach (var body in c.BuildMir().Bodies)
             {
-                if (body.Source.Module < c.SourceModules.Length)
+                if (!body.Source.IsLibrary)
                 {
                     (mirBodies, views) = (mirBodies + 1, views + MirCases.Count(body));
                 }
