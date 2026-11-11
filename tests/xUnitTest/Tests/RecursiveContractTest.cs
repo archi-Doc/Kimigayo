@@ -172,6 +172,10 @@ public sealed class RecursiveContractTest
     // SPEC 8.8, 8.3.2: `Self.(K).Y is M` supplies D to Box's condition whatever M's own state; its check ends today (ACheckOverAConditionalClauseEnds).
     [InlineData("C2e", "p27c-condrec", Conditions + "contract M: K, D\n" + Clauses + "func probe<T>(value: ref/T.(K).Y)\n    T is M\n    needs<T.(K).Y>(value)\n", "", Explicit = true)]
     [InlineData("C2e", "p31-prepdemand", Conditions + "contract M: K, D\n" + Clauses + "func probe<T, W>(value: ref/T.(K).Y)\n    T is M\n    W is T\n    needs<T.(K).Y>(value)\n", "", Explicit = true)]
+    // SPEC 8.4.3, 8.7.1 (DECISIONS BU-152): a judged intrinsic parent is a requirement; IntTree's clause supplies PrimitiveInteger to a
+    // projection two links up under `T is U` (the structural supply at depth and the boundary's reading); without the parent, unproven.
+    [InlineData("C2a1", "tP1-intparent", "contract Tree\n    associate Child is Tree\ncontract IntTree: Tree, PrimitiveInteger\n    Self.(Tree).Child is IntTree\ncontract Tag\nfunc needs<V>(v: ref/V)\n    V is Tag\n    ()\nfunc needsPI<V>(v: ref/V)\n    V is PrimitiveInteger\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is IntTree\n    T is U\n    needsPI<U.(Tree).Child.(Tree).Child>(value)\n", "")]
+    [InlineData("C2a1", "tP1n-intparent", "contract Tree\n    associate Child is Tree\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\ncontract Tag\nfunc needs<V>(v: ref/V)\n    V is Tag\n    ()\nfunc needsPI<V>(v: ref/V)\n    V is PrimitiveInteger\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is IntTree\n    T is U\n    needsPI<U.(Tree).Child.(Tree).Child>(value)\n", "UnprovenConstraint_Kd: needsPI<U.(Tree).Child.(Tree).Child>(value)")]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
@@ -220,6 +224,29 @@ public sealed class RecursiveContractTest
         var c = Bind(Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\n" +
             "func probe<T>(value: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    needs<T.(Tree).Child.(Tree).Child.(Tree).Child>(value)\n" +
             "func both<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    T is U\n    needs<U.(Tree).Child.(Tree).Child>(value)\n");
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // PremiseList's shape: functions of many premises under a parameter identity, whose requests read every fact of their view through
+    // Reading; a warm rebind allocates nothing once the tables have their size.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfManyPremisesUnderAnIdentityAllocatesNothing()
+    {
+        var source = new System.Text.StringBuilder(Copies);
+        for (var f = 0; f < 4; f++)
+        {
+            source.Append($"func list{f}<T0, T1, T2, T3, T4, T5, U>(v: T0.(Tree).Child, u: U) -> (T0.(Tree).Child, T0.(Tree).Child)\n");
+            for (var i = 0; i < 6; i++)
+            {
+                source.Append($"    T{i} is CopyTree\n");
+            }
+
+            source.Append("    T0 is U\n    return (v, v)\n");
+        }
+
+        var c = Bind(source.ToString());
         Assert.Empty(CompilationTestHelper.BindingErrors(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
