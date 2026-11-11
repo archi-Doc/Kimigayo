@@ -37,6 +37,13 @@ public class EffectBoundDeclarationTest
     private const string Override = "open struct Base\n    public virtual func score(self: objref/Self) -> i32 => 1\n" +
         "struct Derived : Base\n    override func score(self: objref/Self) -> i32\n        ";
 
+    private const string Generic = "contract P<T>\n    func value(self: ref/Self, x: T) -> T\n";
+
+    private const string Nested = "struct Outer<T>\n    public contract C\n        func f(self: ref/Self) -> i32\n";
+
+    // The NotReference Note's path part, for a generic Contract and for a Contract in a generic Container alike (SPEC 9.7.1).
+    private const string NotReference = ": every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)";
+
     [Fact]
     public void AcceptsClausesAndSpecifications()
     {
@@ -58,6 +65,12 @@ public class EffectBoundDeclarationTest
     [InlineData("contract Other\n    func run(self: ref/Self) -> ()\ncontract Bounded: Source\n    effect Other.run confined\n", "effect Other.run confined", "Other is not an ancestor of Bounded", null)]
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n    effect Bounded.own confined\n", "effect Bounded.own confined", "Bounded is this Contract", "effect clause")]
     [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", "effect Plain.take confined", "Plain names no Contract", null)]
+
+    // A selector without the Type arguments of a generic Contract or Container on its path names no bound ancestor, whether one or two
+    // are available (SPEC 8.4.3, 8.11.1, 9.7.1; the owner's O-145 (a); PLAN G705).
+    [InlineData(Generic + "contract Bounded: P<i32>\n    effect P.value confined\n", "effect P.value confined", "P is not a reference to P", "This does not form a reference to P" + NotReference)]
+    [InlineData(Generic + "contract Bounded: P<i32>, P<i64>\n    effect P.value confined\n", "effect P.value confined", "P is not a reference to P", "This does not form a reference to P" + NotReference)]
+    [InlineData(Nested + "contract Bounded: Outer<i32>.C\n    effect Outer.C.f confined\n", "effect Outer.C.f confined", "Outer.C is not a reference to C", "This does not form a reference to C" + NotReference)]
     [InlineData("contract Bounded\n    func own(self: ref/Self) -> ()\n    effect confined\n", "effect confined", "an effect clause outside a requirement", "Constraint region")]
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect Source.take confined\n", "effect Source.take confined", Misplaced, MisplacedNote)]
     [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect Source.take confined\n    return\n", "effect Source.take confined", Misplaced, MisplacedNote)]

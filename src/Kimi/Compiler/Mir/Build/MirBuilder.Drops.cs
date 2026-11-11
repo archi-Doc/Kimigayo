@@ -216,22 +216,19 @@ internal sealed partial class MirBuilder
         this.current = next;
     }
 
-    // SPEC 16.3.1-16.3.2: a destructor's self is no owner, and its body's end destroys the layer's parts, never the layer: each own Field
-    // whose Type may need drop, last to first, then the direct base, each by its own complete destruction (A2 skips a moved one).
+    // SPEC 16.3.1-16.3.2: a destructor's self is no owner, and its body's end destroys the layer's parts, never the layer: each part
+    // of the layer's level whose Type may need drop, in the level's order (MirTypes.LevelPart: the own Fields, then the direct base),
+    // each by its own complete destruction (A2 skips a moved one).
     private void FieldCleanup(int local, in SourceInfo source)
     {
         var type = this.body.Locals[local].Type;
-        for (var i = AdtDef.Count(type) - 1; i >= 0; i--)
+        for (long rank = 0, count = MirTypes.LevelCount(type); rank < count; rank++)
         {
-            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i), this.walked))
+            var (step, arg) = MirTypes.LevelPart(type, rank);
+            if (MirTypes.MayNeedDrop(MirBody.PartType(type, step, (int)arg), this.walked))
             {
-                this.DropAt(this.body.Project(new(local), MirProjectionKind.Field, i), source);
+                this.DropAt(this.body.Project(new(local), step, (int)arg), source);
             }
-        }
-
-        if (MirTypes.MayNeedDrop(AdtDef.Base(type), this.walked))
-        {
-            this.DropAt(this.body.Project(new(local), MirProjectionKind.Base, 1), source);
         }
     }
 

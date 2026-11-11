@@ -21,7 +21,9 @@ internal sealed partial class MirBorrows
     private int[] markSeen = []; // By marker (γ_H): the check that saw it in the Based or Stored passes.
     private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
+    private int[] markRested = []; // By marker: the check that saw it in a Based or Stored pass's set that carries Φ_U.
     private int candidateCount;
+    private MirOutcome tier; // The tier of what a scan finds: decided, Limit past Φ_U in its set, Deep in the drop tier.
 
     // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
@@ -29,6 +31,7 @@ internal sealed partial class MirBorrows
     // A state found in a holder (-1: a transit value, a state of one part) by the pass: its elements, in ascending order.
     private void Scan(ulong found, int via)
     {
+        this.tier = (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
         this.Work += this.Count(found);
         foreach (var element in this.ElementsOf(found))
         {
@@ -44,20 +47,25 @@ internal sealed partial class MirBorrows
     {
         var kept = this.Kept(found, element, via);
         var dropped = (this.pass & DropTier) != 0;
-        if (element <= Unformed)
+        if (element < Markers)
         {
             if (element == Escaped)
             {
                 this.Reach(Escaped, scan: true); // Φ_W, always beside Φ_E, is rule W's alone (MirBorrows.Reach).
             }
 
+            this.tier = element == Undecided ? MirOutcome.Limit : this.tier; // Before the set's markers and Loans, in ascending order.
             return;
         }
 
         if (element < this.loanBase)
         {
-            // A marker never conflicts: the holder a guard-local γ_H is first seen in witnesses err(ended).
-            if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
+            // A marker never conflicts: the holder a guard-local γ_H is first seen in witnesses err(ended), in a set carrying Φ_U apart.
+            if (this.pass is Based or Stored && this.tier.IsLimit)
+            {
+                this.markRested[element] = this.stamp;
+            }
+            else if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
             {
                 (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
             }
@@ -104,7 +112,7 @@ internal sealed partial class MirBorrows
         }
 
         ref var candidate = ref this.candidates[this.candidateAt[key]];
-        candidate.Tag(this.pass, this.passIndex, dropped ? this.dropVia : via);
+        candidate.Tag(this.tier, (byte)(this.pass & ~DropTier), this.passIndex, dropped ? this.dropVia : via);
         candidate.Kept |= kept;
         if (loan is { Direct: true, Named: >= 0 })
         {
@@ -135,6 +143,7 @@ internal sealed partial class MirBorrows
     private struct Candidate(int loan, bool unique)
     {
         private Tags tags = new();
+        private Tags rested = new();
         private Tags dropped = new();
 
         internal readonly int Loan => loan;
@@ -154,20 +163,28 @@ internal sealed partial class MirBorrows
         // Whether a check set holds it (Tags.Takes), in either tier.
         internal readonly bool Takes(int taking) => !this.Outcome(taking).IsNone;
 
-        // What it is to a check set (R4-M153): decided where its own tags take it, Deep where only the drop tier's do, else none.
+        // What it is to a check set (R4-M153): decided where its own tags take it, a Limit where only those of sets carrying Φ_U do
+        // (MirBorrows.Puns), Deep where only the drop tier's do, else none.
         internal readonly MirOutcome Outcome(int taking)
-            => this.tags.Takes(taking) ? MirOutcome.Decided : this.dropped.Takes(taking) ? MirOutcome.Deep : MirOutcome.None;
-
-        // A tag of a pass, a drop-tier pass's into Dropped as its plain pass.
-        internal void Tag(byte pass, int index, int via)
         {
-            if ((pass & DropTier) != 0)
+            var undecided = this.rested.Takes(taking) ? MirOutcome.Limit : this.dropped.Takes(taking) ? MirOutcome.Deep : MirOutcome.None;
+            return this.tags.Takes(taking) ? MirOutcome.Decided : undecided;
+        }
+
+        // A tag of a plain pass in its scan's tier: decided, a Limit's (a set carrying Φ_U), or the drop tier's.
+        internal void Tag(MirOutcome tier, byte pass, int index, int via)
+        {
+            if (tier.IsDecided)
             {
-                this.dropped.Tag((byte)(pass & ~DropTier), index, via);
+                this.tags.Tag(pass, index, via);
+            }
+            else if (tier.IsLimit)
+            {
+                this.rested.Tag(pass, index, via);
             }
             else
             {
-                this.tags.Tag(pass, index, via);
+                this.dropped.Tag(pass, index, via);
             }
         }
     }

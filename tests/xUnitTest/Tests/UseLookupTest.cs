@@ -43,11 +43,10 @@ public class UseLookupTest
     [InlineData("contract C<T>\n    func m(self: ref/Self) -> i32\nfunc f(x: i32) -> i32\n    let y = x@C<i32>\n    return 0", "UnresolvedBinding_Kd C")]
     [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd Missing<i32>|InvalidConstraint_Kd contract D")]
     // An effect selector names its declaration and has the bound ancestor it designates as its Type (SPEC 8.11.1; review 3's v-e1, v-e2,
-    // v-e5); a selector that names two bound ancestors is rejected (i-e4).
-    [InlineData(BoundEffect + "contract Q: P<i32>\n    effect P.value confined", "")]
+    // v-e5), below a root-name form too; one without its Type arguments names no reference (EffectBoundDeclarationTest).
+    [InlineData(BoundEffect + "contract Q: P<i32>\n    effect ::P<i32>.value confined", "")]
     [InlineData(BoundEffect + "contract Q: P<i32>\n    effect P<i32>.value confined", "")]
     [InlineData(BoundEffect + "contract Q: P<i32>, P<i64>\n    effect P<i64>.value confined", "")]
-    [InlineData(BoundEffect + "contract Q: P<i32>, P<i64>\n    effect P.value confined", "InvalidEffectBound_Kd effect P.value confined")]
     // An explicit generic argument is read for the slot it fills (SPEC 4.4.1, 9.5; review 4's v-u1, i-u2): a spelling whose Type reading
     // is ambiguous (two opened structs `Size`) supplies a length slot by its value, and fills no Type slot.
     [InlineData("alias A\nalias B\ngroup A\n    public struct Size\ngroup B\n    public struct Size\nlet Size: isize = 2\nfunc f<length N>() => ()\nf<Size>()", "")]
@@ -104,6 +103,49 @@ public class UseLookupTest
     [InlineData("contract C\n    associate Item\ncontract P\n    associate Item\ngroup G\n    struct P\n        Self is C\n        associate C.Item is i32\n    func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd (P).(C).Item")]
     [InlineData(Projected + "func f(v: P.(C).Item) -> i32 => v", "")]
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
+    // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a
+    // requirement; a struct's or enum's is the declared Type with all its bindings; and `Self` has no Type parameters, so none remains
+    // for a `Self` written with Type arguments (the declaration's own included). It is no generic parameter either: a function
+    // requirement's clauses take subjects rooted in its generic parameters (8.4.2). Each invalid row has a valid counterpart.
+    [Theory]
+    [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
+    [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(C).E", "")]
+    [InlineData("contract B\n    associate E\ncontract C: B\n    func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
+    [InlineData("contract B\n    associate E\ncontract C: B\n    func get(self: ref/Self) -> Self.(B).E", "")]
+    [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
+    [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(C).E", "")]
+    [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(Self).E is i32", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(C).E is i32", "")]
+    [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd")]
+    [InlineData("contract B\ncontract A\n    func f(self: ref/Self)\n        Self is B", "InvalidConstraint_Kd")]
+    [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Copy", "InvalidConstraint_Kd")]
+    [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Self", "InvalidConstraint_Kd")]
+    [InlineData("contract A\n    associate E\n    func f<U>(self: ref/Self, u: U)\n        U is Self.E", "")]
+    [InlineData("contract A\n    Self is Copy\nstruct S\n    Self is Copy\n    Self is A\n    public var n: i32 = 0", "")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<i32>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<X>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self", "")]
+    [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(Self<X>).E", "UnresolvedBinding_Kd")]
+    [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(K<X>).E", "")]
+    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self<X>)", "UnresolvedBinding_Kd")]
+    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self)", "")]
+    [InlineData("struct S\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<T>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self<i32>>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self>) => ()", "")]
+    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self<i32>\n        return", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self\n        return", "")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self) => ()", "")]
+    public void SelfSelectsItsContextsType(string source, string codes)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.Equal(codes.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Distinct().Order()));
+    }
 
     // The published lookup is written once: an equal publication (a path's walk evaluating the qualifier again) stands, and a
     // disagreeing one is a broken contract (InternalInvariant), never a silent re-row.

@@ -297,6 +297,74 @@ public sealed partial class MirDropTest
         });
     }
 
+    // PLAN G702, SPEC 16.3.2, 15.1.3: A2's walk of a group (MirDropTable.Destroyed) states what an Open Drop destroys, in destruction
+    // order: a struct's Fields from the last, each by its child row (an Open Field its own level, a Flag Field whole, an Elide one no
+    // step), a part without a row whole under the level's own bit, then the base; a fixed array's elements from the last, no Run above an
+    // element row at the highest position or below one at the lowest, one Run per gap between element rows, a Flag element whole between
+    // its Runs; an enum's Case payloads by ordinal, an Open payload its own level beside a Case without a row, whole. Each walk is
+    // followed by the level of the dropped Type no row governs (MirDropTable.Level, a glue function's): the same enumeration, so every
+    // level of a walk names its parts in that level's order (Walks checks each).
+    [Fact]
+    public void AGroupsWalkStatesWhatItDestroysInDestructionOrder()
+    {
+        const string Source = "struct Pair\n    public var a: string\n    public var b: (string, Array<i32>)\n    public var n: i32\n" +
+            "    public init(a: string, b: (string, Array<i32>), n: i32)\n        self.a = a@move\n        self.b = b@move\n        self.n = n\n" +
+            "open struct Base\n    public var p: string\n    public var q: Array<i32>\n    protected init(p: string, q: Array<i32>)\n" +
+            "        self.p = p@move\n        self.q = q@move\nstruct Leaf : Base\n    public var x: string\n" +
+            "    public init(x: string, p: string, q: Array<i32>) : base(p@move, q@move)\n        self.x = x@move\n" +
+            "enum Two\n    A(string, Array<i32>)\n    B(string, string)\n" +
+            "func take(s: string) => ()\nfunc partly(c: bool, p: Pair)\n    if c => take(p.a@move)\n    take(p.b.0@move)\n" +
+            "func elements(c: bool, a: [5 of string])\n    take(a[4]@move)\n    take(a[0]@move)\n    if c => take(a[2]@move)\n" +
+            "func based(l: Leaf)\n    take(l.p@move)\n" +
+            "func cases(t: Two)\n    match t@move\n        .A(let r, _) => take(r@move)\n        _ => ()\n";
+        var program = Built(Source);
+        Assert.Equal(["_( .2:i32 .1( .1:Array<i32> ) .0:string:Flag )", "_( .2:i32 .1:(string, Array<i32>) .0:string )"], Walks(program, "partly"));
+        Assert.Equal(["_( [3..3]:string [2]:string:Flag [1..1]:string )", "_( [0..4]:string )"], Walks(program, "elements"));
+        Assert.Equal(["_( .0:string base( .1:Array<i32> ) )", "_( .0:string base:Base )"], Walks(program, "based"));
+        Assert.Equal(
+            ["_( case 0( .1:Array<i32> .0:string:Flag ) case 1:(string, string) )", "_( case 0:(string, Array<i32>) case 1:(string, string) )"],
+            Walks(program, "cases"));
+    }
+
+    // PLAN G702, V16: the walk passes over the rows below the walked row a fixed number of times (their count, their index), never once
+    // per part: over a struct of N Fields with every second one moved, N 32, 64 and 128 (the wider two past the walk's inline index),
+    // the rows those passes read grow with N. The walker's searches of the sorted index (one per part) are not rows read.
+    [Fact]
+    public void AnOpenLevelsChildRowsAreReadInOnePass() => RowsReadGrowLinearly([32, 64, 128], static size =>
+    {
+        var text = new StringBuilder("struct Wide\n");
+        for (var n = 0; n < size; n++)
+        {
+            text.Append("    public var x").Append(n).Append(": string = \"s\"\n");
+        }
+
+        text.Append("    public init() => ()\nfunc take(s: string) => ()\nfunc work(w: Wide)\n");
+        for (var n = 0; n < size; n += 2)
+        {
+            text.Append("    take(w.x").Append(n).Append("@move)\n");
+        }
+
+        return text.ToString();
+    });
+
+    // PLAN G702, V16: no level passes over the rows below it again, so the walk's passes read each row of its group the same number
+    // of times at any depth: over a chain of D nested structs with the innermost Field moved (D Open levels, one inside the other), D
+    // 8, 16 and 32, the rows those passes read grow with D. The walker's searches of the sorted index are not rows read.
+    [Fact]
+    public void NestedOpenLevelsReadOnlyTheirDirectChildRows() => RowsReadGrowLinearly([8, 16, 32], static depth =>
+    {
+        var text = new StringBuilder("struct S0\n    public var q: string\n    public var k: string\n" +
+            "    public init(q: string, k: string)\n        self.q = q@move\n        self.k = k@move\n");
+        for (var n = 1; n < depth; n++)
+        {
+            text.Append("struct S").Append(n).Append("\n    public var p: S").Append(n - 1).Append("\n    public var k: string\n")
+                .Append("    public init(p: S").Append(n - 1).Append(", k: string)\n        self.p = p@move\n        self.k = k@move\n");
+        }
+
+        text.Append("func take(s: string) => ()\nfunc work(w: S").Append(depth - 1).Append(")\n    take(w");
+        return text.Insert(text.Length, ".p", depth - 1).Append(".q@move)\n").ToString();
+    });
+
     // DECISIONS R4-M102, V16: a warm rebuild of a program whose bodies are marked allocates nothing (MirBuildTest's measurement): the mark is
     // stored with each closed body's ends, and the table keeps its storage.
     [Trait("Purpose", "Allocation")]
@@ -312,6 +380,115 @@ public sealed partial class MirDropTest
         }));
         Assert.Equal(["Fn MovedPlace_Kd a.indices #-1"], marked);
         Assert.Equal(marked, Incomplete(c, c.BuildMir(), "f"));
+    }
+
+    private static MirProgram Built(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return program;
+    }
+
+    // V16, in KeysKeepTheEvaluationsLinear's form: the rows the walk of the one Open Drop of work reads (MirDropTable.WalkReads), per
+    // size of the source, grow no faster than the size: the growth from the second size to the third is at most twice the growth
+    // from the first to the second.
+    private static void RowsReadGrowLinearly(int[] sizes, Func<int, string> source)
+    {
+        var reads = new long[sizes.Length];
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var program = Built(source(sizes[i]));
+            var before = program.Drops.WalkReads;
+            Assert.Equal(2, Walks(program, "work").Length);
+            reads[i] = program.Drops.WalkReads - before;
+        }
+
+        Assert.NotEqual(0, reads[0]);
+        Assert.True(reads[2] - reads[1] <= 2 * (reads[1] - reads[0]), $"rows read {string.Join(", ", reads)}");
+    }
+
+    // Per Open group of view 0 in the body named name, in block order: its walk (MirDropTable.Destroyed), then the level of the dropped
+    // Type no row governs (MirDropTable.Level). A step is its move-path step (_ at the top) with "(" for an Open step, ")" for an End,
+    // else its Type and, under a row, the row's verdict; a Run is its positions and its element Type. Every level of a walk names its
+    // parts in the order of its Type's level without rows, less the parts moved out.
+    private static string[] Walks(MirProgram program, string name)
+    {
+        var body = program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name && x.Key.Kind == MirBodyKind.Fn);
+        var (lines, steps, level) = (new List<string>(), new List<MirDropStep>(), new List<MirDropStep>());
+        for (var block = 0; block < body.Blocks.Length; block++)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            var group = terminator.Kind == MirTerminatorKind.Drop ? program.Drops.Group(body.Ordinal, block, 0) : -1;
+            if (group < 0 || program.Drops.RowsOf(body.Ordinal)[group].Verdict != MirDropVerdict.Open)
+            {
+                continue;
+            }
+
+            steps.Clear();
+            program.Drops.Destroyed(body.Ordinal, group, body.TypeOf(terminator.Place)!, steps);
+            for (var open = 0; open < steps.Count; open++)
+            {
+                if (steps[open].Kind == MirDropStepKind.Open)
+                {
+                    var array = steps[open].Type is { Kind: BoundTypeKind.FixedArray } fixedArray ? fixedArray : null;
+                    Assert.True(array is null || MirTypes.LevelPart(array, 0) == (MirProjectionKind.ConstIndex, array.Length - 1));
+                    level.Clear();
+                    MirDropTable.Level(steps[open].Type, level);
+                    var (all, at) = (Places(level, 0), 0);
+                    foreach (var place in Places(steps, open))
+                    {
+                        at = all.IndexOf(place, at) + 1;
+                        Assert.True(at > 0, $"{name}: {place} is out of the level's order");
+                    }
+                }
+            }
+
+            level.Clear();
+            MirDropTable.Level(steps[0].Type, level);
+            lines.Add(Text(program, body, steps));
+            lines.Add(Text(program, body, level));
+        }
+
+        return [.. lines];
+    }
+
+    private static string Text(MirProgram program, MirBody body, List<MirDropStep> steps) => string.Join(' ', steps.Select(x =>
+    {
+        var label = x.Arg < 0 ? "_" : x.Step switch
+        {
+            MirProjectionKind.Field => $".{x.Arg}",
+            MirProjectionKind.Base => "base",
+            MirProjectionKind.Downcast => $"case {x.Arg}",
+            _ => $"[{x.Arg}]",
+        };
+        return x.Kind switch
+        {
+            MirDropStepKind.Open => label + "(",
+            MirDropStepKind.End => ")",
+            MirDropStepKind.Run => $"[{x.Arg}..{x.Last}]:{TyCtxt.Name(x.Type)}",
+            _ => $"{label}:{TyCtxt.Name(x.Type)}{(x.Row < 0 ? string.Empty : ":" + program.Drops.RowsOf(body.Ordinal)[x.Row].Verdict)}",
+        };
+    }));
+
+    // The direct parts of the level whose Open step is at an index, in order: each part's move-path step, a Run's every position.
+    private static List<(MirProjectionKind Step, long Position)> Places(List<MirDropStep> steps, int open)
+    {
+        List<(MirProjectionKind Step, long Position)> places = [];
+        for (var (i, depth) = (open + 1, 0); depth >= 0; i++)
+        {
+            var step = steps[i];
+            var direct = depth == 0 && step.Kind != MirDropStepKind.End;
+            for (var position = step.Kind == MirDropStepKind.Run ? step.Last : step.Arg; direct && position >= step.Arg; position--)
+            {
+                places.Add((step.Step, position));
+            }
+
+            depth += step.Kind == MirDropStepKind.Open ? 1 : step.Kind == MirDropStepKind.End ? -1 : 0;
+        }
+
+        return places;
     }
 
     // The dump lines of a source's body named name that carry A2's output (its flags, each Drop with a verdict and each location with flag

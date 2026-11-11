@@ -81,9 +81,9 @@ public sealed partial class Binding
             this.flagScratch.Return(applicable, clearArray: true);
         }
 
-        if ((((FunctionKoto)selected!.Symbol!.Declaration).Modifier & ModifierKind.Unsafe) != 0)
+        if (DirectCallOnly((FunctionKoto)selected!.Symbol!.Declaration))
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
         this.CompleteFunctionItem(use, selected);

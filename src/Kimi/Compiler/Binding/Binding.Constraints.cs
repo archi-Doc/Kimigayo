@@ -469,7 +469,7 @@ public sealed partial class Binding
         // Self-dependent implementation requirements: premises for the Contract's own signatures, derived for every Type
         // that the Contract is available for, and obligations of every conformer.
         var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsSelfRequirement(requirement);
-        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
+        var input = symbol is { IsGenericInput: true } || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
         var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null &&
@@ -533,7 +533,7 @@ public sealed partial class Binding
                     // conditional conformance's Contract Reference (SPEC 9.2, 8.8; no group, no stage 4).
                     var requirement = this.NamePath(node, scope);
                     var target = requirement.Symbol;
-                    if (target?.Declaration is ContractKoto)
+                    if (target is { IsContract: true })
                     {
                         if (target.Intrinsic == IntrinsicKind.Callable)
                         {
