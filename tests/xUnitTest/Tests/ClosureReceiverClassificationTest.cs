@@ -243,10 +243,6 @@ public class ClosureReceiverClassificationTest
 
     private const string ExclusiveCallNote = "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
 
-    // G254a: the first exclusive use is Binding's recorded same-Semantics Reborrow of the captured pair layer `x` (an assignment source,
-    // a Dictionary entry), so the Note names it, as for a captured `uniq` (BoundClosure.ExclusiveReborrow).
-    private const string ReborrowCallNote = "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference x exclusively";
-
     // SPEC 7.7.3, 8.10: a call's Note holds for every cause of its receiver (7.7.3's Exclusive row also names a use with exclusive
     // access): a body that only reads through an exclusive borrow of a capture, and a generic callee, whose receiver is its declared
     // Callable receiver (uniq or owner, 7.7.3's last paragraph) with no body known.
@@ -397,21 +393,20 @@ public class ClosureReceiverClassificationTest
     [Theory]
     [InlineData("        take(x)\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        take(x)\n", "owner or ref", false)]
-    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs + "; Unsupported_Kd x", "Unsupported_Kd x; ", true)]
+    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs + "; Unsupported_Kd x", "Unsupported_Kd x; ")]
     [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or ref", false)]
     [InlineData("        g(x)\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd x; ")]
     [InlineData("        g(x)\n", "owner or ref", false)]
-    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x; ", true)]
+    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x; ")]
     [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or ref", false)]
-    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "", string letBefore = "", bool reborrowNote = false)
+    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "", string letBefore = "")
         => AssertCallReceiver(
             "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
                 "    T is Copy\n    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n" +
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive,
             varRecords,
-            letBefore,
-            reborrowNote ? ReborrowCallNote : ExclusiveCallNote);
+            letBefore);
 
     // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M145; the owner, 2026-10-26): a captured pair layer in Discard Context (a statement, in
     // parentheses, a discarded selection body) is acquired by bare acquisition, as at a value position, so it Reborrows in its exclusive
@@ -691,7 +686,7 @@ public class ClosureReceiverClassificationTest
     // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, after the
     // body's own records `letBefore` (G254a's class 1 rows), valid otherwise; the same program with `var f` has `varRecords` (none but an
     // (e) row's and those records).
-    private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "", string letBefore = "", string note = ExclusiveCallNote)
+    private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "", string letBefore = "")
     {
         var c = MinimalEmissionTest.Analyze(source);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous && x.Parent is VariableKoto { NameKoto: var name } && name.ToString() == "f");
@@ -707,7 +702,7 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(letBefore + "InvalidAssignment_Kd f", Records(source));
         var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal(note, error.Note);
+        Assert.Equal(ExclusiveCallNote, error.Note);
     }
 
     [Collection<AllocationIsolationCollection>]
