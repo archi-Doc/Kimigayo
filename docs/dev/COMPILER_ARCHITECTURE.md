@@ -288,6 +288,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     unqualified projection over a declared Type read before the conformance declarations register, read again after they do;
   - G586's, removed at R7-I2 d (G443's unit; DECISIONS BU-156): `Binding.BindWaitedSources`' row that records the located
     `Unsupported_Kd` at a late source differing from a step-2 Target Result Type in Origins alone;
+  - G651 U1's, removed by G651 a1-a4 (DECISIONS BU-161): `Binding.sitelessHeightRefusal` (Transitional), a refusal past H during
+    Binding's run with no consultation frame open, `InternalInvariant_Kd` at the project; a1 makes the site `SubstituteType`'s
+    input, and the flag goes with the last unframed step (a4);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).

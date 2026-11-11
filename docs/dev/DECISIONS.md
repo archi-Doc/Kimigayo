@@ -10938,6 +10938,8 @@ resumed by R4-M86 (2026-10-20).
   - IMPL A.4 states the limit only (the owner's O-89 (a), verbatim 「O89 aで決定します」); the measure is `BoundType.Height` (BU-71),
     the depth of the compiler's internal term for the Type, `BoundType`. Rejected: an enumeration of the counted parts in IMPL (three
     independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
+  - Extended by BU-161 (PLAN G651 U1): judgment and site frames for the six passes a form reaches past H, and an Invalid environment
+    that names its failed node; a refusal with no frame open stays `InternalInvariant_Kd`.
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 - **BU-153 A Type's display does not recurse on the Type (PLAN G348, unit G348-d)** (2026-11-11; Front; Major; design
@@ -11639,6 +11641,39 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** keeping a word set in the association aligned with the parser's (two copies of one rule); passing the header start
     from each `Document` caller (eight sites would each pass the same fact, and an enum Case and `associate` take no context);
     recording only the first modifier word with the introducer as each caller's default (a fallback at eight sites).
+- **BU-161 A Binding refusal records at its frame; an Invalid environment names its cause (PLAN G651 U1)** (2026-11-11; Front,
+  Binding; Major; design reviews 1-3, implementation review ACCEPT; the owner's O-152 (b) now, with (a) its removal condition, and
+  O-156 (a), no ratchet before a1) IMPL A.4; SPEC 8.3.3 (Limits), 23.1.2. Extends BU-134.
+  - Rule (b): a Type over H refused during Binding's run is `TypeHeightLimit_Kd` at the open consultation frame's node; with no
+    frame open it stays `InternalInvariant_Kd` at the project, only past H. A substitution within H with no frame open writes
+    nothing.
+  - Frames, three forms: the walk's (`BindNode`, `BindType`); a judgment frame (`BeginConsultation(use)` before a validation check's
+    proof, `RequireConstraintInFrame` after it) at the node the judgment's Language record names; a site frame (`BeginConsultation`,
+    `DropConsultation`) around a pass element that publishes facts. U1 frames the passes a form reaches past H:
+    ValidateConstraintUses (a clause; a constructed Type node), ValidateConstraintEnvironments (the owner),
+    ValidateClosedTypeConstraints (the clause, then its owner resting on it), ValidateConformances' agreement (the first path's
+    use), PublishSourceStates (the state's declaration), PrepareVirtualOverrides' premises (the override). Every other pass is G651
+    a1-a4's.
+  - `ConstraintEnvironment`'s invalidity is the node whose failure caused it (`Failed`, written by `Fail` alone; nine writers name
+    it); as an `ICheckCause` it is what a proof that reads it rests on (`InvalidEnvironment`, the one proof read; `Evidence.Invalid`
+    carries it until C3), so a use derives by `RestsOnRecoveryOrLimit` and keeps an independent record otherwise. A Constraint
+    record's diagnostic cause is a missing-information node (`IsMissingInformation`, one predicate for `FailConstraint` and the
+    reporter).
+  - Interim: `sitelessHeightRefusal` is `[Transitional("G651 a1")]`. Removal condition: G651 a1 makes the site `SubstituteType`'s
+    input (the C# build as the census); a2-a4 frame BindDeclarations', ValidateBoundDeclarations' and Check's steps; the in-run
+    siteless branch goes with the last. No corpus ratchet (O-156 (a)).
+  - Records moved (Q13): none on the snapshot corpus; past H the seven programs give `TypeHeightLimit_Kd` instead of
+    `InternalInvariant_Kd`. By rule W, two kinds of dependent removal, both of a use that reads an Invalid environment whose failed
+    node's record is reported: one `PrerequisiteUnavailable_Kd` (ErasureOwnedDiagnosticTest's identity-step row: `let p` reads S's
+    environment) and one `InvalidConstraint_Kd` (the implementation review's `inherited` probe: the call `use(d)` reads a
+    conditional block's environment, whose own `InvalidConstraint_Kd` is reported).
+  - Open (PLAN G651): the witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's
+    premises (ContractSolver) can add an Error fact and name no node, so such an environment stays valid; no program shows it.
+  - Rejected: `InternalInvariant_Kd` on every frameless substitution (a corpus closure rejects unreached valid programs: review 2's
+    ovcond); a corpus count of frameless cases or steps (vacuous at 607 of 607 cases; rises with coverage, review 3 R3-B1); the
+    proof scope's owner as the site; a whitelist of proof-entry callers; a fact-to-clause map; a second field beside the bool.
+  - After the run (PLAN G651 U2): one substitution-query outcome; the collector and MIR construction record it at their site, code
+    generation treats it as a broken contract, Hover writes none.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
