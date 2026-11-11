@@ -392,12 +392,12 @@ public class ClosureReceiverClassificationTest
     // re-points these rows back to no record. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.4.2, 15.6.3, 15.8.2): under `s = uniq`
     // the use Reborrows the captured `x` within the call receiver, and `g`'s parameter and the annotated Dictionary element are the
     // binder's `o`, so `g(x)` and the entry are UnprovenOriginRelation_Kd at the use on both twins (the literal's fit and the entry's); the
-    // assignment into `var local = q` (a `var` local's pair slot, not yet a region) is the located Unsupported_Kd of PLAN G758's interim
-    // (the owner's O-168 (a)). Their valid twins are MarkedPrograms' bodies 3-5.
+    // assignment into `var local = q` is valid, a `var` local's pair slot being a region of the local (PLAN G758, which removed G254a's
+    // interim `Unsupported_Kd`). Their valid twins are MarkedPrograms' bodies 3-5.
     [Theory]
     [InlineData("        take(x)\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        take(x)\n", "owner or ref", false)]
-    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs + "; Unsupported_Kd x", "Unsupported_Kd x; ", true)]
+    [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs, "", true)]
     [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or ref", false)]
     [InlineData("        g(x)\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd x; ")]
     [InlineData("        g(x)\n", "owner or ref", false)]
