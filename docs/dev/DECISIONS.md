@@ -7467,17 +7467,17 @@ resumed by R4-M86 (2026-10-20).
     `FitsVerifiedTypeAt`, whose last reader, the old analysis's `RecordCallInput`, went at H10b.
   - `HasRegionIn`, named in its list of classes, is removed by BU-127.
 
-- **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for staging
-  `Completion`) (2026-10-23; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
-  `draft/Sketches/G170/C1/C1-design.md` §5 and §8; Q6) `Binding.ContractSolver` owns premise derivation and evidence availability (SPEC
-  8.3, PlanB §4.1), R7's Contract-solver premise responsibility brought forward. `Supply(proposition, view)` answers `Evidence`
-  (`Positive`, `Negative`, `Invalid`) under the `EvidenceView` that `ViewOf(scope)`, the one derivation point, gives; at C2 it is
-  ProveProposition's walk over the existing environments, moved unchanged and read by ProveProposition with its normalized proposition
-  (normalizing twice costs warm time), behavior-preserving. The eager derivation (`ExpandContractPremises`,
-  `ExpandScopeContractPremises`, `AddContractPremises`) and availability (`AvailableConstraintFact`, `AvailableContractPremise`) move
-  in unchanged until C3 deletes or replaces them; unrouted consumers keep calling `AvailableConstraintFact`. Staged by C1 §5 to C3:
-  `Completion` (from today's facts every answer is final for its pass, so it would be a constant), `SourceState` (N6), `Inadmissible`
-  (G172), `UnderCheck` (N4), `declarations` and identity members (OQ5).
+- **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for
+  staging `Completion`; by R7-M20: the staging of `Completion` to C3) (2026-10-23; PLAN G170 unit C2, bu30, under PlanB C and C1's
+  owner-approved contract, `draft/Sketches/G170/C1/C1-design.md` §5 and §8; Q6) `Binding.ContractSolver` owns premise derivation and
+  evidence availability (SPEC 8.3, PlanB §4.1), R7's Contract-solver premise responsibility brought forward.
+  `Supply(proposition, view)` answers `Evidence` (`Positive`, `Negative`, `Invalid`) under the `EvidenceView` that `ViewOf(scope)`,
+  the one derivation point, gives; at C2 it is ProveProposition's walk over the existing environments, moved unchanged and read by
+  ProveProposition with its normalized proposition (normalizing twice costs warm time), behavior-preserving. The eager derivation
+  (`ExpandContractPremises`, `ExpandScopeContractPremises`, `AddContractPremises`) and availability (`AvailableConstraintFact`,
+  `AvailableContractPremise`) move in unchanged until C3 deletes or replaces them; unrouted consumers keep calling
+  `AvailableConstraintFact`. Staged by C1 §5 to C3: `Completion` (from today's facts every answer is final for its pass, so it would
+  be a constant), `SourceState` (N6), `Inadmissible` (G172), `UnderCheck` (N4), `declarations` and identity members (OQ5).
   - `Evidence.Invalid` (ruling 1): a temporary member, not a change of C1's contract. It carries ProveProposition's early Error (an
     Invalid premise environment in the chain) so the move is pure; C1 does not model an Invalid premise environment (its N7 is about
     the sources of rows). Removed at C3, when B 3.10's declaration validation answers a request reaching a premise error by C1's model
@@ -17328,6 +17328,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     with value keys (nothing removed).
   - **Cost named:** one table holds the union of the nodes met, so its capacity step can come where the three did not (Milestone12,
     +232 B cold). RP8 (T-99): the Literal per-use slope -106 ns, about 41% of Y2a's step.
+- **R7-M20 A view is a value: `ViewOf` names the state of a scope's chain, and `Closure` keeps a fact's reading once per view when
+  its derivation is Complete (C1 §5's `Completion`)** (Front, 2026-11-11; R7-C2e1, plan §5.0's C2 part e1, revisions 54 and 55;
+  Major; the owner's O-148 (b) and its exception; design review 3 ACCEPT, implementation review 1 REVISE, fixed, review 2 ACCEPT).
+  Supersedes in part BU-29's staging of `Completion` to C3 (its reason, that it would be a constant, no longer holds: a reading's
+  derivation is Complete or Provisional) and, for Complete readings, C1 §5's request-local answers. A Provisional reading stays
+  request-local, which is C1 §5's "a Pending read is Provisional, never cached". C1 §5's "no read sets" and the owner's OQ3 hold:
+  "depends" is per derivation. a1's draft item 3 is not superseded here (a1's review decides it). BU-59 is unchanged.
+  - Writers: a `ConstraintEnvironment` counts its own writes (`Add`, `Invalidate`, `Reset`: `Version`) and a `BindingScope` its
+    three links (`Parent`, the `Constraints` object, `ConformancePath`: `LinkVersion`, counted in their setters); nothing else
+    writes them (`ArchitectureRulesTest`).
+  - `SerialOf(scope)` gives the scope's current view a serial naming the chain's state: it changes when the environment's `Version`,
+    the scope's `LinkVersion` or the parent's serial does.
+  - `Completion { Provisional, Complete }`, owned by `ContractSolver`, its zero Provisional. Each function of a fact's normalization
+    gives its answer with its `Completion`: Complete only at the listed rules W1-W6 (a whitelist; `ArchitectureRulesTest` counts
+    every spelling of `Completion.Complete` per file, so a new site in any form fails it), a composite rule the meet of all its
+    parts (a held Type's part whatever its image), anything else Provisional. e1's Provisional is a conservative superset of C1's
+    ("a pending source was selected"): the derivation took a route not shown final in the pass. e2 refines it, it does not redefine
+    it. Within a member an unthreaded call counts as Complete, so the members' allowed unthreaded callees are listed in
+    `ContractSolver`'s entry contract, and each change to a member is reviewed against that list. `ConformanceByDeclaration`'s
+    finality rests on the `InheritedConformances` query being Done after Binding.cs's `RegisterInheritedConformances` (or abandoned
+    again for a base cycle, whose re-demand changes only `InheritedConformanceWork`, with no record).
+  - `Reading(fact, view)` is the one caller of the request boundary's normalization of a fact (`Supply`'s and `SymbolicCapability`'s
+    loops). It is formed only in the capability phase with `normalizingAssociated` and `identityExpansions` empty, kept per (view
+    scope, fact, requirement Contract) under the serial taken before its formation, for one pass (emptied in `ResetCapabilities`),
+    and only when Complete. An entry carries (serial, reading): a Complete derivation passes nothing to its requester.
+  - Availability stays per request.
+  - Rejected: the judgment read mark (review 2's E2-B1: a read set, default closed, a second representation of `Completion`); rule A
+    alone (E1-B1 to E1-B3); a sum of versions; one Binding-wide counter (B, B'); explicit close and open calls; readings kept before
+    the capability phase; an eager complete closure; a `proofNesting >= 1` assertion at a formation's start (review 3 condition 4:
+    no longer load-bearing, since only Provisional routes run nested proofs).
+  - Temporary structures and removal: the serial changes inside a pass for a declaration's scope only because of the two fills,
+    which c3 removes; the key's readings are replaced by C3a's class ids at c2; `Completion` is permanent: e2 gives it more carriers
+    and raises judgment answers to Complete where final; f adds Resource.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
