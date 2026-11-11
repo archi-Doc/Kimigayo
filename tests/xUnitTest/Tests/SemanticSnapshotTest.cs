@@ -173,6 +173,27 @@ public sealed class SemanticSnapshotTest
         return (printer.ToString(), printer.Hir, dump.ToString());
     }
 
+    /// <summary>Prints the facts the snapshot compares for each node of a tree, one line per node in pre-order, without its
+    /// compilation's outcome and records.</summary>
+    /// <param name="root">The tree's root.</param>
+    /// <returns>The lines.</returns>
+    internal static string Tree(Koto root)
+    {
+        var printer = new SemanticPrinter(false);
+        printer.Visit(root);
+        return printer.ToString();
+    }
+
+    /// <summary>Prints the facts the snapshot compares for one node, without its subtree.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The line, without its line break.</returns>
+    internal static string Line(Koto node)
+    {
+        var printer = new SemanticPrinter(false);
+        printer.Line(node);
+        return printer.ToString().TrimEnd('\n');
+    }
+
     private static PairCaseRow[] PairCases()
         => JsonSerializer.Deserialize<PairCaseRow[]>(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "diagnostics", "pair-cases.json")))!;
 
@@ -266,6 +287,8 @@ public sealed class SemanticSnapshotTest
 
         internal void Fail(Exception exception)
             => this.text.Append("exception ").Append(exception.GetType().Name).Append(": ").Append(exception.Message.Split('\n')[0]).Append('\n');
+
+        internal void Line(Koto node) => this.Node(node);
 
         private static string Symbol(BindingSymbol? symbol)
             => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
