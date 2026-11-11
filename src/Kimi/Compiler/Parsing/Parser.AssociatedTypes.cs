@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 public static partial class Parser
 {
     /// <summary>Parses an <c>associate</c> item of a Container body (Appendix F.6.2): an associated Type requirement
-    /// (<c>AssociatedTypeDeclaration</c>), which only a Contract declares, or an associated Type specification
-    /// (<c>AssociatedTypeSpecification</c>), which the Container keeps as a Constraint in a Contract and as a member elsewhere.</summary>
+    /// (<c>AssociatedTypeDeclaration</c>), which only a Contract declares and keeps among its Constraints when it has a requirement, or an
+    /// associated Type specification (<c>AssociatedTypeSpecification</c>), a member of its owner, whatever the owner (SPEC 8.5.1).</summary>
     /// <param name="reader">The token reader at <c>associate</c>.</param>
     /// <param name="container">The Container whose body holds the item.</param>
     /// <param name="token">The <c>associate</c> token.</param>
@@ -37,8 +37,11 @@ public static partial class Parser
                 }
 
                 ParseAttachedOriginBlock(ref reader, associated);
-                reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
-                if (container is ContractKoto)
+                reader.Document(associated, associated.Span.End);
+
+                // SPEC 8.5.1: in a Contract a Name with `is` declares its associated Type with that requirement, a Constraint of the
+                // Contract; every other item is a specification (8.5.1, 8.5.3), a member of its owner, whatever the owner.
+                if (container is ContractKoto && IsAssociatedTypeName(associated.Left, out var qualified) && !qualified)
                 {
                     container.AddTypeConstraint(associated);
                 }
@@ -83,7 +86,7 @@ public static partial class Parser
                     formation is null ? [head] : [head, formation],
                     separator: TokenKind.For.ToText());
                 ParseAttachedOriginBlock(ref reader, associated);
-                reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
+                reader.Document(associated, associated.Span.End);
                 container.AddLast(associated);
             }
         }

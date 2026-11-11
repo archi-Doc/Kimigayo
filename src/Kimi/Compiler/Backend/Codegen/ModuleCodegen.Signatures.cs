@@ -57,7 +57,7 @@ internal sealed partial class ModuleCodegen
             return current;
         }
 
-        var body = this.program.Bodies[this.set.Items[item].BodyOrdinal];
+        var body = this.program.Body(this.set.Items[item].BodyOrdinal);
         if (this.Inputs(item, body, out var count) is not { } result)
         {
             return null; // Recorded.

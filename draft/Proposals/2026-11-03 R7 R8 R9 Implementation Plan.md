@@ -209,10 +209,13 @@ WORKFLOW "Sessions" owns this table where the two differ.
 
 ### 3.3 Caps and rules
 
-- Per session: implementers at most two, one per lane, their files disjoint, at most one unit changing a shared representation at a
-  time; designers and reviewers at most three together (R4-M119, R5-M113; three since revision 45, the owner 2026-11-09). The
-  Coordinator: one implementer and one reviewer (R7-M4). Watchers wake only on rows that need the session's answer, never on the
-  session's own posts (revision 45).
+- Per session (revision 61, the owner 2026-11-11, verbatim 「では、以下のように上限を変更お願いします。 Front: 設計 4、実装 4 Middle: 設計 2、実装 2 Back: 設計 2、実装
+  2」): the Front at most four implementers and four designers and reviewers together; the Middle and the Back at most two
+  implementers and two designers and reviewers together each (were three designers and reviewers each since revision 45 and three
+  Front implementers since revision 50; R4-M119, R5-M113). Implementers' files disjoint, at most one unit changing a shared
+  representation at a time; the Front keeps one implementer and one designer seat on R7's core chain (C2a, then C3a and the chain of
+  §5.0) so open-issue work never stops it. The Coordinator: one implementer and one reviewer (R7-M4). Watchers wake only on rows
+  that need the session's answer, never on the session's own posts (revision 45).
 - Heavy runs at most three across the sessions (`artifacts/heavy-runs/*.run` stays the lock; the board lists the plan). A window holds
   one. Timing needs an empty registry and a booked quiet slot.
 - Every unit's design and implementation phases stay within one hour of agent working time (Q12); sizing before start; a stop writes
@@ -988,3 +991,4 @@ frozen.
 | 58 | 2026-11-11 | RQ13's measurement after W1 (the Back's T-122; the owner's O-170 (a); the Back's D-379) | RQ13 met: Hello's cold Bind median +54.7% over R8's start bfc2e1836 at 493267faa (per round +52.2% to +77.9%, A'/A band +/-1.8%; cold min +41.8%; Milestone26 +54.3%; cold bytes +27.1%; `artifacts\verify\l1\timing-summary-20261111-134933.md`), above the 10% threshold; R8-L1 adopted. §5.2's L1 row reads "Adopted 11-11 by RQ13's measurement"; its design and prototype run now (the Back's designer; the Front and the Middle review the design), its implementation keeps its dependency on R7-D2; §8 item 4's "L1 adopted or declined under RQ13" is met (adopted). |
 | 59 | 2026-11-11 | R7-C2e1's landing in W-169 (the Front's D-332; DECISIONS R7-M20; RP8 T-142 by the owner's O-176 (a)) | §5.0's C2 row: e1 landed (DECISIONS R7-M20, the request's "R7-C2e1"); a1 next, re-measured by its own RP8. |
 | 60 | 2026-11-11 | The owner's RP8 decision (K's session; DECISIONS R7-M21) | RP8's row and §7.4: an open-issue fix books no timing slot (the Session's deterministic checks gate it); timing stays for a hot-path complexity or per-use change, a back unit's generated code and this plan's units; a checkpoint slot after every fifth landed window, bisected on a stop. Booked slots of open-issue fixes released. |
+| 61 | 2026-11-11 | The owner's seat caps (K's session), verbatim 「では、以下のように上限を変更お願いします。 Front: 設計 4、実装 4 Middle: 設計 2、実装 2 Back: 設計 2、実装 2」 | §3.3: the Front four implementers and four designers and reviewers; the Middle and the Back two and two each; the Front keeps one implementer and one designer seat on R7's core chain. Heavy runs stay at most three. |

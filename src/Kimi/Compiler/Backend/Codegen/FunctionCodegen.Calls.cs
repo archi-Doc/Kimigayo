@@ -72,7 +72,7 @@ internal sealed partial class FunctionCodegen
         if (this.Witness(target, call.Source) is { } run)
         {
             var ordinal = this.collector.Set.Items[target].BodyOrdinal; // A shim's operands are its requirement's, in their own order.
-            var key = ordinal >= 0 ? this.program.Bodies[ordinal].Key : new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+            var key = ordinal >= 0 ? this.program.Body(ordinal).Key : new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
             this.Invoke(call, run.Signature, key, default, call.Callee.Kind == MirCalleeKind.Requirement ? run.Slot : null);
         }
     }
@@ -109,7 +109,7 @@ internal sealed partial class FunctionCodegen
             return null; // Recorded.
         }
 
-        var function = this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key.Decl;
+        var function = this.program.Body(this.collector.Set.Items[target].BodyOrdinal).Key.Decl;
         return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
     }
 

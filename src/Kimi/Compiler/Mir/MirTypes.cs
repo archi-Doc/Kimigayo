@@ -59,7 +59,7 @@ internal static partial class MirTypes
     /// <returns>Whether the value is a reference.</returns>
     internal static bool IsReference(BoundType? type)
         => (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics)) ||
-            (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
+            TyCtxt.PairBinder(type) is not null;
 
     /// <summary>Gets whether a Semantics is a borrow's: ref, uniq, objref or objuniq (SPEC 15.6.5's borrow cases).</summary>
     /// <param name="semantics">The Semantics.</param>
