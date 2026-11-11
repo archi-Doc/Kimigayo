@@ -271,7 +271,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Invalidate();
+                (scope.Constraints ??= new()).Fail(syntax);
             }
         }
     }
@@ -281,9 +281,9 @@ public sealed partial class Binding
         evidence = null;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints?.Invalid == true)
+            if (current.Constraints is { Invalid: true } invalid)
             {
-                return ConstraintProof.Error;
+                return this.InvalidEnvironment(invalid);
             }
         }
 
@@ -433,9 +433,9 @@ public sealed partial class Binding
             return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
         }
 
-        if (path.Scope.Parent?.Constraints?.Invalid == true)
+        if (path.Scope.Parent?.Constraints is { Invalid: true } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         return this.ProveConditionalPremises(path.Premises, type, scope);
