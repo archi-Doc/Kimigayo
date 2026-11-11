@@ -97,18 +97,19 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The pun rule at a call through one input at `position` (every input the contract may store through, the callee operand included,
-    // whatever its retention rows: a scalar store keeps no Loan): its first-step entries against the write Types of its root key, then,
-    // past them, each holder an entry names with the parameter's Past keys of that key: the holder's state's entries against each Past
-    // key's write Types (unknown where an abstract part is there), each (holder, key) once per walk. Nothing for a value with no entry.
-    private void PunCall(ulong[] state, in MirTerminator call, int position, BoundType? input, int value)
+    // The pun rule at a call through one input at `position`, of case Type `input` (MirCases.TypeOf; every input the contract may store
+    // through, the callee operand included, whatever its retention rows: a scalar store keeps no Loan): its first-step entries against the
+    // write Types of its root key, then, past them, each holder an entry names with the parameter's Past keys of that key: the holder's
+    // state's entries against each Past key's write Types (unknown where an abstract part is there), each (holder, key) once per walk.
+    // Nothing for a value with no entry.
+    private void PunCall(ulong[] state, in MirTerminator call, int position, BoundType input, int value)
     {
-        if (input is null || !this.AnyEntry(value) || this.NoStore(call, position))
+        if (!this.AnyEntry(value) || this.NoStore(call, position))
         {
             return;
         }
 
-        var index = this.Key(PlaceKey.Root(cases.Type(input)));
+        var index = this.Key(PlaceKey.Root(input));
         if (!this.Below(index))
         {
             return;

@@ -20,7 +20,8 @@ internal sealed partial class MirBorrows
         if (this.Keeps(rvalue))
         {
             var kept = this.Operand(state, rvalue.Start);
-            return (rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, this.TypeOf(rvalue.Start)) : kept, 0); // Δ off a grid (MirBorrows.Puns).
+            var displaced = rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, cases.TypeOf(this.body.Operands[rvalue.Start])) : kept;
+            return (displaced, 0); // Δ off a grid (MirBorrows.Puns).
         }
 
         switch (rvalue.Kind)
@@ -53,7 +54,8 @@ internal sealed partial class MirBorrows
         MirRvalueKind.Use or MirRvalueKind.Adapt => true,
         MirRvalueKind.Cast => (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast ||
             ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type?.Semantics == SemanticsKind.Raw),
-        MirRvalueKind.BinaryOp => (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub && this.TypeOf(rvalue.Start)?.Semantics == SemanticsKind.Raw,
+        MirRvalueKind.BinaryOp => (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub &&
+            cases.TypeOf(this.body.Operands[rvalue.Start]).Semantics == SemanticsKind.Raw,
         _ => false,
     };
 

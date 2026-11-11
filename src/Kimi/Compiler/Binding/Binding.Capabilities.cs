@@ -200,6 +200,7 @@ public sealed partial class Binding
     {
         this.capabilitiesReady = false;
         this.capabilityMode = mode;
+        this.readings.Clear();
         this.ClearNeededSites();
         this.ClearProofScopes();
         this.ClearCapabilityResults();
@@ -555,7 +556,7 @@ public sealed partial class Binding
         var positive = false;
         var negative = false;
         var parameterIdentity = HasParameterIdentity(work.Scope);
-        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true) : work.Type;
+        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { } environment)
@@ -570,12 +571,12 @@ public sealed partial class Binding
 
             foreach (var available in environment.Facts)
             {
-                if (!this.AvailableConstraintFact(environment, available))
+                if (!this.AvailableConstraintFact(environment, available, out _))
                 {
                     continue;
                 }
 
-                var fact = parameterIdentity ? this.NormalizeProofConstraint(available, work.Scope) : available;
+                var fact = parameterIdentity ? this.Reading(available, work.Scope) : available;
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
                 if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
                 {
