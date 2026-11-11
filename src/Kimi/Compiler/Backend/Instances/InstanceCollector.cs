@@ -121,8 +121,8 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
-    /// <param name="rootModules">The root range: the bodies whose module is below it are roots, the source modules' count, or
-    /// <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 to root the library's too.</param>
+    /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
+    /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies.</param>
     /// <returns>The checked set.</returns>
     internal CheckedSet Run(MirProgram program, int rootModules)
     {

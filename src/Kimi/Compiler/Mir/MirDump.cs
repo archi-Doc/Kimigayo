@@ -161,8 +161,12 @@ internal static partial class MirDump
         }
     }
 
-    private static StringBuilder Source(StringBuilder text, SourceRef source)
-        => text.Append(source.IsLibrary ? " @Kimi:" : source.Module == 0 ? " @" : $" @{source.Module}:").Append(source.Id);
+    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source switch
+    {
+        { IsLibrary: true } => " @Kimi:",
+        { Module: 0 } => " @",
+        _ => $" @{source.Module}:",
+    }).Append(source.Id);
 
     private static void Info(StringBuilder text, SourceInfo info) => Source(text, info.Syntax).Append(
         info.Scope == 0 ? string.Empty

@@ -59,8 +59,9 @@ internal sealed class MirAnalysis
     /// <summary>Analyzes a program unless this version already was: a new version starts with its construction records only (MirProgram.Clear),
     /// and a body with a validator finding is not analyzed (DECISIONS R5-M183).</summary>
     /// <param name="program">The built and validated program.</param>
-    /// <param name="rootModules">The root range: steps 1 and 4 judge the bodies whose module is below it (DECISIONS R5-M168), the source
-    /// modules' count, or <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 to judge the library's too.</param>
+    /// <param name="rootModules">The root range: steps 1 and 4 judge the bodies whose module is below it (DECISIONS R5-M168). Any bound is
+    /// a range: Compilation passes the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the
+    /// library's bodies.</param>
     /// <returns>The program.</returns>
     internal MirProgram Run(MirProgram program, int rootModules)
     {
