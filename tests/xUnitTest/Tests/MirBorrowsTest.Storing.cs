@@ -11,9 +11,14 @@ namespace XunitTest;
 /// no fact (DECISIONS Q13).</summary>
 public sealed partial class MirBorrowsTest
 {
+    // An object payload's Type: storage an input's layer reaches through an own step is other storage (SPEC 5.2.1, 15.6.2).
+    private const string PayloadType = "struct PR\n    public var p: raw/u8\n    public var q: u8\n    public init()\n        self.p = null\n" +
+        "        self.q = 0\n";
+
     private static readonly Dictionary<string, string> StoringForms = new()
     {
-        // Invalid (SPEC 5.2.1, 15.6.4 rule A): an input's own part certainly stored past it, or in another of its layers' storage.
+        // Invalid (SPEC 5.2.1, 15.6.4 rule A): an input's own part certainly stored past it, in another of its layers' storage, or in
+        // storage an own step reaches (an object payload: other storage, never a self-link, also for the payload's own part; O-124 (a)).
         ["direct"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8",
         ["field"] = "struct SR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
             "func st(h: uniq/(SR during b))\n    h@follow.r@follow = h@follow@raw@raw/u8",
@@ -36,6 +41,11 @@ public sealed partial class MirBorrowsTest
         ["scalarCall"] = "func take(n: i32) => ()\nfunc st(t: uniq/(uniq/(raw/u8) during a))\n    take(5)\n    t@follow@follow = t@follow@raw@raw/u8",
         ["twoLayers"] = "func st(p: (uniq/(raw/u8) during a, uniq/u8 during a))\n    p.0@follow = p.1@follow@raw@raw/u8",
         ["rawPart"] = "func st(p: (uniq/(raw/u8) during a, raw/u8))\n    p.0@follow = p.1",
+        ["objPayload"] = PayloadType + "func st(t: uniq/(obj/PR))\n    t@follow.p = t@follow@raw@raw/u8",
+        ["payloadSelf"] = PayloadType + "func st(t: uniq/(obj/PR))\n    t@follow.p = t@follow.q@raw@raw/u8",
+        ["slotPayload"] = PayloadType + "func st(t: uniq/((raw/u8, obj/PR)))\n    t@follow.0 = t@follow.1.q@raw@raw/u8",
+        ["payloadLocal"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@uniq\n    r@follow.p = v",
+        ["payloadBorrow"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow.q@raw@raw/u8\n    let r = t@follow.p@uniq\n    r@follow = v",
 
         // Valid: another input's part (rule A), a read through the input (Chain), a self-link (O-56 (a)), a redirected landing.
         ["other"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    t@follow@follow = u@follow@raw@raw/u8",
@@ -58,7 +68,7 @@ public sealed partial class MirBorrowsTest
             "    let pv = v@raw\n    unsafe => *pv = u@follow@raw@raw/u8\n    t@follow@follow = v",
 
         // Invalid and silent, named limits (O-62 (a); DECISIONS, STATUS): a join, a part read, a loop head, an exposed holder, a call
-        // result, a redirect later in the body, a value read back, Binding's joined record, own-step storage, an `unsafe` scope.
+        // result, a redirect later in the body, a value read back, Binding's joined record, an `unsafe` scope.
         ["join"] = "func st(t: uniq/(uniq/(raw/u8) during a), c: bool)\n    var v: raw/u8 = null\n    if c\n        v = t@follow@raw@raw/u8\n" +
             "    else\n        v = t@follow@raw@raw/u8\n    t@follow@follow = v",
         ["partRead"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    let q = (t@follow@raw@raw/u8, u@follow@raw@raw/u8)\n" +
@@ -72,8 +82,6 @@ public sealed partial class MirBorrowsTest
             "    t@follow = u@follow@uniq",
         ["readBack"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    u@follow = t@follow@raw@raw/u8\n    t@follow@follow = u@follow",
         ["joinedRecord"] = "func st(t: uniq/(uniq/((raw/u8 during a, raw/u8)) during a) during a)\n    t@follow@follow.1 = t@follow@raw@raw/u8",
-        ["objPayload"] = "struct PR\n    public var p: raw/u8\n    public init() => self.p = null\nfunc st(t: uniq/(obj/PR))\n" +
-            "    t@follow.p = t@follow@raw@raw/u8",
         ["unsafeScope"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    unsafe => t@follow@follow = t@follow@raw@raw/u8",
         ["unsafeFn"] = "unsafe func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8",
         ["statedPast"] = "func st(t: uniq/(uniq/(raw/u8 during a) during a) during a)\n    t@follow@follow = t@follow@raw@raw/u8",
@@ -112,6 +120,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("scalarCall", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("twoLayers", "st: p.0@follow = p.1@follow@raw@raw/u8")]
     [InlineData("rawPart", "st: p.0@follow = p.1")]
+    [InlineData("objPayload", "st: t@follow.p = t@follow@raw@raw/u8")]
+    [InlineData("payloadSelf", "st: t@follow.p = t@follow.q@raw@raw/u8")]
+    [InlineData("slotPayload", "st: t@follow.0 = t@follow.1.q@raw@raw/u8")]
+    [InlineData("payloadLocal", "st: r@follow.p = v")]
+    [InlineData("payloadBorrow", "st: r@follow = v")]
     [InlineData("other", "")]
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
@@ -131,7 +144,6 @@ public sealed partial class MirBorrowsTest
     [InlineData("redirectAfter", "")]
     [InlineData("readBack", "")]
     [InlineData("joinedRecord", "")]
-    [InlineData("objPayload", "")]
     [InlineData("unsafeScope", "")]
     [InlineData("unsafeFn", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("statedPast", "")]

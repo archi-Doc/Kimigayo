@@ -10,32 +10,38 @@ namespace Kimi.Compiler.Mir;
 // case Type, All), the exposed holders (MirBorrows.Loans' Exposed) and the checks replay's chains (MirDataflow.Head).
 // The value fact, M(h): by holder slot, the elements its whole value certainly holds, a MirLoanSets set in a namespace of its own (never
 // joined with σ): Own(i, part), input i's own part, an address or borrow of the storage i's layer at `part` refers to (a parameter's own
-// pointer is the layer at the root, part 0; a by-value input's layer is the part a Place names before its first layer Deref); Past(i), a
-// pointer into storage past i's referent. Chain-local: ∅ at every chain head but each input's Own(i, 0) (a parameter is let-like,
+// pointer is the layer at the root, part 0; a by-value input's layer is the part a Place names before its first layer Deref), or of
+// storage an own step reaches from there (part Payload: an owning handle's payload, SPEC 15.6.2); Past(i), a pointer into storage past
+// i's referent. Chain-local: ∅ at every chain head but each input's Own(i, 0) (a parameter is let-like,
 // SPEC 7); a whole store keeps the value's M (∅ into an exposed holder), any other change of a holder, a call result and a part read of a
 // local give ∅. A Ref or raw address gives its landing's element; a read of a pointer stored at depth d of i's region gives Past(i); a read
 // of a by-value input's pointer part gives Own(i, part).
 // The landing fact (Redirects, Landing; O-72 (a)'s second must-fact): a Place rooted at an unexposed, non-receiver input i with d layer
-// Derefs lands in the storage at depth d of i's region (depth 1: what i's layer at `part` refers to; deeper: past i's referent) only while
-// no pointer layer it reads was redirected: Redirects, one flow-insensitive pass per body view, takes the least depth at which the body
-// may write a pointer layer of i's region (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow of a
-// Place of it, not shared, or a Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a
-// call or a drop takes a value that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an error;
-// a landing at depth d holds while that least depth is d or more. A local root lands only through its own one element and one Deref.
+// Derefs lands in the storage at depth d of i's region (depth 1: what i's layer at `part` refers to, or Payload where an own step
+// follows that layer, which ends its storage, SPEC 5.2.1; deeper: past i's referent) only while no pointer layer it reads was
+// redirected: Redirects, one flow-insensitive pass per body view, takes the least depth at which the body may write a pointer layer of
+// i's region (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow of a Place of it, not shared, or a
+// Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a call or a drop takes a value
+// that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an error; a landing at depth d holds
+// while that least depth is d or more. A local root lands only through its own one element and one Deref, in Payload where its element
+// is Payload or an own step follows the Deref.
 // The rule (Storing, at Flow.Store in the checks replay): a store in safe code whose destination lands past input i (depth 2 or more),
-// or at depth 1 in the storage of another layer of i than the value's own part, whose value's M holds Own(i, ·), where i's record for
-// that storage (past: the Reached entry of its erased case Type, else All; depth 1: Own) is untied (Binding: a raw layer stepping
-// Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair: UnretainedRawStore_Kd at the
-// store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part formed by `@raw` has none).
-// Never where the value's own part is the destination's layer (a self-link, O-56 (a)).
+// or at depth 1 in Payload or in the storage of another layer of i than the value's own part, whose value's M holds Own(i, ·), where
+// i's record for that storage (past: the Reached entry of its erased case Type, else All; depth 1: Own) is untied (Binding: a raw
+// layer stepping Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair:
+// UnretainedRawStore_Kd at the store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part
+// formed by `@raw` has none).
+// Never where the value's own part is the destination's layer, not Payload (a self-link, O-56 (a), SPEC 5.2.1: not through an own step).
+// Storage a raw Field declares `during self` is reached only through a raw Place (its Deref a layer here): a store there lies in an
+// `unsafe` scope, and an address of it gives Past(i).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
-// exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
-// and storage a layer reaches through an own step (an object payload, `during self` storage), which Landing reads as the layer's own
-// referent, so an address of the layer's storage stored there passes as a self-link (an open issue; SPEC 5.2.1's self-link excludes it).
+// exposure lost, a landing any redirect may have moved, and a record Binding joins over a storage where another position lets i by Value.
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
+    private const int Payload = -2; // A depth-1 part: storage reached past the layer through an own step, never a self-link's.
+
     private readonly List<(int Input, int Part)> ownKeys = []; // Own(i, part)'s keys: key k is element 2 (locals + k).
     private readonly Dictionary<(int Input, int Part), int> ownIndex = [];
     private int[] must = []; // By slot: M(h), in the checks replay (chain-local).
@@ -320,8 +326,9 @@ internal sealed partial class MirBorrows
         return layers;
     }
 
-    // Where a Place certainly lands (Input 0: unknown): at depth 1 of input i's region, in the storage its layer at `part` refers to, or
-    // past i's referent (depth 2 or more, Part -1), while no redirect reaches a layer it reads (Redirects).
+    // Where a Place certainly lands (Input 0: unknown): at depth 1 of input i's region, in the storage its layer at `part` refers to or,
+    // past that layer through an own step, in other storage (Part Payload), or past i's referent (depth 2 or more, Part -1), while no
+    // redirect reaches a layer it reads (Redirects).
     private (int Input, int Part, int Depth) Landing(MirPlace place)
     {
         if (place.Root < 0)
@@ -330,16 +337,18 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
-        var (first, layers) = (-1, 0);
+        var (first, layers, owned) = (-1, 0, false);
         for (var i = 0; i < count; i++)
         {
             first = first < 0 && Layer(this.mustSteps[i]) ? i : first;
             layers += Layer(this.mustSteps[i]) ? 1 : 0;
+            owned |= first >= 0 && this.mustSteps[i].Class == MirStepClass.Own;
         }
 
         if (this.StoringInput(place.Root))
         {
-            return layers > 0 && this.redirected[place.Root] >= layers ? (place.Root, layers == 1 ? this.mustSteps[first].Prefix : -1, layers) : default;
+            return layers > 0 && this.redirected[place.Root] >= layers
+                ? (place.Root, layers > 1 ? -1 : owned ? Payload : this.mustSteps[first].Prefix, layers) : default;
         }
 
         if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [var element])
@@ -353,11 +362,11 @@ internal sealed partial class MirBorrows
         }
 
         var (input, part) = this.ownKeys[(element >> 1) - this.body.Locals.Length];
-        return (input, part, 1);
+        return (input, owned ? Payload : part, 1);
     }
 
-    // The rule at a store into a Place (Flow.Store), in the checks replay: Own(i, ·) stored past input i, or at depth 1 in another layer's
-    // storage than the value's own part, where i's record for that storage refuses it.
+    // The rule at a store into a Place (Flow.Store), in the checks replay: Own(i, ·) stored past input i, or at depth 1 in other storage
+    // than the value's own part, or in storage an own step reaches, where i's record for that storage refuses it.
     private void Storing(MirPlace place)
     {
         if (!this.replaying || this.contract is null || this.mustValue == 0 || this.Landing(place) is not (> 0 and var input, var part, var depth))
@@ -369,7 +378,7 @@ internal sealed partial class MirBorrows
         foreach (var element in this.sets.Elements(this.mustValue))
         {
             var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
-            own |= key.Input == input && (depth > 1 || key.Part != part);
+            own |= key.Input == input && (part < 0 || key.Part != part);
         }
 
         if (!own || this.Unsafe())
