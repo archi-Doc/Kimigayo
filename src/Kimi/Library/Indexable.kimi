@@ -1,8 +1,9 @@
 /// The single-element indexing Contract: `receiver[key]` resolves through a conformance to Indexable<Key> and designates the
 /// referent of the reference the selected requirement returns (SPEC 4.7.1).
 ///
-/// The standard Array, fixed-array and Slice indexing remains compiler-provided (STATUS); user Types conform explicitly
-/// (SPEC 4.7.1, 22.1).
+/// Array, UniqSlice, Dictionary and user Types state their conformances in source. A fixed array has no declaration, so
+/// its conformance is a Builtin row; that row and Slice's conformance remain incomplete (STATUS). `a[i]` on a concrete
+/// sequence stays the built-in element access (SPEC 4.7.1, 22.1).
 public contract Indexable<Key>
     associate Element
 
