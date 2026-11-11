@@ -134,22 +134,40 @@ public class PairAnnotationBindingTest
     }
 
     // SPEC 8.1.2, 15.6.1: a difference in Origin presence between pair layers of one binder relates their slots, never a Type mismatch,
-    // and the relation needs a premise like any other (F16); a common element Type keeps no such difference, so the element fits it, in
-    // either order and nested (the common-Type search's own Position fact, G216 (a) U2.1 e2c-1).
+    // and the relation needs a premise like any other (F16); a common element Type meets the two slots as it meets two written Origins
+    // (SPEC 15.3.6, 14.9.2; PLAN G758: valid, as the concrete twins), in either order and nested.
     [Theory]
     [InlineData("func widen<s/T>(x: s/T during b, q: ref/i32 during a) -> s/T during a\n    s is ref\n    origin b outlives a\n    return x@move", null)]
     [InlineData("func widen<s/T>(x: s/T, q: ref/i32 during a) -> s/T during a\n    s is ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func back<s/T>(x: s/T during a) -> s/T\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func fwd<s/T>(x: s/T) -> s/T during a\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
-    [InlineData("func both<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
-    [InlineData("func back2<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [y, x]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
-    [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func both<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length", null)]
+    [InlineData("func back2<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [y, x]\n    return items.length", null)]
+    [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", null)]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
         var c = Parse(source);
         c.Bind();
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
+
+    // SPEC 8.1.2, 15.3.6, 10.8 (PLAN G758): an original and an annotated pair occurrence at one generic slot, or a `var` pair local's
+    // opened slot at a receiver-substituted parameter (c6), differ in Origins alone, so the candidate applies and the argument's relation
+    // is judged after selection: dev's NoApplicableOverload_Kd on pres, pres2, c6bad and k08 becomes the concrete twin's relation record
+    // (pres-cu, c6bad-cu) or none. Each row's records by code.
+    [Theory]
+    [InlineData("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc f<s/T>(value: s/T, other: uniq/(s/T during a)) -> ()\n    s is uniq\n    put(other, value)\n", "1*UnprovenOriginRelation_Kd")] // pres-PU
+    [InlineData("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc f<s/T>(value: s/T during a, other: uniq/(s/T)) -> ()\n    s is uniq\n    put(other, value)\n", "1*UnprovenOriginRelation_Kd")] // pres2-PU
+    [InlineData("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc f<T>(value: uniq/T during o, other: uniq/(uniq/T during a)) -> ()\n    put(other, value)\n", "1*UnprovenOriginRelation_Kd")] // pres-cu
+    [InlineData("func put<U>(slot: uniq/U, y: U) -> () => slot@follow = y@move\nfunc f<s/T>(value: s/T, other: uniq/(s/T), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let child = v\n    put(other, child@move)\n", "clean")] // d1-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    var arr: Array<s/T> = [other@move]\n    let child = v\n    arr.append(child@move)\n    _ = arr@move\n", "clean")] // c6-PU
+    [InlineData("func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let v = value@move\n    var arr: Array<s/T> = [other@move]\n    let child = v\n    arr.append(child@move)\n    _ = arr@move\n", "clean")] // c6l-PU
+    [InlineData("func f<s/T>(value: s/T during a, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var arr: Array<s/T> = [other@move]\n    arr.append(value@move)\n    _ = arr@move\n", "1*UnprovenOriginRelation_Kd")] // c6bad-PU
+    [InlineData("func f<T>(value: uniq/T during a, other: uniq/T during o) -> ()\n    var arr: Array<uniq/T during o> = [other@move]\n    arr.append(value@move)\n    _ = arr@move\n", "1*UnprovenOriginRelation_Kd")] // c6bad-cu
+    [InlineData("func f<s/T>(value: s/T during a, other: s/T during a) -> ()\n    s is ref or uniq\n    var local = value\n    local = other\n    var arr: Array<s/T during a> = []\n    arr.append(local@move)\n    _ = arr@move\n", "clean")] // c6v-PRU
+    [InlineData("func both<U>(x: U, y: U) -> i32 => 0\nfunc f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    return both(value, other)\n", "clean")] // k08-pr-generic-both
+    public void APairSlotDifferenceNeverMakesACandidateInapplicable(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 
     // SPEC 15.6.1, 23.1.2: an unformed pair Field reports its formation once; a fit against it derives from that failure instead of
     // adding a Type mismatch, and a call that reads the Field rests on it (F17, A.11).
