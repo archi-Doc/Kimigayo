@@ -181,7 +181,6 @@ public sealed partial class Binding
         this.regionVersion = 0;
         this.regionWork.Clear();
         this.regionVisited.Clear();
-        this.unregionedPairSlots.Clear(); // The G758 interim's notes are per pass (Binding.LocalRegions.Types.cs).
     }
 
     private BoundOrigin LocalRegionSlot(VariableKoto owner, int slot)
