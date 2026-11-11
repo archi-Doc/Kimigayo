@@ -366,7 +366,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
 
             var step = node.Path < 0 ? default : moves.Paths[node.Path];
             MirDataflow.Grow(ref this.types, node.Depth + 1);
-            var type = this.types[node.Depth] = node.Depth == 0 ? cases.Type(this.body.TypeOf(drop.Terminator.Place)!)
+            var type = this.types[node.Depth] = node.Depth == 0 ? cases.TypeOf(drop.Terminator.Place)
                 : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
             var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
             var verdict = MirTypes.MayNeedDrop(type, this.walked) ? state : MirDropVerdict.Elide;

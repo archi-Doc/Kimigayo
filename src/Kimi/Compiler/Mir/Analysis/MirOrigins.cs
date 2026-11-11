@@ -282,7 +282,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
                 continue;
             }
 
-            if (cases.Type(this.body.TypeOf(place with { Projection = step.Prefix })!).Origin is { } layer)
+            if (cases.TypeOf(place with { Projection = step.Prefix }).Origin is { } layer)
             {
                 MirDataflow.Grow(ref this.contained, this.containedCount + 1);
                 this.contained[this.containedCount++] = new(types.OriginAtom(this.key, layer, found.Site), found.Own, r);
