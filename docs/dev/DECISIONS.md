@@ -7455,6 +7455,12 @@ resumed by R4-M86 (2026-10-20).
     cu-id-v).
   - Interim removed (2026-11-11; PLAN G758, DECISIONS BU-171): G758 opens a `var` local's pair slot as a local region, the interim's
     removal condition, and removes the interim above whole; its rows are accepted.
+  - Amended (2026-11-11; PLAN G757; the Middle's consent C-250): AdaptInput's branch for a parameter that is no reference names the
+    Reborrow before inference for every bare Place whose acquisition Reborrows (`StoresExclusiveReference`: a stored `uniq/T` or
+    `objuniq/T`, or a pair layer in an exclusive case; G254a's `BareReborrowLayer` and `ReborrowedType`), so a bare slot or a
+    pair-layer pattern binds the Reborrow's Type (SPEC 10.2.2 step 1, 10.8, 3.5.1), class `SameSemanticsReborrow` (10.2.2). Formerly
+    a stored `uniq/T` there was Exact, the slot bound its stored Origin, and the later Reborrow's fit required the reaching layers
+    (a Closure's receiver ρ, an outer exclusive reference) to outlive it.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
