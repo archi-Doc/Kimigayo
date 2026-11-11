@@ -1,7 +1,7 @@
 // O2 timing corpus (O2Corpus.md): string comparison over heap and Static strings with long common prefixes, string
-// destruction through both release kinds, built-in integer formatting, and char, Unit and bool formatting. Each part
-// is a function of its own: `main` calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output
-// reads per part.
+// destruction through both release kinds, built-in integer formatting, char, Unit and bool formatting, and float
+// formatting. Each part is a function of its own: `main` calls each from two sites, so LLVM's inliner keeps it apart
+// and opt -O2 output reads per part.
 
 // The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
 // from 16 up, whose periods are long.
@@ -163,6 +163,22 @@ func characters(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
     sum += written(buffer, (state >> 19) & 1 == 0)
     return sum
 
+// One round: eight f64 values across both notations (fixed, small fixed, large and small scientific, negative,
+// subnormal, a large integer, 17 digits) and four f32 values, each scaled by a factor from 1 to 2 that the state
+// turns, in a turning order, each by `$tryWrite` into the cleared fixed buffer.
+func floats(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
+    let wides: [8 of f64] = [1.25, 0.000123456789, 6.02214076e23, 1.0e-300, -2.5e-7, 4.9e-324, 123456789012345.0, 0.1 + 0.2]
+    let narrows: [4 of f32] = [0.1@f32, 1.7e38@f32, 1.4e-45@f32, 65504.0@f32]
+    state@follow = next(state)
+    let factor = 1.0 + ((state >> 16) & 255)@f64 / 256.0
+    let shift = ((state >> 24) & 7)@i32
+    var sum: i64 = 0
+    for i in 0..8
+        sum += written(buffer, wides[(i + shift) & 7] * factor) * (i + 1)@i64
+    for i in 0..4
+        sum += written(buffer, narrows[(i + shift) & 3] * factor@f32) * (i + 9)@i64
+    return sum
+
 public func main()
     var checksum: i64 = 0
     var state: i64 = 1
@@ -199,4 +215,7 @@ public func main()
     checksum = fold(checksum, characters(buffer@uniq, state@uniq))
     for round in 1..65536
         checksum = fold(checksum, characters(buffer@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, floats(buffer@uniq, state@uniq))
+    for round in 1..65536
+        checksum = fold(checksum, floats(buffer@uniq, state@uniq) + round@i64)
     Console.writeLine("checksum \(checksum)")

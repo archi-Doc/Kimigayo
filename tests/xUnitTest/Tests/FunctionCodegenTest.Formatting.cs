@@ -42,7 +42,7 @@ public sealed partial class FunctionCodegenTest
         "func ctWriteView(writer: uniq/Utf8Writer, v: Text.Utf8Slice) -> Result<(), BufferFull> => writer.write(v)\n" +
         "func ctWriteI16(writer: uniq/Utf8Writer, n: i16) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU16(writer: uniq/Utf8Writer, n: u16) -> Result<(), BufferFull> => writer.write(n)\n" +
-        "func ctWriteF64(writer: uniq/Utf8Writer, f: f64) -> Result<(), BufferFull> => writer.write(f)\n" +
+        "func ctWriteU32(writer: uniq/Utf8Writer, n: u32) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctText(n: u16) -> string => Text.toString(n)\n" +
         "func ctTry(n: i32, bytes: uniq/[4 of u8]) -> bool\n    match Text.tryFormat(n, bytes)@move\n        .Ok(_) => return true\n" +
         "        .Err(_) => return false\n" +
@@ -69,7 +69,7 @@ public sealed partial class FunctionCodegenTest
         "func apText(s: ref/string, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(s, w)\n" +
         "func apShort(n: ref/i16, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apView(v: ref/Text.Utf8Slice, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(v, w)\n" +
-        "func apF64(f: ref/f64, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(f, w)\n" +
+        "func apLong(n: ref/u64, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apWide(x: ref/u128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(x, w)\n" +
         "func apItemOf(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
 
@@ -266,7 +266,7 @@ public sealed partial class FunctionCodegenTest
         var (writes, shims) = (FunctionsOf(ir, c, "write"), ShimsOf(ir, text));
         foreach (var (name, kind) in new[]
         {
-            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteText", 16), ("ctWriteView", 17), ("ctWriteI16", 3), ("ctWriteU16", 4), ("ctWriteF64", 12),
+            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteText", 16), ("ctWriteView", 17), ("ctWriteI16", 3), ("ctWriteU16", 4), ("ctWriteU32", 6),
         })
         {
             var write = Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writes.Contains);
@@ -320,7 +320,7 @@ public sealed partial class FunctionCodegenTest
             var kind = Regex.Match(call.Shape, @"^call void @\(ptr %, ptr %, ptr %, i32 (\d+), ptr %, i64 %\)$").Groups[1].Value;
             return int.Parse(kind, CultureInfo.InvariantCulture);
         });
-        Assert.Equal([3, 5, 10, 12, 16, 17], kinds.Order()); // i16, i32, u128, f64, string, Utf8Slice (Unit is a table row, R8-S2a).
+        Assert.Equal([3, 5, 8, 10, 16, 17], kinds.Order()); // i16, i32, u64, u128, string, Utf8Slice (Unit, f64: table rows, R8-S2a, S2c).
         var location = $", ptr @, i64 {Located(FormatShims, "value.format(writer)")})"; // After the value's and the writer's pointers.
         Assert.All(
             FunctionsOf(ir, c, "apAppend"),
@@ -495,12 +495,17 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(reserve.Routine!, LlvmModuleText.ErasedWriterDefinitions);
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
+        var format = IntrinsicRows.Of(IntrinsicId.FormatFloat); // R8-S2c: the float formatting part, which declares nothing.
+        Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.FormatFloat), (format.Writer, format.Requests));
+        Assert.Single(Regex.Matches(LlvmModuleText.FormatFloatRuntime, @"(?m)^define internal i64 @__kimi_format_float\(i64 %bits, i1 %narrow, ptr %\w+\)"));
+        Assert.DoesNotMatch(@"(?m)^declare ", LlvmModuleText.FormatFloatRuntime);
         foreach (var id in Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None))
         {
             var row = IntrinsicRows.Of(id);
             var expected = id switch
             {
                 IntrinsicId.ErasedReserve => ModuleCodegen.Needs.ErasedWriter,
+                IntrinsicId.FormatFloat => ModuleCodegen.Needs.FormatFloat,
                 IntrinsicId.TryAllocateBytes or IntrinsicId.MoveBytes => ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory,
                 _ => ModuleCodegen.Needs.None,
             };
@@ -524,6 +529,31 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_erased_reserve\("));
         Assert.Contains(LlvmModuleText.ErasedWriterRuntime, text, StringComparison.Ordinal);
         Assert.DoesNotContain(formatting.ToString(), text, StringComparison.Ordinal);
+    }
+
+    // R8-S2c: the float formatting part (the FormatFloat routine and Ryu) is requested by a FormatFloat call only: a module writing an f32
+    // and an f64 defines the routine and each Ryu entry once, without the formatting runtime; one writing only an integer defines none of
+    // them (fail-before: the formatting runtime held them, so both modules did).
+    [Fact]
+    public void AFloatWriteDefinesTheFloatPartOnce()
+    {
+        using var formatting = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
+        var floats = Generate(Analyze(
+            "func wfNarrow(writer: uniq/Utf8Writer, x: f32) -> Result<(), BufferFull> => writer.write(x)\n" +
+            "func wfWide(writer: uniq/Utf8Writer, x: f64) -> Result<(), BufferFull> => writer.write(x)\n",
+            OutputKind.Library));
+        foreach (var routine in new[] { "__kimi_format_float", "__kimi_ryu32", "__kimi_ryu64" })
+        {
+            Assert.Single(Regex.Matches(floats, $@"(?m)^define internal \w+ @{routine}\("));
+        }
+
+        Assert.Contains(LlvmModuleText.FormatFloatRuntime, floats, StringComparison.Ordinal);
+        Assert.DoesNotContain(formatting.ToString(), floats, StringComparison.Ordinal);
+        var integer = Generate(Analyze("func wiInt(writer: uniq/Utf8Writer, n: i32) -> Result<(), BufferFull> => writer.write(n)\n", OutputKind.Library));
+        Assert.Contains(formatting.ToString(), integer, StringComparison.Ordinal);
+        Assert.DoesNotContain("@__kimi_format_float(", integer, StringComparison.Ordinal);
+        Assert.DoesNotContain("@__kimi_ryu64(", integer, StringComparison.Ordinal);
     }
 
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,

@@ -1,7 +1,13 @@
-; Exact shortest decimal conversion uses the original binary width; notation is independent of locale.
+; SPEC 22.10.2: the FormatFloat intrinsic's routine (Storage.formatFloat, R8-S2c), with Ryu's digits (Utf8FloatRyu.ll.in), a module
+; part on request (LlvmModuleText.FormatFloat). When %narrow it reads only the low 32 bits of %bits, a binary32 value; else a binary64
+; value. It writes exactly the returned count of bytes (1 to 24, at most 17 when %narrow) at %destination's start and no other byte:
+; the shortest round-trip digits, in fixed notation for -4 <= e < 16, else scientific; NaN, Infinity, -Infinity, 0 and -0. The text
+; is ASCII, so valid UTF-8, and independent of locale. Exact shortest decimal conversion uses the original binary width. The part
+; declares no memory intrinsic, so the special values and the zero runs (at most 3 leading, 15 trailing) are copied by a store loop.
 @__kimi_float_nan = private unnamed_addr constant [3 x i8] c"NaN", align 1
 @__kimi_float_infinity = private unnamed_addr constant [9 x i8] c"-Infinity", align 1
 @__kimi_float_zero = private unnamed_addr constant [2 x i8] c"-0", align 1
+@__kimi_float_zeros = private unnamed_addr constant [15 x i8] c"000000000000000", align 1
 
 define internal void @__kimi_decimal_store(ptr %start, i64 %number, i64 %count) #0 {
 entry:
@@ -22,14 +28,31 @@ done:
   ret void
 }
 
-define internal void @__kimi_format_float(ptr %ret, ptr %value, ptr %writer, i1 %narrow, ptr %location, i64 %location_length) #0 {
+; Copies %count bytes (none for 0) from %source to %destination.
+define internal void @__kimi_float_copy(ptr %destination, ptr %source, i64 %count) #0 {
+entry:
+  %none = icmp eq i64 %count, 0
+  br i1 %none, label %done, label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %loop ]
+  %from = getelementptr i8, ptr %source, i64 %index
+  %byte = load i8, ptr %from, align 1
+  %to = getelementptr i8, ptr %destination, i64 %index
+  store i8 %byte, ptr %to, align 1
+  %next = add i64 %index, 1
+  %more = icmp ult i64 %next, %count
+  br i1 %more, label %loop, label %done
+done:
+  ret void
+}
+
+{{__kimi_format_float}}
 entry:
   %mantissa_slot = alloca i64, align 8
   %power_slot = alloca i32, align 4
-  %reservation = alloca [40 x i8], align 8
   br i1 %narrow, label %read32, label %read64
 read32:
-  %bits32 = load i32, ptr %value, align 4
+  %bits32 = trunc i64 %bits to i32
   %fraction32 = and i32 %bits32, 8388607
   %fraction32_wide = zext i32 %fraction32 to i64
   %shift32 = lshr i32 %bits32, 23
@@ -38,12 +61,11 @@ read32:
   %special32 = icmp eq i32 %exponent32, 255
   br label %classify
 read64:
-  %bits64 = load i64, ptr %value, align 8
-  %fraction64 = and i64 %bits64, 4503599627370495
-  %shift64 = lshr i64 %bits64, 52
+  %fraction64 = and i64 %bits, 4503599627370495
+  %shift64 = lshr i64 %bits, 52
   %exponent64_wide = and i64 %shift64, 2047
   %exponent64 = trunc i64 %exponent64_wide to i32
-  %negative64 = icmp slt i64 %bits64, 0
+  %negative64 = icmp slt i64 %bits, 0
   %special64 = icmp eq i32 %exponent64, 2047
   br label %classify
 classify:
@@ -57,14 +79,14 @@ classify:
 special_value:
   br i1 %empty_fraction, label %infinity, label %nan
 nan:
-  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr @__kimi_float_nan, i64 3, ptr %location, i64 %location_length)
-  ret void
+  call void @__kimi_float_copy(ptr %destination, ptr @__kimi_float_nan, i64 3)
+  ret i64 3
 infinity:
   %inf_offset = sub i64 1, %sign
   %inf_data = getelementptr i8, ptr @__kimi_float_infinity, i64 %inf_offset
   %inf_length = add i64 8, %sign
-  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr %inf_data, i64 %inf_length, ptr %location, i64 %location_length)
-  ret void
+  call void @__kimi_float_copy(ptr %destination, ptr %inf_data, i64 %inf_length)
+  ret i64 %inf_length
 check_zero:
   %zero_exponent = icmp eq i32 %exponent, 0
   %zero = and i1 %zero_exponent, %empty_fraction
@@ -73,8 +95,8 @@ zero_value:
   %zero_offset = sub i64 1, %sign
   %zero_data = getelementptr i8, ptr @__kimi_float_zero, i64 %zero_offset
   %zero_length = add i64 1, %sign
-  call void @__kimi_format_bytes(ptr %ret, ptr %writer, ptr %zero_data, i64 %zero_length, ptr %location, i64 %location_length)
-  ret void
+  call void @__kimi_float_copy(ptr %destination, ptr %zero_data, i64 %zero_length)
+  ret i64 %zero_length
 convert:
   br i1 %narrow, label %convert32, label %convert64
 convert32:
@@ -132,13 +154,6 @@ size:
   %science_size = add i64 %e_start, %e_digits
   %unsigned_size = select i1 %fixed, i64 %fixed_size, i64 %science_size
   %amount = add i64 %unsigned_size, %sign
-  call void @__kimi_writer_reserve(ptr %reservation, ptr %writer, i64 %amount, ptr %location, i64 %location_length)
-  %tag = load i32, ptr %reservation, align 4
-  %ok = icmp eq i32 %tag, 0
-  br i1 %ok, label %encode, label %failure
-encode:
-  %window = getelementptr i8, ptr %reservation, i64 8
-  %destination = call ptr @__kimi_window_address(ptr %window)
   %start = getelementptr i8, ptr %destination, i64 %sign
   br i1 %negative, label %minus, label %notation
 minus:
@@ -154,7 +169,7 @@ leading:
   store i8 46, ptr %leading_dot, align 1
   %zeros = sub i64 -1, %e
   %leading_zeros = getelementptr i8, ptr %start, i64 2
-  call void @llvm.memset.p0.i64(ptr %leading_zeros, i8 48, i64 %zeros, i1 false)
+  call void @__kimi_float_copy(ptr %leading_zeros, ptr @__kimi_float_zeros, i64 %zeros)
   %leading_digits = getelementptr i8, ptr %leading_zeros, i64 %zeros
   br label %encode_digits
 positive:
@@ -166,7 +181,7 @@ fixed_dot:
 fixed_zeros:
   %trailing_count = sub i64 %point, %digits
   %trailing_address = getelementptr i8, ptr %start, i64 %digits
-  call void @llvm.memset.p0.i64(ptr %trailing_address, i8 48, i64 %trailing_count, i1 false)
+  call void @__kimi_float_copy(ptr %trailing_address, ptr @__kimi_float_zeros, i64 %trailing_count)
   br label %positive_done
 positive_done:
   br label %encode_digits
@@ -206,12 +221,7 @@ digit_loop:
   %address = getelementptr i8, ptr %digits_start, i64 %offset
   store i8 %ascii, ptr %address, align 1
   %more = icmp ne i64 %index, 0
-  br i1 %more, label %digit_loop, label %commit
-commit:
-  call void @__kimi_utf8_commit(ptr %window, i64 %amount)
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
+  br i1 %more, label %digit_loop, label %done
+done:
+  ret i64 %amount
 }

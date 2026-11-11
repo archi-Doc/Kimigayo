@@ -490,11 +490,6 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (declaration.Unavailable)
-        {
-            return ConstraintProof.Error;
-        }
-
         foreach (var relation in declaration.Relations)
         {
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
@@ -547,11 +542,6 @@ public sealed partial class Binding
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
             return true;
-        }
-
-        if (declaration.Unavailable)
-        {
-            return false;
         }
 
         foreach (var relation in declaration.Relations)

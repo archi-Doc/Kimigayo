@@ -666,7 +666,7 @@ public sealed partial class Binding
 
         actual = this.ArgumentType(source, actual);
         this.acquisitionFailure = null;
-        if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
+        if (!this.AdaptInput(source, FixedPattern.Open(parameter), actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
             (this.acquisitionFailure is not null && !this.FitsStructuralPartAt(adapted, parameter, source)))
         {
             this.Fail(call, BindingFailure.NoApplicableCandidate);
