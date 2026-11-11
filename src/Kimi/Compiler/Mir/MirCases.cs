@@ -180,10 +180,9 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
-    /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>) as a case
-    /// Type (<see cref="Type"/>), the one form every case reader of a Place takes. <see cref="MirValidator"/> types every local, every
-    /// projection step past the first and the first step of every Place the body's uses report; it does not check a diverging Call's
-    /// destination, which no use reports and A5's storing rule reads (an open issue).</summary>
+    /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
+    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
+    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>
     internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
