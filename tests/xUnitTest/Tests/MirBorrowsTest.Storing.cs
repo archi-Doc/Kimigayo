@@ -22,7 +22,8 @@ public sealed partial class MirBorrowsTest
     private static readonly Dictionary<string, string> StoringForms = new()
     {
         // Invalid (SPEC 5.2.1, 15.6.4 rule A): an input's own part certainly stored past it, in another of its layers' storage, or in
-        // storage an own step reaches (an object payload: other storage, never a self-link, also for the payload's own part; O-124 (a)).
+        // storage an own step reaches (an object payload: other storage, never a self-link, also for the payload's own part; O-124 (a))
+        // where the destination's raw layers all state no Origin (O-190 (b)).
         ["direct"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8",
         ["field"] = "struct SR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
             "func st(h: uniq/(SR during b))\n    h@follow.r@follow = h@follow@raw@raw/u8",
@@ -50,6 +51,8 @@ public sealed partial class MirBorrowsTest
         ["slotPayload"] = PayloadType + "func st(t: uniq/((raw/u8, obj/PR)))\n    t@follow.0 = t@follow.1.q@raw@raw/u8",
         ["payloadLocal"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@uniq\n    r@follow.p = v",
         ["payloadBorrow"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow.q@raw@raw/u8\n    let r = t@follow.p@uniq\n    r@follow = v",
+        ["mixedOtherLayer"] = "struct SM3\n    public var pair: (raw/u8 during self, raw/u8)\n    public init() => self.pair = (null, null)\n" +
+            "func st(p: (uniq/SM3 during a, uniq/u8 during a))\n    p.0@follow.pair = (null, p.1@follow@raw@raw/u8)",
 
         // Valid: another input's part (rule A), a read through the input (Chain), a self-link (O-56 (a); through objuniq, a dereference,
         // not an own step), a redirected landing; a store into a stated layer, also a payload's `during self` Field (5.2.1, 5.7).
@@ -112,8 +115,8 @@ public sealed partial class MirBorrowsTest
         ["dropReceiver"] = "struct DR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
             "    drop\n        self.r@follow = self@raw@raw/u8",
 
-        // Invalid and silent, the owner's O-188 (a): a destination with any stated layer is not judged, so i's own value stored into the
-        // unstated layer of a mixed one is accepted (the whole value's fact cannot tell which layer receives it).
+        // Invalid and silent, the owner's O-190 (b): at a destination with a stated layer (here a mixed one) the own step is not applied,
+        // so the payload reads as the layer's referent and i's own value stored into the unstated layer passes as a self-link (PLAN G581).
         ["mixedUnstated"] = MixedType + "    t@follow.pair = (null, t@follow@raw@raw/u8)",
     };
 
@@ -139,6 +142,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("slotPayload", "st: t@follow.0 = t@follow.1.q@raw@raw/u8")]
     [InlineData("payloadLocal", "st: r@follow.p = v")]
     [InlineData("payloadBorrow", "st: r@follow = v")]
+    [InlineData("mixedOtherLayer", "st: p.0@follow.pair = (null, p.1@follow@raw@raw/u8)")]
     [InlineData("other", "")]
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
