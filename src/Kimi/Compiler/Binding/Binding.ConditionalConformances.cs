@@ -197,11 +197,18 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
                 }
+
+                if (target.BoundConstraint.Kind == ConstraintKind.Unresolved)
+                {
+                    continue; // A pending Contract reference (SPEC 9.2, 9.5) registers nothing yet; the pending loop leaves the conformance and its Type pending (PendingDeclaration).
+                }
+
+                var contract = target.BoundConstraint.Contract!;
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {

@@ -1491,12 +1491,14 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 
-    // SPEC 22.10.2 (R8-S2a): bool's, char's and Unit's format witness is the witness table's library body, not the BuiltinFormat routine,
-    // and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
+    // SPEC 22.10.2 (R8-S2a, R8-S2c): bool's, char's, Unit's, f32's and f64's format witness is the witness table's library body, not the
+    // BuiltinFormat routine, and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
     [InlineData("()", "UnitFormat")]
+    [InlineData("f32", "F32Format")]
+    [InlineData("f64", "F64Format")]
     public void ABuiltinFormatCallIsItsTablesBody(string type, string group)
     {
         var (program, set) = Collect($"func emit(writer: uniq/Utf8Writer, value: {type}) -> Result<(), BufferFull> => writer.write(value)\n");
