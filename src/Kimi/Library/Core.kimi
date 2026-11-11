@@ -60,6 +60,10 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
+/// The uninhabited value Type (SPEC 3.1.3): it has no values, members or constructors. `return`, `exit`, `continue`,
+/// `yield` and `$abort(...)` have it, and a function that never returns states it as its result.
+public struct Never
+
 /// A zero-sized Field that keeps the dependency of a borrow value of Type `T` without storing it (SPEC 15.3.5). `T` is a
 /// complete `ref`, `uniq`, `objref` or `objuniq` borrow Type. A `Loan<T>` Field is analyzed as storing a `T`, so the slots
 /// it uses take their Loan requirements and variance from it; it has no address, reads nothing and grants no access.
