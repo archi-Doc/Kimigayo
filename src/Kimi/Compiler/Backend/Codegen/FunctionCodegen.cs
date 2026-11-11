@@ -82,7 +82,7 @@ internal sealed partial class FunctionCodegen
     /// <param name="output">The module's buffer.</param>
     internal void Write(MirProgram program, InstanceCollector collector, int item, TextWriter output)
     {
-        var body = program.Bodies[collector.Set.Items[item].BodyOrdinal];
+        var body = program.Body(collector.Set.Items[item].BodyOrdinal);
         (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
         if (program.Drops.Incomplete(body.Ordinal) is { } refusal)
         {
