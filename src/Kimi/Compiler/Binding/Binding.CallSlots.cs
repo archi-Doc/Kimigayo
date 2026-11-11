@@ -4,19 +4,29 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Call slots (SPEC 10.8, 8.1.2): a callee's structural slots and their inference.
+// Call slots (SPEC 10.8, 10.8.1, 8.1.2, 6.5.2 step 2): a callee's structural slots, the bindings fixed before any evidence, and inference.
 // - Responsibility: the declaration owning a callee's slots (CallSlotOwner: a function its own, a constructor its structure's, an enum
 //   constructing a Case its own), their count and the binder's Origin count; a member pattern as a call reads it (CallMemberPattern); a
-//   candidate's slot bindings fixed before any evidence (FixCallSlots, FixedSlots: a function's explicit Type arguments, a constructor's
-//   fixed enclosing slots and fixed own ones) and a constructor's constructed Type (ConstructionType); the structural matching of a
+//   solution's slot bindings fixed before any evidence (FixedSlots), produced by FixCallSlots for a candidate (a function's explicit Type
+//   arguments and lengths; a constructor's declaring Type, its enclosing slots always and its own unless an inferred construction leaves
+//   them open), by ConstructionSlots for a construction Type (also read by ConstructorType before the candidate's frame exists) and by
+//   a Case construction's seeding (its qualifier's and expected Type's bindings, Binding.Enums.cs); the adaptation entry's only input,
+//   a pattern under those bindings (FixedPattern); a constructor's constructed Type (ConstructionType); the structural matching of a
 //   pattern over the owner's slots against an actual Type, binding each slot it reaches (Infer), and an s/U whose s is bound, matched as
 //   the Type it forms (FormedApplication).
-// - Inputs: the callee's declaration and declaring Type; a pattern, the actual Type at its position and one solution's slot and length
-//   arrays (a candidate's SlotSolution, a Case construction's, a function reference's or a Callable proof's), with the evidence flags.
-// - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally.
+// - Inputs: the callee's declaration and declaring Type; the call's explicit Types and lengths; a pattern, the actual Type at its position
+//   and one solution's slot and length arrays (a candidate's SlotSolution, a Case construction's, a function reference's or a Callable
+//   proof's), with the evidence flags.
+// - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally; a FixedSlots
+//   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
 // - Invariants: a slot's earlier binding is kept unless the flags say how two bindings meet (SPEC 10.8): an invariant binding over
-//   covariant ones, covariant ones by their common Type; under `relateLater` an Origin never fails a structurally equal binding.
-// - Prohibitions: no Origin relation is judged and no applicability decided here (SPEC 15.6.1): the callers judge the solution.
+//   covariant ones, covariant ones by their common Type; under `relateLater` an Origin never fails a structurally equal binding. An open
+//   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction leaves one beside fixed slots; a Case
+//   construction fixes all its slots or none, and none fixed is no Types. An argument's adaptation is planned only at a FixedPattern made
+//   by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a completed or slot-free Type, stated at the
+//   call), so the build names every reader of the adaptation entry.
+// - Prohibitions: no Origin relation is judged and no applicability decided here (SPEC 15.6.1): the callers judge the solution; no
+//   reader adapts at a pattern whose fixed slots are left open, and no FixedPattern is made but by Of or Open.
 public sealed partial class Binding
 {
     // The declaration owning structural inference is independent of the binder owning the Origins: a function owns its slots and a
