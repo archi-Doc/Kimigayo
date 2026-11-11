@@ -14,8 +14,9 @@ namespace XunitTest;
 public sealed partial class MirEffectsTest
 {
     // Each library conformance's witness of a closed Contract's own requirement, and the witness table's integer group function with every
-    // specialization (TyCtxt.Implementation without a substitution), named by its `self` Type: in every view no class, and no atom but a
-    // destruction its premises prove Copy, which does nothing (SPEC 16.3.3; A4 resolves it so at the top, AddAtom).
+    // specialization (TyCtxt.Implementation without a substitution), named by its `self` Type: in every view no effect A4 classifies (the
+    // notion the trust needs; SPEC 8.7.5's reading only is stronger, as SPEC 8.11.2 permits Abort and allocation), so no class, and no atom
+    // but a destruction its premises prove Copy, which does nothing (SPEC 16.3.3; A4 resolves it so at the top, AddAtom).
     [Fact]
     public void ClosedContractImplementationsHaveNoEffect()
     {
@@ -25,10 +26,13 @@ public sealed partial class MirEffectsTest
         foreach (var id in (KimiDeclarationId[])[KimiDeclarationId.Position, KimiDeclarationId.PositionRange])
         {
             var contract = c.Library.GetSymbol(id)!;
+            var requirement = contract.Contract!.OwnRequirement()!;
             Conformers(c.Library.Kotonoha.RootKoto, contract);
             foreach (var integer in BoundType.Primitives.Values.Where(static x => x.IsInteger))
             {
-                _ = c.Types.Witnesses(contract.Contract!.OwnRequirement()!, integer, contract, null, null, targets);
+                // SPEC 8.7.5: the twelve integer Types satisfy Position and not PositionRange.
+                var call = c.Types.Synthesized(requirement, integer, contract.Type!);
+                Assert.Equal(id == KimiDeclarationId.Position, c.Types.Witnesses(requirement, contract, call, null, targets));
             }
         }
 
