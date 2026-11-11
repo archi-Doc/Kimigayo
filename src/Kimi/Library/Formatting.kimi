@@ -1,6 +1,6 @@
-// UTF-8 formatting declarations; physical operations are compiler implementations. The compiler constructs these
-// records (Text.fixed, Text.heap, reserve, limit, Text.writer) with each raw Field's storage where its Origin states
-// (SPEC 5.7).
+// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation
+// (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine of a view are bodies here, each
+// raw Field's storage where its Origin states (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -108,6 +108,22 @@ public struct Utf8Writer {target}
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
+    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
+    /// nested write recorded being recorded and returned (SPEC 22.10.1).
+    ///
+    /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
+    ///   (SPEC 22.5.1).
+    public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
+        T is Utf8Format
+        if self.failed => return .Err(BufferFull.init())
+        var healthy = false
+        match value.format(self)@move
+            .Ok(_) => healthy = not self.failed
+            .Err(_) => ()
+        if healthy => return .Ok(())
+        self.failed = true
+        return .Err(BufferFull.init())
+
     /// The recorded failure (SPEC 22.10.1).
     public func status(self: ref/Self) -> Result<(), BufferFull>
         if self.failed => return .Err(BufferFull.init())
@@ -167,6 +183,7 @@ public struct Utf8Writer {target}
                 var settled = window@move
                 let pending = self.pendingLength
                 if pending != 0
+                    // Cannot fail: every kind reserved `amount + pendingLength`, so the deferred literal fits.
                     unsafe => try (settled@uniq).append(Raw.slice(self.pending, pending))
                     self.pendingLength = 0
                 return .Ok(settled@move)
@@ -188,6 +205,16 @@ public group Text
             private set
         var validated: isize
         let loan: Loan<uniq/u8 during source>
+
+        /// An empty buffer of capacity `capacity` over the bytes at `data`. The caller's obligations, which the
+        /// signature cannot state: `data` addresses `capacity` initialized bytes in what `source` covers, with write
+        /// authority (SPEC 5.2.1, 22.9.2).
+        internal init(data: raw/u8 during source, capacity: isize)
+            self.data = data
+            self.capacity = capacity
+            self.length = 0
+            self.validated = 0
+            self.loan = Loan<uniq/u8 during source>.init()
 
         /// The committed bytes.
         public func bytes(self: ref/Self) -> Slice<u8>
@@ -235,7 +262,16 @@ public group Text
         public var length: isize
             private set
         var validated: isize
-        drop => Text.release(self.data)
+
+        /// An empty buffer without an allocation (SPEC 22.9.2).
+        internal init()
+            self.data = null
+            self.capacity = 0
+            self.length = 0
+            self.validated = 0
+
+        drop
+            unsafe => Raw.release(self.data)
 
         /// The committed bytes.
         public func bytes(self: ref/Self) -> Slice<u8>
@@ -317,6 +353,56 @@ public group Text
         public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value
 
+    /// A buffer over the initialized array: length zero, capacity `N` (SPEC 22.9.2).
+    public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
+        return Text.FixedBuffer.init(destination@follow@raw@raw/u8, destination.length)
+
+    /// A buffer of length zero and capacity `capacity`; zero allocates nothing (SPEC 22.9.2).
+    ///
+    /// - abort: `capacity` is negative, or the allocation fails.
+    public func heap(capacity: isize) -> HeapBuffer
+        if capacity < 0 => Storage.argumentOutOfRange()
+        var buffer = Text.HeapBuffer.init()
+        // An empty buffer grows to exactly `capacity` (SPEC 22.9.4), its one allocation.
+        if capacity != 0 => _ = (buffer@uniq).reserve(capacity)
+        return buffer@move
+
+    /// Views the string's bytes, which are valid UTF-8 (SPEC 3.1.2, 22.9.2).
+    public func utf8(text: ref/string) -> Utf8Slice
+        let repr = text@follow@raw@raw/Storage.StringRepr
+        unsafe => return Text.Utf8Slice.init(Raw.slice((*repr).data, (*repr).length))
+
+    /// Formats `value` into a new string (SPEC 22.9.2): the owning interpolation of the one value (SPEC 22.10.3),
+    /// whose adapter calls `format` once and whose buffer SPEC 22.10.5 bounds.
+    ///
+    /// - abort: the write returns `BufferFull` (`KIMI_E_FORMAT`), or the allocation fails.
+    public func toString<T>(value: ref/T) -> string
+        T is Utf8Format
+        return "\(value)"
+
+    /// Formats `value` once into the array, without a pre-pass or retry (SPEC 22.9.2); on `BufferFull` the array may
+    /// hold partial bytes.
+    ///
+    /// - return: The formatted text, a view of the array that keeps `destination`'s exclusive loan while it is used.
+    public func tryFormat<T, length N>(
+        value: ref/T, destination: uniq/[N of u8]
+    ) -> Result<Utf8Slice during destination, BufferFull>
+        T is Utf8Format
+        var buffer = Text.fixed(destination)
+        var writer = Text.writer(buffer@uniq)
+        try (writer@uniq).write(value)
+        match (buffer@move).intoText()
+            .Ok(let text) => return .Ok(text)
+            // An adapter commits only valid UTF-8 and records it validated (SPEC 22.9.3), so nothing is left to scan.
+            .Err(_) => $abort("Formatted bytes are not valid UTF-8")
+
+    /// Validates `bytes` once and views them (SPEC 22.9.2, 22.9.3).
+    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>
+        let repr = bytes@raw@raw/Storage.SliceRepr<u8>
+        unsafe
+            if not Text.validUtf8((*repr).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
+        return .Ok(Text.Utf8Slice.init(bytes))
+
     /// Whether a buffer's unvalidated suffix, the bytes from `validated` to `length` at `data`, is UTF-8
     /// (`validUtf8`). The buffer keeps `0 <= validated <= length`, which bounds the difference.
     ///
@@ -361,3 +447,15 @@ public group Text
                     if scalar < minimum or scalar > 1114111 => return false
                     if scalar >= 55296 and scalar < 57344 => return false
             return true
+
+// SPEC 22.7: the view overload of Console.writeLine; the string overload is a compiler function until W2.
+public group Console
+    /// Writes the view's bytes and one LF to standard output (SPEC 22.7).
+    ///
+    /// - abort: the host does not accept the bytes (`KIMI_E_STDOUT`); the output may be partial.
+    public func writeLine(text: Text.Utf8Slice)
+        let bytes = text.bytes()
+        var feed: u8 = 10
+        unsafe
+            Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
+            Console.writeStdout(feed@raw, 1)

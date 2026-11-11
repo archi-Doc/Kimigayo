@@ -34,7 +34,7 @@ internal sealed partial class MirBorrows
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
     private readonly Dictionary<(StorageRetention Record, MirBody Body, long View, SourceRef Site), (ulong Proven, ulong Undecided)> solved = new();
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
-    private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
+    private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147, or a pun, MirBorrows.Puns), read and reset by Check.
     private bool deep; // Whether that store is undecided past a walk's bound (R4-M153), read and reset by Check.
     private ulong reachedVersion; // The program version whose case Types the entry memo answers.
 
@@ -103,6 +103,14 @@ internal sealed partial class MirBorrows
         }
 
         this.covering.Clear();
+        for (var p = 0; p <= call.Count; p++)
+        {
+            if (this.argValues[p] != 0)
+            {
+                this.PunCall(state, call, p, this.TypeOf(this.Input(call, p)), this.argValues[p]); // The pun rule (MirBorrows.Puns).
+            }
+        }
+
         this.Destroying(state, call, checks);
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
@@ -150,6 +158,7 @@ internal sealed partial class MirBorrows
             var target = this.targets[t];
             var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
+            value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
         }
     }

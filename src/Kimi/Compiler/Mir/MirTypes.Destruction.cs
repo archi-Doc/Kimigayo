@@ -31,7 +31,8 @@ internal interface IMirDestruction
     bool Deep(BoundType type);
 }
 
-// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds.
+// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds;
+// and the order of a level's parts (LevelCount, LevelPart), SPEC 16.3.2's one statement.
 internal static partial class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
@@ -220,4 +221,35 @@ internal static partial class MirTypes
             return true;
         }
     }
+
+    /// <summary>Gets the number of direct parts of a Type that move paths name, the parts of one level of what destroying a value of
+    /// the Type destroys part by part (SPEC 16.3.2): a Tuple's elements, a Closure's captures, a fixed array's elements, an enum's Case
+    /// payloads, a struct's Fields and its direct base; none for any other Type. A Type fact: no body, row or verdict is read.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>The number of parts, the ranks of <see cref="LevelPart"/>.</returns>
+    internal static long LevelCount(BoundType type) => type switch
+    {
+        { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => type.Components.Count,
+        { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => type.Length,
+        _ when AdtDef.CaseTypes(type) is { } payloads => payloads.Length,
+        _ => AdtDef.Count(type) + (AdtDef.Base(type) is null ? 0 : 1),
+    };
+
+    /// <summary>SPEC 16.3.2, the one statement of a level's order: the direct part of a Type destroyed at a rank (0 first), as the
+    /// move-path step that names it: a Tuple's elements and a Closure's captures from the last; a fixed array's elements from the
+    /// last; an enum's Case payloads by ordinal (one is live); a struct's Fields in reverse declaration order, then its direct base.
+    /// Every reader of the order reads it here: A2's walk of a group and of a level no row governs (MirDropTable.Destroyed, Level,
+    /// which A4 and the Backend's drop glue read) and a destructor body's Field cleanup (MirBuilder.FieldCleanup).</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="rank">The rank, below <see cref="LevelCount"/>.</param>
+    /// <returns>The step and its argument (MirBody.PartType gives the part's Type).</returns>
+    internal static (MirProjectionKind Step, long Arg) LevelPart(BoundType type, long rank) => type switch
+    {
+        { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count - 1 - rank),
+        { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, type.Length - 1 - rank),
+        _ when AdtDef.CaseTypes(type) is not null => (MirProjectionKind.Downcast, rank),
+        _ when rank < AdtDef.Count(type) => (MirProjectionKind.Field, AdtDef.Count(type) - 1 - rank),
+        _ when rank == AdtDef.Count(type) && AdtDef.Base(type) is not null => (MirProjectionKind.Base, 1),
+        _ => throw new InvalidOperationException($"A level has no part at rank {rank} (InternalInvariant)."),
+    };
 }

@@ -99,4 +99,11 @@ public class Utf8ConversionTest
         var source = User.Replace("writer.write(\"word\")", ".Err(BufferFull.init())", StringComparison.Ordinal) + "_ = Text.toString(Value.init())";
         ScalarEmissionTest.EmitFixture("Utf8ConversionAbort", source, string.Empty, 1, "Hello.kimi:5:5: abort KIMI_E_FORMAT: Formatting failed\n");
     }
+
+    // SPEC 22.5.1, 22.9.2 (R8-W1c-2): toString is a caller-location body whose write forwards the location it received, so its one
+    // allocation, the growth inside the write (a string's estimate is 0), failing Aborts at the user's conversion, not at a library line.
+    [Fact]
+    public void AFailedConversionAllocationReportsTheConversion()
+        => NativeAllocationAudit.WriteFixture(
+            "Utf8ConversionAllocationFailure", "_ = Text.toString(\"a君😀\")", 1, 0, 8, failAllocation: 1, exit: 1, stderr: "Hello.kimi:1:5: abort KIMI_E_ALLOC: Failed to allocate memory\n");
 }

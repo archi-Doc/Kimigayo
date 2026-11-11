@@ -186,15 +186,17 @@ public class Utf8InterpolationTest
     }
 
     // The O2 corpus's Interpolation kernel and its checksum (benchmark-o2-corpus.ps1). Per round, its owning interpolation with a user
-    // formatter allocates at most twice (DeferredLiteralTextKeepsTheOldGeneratorsAllocations' Kernel row), and its $tryWrite into the
-    // cleared fixed buffer and its last line nothing (SPEC 22.10.5): a bound the adapter may lower but not raise.
+    // formatter allocates at most twice (DeferredLiteralTextKeepsTheOldGeneratorsAllocations' Kernel row) and its $tryWrite into the
+    // cleared fixed buffer nothing (SPEC 22.10.5); its last line, a direct bounded line, allocates nothing by rule L (its region is a fixed
+    // array local; R8-W2 a2), not by SPEC 22.10.5. The count is exact, frees equal to allocations, so a per-round leak fails; the adapter
+    // may lower it (a strengthening that edits the count) but not raise it.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void TheInterpolationKernelKeepsItsChecksumWithinItsAllocations()
     {
-        const long Bound = 2 * 1048576;
+        const long Rounds = 1048576;
         var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("src", "Benchmark", "Kimi", "Corpus", "Interpolation.kimi"));
-        NativeAllocationAudit.WriteFixture("Utf8InterpolationKernel", source, new(0, Bound), new(0, Bound), NativeAllocationAudit.Bound.Any, "checksum 1676251827\n");
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationKernel", source, 2 * Rounds, 2 * Rounds, NativeAllocationAudit.Bound.Any, "checksum 1676251827\n");
     }
 
     [Fact]

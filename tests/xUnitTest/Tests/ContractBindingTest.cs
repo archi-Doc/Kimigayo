@@ -24,11 +24,15 @@ public class ContractBindingTest
         "    var large: i64 = 4\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n" +
         "    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref";
 
+    private const string NeedOf = "func need<T>(v: T) -> T\n    T is ";
+    private const string UseOfC = "\n    return v@move\nfunc use<T>(v: T) -> T\n    T is C\n    return need(v@move)";
+
     private const string PutOfT = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\n";
     private const string PutAtI32 = PutOfT + "struct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: ";
     private const string PutAtE = PutOfT + "struct Box<E>\n    Self is Put<E>\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
     private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
     private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
+    private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
 
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
@@ -456,7 +460,7 @@ public class ContractBindingTest
     [InlineData("string", false)]
     public void RefiningCopyStillRequiresItsIntrinsicDerivation(string field, bool valid)
     {
-        var c = CompilationTestHelper.ParseSuccess($"contract C: Copy\nstruct S\n    Self is C\n    let value: {field}");
+        var c = CompilationTestHelper.ParseSuccess($"contract C: Copy\nstruct S\n    Self is C\n    Self is Copy\n    let value: {field}");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
@@ -567,7 +571,73 @@ public class ContractBindingTest
     [InlineData(PutUW + "\n        U is i32\n        return", "UnprovenConstraint_Kd")]
     [InlineData(GetU + "i32 => 0", "")]
     [InlineData(GetU + "bool => true", "IncompatibleContractImplementation_Kd")]
-    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes)
+    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.4.1: `Self` in a Contract's requirement denotes the conforming Type, never the Contract, so `U is Self` is an identity
+    // premise (PLAN G701); a conformance supplies no evidence before its implementations are compatible (8.3.2, 8.3.3). A bound
+    // Contract's requirement reads the same (`Put<X>`), and so do a Contract-wide identity of an associated Type and a Contract nested
+    // in a struct, whose `Self` is the conformer and not the struct (6.1.4). A call through the requirement proves `U is Self` for the
+    // receiver's Type only (8.2.3; the last rows).
+    [Theory]
+    [InlineData(PutSelf + "S\n        return", "")]
+    [InlineData(PutSelf + "Self\n        return", "")]
+    [InlineData(PutSelf + "i32\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("struct R\n" + PutSelf + "R\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract Q\n" + PutSelf + "Q\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData(PutSelf + "Put\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is S", "")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is i32", "InvalidAssociatedType_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Self\n        return", "")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Put<i32>\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("struct S\n    contract C\n        func put<U>(self: ref/Self, u: U)\n            U is Self\n    Self is C\n    public func put<U>(self: ref/Self, u: U)\n        U is S\n        return", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T>(a: ref/T, b: T) -> i32\n    T is Put\n    return a.put(b@move)", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
+    public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
+    // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).
+    // A Contract that requires Copy, as a parent or a clause, never opts a conforming Type in: the Type's own `Self is Copy` does (3.5.2).
+    [Theory]
+    [InlineData("contract C: PrimitiveInteger", "")]
+    [InlineData("contract C: Kimi.PrimitiveInteger", "")]
+    [InlineData("contract D\ncontract C: D, PrimitiveInteger", "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C<K>: B", "")]
+    [InlineData("contract C: Sealed", "")]
+    [InlineData("contract C: Callable", "InvalidConstraint_Kd")] // SPEC 8.7.1: Callable is written only as Callable<r, S> or Callable<S> in a Constraint.
+    [InlineData("contract C: Callable<(i32) -> i32>", "InvalidConstraint_Kd")]
+    [InlineData("func f<F>(g: F) -> F\n    F is Callable\n    return g@move", "InvalidConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger, Nope", "InvalidConstraint_Kd")]
+    [InlineData("contract C: Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C\n    Self is Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: Copy\ncontract C: B\nenum E\n    Self is C\n    A", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: Copy\ncontract C: B\nenum E\n    Self is Copy\n    Self is C\n    A", "")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C when T is Copy\n    var x: T", "")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    var x: T", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C\n    var x: T", "UnprovenConstraint_Kd")]
+    [InlineData("contract C: Copy\nopen struct A\n    Self is Copy\n    var x: i32\nstruct D: A\n    Self is C", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nstruct S<T>\n    Self is not ObjectPayload\n    var x: T\n    Self is C when T is Copy", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nopen struct A\n    Self is not ObjectPayload\n    var x: i32\nstruct D: A\n    Self is C", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc at<T>(xs: ref/Array<i32>, i: T) -> i32\n    T is C\n    return xs[i]", "")]
+    [InlineData("contract C: PrimitiveInteger\nfunc wide<T>(a: T) -> i64\n    T is C\n    return a@i64", "")]
+    [InlineData("contract C: PrimitiveInteger\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\nenum E\n    Self is C\n    A", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nstruct S\n    Self is C\n    var x: i32", "")]
+    [InlineData("contract C: ObjectPayload\nstruct S\n    Self is not ObjectPayload\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: ObjectPayload\ncontract C: B\nstruct S\n    Self is not ObjectPayload\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\n" + NeedOf + "PrimitiveInteger" + UseOfC, "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\n" + NeedOf + "PrimitiveInteger" + UseOfC, "")]
+    [InlineData("contract C\n" + NeedOf + "PrimitiveInteger" + UseOfC, "UnprovenConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\n" + NeedOf + "Copy" + UseOfC, "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\n" + NeedOf + "Owned" + UseOfC, "")]
+    [InlineData("contract C\n" + NeedOf + "Copy" + UseOfC, "UnprovenConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "")]
+    [InlineData("contract C\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "ArithmeticSelection_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc same<T>(a: T, b: T) -> bool\n    T is C\n    return a == b", "")]
+    [InlineData("contract C: PrimitiveInteger\nfunc zero<T>() -> T\n    T is C\n    return 0", "")]
+    public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
+    private static void AssertBindingCodes(string source, string codes)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(codes.Length == 0, c.Bind().IsComplete);

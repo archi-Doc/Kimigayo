@@ -101,6 +101,40 @@ internal sealed class MirBody
     /// record) marks none.</summary>
     internal bool HasConstructionRecord { get; set; }
 
+    /// <summary>Gets the Type a move-path step selects from a value of a Type, the arms of <see cref="ProjectedType"/> that read no fact
+    /// of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts a level of
+    /// <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <param name="type">The Type of the value.</param>
+    /// <param name="kind">The step.</param>
+    /// <param name="arg">Its argument.</param>
+    /// <returns>The part's Type, or null when the Type does not have the part.</returns>
+    internal static BoundType? PartType(BoundType? type, MirProjectionKind kind, int arg)
+    {
+        switch (kind)
+        {
+            case MirProjectionKind.Field:
+                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
+                {
+                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
+                }
+
+                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
+            case MirProjectionKind.Base:
+                for (var depth = arg; depth > 0 && type is not null; depth--)
+                {
+                    type = AdtDef.Base(type);
+                }
+
+                return arg > 0 ? type : null;
+            case MirProjectionKind.ConstIndex:
+                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+            case MirProjectionKind.Downcast:
+                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
+            default:
+                return null;
+        }
+    }
+
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
     /// <param name="source">The source of a statement, a terminator or a local.</param>
     /// <returns>The syntax.</returns>
@@ -195,29 +229,11 @@ internal sealed class MirBody
                 }
 
                 return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
-            case MirProjectionKind.Field:
-                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
-                {
-                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
-                }
-
-                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
-            case MirProjectionKind.Base:
-                for (var depth = arg; depth > 0 && type is not null; depth--)
-                {
-                    type = AdtDef.Base(type);
-                }
-
-                return arg > 0 ? type : null;
             case MirProjectionKind.Index:
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
-            case MirProjectionKind.ConstIndex:
-                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
-            case MirProjectionKind.Downcast:
-                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
             default:
-                return null;
+                return PartType(type, kind, arg);
         }
     }
 

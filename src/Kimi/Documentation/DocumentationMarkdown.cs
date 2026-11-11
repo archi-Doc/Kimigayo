@@ -1,9 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// The contract of Documentation (src/Kimi/Documentation, namespace Kimi.Documentation), outside the compiler (the R7-R9 plan's §5.3,
+// unit M1), stated here, in its entry file, for all its types.
+// Owns: the limited-profile Markdown parser and its immutable document (SPEC 2.3; DocumentationMarkdownParser, DocumentationMarkdownDocument),
+// item classification against a declaration's parameters (this facade), HTML rendering and link resolution (DocumentationLinks).
+// Input: a documentation comment of Core's association (DocumentationSource), which the Tokenizer and the Parser collect, or detached text.
+// Reads of the compiler, exactly these: the association's DocumentationComment with its DocumentationText,
+// DocumentationSource.LogicalName (a comment's Owner) and DocumentationDiagnostic; Core's SourceDocument, the comment's and the text's
+// Source (its SourceText, to map an original CRLF; passed into DocumentationDiagnostic); a declaration's syntax (Koto, FunctionKoto,
+// DeclarationContainerKoto, PropertyAccessorKoto: generic parameters, origins, parameters, modifiers with ModifierKind); its Binding facts
+// only through HirTables.Symbol (bound or not, the receiver index; DECISIONS R5-M193); its Kotonoha, the default project identity;
+// Kimi.Diagnostics' SourceSpan; Helper's IntegerTable.
+// Output: documents, items, HTML and link targets; optional DocumentationDiagnostic records, never language diagnostics.
+// Invariants: no file of Compiler/, Testing/ or Diagnostics/ reads a Documentation type; its readers are hover's projection in check and
+// the LSP's rendering (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
+// Must not: write compiler state, start Binding, or read a Koto semantic slot.
+
 using System.Runtime.InteropServices;
+using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 
-namespace Kimi.Compiler.Documentation;
+namespace Kimi.Documentation;
 
 #pragma warning disable SA1600, SA1204 // Source-backed facade; keep presentation helpers together.
 
