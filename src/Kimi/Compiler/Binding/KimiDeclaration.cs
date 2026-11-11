@@ -69,6 +69,9 @@ public enum KimiDeclarationId : byte
     WriterReserve,
     WriterWriteUtf8,
     WriteLineUtf8,
+    BoolFormatFormat,
+    CharFormatFormat,
+    UnitFormatFormat,
     ObjectPayload,
     DictionaryReserve,
     DictionaryTryInsert,
@@ -186,4 +189,5 @@ public enum KimiDeclarationId : byte
     StorageReleaseDictionary,
     DictionaryStorageInitialize,
     DictionaryStorageHandle,
+    Never,
 }
