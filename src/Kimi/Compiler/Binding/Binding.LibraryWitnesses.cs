@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 //   (ResolveConformance) and selects its requirements (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
 // - Prohibitions: no second statement of which Contract a built-in Type conforms to through a group; a receiver's Type (WitnessReceiver) and
 //   the fixed array's member lookup are other facts. A new built-in Type's conformance adds a row, never a witness kind, a proof arm or a
-//   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property.
+//   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property,
+//   and a CallerLocation catalog row for the group's function when its witness can Abort on its caller's behalf (SPEC 22.5.1, until G1).
 //   No member lookup, diagnostic or written state beyond interning.
 
 /// <summary>The internal Kimi groups of the witness table.</summary>
@@ -26,6 +27,9 @@ internal enum WitnessMembers : byte
     FixedArray,
     IntegerPosition,
     String,
+    BoolFormat,
+    CharFormat,
+    UnitFormat,
 }
 
 public sealed partial class Binding
@@ -35,8 +39,9 @@ public sealed partial class Binding
     internal readonly record struct LibraryWitnessGroup(WitnessMembers Members, string? TypeParameter, BoundType? TypeArgument, string? LengthParameter);
 
     // SPEC 22.1, 4.6.1, 8.7, 13.4.1: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's
-    // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position and string's two
-    // comparison Contracts, whose bodies are not generic, so their row has no parameter.
+    // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position, string's two
+    // comparison Contracts and bool's, char's and Unit's Utf8Format (SPEC 22.10.2), whose bodies are not generic, so their rows have no
+    // parameter.
     internal static LibraryWitnessGroup? WitnessGroup(BoundType? self, KimiDeclarationId? contract) => self switch
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
@@ -46,6 +51,9 @@ public sealed partial class Binding
             => new(WitnessMembers.IntegerPosition, "I", self, null),
         _ when ReferenceEquals(self, BoundType.String) && contract is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable
             => new(WitnessMembers.String, null, null, null),
+        _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Boolean) => new(WitnessMembers.BoolFormat, null, null, null),
+        _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Char) => new(WitnessMembers.CharFormat, null, null, null),
+        _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Unit) => new(WitnessMembers.UnitFormat, null, null, null),
         _ => null,
     };
 
@@ -86,13 +94,17 @@ public sealed partial class Binding
 
     // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an integer
     // or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at most one
-    // layer, so a bare string passes too, though nothing else reaches this. A new group states its own; none is another's by default.
+    // layer, so a bare string passes too, though nothing else reaches this; bool, char and Unit, which the formatting bodies write as
+    // `ref/bool`, `ref/char` and `ref/()` (SPEC 22.10.2), likewise. A new group states its own; none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
         WitnessMembers.IntegerPosition
             => type is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner },
         WitnessMembers.String => ReferenceEquals(EffectiveCore(type), BoundType.String),
+        WitnessMembers.BoolFormat => ReferenceEquals(EffectiveCore(type), BoundType.Boolean),
+        WitnessMembers.CharFormat => ReferenceEquals(EffectiveCore(type), BoundType.Char),
+        WitnessMembers.UnitFormat => ReferenceEquals(EffectiveCore(type), BoundType.Unit),
         _ => throw new InvalidOperationException($"The group {members} states no receiver."),
     };
 

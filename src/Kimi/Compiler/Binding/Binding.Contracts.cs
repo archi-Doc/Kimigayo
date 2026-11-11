@@ -445,7 +445,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact, out _) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
                 {
                     premise = true;
                     break;
@@ -474,7 +474,7 @@ public sealed partial class Binding
         return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
 
         BoundType Instantiate(BoundType type)
-            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
+            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
     private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
@@ -583,7 +583,7 @@ public sealed partial class Binding
 
                     if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
-                        environment.Invalid = true;
+                        environment.Invalidate();
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
                     }
 
@@ -652,7 +652,7 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract), scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), a, b);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 
