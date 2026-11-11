@@ -46,11 +46,6 @@ public sealed partial class Binding
     /// <returns>Whether an admitted case Reborrows.</returns>
     internal bool BareReborrows(BoundType type, Koto node)
     {
-        if (!TryPairLayer(type, out _, out _))
-        {
-            return false;
-        }
-
         this.BareAcquisition(type, node, out var reborrow);
         return reborrow != SemanticsMask.None;
     }
@@ -243,10 +238,10 @@ public sealed partial class Binding
     internal HirAcquire BareAcquire(BoundType type, Koto node, out ConstraintProof proof) => this.BareAcquire(type, node, [], out proof, out _);
 
     /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.14, 8.15.2: each case acquires its
-    /// complete Type by the rows of SPEC 3.5): a Copy for a shared or raw reference, a Reborrow for an exclusive reference whose path
-    /// grants exclusive access in that case (SPEC 3.5.1: the binder's own layers on the path take the case), the owner case the target's
-    /// own plan (BareAcquire's rows: a Copy-proven target Copies, an exclusive reference Reborrows by its path, a nested pair layer
-    /// acquires by its own cases), and otherwise a case without a plan, which is a definition error naming that case.</summary>
+    /// complete Type, <see cref="CaseType"/>, by BareAcquire's rows, the binder's own layers on the path taking the case, SPEC 3.5.1),
+    /// for every pair layer (SPEC 13.5.5: the original <c>s/T</c>, an application <c>s/U</c>, an adaptation family <c>p@s</c>): a shared or
+    /// raw reference Copies, an exclusive reference whose path grants exclusive access Reborrows, the owner case is the target's own plan
+    /// (a nested pair layer acquires by its own cases), and any other case has no plan, a definition error naming that case.</summary>
     /// <param name="type">The stored Type of the Place, a pair layer.</param>
     /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
     /// <param name="reborrow">The cases that Reborrow, the owner case where its target Reborrows in some case of its own.</param>
@@ -259,7 +254,8 @@ public sealed partial class Binding
     /// <see cref="PairBinder.CaseBound"/> (64 cases are analyzed; 65 are not), whose definition records <c>OwnershipCaseLimit_Kd</c>
     /// (<c>CheckCaseBound</c>), so no case is answered unchecked. The one Copy evidence of an
     /// acquisition: BareAcquire, a Consuming call, <c>@copy</c>, a same-Type acquisition, a bare-Place adaptation or object view, a
-    /// Pattern binding, a special receiver's part, and <c>TyCtxt.CopyFacts</c>, which MIR reads (DECISIONS BU-88).</summary>
+    /// Pattern binding, a special receiver's part, an omitted capture list (Transfers' S3), and <c>TyCtxt.CopyFacts</c>, which MIR reads
+    /// (DECISIONS BU-88).</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="scope">The scope whose premises and pair binders apply.</param>
     /// <returns>Whether every case Copies.</returns>
@@ -398,7 +394,7 @@ public sealed partial class Binding
             return HirAcquire.Copy;
         }
 
-        if (TryPairLayer(type, out _, out _))
+        if (TryAdaptationSelector(type, out _))
         {
             return this.BareAcquisition(type, node, assignment, out reborrow) == SemanticsMask.None ? HirAcquire.ByCase : HirAcquire.Move;
         }
@@ -414,37 +410,37 @@ public sealed partial class Binding
                 PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
-    // BareAcquisition under a case assignment (BareAcquire's): each case of this layer reads the path with the binder's layers in it,
-    // the assignment extended by that case in nested scratch (caseScratch), so a nested level allocates nothing warm.
+    // BareAcquisition under a case assignment (BareAcquire's): every pair layer, an adaptation family included (TryAdaptationSelector),
+    // takes in each admitted case its complete Type (CaseType), which BareAcquire's rows plan with the path read under the assignment
+    // extended by that case (SPEC 3.5.1, 8.15.2), in nested scratch (caseScratch), so a nested level allocates nothing warm.
     private SemanticsMask BareAcquisition(BoundType type, Koto node, ReadOnlySpan<PairCase> assignment, out SemanticsMask reborrow)
     {
         reborrow = SemanticsMask.None;
-        if (!TryPairLayer(type, out var whole, out var target))
+        if (!TryAdaptationSelector(type, out var whole))
         {
             return SemanticsMask.None;
         }
 
         var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
+        var copy = SemanticsMask.None;
         var scratch = this.caseScratch.Rent(assignment.Length + 1);
         try
         {
             var cases = scratch.AsSpan(0, assignment.Length + 1);
             assignment.CopyTo(cases);
-            cases[^1] = new(whole.Symbol!, SemanticsKind.Uniq);
-            reborrow = admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq);
-            if (reborrow != SemanticsMask.None && PathAuthority(node, cases) == SemanticsKind.Ref)
+            for (var i = 0; i < SemanticsOrder.Length; i++)
             {
-                reborrow = SemanticsMask.None; // objuniq grants the path the same authority as uniq (PairAuthority).
-            }
+                var mode = SemanticsOrder[i].ToMask();
+                if ((admitted & mode) == 0)
+                {
+                    continue;
+                }
 
-            var copy = admitted & (SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw);
-            if ((admitted & SemanticsMask.Owner) != 0)
-            {
-                cases[^1] = new(whole.Symbol!, SemanticsKind.Owner);
-                var plan = this.BareAcquire(target, node, cases, out _, out var inner);
+                cases[^1] = new(whole.Symbol!, SemanticsOrder[i]);
+                var plan = this.BareAcquire(this.CaseType(type, cases), node, cases, out _, out var inner);
                 var reborrows = plan == HirAcquire.Reborrow || (plan == HirAcquire.ByCase && inner != SemanticsMask.None);
-                reborrow |= reborrows ? SemanticsMask.Owner : SemanticsMask.None;
-                copy |= !reborrows && plan is HirAcquire.Copy or HirAcquire.ByCase ? SemanticsMask.Owner : SemanticsMask.None;
+                reborrow |= reborrows ? mode : SemanticsMask.None;
+                copy |= !reborrows && plan is HirAcquire.Copy or HirAcquire.ByCase ? mode : SemanticsMask.None;
             }
 
             return admitted & ~(reborrow | copy);
