@@ -83,6 +83,7 @@ public sealed partial class Binding
                 Callee = call.Method,
                 Scope = this.scopes[constructor],
                 Frame = frame,
+                ExplicitTypes = [],
                 ExplicitLengths = [],
                 Mapping = mapping,
                 Used = used,

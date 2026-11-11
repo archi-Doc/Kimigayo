@@ -94,7 +94,8 @@ internal static class MirDescriptors
 
     // The access to the rvalue's Place where its kind has one (HasPlace): a Ref's, Discriminant's, Len's or Storage's, or an Adapt's
     // payload; an Opaque's is to its site's roots, which the replaced syntax may have read, written or borrowed. An operator or a checked
-    // Cast aborts unless Proven; an Adapt may create an object; an aggregate's effects are its kind's row's.
+    // Cast aborts unless Proven; an Adapt may create an object, whose allocation may Abort (SPEC 22.5.1); an aggregate's effects are its
+    // kind's row's.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
@@ -107,7 +108,7 @@ internal static class MirDescriptors
         MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None) with { HasPlace = true },
         MirRvalueKind.Storage => Row(MirAccess.Borrows, effects: MirEffect.None) with { HasPlace = true }, // A raw borrow; no bounds check, no abort.
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
-        MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation) with { HasPlace = true },
+        MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation | MirEffect.Abort) with { HasPlace = true },
         _ => default,
     };
 
@@ -160,21 +161,23 @@ internal static class MirDescriptors
     };
 
     // The intrinsic table's rows (plan 5.8): arguments as the library declares them, then those the builder adds: Fail's SPEC 22.5.2
-    // code as a string constant and RawSlice's backing (DECISIONS R4-M40), which its result retains (A3 E14, R4-M63).
+    // code as a string constant and RawSlice's backing (DECISIONS R4-M40), which its result retains (A3 E14, R4-M63). Effects: its
+    // lowering's (IntrinsicRows), Abort where that may Abort with a SPEC 22.5.2 code, an allocation's included (the Array aggregate's,
+    // R5-M129); a destruction's are A4's (DestroyValues), and a test routine's harness failure (exit 125) is no Abort.
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
-        IntrinsicId.RawAllocate => Intrinsic(MirEffect.Allocation, 1),
-        IntrinsicId.RawRelease => Intrinsic(MirEffect.Allocation, 1),
-        IntrinsicId.TryAllocateBytes => Intrinsic(MirEffect.Allocation, 1),
-        IntrinsicId.MakeObj => Intrinsic(MirEffect.Allocation, 1),
-        IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation, 1),
-        IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation, 1),
+        IntrinsicId.RawAllocate => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // A negative count, the byte size, the allocation.
+        IntrinsicId.RawRelease => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // A failed free (KIMI_E_FREE).
+        IntrinsicId.TryAllocateBytes => Intrinsic(MirEffect.Allocation, 1), // Null wherever Alloc would Abort.
+        IntrinsicId.MakeObj => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
+        IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
+        IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.RawInitialize => Intrinsic(MirEffect.None, 2),
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
         IntrinsicId.ErasedWriter => Intrinsic(MirEffect.None, 1),
-        IntrinsicId.Clone => Intrinsic(MirEffect.None, 1),
+        IntrinsicId.Clone => Intrinsic(MirEffect.Abort, 1), // A count at its maximum (KIMI_E_REF_COUNT).
         IntrinsicId.TypeTest => Intrinsic(MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Intrinsic(MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
         // The bits, the width flag and the destination, the one operand written, through its `uniq` borrow (R8-S2c).
@@ -184,13 +187,13 @@ internal static class MirDescriptors
         IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.Fail => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.TestRequireAbort => Intrinsic(MirEffect.Abort, 2) with { Diverges = true }, // The issue and the site's location.
-        IntrinsicId.WriteStdout => Intrinsic(MirEffect.Environment, 2), // The bytes and their length (R8-W1c-3).
+        IntrinsicId.WriteStdout => Intrinsic(MirEffect.Environment | MirEffect.Abort, 2), // The bytes and their length (R8-W1c-3); KIMI_E_STDOUT.
         IntrinsicId.TestMessage => Intrinsic(MirEffect.Environment, 2), // The issue and a shared view of the message.
         IntrinsicId.TestRecordValue => Intrinsic(MirEffect.Environment, 2), // The side and the Scalar value (F8b).
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
-        IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment, 0),
+        IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
-        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation, 2), // The literal bytes and the values' Types' token.
+        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 2), // The literal bytes and the values' Types' token.
         // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
         // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
         IntrinsicId.FormatSegment => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4),
