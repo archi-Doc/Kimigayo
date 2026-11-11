@@ -115,6 +115,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             }
         }
 
+        // SPEC 3.1.3, 22.1: the Kimi declaration `Never` is the compiler-intrinsic uninhabited Type, never represented as the
+        // declared struct: every written form that lookup resolves to the declaration forms this one instance.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Never)
+        {
+            return BoundType.Never;
+        }
+
         // SPEC 3.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
         if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&

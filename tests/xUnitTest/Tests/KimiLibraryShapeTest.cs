@@ -99,7 +99,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(180, KimiLibraryCatalog.Entries.Length); // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2).
+        Assert.Equal(181, KimiLibraryCatalog.Entries.Length); // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704).
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
