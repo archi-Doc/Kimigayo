@@ -72,7 +72,7 @@ public sealed partial class Binding
         if (!valid)
         {
             this.Fail(syntax, BindingFailure.InvalidConstraint);
-            (this.scopes[syntax].Constraints ??= new()).Invalid = true;
+            (this.scopes[syntax].Constraints ??= new()).Invalidate();
         }
     }
 

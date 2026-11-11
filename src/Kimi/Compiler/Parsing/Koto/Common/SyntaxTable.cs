@@ -3,6 +3,7 @@
 // Owns module-local dense syntax identity and semantic-column capacity.
 // Input: parsed children and Binding's synthetic nodes. Output: SyntaxIds and their indexed storage.
 // Parsed nodes use pre-order ids; zero means no node; renumbering moves only this module's semantic rows with their nodes.
+// A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all.
 // Must not decide Binding facts or let consumers assign independent ids.
 
 using System.Buffers;
@@ -27,6 +28,10 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public sealed class SyntaxTable
 {
+    /// <summary>The <see cref="Module"/> of the Kimi library in every compilation: a fixed ordinal above every source module's, so a
+    /// library <see cref="SourceRef"/> does not depend on the program's module count (<see cref="SourceRef.IsLibrary"/>).</summary>
+    public const ushort LibraryModule = ushort.MaxValue;
+
     /// <summary>The base HIR columns of the ids, sized with the nodes.</summary>
     internal HirTables Hir;
 
@@ -44,7 +49,8 @@ public sealed class SyntaxTable
     /// <summary>Gets the number of ids in use, the ids of nodes outside the tree included.</summary>
     public int Count { get; private set; }
 
-    /// <summary>Gets the module's ordinal in its compilation, which a <see cref="SourceRef"/> names: the source modules in order, then the Kimi library.</summary>
+    /// <summary>Gets the module's ordinal in its compilation, which a <see cref="SourceRef"/> names: a source module's position, or
+    /// <see cref="LibraryModule"/>.</summary>
     public ushort Module { get; private set; }
 
     /// <summary>Gets the node of each id from 0 (no node) to <see cref="Count"/>. A node that another module took over keeps its

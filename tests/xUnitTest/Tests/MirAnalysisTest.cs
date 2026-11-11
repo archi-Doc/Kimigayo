@@ -766,9 +766,8 @@ public sealed class MirAnalysisTest
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
         Assert.True(c.Bind().IsComplete);
         var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
-        var library = c.SourceModules.Length;
-        Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
-        new MirAnalysis(c.Types).Run(program, library + 1);
+        Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        new MirAnalysis(c.Types).Run(program, SyntaxTable.LibraryModule + 1);
         Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
             .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>

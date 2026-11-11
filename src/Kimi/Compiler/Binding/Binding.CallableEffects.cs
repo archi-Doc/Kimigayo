@@ -35,7 +35,7 @@ public sealed partial class Binding
             {
                 var clause = this.callableEffectClauses[i];
                 if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
-                    !this.AvailableConstraintFact(environment, fact) ||
+                    !this.AvailableConstraintFact(environment, fact, out _) ||
                     !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), this.CallableContractType(type, scope)) ||
                     !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), this.CallableContractType(signature, scope)) ||
                     !ReceiverCovers(fact.Mask, receiver))

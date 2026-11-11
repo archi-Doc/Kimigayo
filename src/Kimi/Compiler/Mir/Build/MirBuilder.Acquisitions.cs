@@ -30,7 +30,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(place);
         }
 
-        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node))
+        if (adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node) || !this.IsNever(place))
         {
             return this.Acquired(adjust, place, expected, input, node, into);
         }

@@ -185,7 +185,7 @@ public sealed partial class Binding
     {
         if (function.IsRequirement && item.Components is [var self, var reference])
         {
-            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference)), this.ConstraintScope(function), self);
+            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference), out _), this.ConstraintScope(function), self);
         }
 
         if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
