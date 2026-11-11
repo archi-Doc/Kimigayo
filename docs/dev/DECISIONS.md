@@ -17934,7 +17934,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Not yet observed:** no program reaches `writeUtf8` or `Storage.erasedReserve` before S2a, so W1b-3's behavior rows (the
     Middle's two `MirEffectsTest` rows from C-188, the IR row "a module calling `writeUtf8` defines the kept runtime once", the
     natives over the leaf path, `BoundedGrowsByItsHint`) land with S2a, its first caller, named in S2a's Q row. W1b-3 lands first
-    because S2a needs W1b-4 and W1c-2, which build on it.
+    because S2a needs W1b-4 and W1c-2, which build on it. Closed by R8-M30 (R8-S2a-2, 58d38a573).
   - Counts (RQ9), on dev d30bbc7e0: `CompilerFunctionKind` 43 to 39 (`None` included; W1b-1 −`WindowPush`, `WindowAppend`,
     `WindowLimit`, `WindowCommit`, `WriterStatus`; W1b-3 +`StorageErasedReserve`); `KimiDeclarationId` 185 unchanged (W1b-1
     −`WindowPush`, `WindowAppend`, `WindowCommit`; W1b-3 +`WriterReserve`, `WriterWriteUtf8`, `StorageErasedReserve`); catalog
@@ -18423,6 +18423,64 @@ R8-M* and R9-M* by the stage of the recording unit.
     the Backend's stated in Mir's level, not of the order. The instance collector requests the element's glue from that Run and code
     generation reads that target for `[0 of T]`; it writes no loop (the Run has no element), so the checked set and generated code
     are as before G702. It goes with the unit that stops requesting and reading that target (a candidate B holds).
+- **R8-M30 Built-in formatting is the witness table's: bool, char and Unit are Kimigayo bodies on the writer's leaf** (Back,
+  2026-11-09 to 2026-11-11; R8-S2a with R8-S2a-2, plan §5.2 S2; Major; family `G:R8-format`, design review 3 ACCEPT; B's reviewer's
+  implementation reviews 1 REJECT (I-B1), 2 REVISE, 3 ACCEPT, and S2a-2 review 1 ACCEPT; the Front's C-230, the Middle's C-182 and
+  C-188; the owner's O-104 (a), verbatim 「どちらもaでお願いします」; on R8-M4, R8-M18 and R8-M22) SPEC 22.5.1, 22.10.1, 22.10.2, 22.10.5.
+  - **Owner.** `Binding.WitnessGroup` states each built-in Type's `Utf8Format` conformance; the bodies are internal Kimigayo groups
+    in `Formatting.kimi`. A new formattable built-in Type adds a row (R8-M4's five edits). S2a: `BoolFormat`, `CharFormat`,
+    `UnitFormat` (Bodies on the leaf, below). `CompilerRequirementTarget` answers `BuiltinFormat` only for a Type the table does not
+    cover. The collector admits a Body item. `Utf8Writer.write<T>` (W1b-4, R8-M18) calls it as the value's `format` witness;
+    `toString` and `tryFormat`, Kimigayo bodies since W1c-2 (R8-M22), reach it through that write. The write and conversion wrappers
+    are gone (W1c-2).
+  - **Bodies.** bool writes `"true"`/`"false"`, Unit `"()"`, char its UTF-8 (one to four bytes, encoded into a local `[4 of u8]`) as
+    a `Utf8Slice` made by `Utf8Slice.init(value:)`, whose contract is "bytes the caller guarantees are valid UTF-8" (one statement
+    of the promise; internal; a later decoder whose memory safety relies on validity would make it `unsafe`, SPEC §5).
+  - **Char.** A library body relies on IMPL 21.1's `u32` representation of char (the punned read, SPEC 5.2; a scalar value, SPEC
+    3.1.2).
+  - **The leaf** is R8-M18's `Utf8Writer.writeUtf8` (W1b-3, landed). The table's bodies end in it, so a built-in Type's write is one
+    exact reservation through `Utf8Writer.reserve` and the buffers' `reserve`, every link `CallerLocation`.
+  - **Bodies on the leaf.** `BoolFormat`, `CharFormat`, `UnitFormat` end in `Utf8Writer.writeUtf8`. Each has a catalog row
+    `SourceFunction, CallerLocation, Owner: "<group>"`: the sixth edit of a formatting witness row (`Binding.LibraryWitnesses.cs`
+    header). A4 reads every row's body (R8-M4's `EffectsLimit` is gone, BU-142).
+  - **KimiLibrary.** The constructor's private-declaration lookups and catalog registration are `FindPrivateDeclarations` and
+    `RegisterCatalog` (review 2 B2; b5857262a, behavior unchanged): a witness group's lookup goes in `FindPrivateDeclarations`
+    (R8-M4's five edits unchanged).
+  - **Order.** After W1b-3, W1b-4, W1c-2 (all landed); then S2c, S2d1, S2b1, S2b2, S2d2, W2 (plan D6).
+  - **Temporary, each removed by a named event:**
+    1. `CompilerRequirementTarget`'s narrowing (`WitnessGroup(self, Utf8Format) is null`, `Binding.Formatting.cs`): removed at S2d2
+       with `BuiltinFormat`.
+    2. The conformance proof by `FormattingTypes.IsBuiltin` (`Binding.ConditionalConformances.cs`) before the table's arm, a second
+       statement of a tabled Type's conformance: removed at S2d2.
+    3. `BuiltinFormat`'s shim and `{{__kimi_format_builtin}}` for the Types not yet tabled: removed at S2d2. **Beside it (review 2,
+       N-a):** `LegacyRuntimeHelpers.FormatKind` still answers 13-15 for char, bool and Unit; its summary still names their runtime
+       arms; `FormatKindsAreTheRuntimesNumbering` pins them; and the shim guard (`FunctionCodegen.Shims.cs:77`) no longer catches a
+       tabled Type (the narrowing keeps them off the shim). Removed at S2d2, with temporary 2, unless a unit narrows them earlier.
+       The arms themselves went in S2a; the rows stay because `FormatKindsAreTheRuntimesNumbering` ties `FormatKind >= 0` to
+       `FormattingTypes.IsBuiltin`, which temporary 2 keeps true for the three Types until S2d2.
+    4. None: 4 never existed (the bodies end in the leaf).
+    5. `FormatKind` for `SegmentText` and `FormatLiteral`: removed at W2.
+    6. The `Utf8Format` part of `IsGenericWrapping`'s premise and of `RequirementMember` (a second statement of `Wrapping<T>`'s
+       formatting conformance once S2d1 declares it): removed at S2d1.
+  - **Vocabulary.** `CompilerFunctionKind` unchanged at S2a; S2c +`FormatFloat` and S2b2 +`FormatInteger128` (producers of plan-kept
+    intrinsics, R8-M5's precedent; removed at R8-G1), S2d2 −`BuiltinFormat`. `KimiDeclarationId` +3 and catalog entries +3 at S2a
+    (180 → 183 on dev 947b2de43, after R8-W2 a2's +2): the three groups' `format` functions, until G1 (RQ9; not a closed
+    vocabulary). `WitnessMembers` +3 (local, R8-M4).
+  - **Moves.** None in acceptance or records; `.ll` only; the census Builtin → Body (Body 37 → 38, Builtin 174 → 173);
+    `Utf8ConversionBool`: none. `FunctionCodegenTest`'s bool, char and Unit shim rows are re-pointed at `i16`/`u16`, still on the
+    shim.
+  - **Tests (D1).** The heap-writer Theory (`Utf8WriterTest.AFailedAllocationInsideABuiltinWriteReportsTheWrite`: 12345, `true`,
+    `'é'`, `()` abort at the user's write) replaces the planned `toString(true)` row.
+  - **R8-M18's "Not yet observed"** is closed by R8-S2a-2 (58d38a573): the leaf path's rows per writer kind, `BoundedGrowsByItsHint`
+    (one allocation of 9 bytes), the kept runtime's IR row, and C-188's two `MirEffectsTest` rows (the Middle's ruling (b)): a
+    `confined` `write(true)` over `Text.heap(0)` (allocation permitted) and over a 3-byte fixed buffer report nothing (SPEC 8.11.2:
+    Allocation and Abort are permitted under `confined`; SPEC 22.9.1: the erased reserve is checked against `BufferWriter.reserve`'s
+    own bound).
+  - **Rejected:** a byte leaf as a new `CompilerFunctionKind` (`WriterWriteUtf8`; the owner's R3-10 and RP20: R8 shrinks that
+    vocabulary); the generic integer row before G589's fix (`Text.toString(42)` under `confined` became A4's `Unsupported_Kd`, a
+    valid program rejected; prototype evidence); twelve plain integer rows (a second treatment of G589's cause); a byte write chosen
+    by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
+    all scalars (R8-M4: one function per requirement).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
