@@ -208,6 +208,11 @@ internal sealed class MirLoanSets
             return 0;
         }
 
+        if (this.Apart(set, removed))
+        {
+            return set;
+        }
+
         if (!this.removes.TryGetValue((set, removed), out var rest))
         {
             rest = this.Without(set, removed);
@@ -244,6 +249,10 @@ internal sealed class MirLoanSets
 
         return range;
     }
+
+    // Whether two nonempty sets lie apart: the greatest element of one is below the least of the other, so they share none.
+    private bool Apart(int a, int b)
+        => this.elements[this.starts[a + 1] - 1] < this.elements[this.starts[b]] || this.elements[this.starts[b + 1] - 1] < this.elements[this.starts[a]];
 
     // set \ removed: each element of the smaller operand searched in the larger.
     private int Without(int set, int removed)

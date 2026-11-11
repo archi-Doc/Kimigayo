@@ -97,5 +97,18 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         [InlineData("fixed-joins", 5)]
         public void TheColdAnalysisScalesWithinItsBound(string axis, double factor)
             => ColdAnalysisScales(output, Sizes(axis), factor);
+
+        // PLAN G768 (V16): N chained borrows (`let a_k = a_(k-1)@ref`) end each borrowed local's Loan at its StorageLive, write and
+        // StorageDead in every holder (E8), whose sets all lie apart from it, so an apart Remove makes no memo entry (MirLoanSets.Remove)
+        // and the cold analysis allocates linearly in N (the memo held one entry per holder and ended point, N^2 in all).
+        [Fact]
+        public void TheColdAnalysisOfABorrowChainAllocatesLinearly()
+            => ColdAnalysisScales(output, [.. new[] { 128, 256, 512 }.Select(BorrowChain)], 3);
+
+        // A body of N chained borrows, each a reference to the one before: a_k is ref^k/i32 (SPEC 10.2's explicit acquisition of a
+        // reference slot).
+        private static string BorrowChain(int n)
+            => "func f() -> i32\n    let a0: i32 = 1\n" + string.Concat(Enumerable.Range(1, n).Select(static k => $"    let a{k} = a{k - 1}@ref\n")) +
+                "    return 0\npublic func main() => ()\n";
     }
 }
