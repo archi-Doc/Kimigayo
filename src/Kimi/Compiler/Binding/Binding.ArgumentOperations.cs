@@ -288,14 +288,12 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && actual.ContainsPairLayer && actual.Kind != BoundTypeKind.Semantics && source.ErasedFunctionType is null &&
-                IsBarePlace(source) && this.BareReborrowLayer(actual, source) is { } layer)
+            else if (!receiver && StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
             {
-                // SPEC 3.5.1, 8.14 (DECISIONS BU-27): a bare Place whose per-case plan alone (every pair-layer form) Reborrows the layer
-                // in an exclusive case is Reborrowed in its own Semantics; the path is walked only then (ReachOf). A receiver is taken by
-                // its call's receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition; a stored `uniq/T` at a parameter
-                // that is no reference is named after inference, at the reference Type the parameter takes (the branch below; PLAN G757
-                // owns that order).
+                // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
+                // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
+                // is no reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's
+                // receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
                 adapted = this.ReborrowedType(actual, layer, this.ReachOf(source));
                 quality = ArgumentAdaptation.SameSemanticsReborrow;
                 kind = ArgumentOperationKind.Reborrow;
