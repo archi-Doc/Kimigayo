@@ -344,6 +344,43 @@ public class ConstraintBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
+    // PLAN G704 (SPEC 3.1.3, 22.1, 9.5): `Never` is a Kimi declaration, so a requirement atom names it by ordinary lookup, as a Type position
+    // does (dev: UnresolvedBinding_Kd in every Constraint region): bare, `Kimi.Never` (stage 4) and `::Kimi.Never`, and a nearer declaration
+    // shadows it (a Type parameter, a group's contract). Invalid twins follow the valid rows, each rejected by its own rule.
+    [Theory]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is not Never\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never and Copy\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is (Never)\n    ()", "clean")]
+    [InlineData("struct S<T>\n    T is Never\n    var v: i32", "clean")]
+    [InlineData("enum E<T>\n    T is Never\n    A\n    B", "clean")]
+    [InlineData("contract D\n    func d(self: ref/Self) -> string\nstruct S<T>\n    var v: i32\n    Self is D when T is Never\n        public func d(self: ref/Self) -> string => \"s\"", "clean")]
+    [InlineData("struct Box<E>\n    var v: i32\n    public func same(self) -> ()\n        E is Never\n        ()", "clean")]
+    [InlineData("contract C<X>\n    X is Never\n    associate A is Never\n    func g<U>(self: ref/Self, u: U) -> ()\n        U is Never", "clean")]
+    [InlineData("contract C\n    associate A\nstruct S\n    Self is C\n    associate A is Never", "clean")]
+    [InlineData("func g(a: Never) -> () => ()\nfunc f<T>(a: T) -> ()\n    T is Never\n    g(a@move)", "clean")]
+    [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<i32, i32>(1, 2)", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is ::Kimi.Never\n    ()\nfunc k<T>(a: T) -> ()\n    T is Option<::Kimi.Never>\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Kimi.Never\n    ()", "clean")]
+    [InlineData("group G\n    contract Never\n        func g(self: ref/Self) -> ()\n    func f<T>(a: T) -> ()\n        T is Never\n        ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()\nfunc use() -> () => f(1)", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<T>(a: ref/T) -> i32\n    T is Never\n    return a.v", "1*UnresolvedBinding_Kd")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never<i32>\n    ()", "1*InvalidConstraint_Kd 1*InvalidTypeFormation_Kd")]
+    [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<string, i32>(1, \"s\")", "1*NoApplicableOverload_Kd")]
+    public void NeverInARequirementIsFoundByOrdinaryLookup(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G615 known limit (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises), accepted
+    // today because no component judges a premise conflict for any Type. dev rejected these four only through G704's unresolved name; R7-C3's
+    // premise-error judge flips them to rejected with G615's other rows.
+    [Theory]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is i32\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is Option<i32>\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
+    [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
+    public void G615KnownLimitAcceptsNeverWithAConflictingIdentityPremise(string source) => Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
+
     [Fact]
     public void PropositionIdentityPreservesOrigins()
     {
