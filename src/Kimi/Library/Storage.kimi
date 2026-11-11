@@ -69,7 +69,9 @@ internal group Storage
             .Some(let resolved) => resolved
             .None => Storage.indexBounds()
         unsafe
-            let start = state.storage + (state.position + selected.start)
+            // `0 <= selected.start <= state.count`, and the storage holds `position + count` elements.
+            let offset = (state.position@Wrapping<isize> + selected.start@Wrapping<isize>)@isize
+            let start = state.storage + offset
             return UniqSlice<E>.init(UniqRemainder<E>.init(start, selected.length))
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
@@ -171,9 +173,10 @@ internal group Storage
         var link = tail
         var remaining = count
         while remaining > 0
-            remaining -= 1
+            // The guard bounds the step.
+            remaining = (remaining@Wrapping<isize> - 1@Wrapping<isize>)@isize
             unsafe
-                let slot = storage + (link - 1) * stride
+                let slot = storage + DictionaryStorage.slotOffset(link, stride)
                 link = (slot@raw/isize)[0]
                 _ = (*DictionaryStorage.valueAt<K, V>(slot))@move
                 _ = (*DictionaryStorage.keyAt<K, V>(slot))@move
@@ -192,24 +195,27 @@ internal group Storage
     internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
         require state.count > 0 else => return .None
         let position = state.position
-        state.position += 1
-        state.count -= 1
+        // `count > 0` bounds both steps: the remainder's storage holds `position + count` elements.
+        state.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe => return .Some(state.storage[position]@ref)
 
     /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
     internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
         require state.count > 0 else => return .None
         let position = state.position
-        state.position += 1
-        state.count -= 1
+        // `count > 0` bounds both steps: the remainder's storage holds `position + count` elements.
+        state.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe => return .Some(state.storage[position]@uniq)
 
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
         require state.count > 0 else => return .None
-        state.count -= 1
+        // `count > 0` bounds the step.
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
+            let slot = state.storage + DictionaryStorage.slotOffset(state.link, DictionaryStorage.slotStride<K, V>())
             // Each slot starts with its previous and next links.
             state.link = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@ref))
@@ -217,18 +223,21 @@ internal group Storage
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
     internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
         require state.count > 0 else => return .None
-        state.count -= 1
+        // `count > 0` bounds the step.
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
+            let slot = state.storage + DictionaryStorage.slotOffset(state.link, DictionaryStorage.slotStride<K, V>())
             state.link = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
         require state.handle.length > 0 else => return .None
-        state.handle.length -= 1
+        // `length > 0` bounds the step.
+        state.handle.length = (state.handle.length@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe
-            let slot = state.handle.buffer + (state.handle.head - 1) * DictionaryStorage.slotStride<K, V>()
+            let stride = DictionaryStorage.slotStride<K, V>()
+            let slot = state.handle.buffer + DictionaryStorage.slotOffset(state.handle.head, stride)
             state.handle.head = (slot@raw/isize)[1]
             return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@move, (*DictionaryStorage.valueAt<K, V>(slot))@move))
 
@@ -259,8 +268,9 @@ internal group Storage
     internal func takeFirst<E, A>(state: uniq/FixedOwnedRemainder<E, A>) -> Option<E>
         require state.count > 0 else => return .None
         let position = state.position
-        state.position += 1
-        state.count -= 1
+        // `count > 0` bounds both steps: the remainder's storage holds `position + count` elements.
+        state.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        state.count = (state.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe => return .Some((state.storage@raw@raw/E)[position]@move)
 
     /// Consumes a contiguous exclusive remainder and splits two distinct positions, preserving argument order.
@@ -285,12 +295,15 @@ internal group Storage
         unsafe
             // Discard each skipped prefix's authority, then remove the selected element before splitting it.
             // Distinct positions let the raw Places designate distinct Places, also when E is zero-sized (SPEC 5.2).
-            state.position = start + low + 1
-            state.count = count - low - 1
-            let lower = state.storage[start + low]@uniq
-            state.position = start + high + 1
-            state.count = count - high - 1
-            let upper = state.storage[start + high]@uniq
+            // `0 <= low < high < count`, and the storage holds `start + count` elements, so no step below overflows.
+            let afterLow = (low@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            let afterHigh = (high@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            state.position = (start@Wrapping<isize> + afterLow@Wrapping<isize>)@isize
+            state.count = (count@Wrapping<isize> - afterLow@Wrapping<isize>)@isize
+            let lower = state.storage[(start@Wrapping<isize> + low@Wrapping<isize>)@isize]@uniq
+            state.position = (start@Wrapping<isize> + afterHigh@Wrapping<isize>)@isize
+            state.count = (count@Wrapping<isize> - afterHigh@Wrapping<isize>)@isize
+            let upper = state.storage[(start@Wrapping<isize> + high@Wrapping<isize>)@isize]@uniq
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 
@@ -382,6 +395,16 @@ internal group Storage
     internal struct SliceRepr<T>
         internal var data: raw/T
         internal var length: isize
+
+    /// The words a `WriteWindow` reaches through its `state`: the Fields `Text.FixedBuffer` and `Text.HeapBuffer` both
+    /// begin with, in their order (`KimiLibraryShapeTest.RuntimeLayoutsAreFixed` pins them). A window owns no bytes, so
+    /// `data` states no `self`.
+    #Layout("C")
+    internal struct BufferRepr
+        internal var data: raw/u8
+        internal var capacity: isize
+        internal var length: isize
+        internal var validated: isize
 
     /// The one component of a `string`, under IMPL 21.1.3's Handles. A string owns its bytes only for release kind 1,
     /// and a literal's are owned by no value (SPEC 3.1.2), so `data` states no `self`. This struct and the runtime's

@@ -17,13 +17,14 @@ namespace Kimi.Compiler.Mir;
 /// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
-/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a case
+/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; a view's start <c>storage(_1)</c>, keyed
+/// <c>storage(_1, copy _2, const type R)</c>; an Opaque value <c>opaque 0: T</c>; a case
 /// adaptation <c>adapt(copy _1, const type T) payload (_1@b0): s/T shorthand</c>, its payload where it is not the operand's Place and
 /// <c>shorthand</c> for the Semantics shorthand; a default template, as a body and as a callee, <c>f#1</c>. An analyzed body adds drop
 /// elaboration's output (DECISIONS R4-M6a): its flags with the points at its entry (<c>flags 2 [set f0]</c>), each Drop's verdict groups
 /// with their views where they are not all (<c>[keep]</c>, <c>[flag f0]</c>, <c>[elide in v0; open f1 (.0 elide, .1 flag f2) in v1]</c>)
-/// and each location's flag points (<c>[clear f0]</c>, <c>[set f0-f2 in v1]</c>); a Drop only the checks reach has the verdict <c>[elide]</c> where
-/// nothing of it is initialized, else none.</summary>
+/// and each location's flag points (<c>[clear f0]</c>, <c>[set f0-f2 in v1]</c>); a Drop only the checks reach has its flagless group where it
+/// has a Move Path, else none.</summary>
 internal static partial class MirDump
 {
     /// <summary>Writes the bodies of one module, then the construction records and validator findings located there.</summary>

@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
-// of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's.
+// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
+// judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
@@ -20,7 +20,13 @@ namespace Kimi.Compiler;
 /// contracts (Retains) is discarded with that pass.</summary>
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
-    private readonly Dictionary<int, List<BoundType>> types = new();
+    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
+
+    /// <summary>Gets the number of keys the interned Types take.</summary>
+    internal int KeyCount => this.types.Count;
+
+    /// <summary>Gets the free slots of the interned Types' table.</summary>
+    internal int KeyFree => this.types.Capacity - this.types.Count;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
@@ -99,6 +105,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             {
                 return components[0];
             }
+        }
+
+        // SPEC 3.1.3, 22.1: the Kimi declaration `Never` is the compiler-intrinsic uninhabited Type, never represented as the
+        // declared struct: every written form that lookup resolves to the declaration forms this one instance.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Never)
+        {
+            return BoundType.Never;
         }
 
         // SPEC 3.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core

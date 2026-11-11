@@ -17,7 +17,7 @@ internal static class CommandExecution
             kimigayo.WriteLine(DiagnosticSeverity.Error, "Command cancelled.");
             return 130;
         }
-        catch (Exception ex) when (Compiler.NativeToolchain.IsToolchainFailure(ex))
+        catch (Exception ex) when (Build.NativeToolchain.IsToolchainFailure(ex))
         {
             kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
             return 1;

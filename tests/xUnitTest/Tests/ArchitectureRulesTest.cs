@@ -29,6 +29,28 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
+    // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
+    // DependencyLock (ArtifactFiles.Replace only).
+    private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
+        "Unit/Command/CommandExecution.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
+
+    // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
+    // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
+    private const string DocumentationReaders = "Checking/Hover/HoverBuilder.cs;Checking/HoverFacts.cs;Checking/HoverPlacement.cs;Lsp/HoverRenderer.cs";
+
+    // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
+    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
+
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=17;" +
+        "Binding.Types.cs=2";
+
+    private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
+
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
+        "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
+        "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
+        "Binding.Structs.cs=1;Binding.Types.cs=3";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE. R6-check H14 (D7): the names
     // of the Koto semantic slots, except Formatting, Adaptation, Mode, Iteration and BasePath, whose names live members of other types share.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
@@ -71,7 +93,7 @@ public class ArchitectureRulesTest
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
 
     [Theory]
-    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
+    [InlineData("Emission failure strings", "src/Kimi/Build", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
     [InlineData("Advice in the diagnostic catalog", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"(?m)^\s*Advice=", 0)]
     [InlineData("Test reads and writes of Koto semantic slots", "tests/xUnitTest", "*.cs", @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|CallStorage|ClosureStorage|ConversionBinding|EntryCall|Iteration|IsDirectStorage|FillCount|SemanticsIndexed)\s*:", 13)]
@@ -104,6 +126,9 @@ public class ArchitectureRulesTest
     [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
     // R8-S1a (RP6): no second statement of a table row; the test class FixedArrayEntryTest keeps its own name.
     [InlineData("Compiler references to the paths the library witness table replaced", "src/Kimi", "*.cs", ReplacedByWitnessTable, 0)]
+    // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
+    // its frame fall to 0 with part c.
+    [InlineData("SlotSolution's trial copies of a frame", "src/Kimi/Compiler/Binding", "Binding.ArgumentKinds*.cs", @"\btypeScratch\.Rent\(", 1)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
@@ -117,7 +142,8 @@ public class ArchitectureRulesTest
     [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
     [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
-    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Compiler/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Core reads of Koto semantic slots", "src/Kimi/Compiler/Core", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Testing reads of Koto semantic slots", "src/Kimi/Testing", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Benchmark reads of Koto semantic slots", "src/Benchmark", "*.cs", SemanticSlotReads, 0)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
@@ -185,12 +211,87 @@ public class ArchitectureRulesTest
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
     [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.ResolvePath.cs=2;Binding.Types.cs=1")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.ResolvePath.cs=1")]
+    // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
+    // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=11;Binding/Binding.OriginDeclarations.cs=30;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
         var root = Path.Combine(Repository.Root, directory);
         var actual = SourceFiles(directory, "*.cs")
             .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
+            .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // The R7-R9 plan's unit M2 (§5.3): a component moved out of the compiler is read only by its listed readers, so the compiler, check,
+    // LSP, Testing and Diagnostics read none of its types. A reader is a file of src/Kimi outside the component's folder that names a
+    // type the folder declares, however the name reaches it (a using, a namespace or type alias, a qualified name), that imports the
+    // component's namespace, or that declares it. Roslyn reads the tokens, so comments and strings do not count; the component's own
+    // files are not readers; build output (bin, obj) is not source. A further reader fails here until its row is reviewed. Not seen,
+    // so review reads them (COMPILER_ARCHITECTURE, "Dependency rules"): a type reached without its name (a var over a member's result,
+    // reflection); a delegate type the folder declares (the types are its class, struct, record, interface and enum declarations); an
+    // attribute class used by its short name ([Foo] for FooAttribute). Build and Documentation declare neither today. The types are the
+    // folder's top-level ones (the plan's unit M1): a nested type is named through its containing type, so a nested name that another file
+    // spells for its own member (Container, Bracket, Parts) reads nothing.
+    [Theory]
+    [InlineData("src/Kimi/Build", "Kimi.Build", BuildReaders)]
+    [InlineData("src/Kimi/Documentation", "Kimi.Documentation", DocumentationReaders)]
+    public void ComponentIsReadOnlyByItsReaders(string folder, string name, string readers)
+    {
+        var root = Path.Combine(Repository.Root, "src/Kimi");
+        var inside = Path.GetRelativePath(root, Path.Combine(Repository.Root, folder)).Replace(Path.DirectorySeparatorChar, '/') + "/";
+        var files = SourceFiles("src/Kimi", "*.cs")
+            .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Path: x))
+            .Where(static x => !x.Name.StartsWith("bin/", StringComparison.Ordinal) && !x.Name.StartsWith("obj/", StringComparison.Ordinal))
+            .ToArray();
+        var types = files.Where(x => x.Name.StartsWith(inside, StringComparison.Ordinal))
+            .SelectMany(static x => CSharpSyntaxTree.ParseText(File.ReadAllText(x.Path)).GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+            .Where(static x => x.Parent is BaseNamespaceDeclarationSyntax or CompilationUnitSyntax)
+            .Select(static x => x.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(types);
+
+        // Only a file that spells a type's name or the namespace's last part can read or declare it.
+        var spelled = new Regex(@"\b(?:" + string.Join("|", types.Append(name[(name.LastIndexOf('.') + 1)..]).Select(Regex.Escape)) + @")\b");
+        var actual = files.Where(x => !x.Name.StartsWith(inside, StringComparison.Ordinal))
+            .Where(x => File.ReadAllText(x.Path) is var text && spelled.IsMatch(text) && Reads(CSharpSyntaxTree.ParseText(text).GetRoot()))
+            .Select(static x => x.Name).Order(StringComparer.Ordinal).ToArray();
+        Assert.True(
+            readers.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual),
+            $"{folder}: {string.Join(";", actual)}; the readers are {readers}.");
+
+        bool Reads(SyntaxNode unit)
+            => unit.DescendantTokens().Any(x => x.IsKind(SyntaxKind.IdentifierToken) && types.Contains(x.ValueText)) ||
+                unit.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(x => Within(x.NamespaceOrType.ToString())) ||
+                unit.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().Any(x => Within(string.Join(
+                    ".", x.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(static y => y.Name.ToString()))));
+
+        bool Within(string written)
+        {
+            written = written.Replace(" ", string.Empty, StringComparison.Ordinal);
+            written = written.StartsWith("global::", StringComparison.Ordinal) ? written["global::".Length..] : written;
+            return written == name || written.StartsWith(name + ".", StringComparison.Ordinal);
+        }
+    }
+
+    // R7-N1e2-1R (the owner's O-111 (a)): a written Type name is evaluated only by name resolution's own file (ResolvePath) and named
+    // exceptions, each publishing nothing: BaseLayers' DirectBase read of a clause not yet bound and its second run's knownBases (R7-M9: a
+    // read that saw a clause not ready stores nothing; both go at R7-D2 d3), BaseLayers' early-read check (it evaluates again by design),
+    // Qualification's repair probe of a Container's own name, Constraints' Container question and Calls' question whether a length
+    // argument's spelling also names a Type (questions about another reading, not the use's lookup), and Types' semantics parameter name
+    // (a first lookup). A use is looked up only through NamePath, at the census's
+    // sites: its first call resolves and publishes the use, every later one reads it in the same row (HirTables.Lookups). A further site
+    // fails here until its row is reviewed. Roslyn reads the invocations on any receiver, so comments and strings do not count.
+    [Theory]
+    [InlineData("Evaluations of a written name", NameEvaluations, NameEvaluationSites)]
+    [InlineData("Lookups of a Type-name use", UseLookups, UseLookupSites)]
+    public void LookupEntriesStayAtTheirSites(string rule, string entries, string sites)
+    {
+        var names = entries.Split('|');
+        var actual = SourceFiles("src/Kimi/Compiler/Binding", "*.cs")
+            .Select(x => (Name: Path.GetFileName(x), Count: CSharpSyntaxTree.ParseText(File.ReadAllText(x)).GetRoot().DescendantNodes()
+                .OfType<InvocationExpressionSyntax>().Count(i => CalledName(i.Expression) is { } name && names.Contains(name))))
             .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
     }
@@ -256,6 +357,14 @@ public class ArchitectureRulesTest
             _ => null,
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
+
+    // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
+    private static string? CalledName(ExpressionSyntax called) => called switch
+    {
+        MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+        IdentifierNameSyntax name => name.Identifier.Text,
+        _ => null,
+    };
 
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)

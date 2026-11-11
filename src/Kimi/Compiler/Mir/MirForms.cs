@@ -36,13 +36,13 @@ internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, 
 }
 
 /// <summary>An rvalue. Its operands are <see cref="Count"/> entries of <see cref="MirBody.Operands"/> from <see cref="Start"/>;
-/// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
-/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/>, an Adapt's <see cref="AdaptShorthand"/> and
+/// <see cref="Op"/> is a Ref's or Storage's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>,
+/// a Cast's <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/>, an Adapt's <see cref="AdaptShorthand"/> and
 /// <see cref="AdaptInput"/> bits, or a Use's 0 but for a PairAcquire, which is always the whole rvalue of an Assign to a local and whose
 /// Use holds the <see cref="MirRefKind"/> of the Reborrow its exclusive case makes (Uniq, TwoPhaseUniq for an invocation's input; design
-/// A3 E13 (4)); <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's
-/// or Len's Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an
-/// aggregate's or Opaque's Type.</summary>
+/// A3 E13 (4)); <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's,
+/// Len's or Storage's Place or an Adapt's payload, the kinds whose row has <see cref="MirDescriptor.HasPlace"/>; <see cref="Type"/> is a
+/// Ref's reference Type, a Storage's raw pointer Type, a Cast's or an Adapt's target Type or an aggregate's or Opaque's Type.</summary>
 internal readonly record struct MirRvalue(
     MirRvalueKind Kind,
     byte Op = 0,
@@ -94,6 +94,12 @@ internal readonly record struct MirRvalue(
     // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
     // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
+
+    // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
+    // each instance decides: from the first, the start position, an isize, and the token of the key's Type; the first element's address
+    // where the instance's key starts at the storage, else that address displaced by the start (the element's stride, LayoutNeeds).
+    internal static MirRvalue Storage(MirPlace place, BoundType type, int operands)
+        => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, operands, 2, Type: type);
 
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
 

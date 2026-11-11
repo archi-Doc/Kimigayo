@@ -117,7 +117,7 @@ public class ConstantLengthBindingTest
     public void EveryIntegerTypeChecksItsOwnIntermediateRange(string name)
     {
         var type = BoundType.Primitives[name];
-        var width = ScalarTypes.Width(type);
+        var width = type.Width;
         var max = (System.Numerics.BigInteger.One << (width - (type.IsSigned ? 1 : 0))) - 1;
         var declaration = $"let Max: {name} = {max}\n";
         var valid = MinimalEmissionTest.Analyze(declaration + "let row: [(Max - Max) of u8]");

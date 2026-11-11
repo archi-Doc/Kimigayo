@@ -74,6 +74,8 @@ public class AssociatedInferenceTest
 
     private const string ChainB = "struct B\n    Self is HB\n    public func value(self: ref/Self) -> A.(HA).Item => 0\n";
 
+    private const string InferredBase = "open struct B0<X>\n    public func get(self: ref/Self) -> i32 => 1\n";
+
     // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
     [Theory]
     [InlineData(InferredHeaderFails, "2*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
@@ -222,6 +224,17 @@ public class AssociatedInferenceTest
         var c = CompilationTestHelper.ParseSuccess("contract P\n    associate Item\ncontract C: P\n    func read() -> Self.Item\nstruct S<T>\n    T is Copy\n    Self is P\n    Self is C when T is " + condition + "\n    public func read() -> i32 => 1");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
+
+    // SPEC 8.5.5, 8.8.2 (PLAN G695): inference identifies a requirement's implementation with the path's Self normalized in its
+    // conformance scope, as verification does, under an identity condition: declared on the Type or found in its base, E is i32; where
+    // the condition is refuted the use has no conformance, never a missing implementation. `Y is Copy` is the control.
+    [Theory]
+    [InlineData("open struct B1<Y>\n    Self is D when Y is Option<i32>\n    public func get(self: ref/Self) -> i32 => 1\n", "B1<Option<i32>>", "clean")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Option<i32>\n", "B1<Option<i32>>", "clean")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Option<i32>\n", "B1<i64>", "1*NoApplicableOverload_Kd")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Copy\n", "B1<i32>", "clean")]
+    public void InferenceUnderAnIdentityConditionIdentifiesTheImplementation(string declarations, string use, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("contract D\n    associate E\n    func get(self: ref/Self) -> E\nfunc use<T>(value: ref/T)\n    T is D\n    ()\n" + declarations + "func t(v: ref/" + use + ") => use(v)\n"));
 
     [Fact]
     public void LaterInvalidEvidenceCannotCertifyARedundantParent()

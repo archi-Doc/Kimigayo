@@ -91,6 +91,11 @@ public sealed partial class MirBorrowsTest
             "    return mkE(h2@ref)\n",
         ["two-views"] = "func pp<s/T>(target: uniq/(ref/i32 during a), x: s/T)\n    s is owner or ref\n    let local = 1\n    var r = local@ref\n" +
             "    target@follow = r\n",
+        ["pair-application-part"] = "func pa<s/T>(x: s/i32 during b, m: s/T, target: uniq/(ref/(s/i32 during b) during a))\n" +
+            "    s is owner or ref\n    var local = x@copy\n    target@follow = local@ref\n",
+        ["pair-application-null"] = "func write<T>(target: uniq/T during a, q: raw/T during a, v: T) => ()\n" +
+            "func pn<s/U>(x: s/i32 during b, m: s/U, t: uniq/(ref/(s/i32 during b) during c) during a)\n" +
+            "    s is owner or ref\n    var local = x@copy\n    write(t, null, local@ref)\n",
         // pins
         ["m-write"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    let r = x@ref\n    x = 1\n    return r\n",
         ["m-write-var"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    var r = x@ref\n    x = 1\n    return r\n",
@@ -172,7 +177,10 @@ public sealed partial class MirBorrowsTest
     // retention, and a Chain row's reads of whole holders, R4-M138; the outer layers' Loans, whose Origins mkE leaves free, have no Refuted
     // relation), a write through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's
     // receiving check over every Origin of the receiving Type), a candidate the access does not conflict with (R4-M96's exact scan, B), a
-    // pair binder's view, and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
+    // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
+    // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
+    // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
+    // fail-before: independent), and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
     // (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
@@ -206,6 +214,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("merge-two-paths-v", "f: let local = 1 <- q; r")]
     [InlineData("g526-borrow-arg-v", "g: let v: i32 = 1 <- let h: H2 during q = mkr(v@ref)")]
     [InlineData("two-views", "pp: let local = 1 <- r")]
+    [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
+    [InlineData("pair-application-null", "pn: var local = x@copy <- local@ref")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -282,7 +292,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(35, causes);
+        Assert.Equal(37, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a

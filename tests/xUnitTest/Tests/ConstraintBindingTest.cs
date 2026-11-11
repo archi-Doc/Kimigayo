@@ -166,6 +166,14 @@ public class ConstraintBindingTest
     private const string CopyHolder = "struct K<T>\n    T is Copy\n    public let t: T\n";
     private const string CallableHolder = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
 
+    // PLAN G671's requirements, each with a clause over the Contract's parameter T, and the group its calls are written in.
+    private const string Put = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\n";
+    private const string PutPair = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is (T, T)\n";
+    private const string Make = "contract Make<T>\n    func make<U>(u: U) -> Self\n        U is T\n";
+    private const string PutShown = "contract Show<T>\n    func show(self: ref/Self) -> T\ncontract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is Show<T>\n";
+    private const string PutGet = Put + "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> T\n        U is T\n";
+    private const string Run = "group M\n    public func run";
+
     // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
     // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
     [Theory]
@@ -183,6 +191,46 @@ public class ConstraintBindingTest
     [InlineData(BoundRequirement, "clean")]
     [InlineData(BoundRequirementNoPremise, "1*NoApplicableOverload_Kd 1*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     public void ARequirementsCallIsOutsideTheKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 8.6.4, 10.1 step 5 (PLAN G671): a requirement's clauses read the Contract's parameters at the reference the call goes through, as its
+    // signature does, in the trial and in the selected call's obligation: under `C is Put<i32>`, put<U>'s `U is T` is `U is i32` (a direct,
+    // explicit, structural, Type function, inherited, Contract-premise, premise-given, second-binding, nested and refined-with-arguments call).
+    // The invalid twins keep dev's records, a second reference in scope included, except that the last names its failing clause (dev: `U is T`).
+    [Theory]
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        c.put(5)\n", "clean")]
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        c.put<i32>(5)\n", "clean")]
+    [InlineData(PutPair, "<C>(c: uniq/C)\n        C is Put<i32>\n        c.put((1, 2))\n", "clean")]
+    [InlineData(Make, "<C>() -> C\n        C is Make<i32>\n        return C.make(5)\n", "clean")]
+    [InlineData(Put + "contract Child: Put<i32>\n", "<C>(c: uniq/C)\n        C is Child\n        c.put(5)\n", "clean")]
+    [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<i32>\n        c.put(w@move)\n", "clean")]
+    [InlineData(Put, "<C, V>(c: uniq/C)\n        C is Put<V>\n        V is i32\n        c.put(5)\n", "clean")]
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        C is Put<bool>\n        let x: i32 = 5\n        c.put(x)\n", "clean")]
+    // P1i asserts dev's record kind, which is PLAN G680's open question, not a SPEC reading; it moves under DECISIONS Q13 when G680 lands.
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<bool>\n        c.put(5)\n", "NoApplicableOverload_Kd@c.put(5) [candidates=1]")]
+    [InlineData(Put, "<C, V>(c: uniq/C, v: V)\n        C is Put<V>\n        c.put(5)\n", "UnprovenConstraint_Kd@c.put(5) [subject=i32; member=put; constraint=U is T]")]
+    [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<bool>\n        c.put(w@move)\n", "UnprovenConstraint_Kd@c.put(w@move) [subject=W; member=put; constraint=U is Show<T>]")]
+    [InlineData(Put, "<C, D, V, W>(c: uniq/C, d: uniq/D, v: V, w: W)\n        C is Put<V>\n        D is Put<W>\n        c.put(w@move)\n", "UnprovenConstraint_Kd@c.put(w@move) [subject=W; member=put; constraint=U is T]")]
+    [InlineData(Put + "contract Other<T>\n    func other(self: ref/Self)\n", "<C, V, W>(c: uniq/C, x: W)\n        C is Put<V>\n        C is Other<W>\n        c.put(x@move)\n", "UnprovenConstraint_Kd@c.put(x@move) [subject=W; member=put; constraint=U is T]")]
+    [InlineData(PutGet, "<C, D, V>(c: uniq/C, d: ref/D, x: V)\n        C is Put<V>\n        D is Get<V>\n        c.put(d.get(x@move))\n", "clean")]
+    [InlineData(
+        PutGet,
+        "<C, D, V, W>(c: uniq/C, d: ref/D, x: V)\n        C is Put<V>\n        D is Get<W>\n        c.put(d.get(x@move))\n",
+        "UnprovenConstraint_Kd@c.put(d.get(x@move)) [subject=W; member=put; constraint=U is T] | UnprovenConstraint_Kd@d.get(x@move) [subject=V; member=get; constraint=U is T]")]
+    [InlineData(Put + "contract Child<X>: Put<(X, X)>\n", "<C>(c: uniq/C, p: (i32, i32))\n        C is Child<i32>\n        c.put(p)\n", "clean")]
+    [InlineData(Put + "contract Child<X>: Put<(X, X)>\n", "<C>(c: uniq/C, p: (i32, bool))\n        C is Child<i32>\n        c.put(p)\n", "NoApplicableOverload_Kd@c.put(p) [candidates=1]")]
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        C is Put<bool>\n        c.put(5)\n", "AmbiguousBinding_Kd@c.put(5) [candidates=2]")]
+    [InlineData(
+        "contract Pair<T>\n    func pair<U, X>(self: uniq/Self, u: U, x: X)\n        U is T\n        X is (T, U)\n",
+        "<C, V, W>(c: uniq/C, a: V, p: (V, W))\n        C is Pair<V>\n        c.pair(a@move, p@move)\n",
+        "UnprovenConstraint_Kd@c.pair(a@move, p@move) [subject=(V, W); member=pair; constraint=X is (T, U)]")]
+    public void ARequirementsClausesReadItsContractReference(string declarations, string run, string records)
+    {
+        var source = declarations + Run + run;
+        var output = DiagnosticCorpus.Check(source, "Library");
+        var actual = output.Diagnostics.Select(x => $"{x.Code}@{source.Substring(x.Span!.Value.Start, x.Span.Value.Length)} " +
+            $"[{string.Join("; ", (x.Reason ?? []).Select(static y => $"{y.Name}={y.Value}"))}]");
+        Assert.Equal((records == "clean", records), (output.Accepted, output.Diagnostics.Length == 0 ? "clean" : string.Join(" | ", actual)));
+    }
 
     // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.
     [Fact]
@@ -295,6 +343,43 @@ public class ConstraintBindingTest
         var c = Parse("struct owning\nfunc f<s/T>(value: s/T)\n    s is owning\n    ()\nf(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
+
+    // PLAN G704 (SPEC 3.1.3, 22.1, 9.5): `Never` is a Kimi declaration, so a requirement atom names it by ordinary lookup, as a Type position
+    // does (dev: UnresolvedBinding_Kd in every Constraint region): bare, `Kimi.Never` (stage 4) and `::Kimi.Never`, and a nearer declaration
+    // shadows it (a Type parameter, a group's contract). Invalid twins follow the valid rows, each rejected by its own rule.
+    [Theory]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is not Never\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never and Copy\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is (Never)\n    ()", "clean")]
+    [InlineData("struct S<T>\n    T is Never\n    var v: i32", "clean")]
+    [InlineData("enum E<T>\n    T is Never\n    A\n    B", "clean")]
+    [InlineData("contract D\n    func d(self: ref/Self) -> string\nstruct S<T>\n    var v: i32\n    Self is D when T is Never\n        public func d(self: ref/Self) -> string => \"s\"", "clean")]
+    [InlineData("struct Box<E>\n    var v: i32\n    public func same(self) -> ()\n        E is Never\n        ()", "clean")]
+    [InlineData("contract C<X>\n    X is Never\n    associate A is Never\n    func g<U>(self: ref/Self, u: U) -> ()\n        U is Never", "clean")]
+    [InlineData("contract C\n    associate A\nstruct S\n    Self is C\n    associate A is Never", "clean")]
+    [InlineData("func g(a: Never) -> () => ()\nfunc f<T>(a: T) -> ()\n    T is Never\n    g(a@move)", "clean")]
+    [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<i32, i32>(1, 2)", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is ::Kimi.Never\n    ()\nfunc k<T>(a: T) -> ()\n    T is Option<::Kimi.Never>\n    ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Kimi.Never\n    ()", "clean")]
+    [InlineData("group G\n    contract Never\n        func g(self: ref/Self) -> ()\n    func f<T>(a: T) -> ()\n        T is Never\n        ()", "clean")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()\nfunc use() -> () => f(1)", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<T>(a: ref/T) -> i32\n    T is Never\n    return a.v", "1*UnresolvedBinding_Kd")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never<i32>\n    ()", "1*InvalidConstraint_Kd 1*InvalidTypeFormation_Kd")]
+    [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<string, i32>(1, \"s\")", "1*NoApplicableOverload_Kd")]
+    public void NeverInARequirementIsFoundByOrdinaryLookup(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G615 known limit (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises), accepted
+    // today because no component judges a premise conflict for any Type. dev rejected these four only through G704's unresolved name; R7-C3's
+    // premise-error judge flips them to rejected with G615's other rows.
+    [Theory]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is i32\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is Option<i32>\n    ()")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
+    [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
+    public void G615KnownLimitAcceptsNeverWithAConflictingIdentityPremise(string source) => Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
     public void PropositionIdentityPreservesOrigins()

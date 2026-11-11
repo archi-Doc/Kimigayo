@@ -176,8 +176,8 @@ fn generic @81
       StorageDead(_5) @97 s1
       StorageDead(_4) @96 s1
       StorageDead(_3) @95 s1
-      drop _2 -> bb10 @89
+      drop _2 -> bb10 [keep] @89
   bb10:
-      drop _1 -> bb11 @86
+      drop _1 -> bb11 [keep] @86
   bb11:
       unreachable @93

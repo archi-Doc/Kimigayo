@@ -159,6 +159,22 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([.. own.Skip(1).Take(own.Count - 4), own[^2], own[^1]], body.Operands);
     }
 
+    // SPEC 22.6, 7.7.4 (DECISIONS R8-M19): a requirement's Function Item is a function value whatever its witness; erased with an import as
+    // its witness, its adapter's entry calls the import by its C signature, as the import's direct call does.
+    [Fact]
+    public void AnErasedRequirementItemCallsItsImportWitness()
+    {
+        var c = Analyze(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc erased<C>() -> () -> u32\n    C is Clock\n    C is Owned\n    return C.now\n" +
+            "func h() -> () -> u32 => erased<Win>()\n",
+            OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "erased"))).Entry);
+        Assert.Single(CallsOf(entry), x => x.Callee == ir.Function("GetLastError"));
+    }
+
     // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104 as G182 amends it): a Function value's glue calls its table's drop entry, when present,
     // with the address of its word's copy in an entry slot, so the value's own address does not escape, and its own location and length; a
     // parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
@@ -272,7 +288,7 @@ public sealed partial class FunctionCodegenTest
     // A requirement whose witness's result is Never (SPEC 10.7), its Item taken in a generic function at the requirement's result.
     private const string NeverWitness = "contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public let x: i64 = 0\n" +
         "    public func empty() -> Never => $abort(\"no value\")\nfunc g<T>() -> () -> T\n    T is Empty\n    T is Owned\n    return T.empty\n" +
-        "public func h() -> () -> Impossible => g<Impossible>()\n";
+        "func h() -> () -> Impossible => g<Impossible>()\n";
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:
     // none).

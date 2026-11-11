@@ -97,14 +97,50 @@ internal static class ElementAccess
         return Binding.Reassignable(symbol) ? root : null;
     }
 
-    // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw
-    // Places. Range and from-end forms keep their existing handling.
+    // SPEC 5, 5.2, 5.3: the root of a raw Place's path, `*p` or `p[n]` (the node itself, already unwrapped), the one test of it: the raw
+    // walks (IsRawPlace, IsRawRooted, IsPointerPath), Binding's Place classification (IsBarePlace, LendsPlace, PlaceOrigin,
+    // PlaceOriginSource, Writable, TakeJudgment), its path step (NextPathStep) and the unsafe-context rule (RequiresUnsafe) read it.
+    internal static bool IsRawRoot(Koto source)
+        => source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(HirTables.TypeOf(index.Left)));
+
+    // SPEC 5.2, 4.7.1, 15.1.5: a raw Place, the Place a Take moves without state tracking: *p, p[n], and each part of one the raw
+    // storage holds itself (TyCtxt.RawPart: a stored Field, a Tuple element, a fixed-array element at an integer or from-end position).
+    // An Array, view, Dictionary or user element, and a part past a stored reference, is a referent, never a raw Place. MIR's move paths
+    // read the same TyCtxt.RawPart per step (MirMoveData.Resolve).
     internal static bool IsRawPlace(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
         for (var depth = 0; depth < 64; depth++)
         {
-            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(HirTables.TypeOf(index.Left))))
+            if (IsRawRoot(source))
+            {
+                return true;
+            }
+
+            if (source is not BinaryKoto element || !IsSyntax(element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
+                (element is IndexKoto && KotoHelper.UnwrapParentheses(element.Right) is var key &&
+                    (key is RangeKoto || (key is not FromEndIndexKoto && HirTables.TypeOf(element.Right) is not { IsInteger: true }))))
+            {
+                return false;
+            }
+
+            source = KotoHelper.UnwrapParentheses(element.Left);
+        }
+
+        return false;
+    }
+
+    // SPEC 5.2.2, 4.7.1: a Place rooted at a raw Place: *p or p[n], or a Place reached from one by built-in steps (IsSyntax): a stored
+    // Field, a Tuple element and a built-in (no user indexer's) element at an integer position, an Array's included (its receiver is the
+    // raw Place's part), each step also past a reference stored in the raw storage (BorrowRawPlace then bounds a borrow by that
+    // reference's Origin). A range or from-end position ends it, so a from-end raw Place (IsRawPlace) is not rooted here. Its borrow is a
+    // fresh anchor (BorrowRawPlace), its address and its place-ness the raw Place's; only IsRawPlace's Places offer Take.
+    internal static bool IsRawRooted(Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (IsRawRoot(source))
             {
                 return true;
             }
@@ -130,8 +166,7 @@ internal static class ElementAccess
         for (var depth = 0; depth < 64 && source is BinaryKoto element && IsSyntax(element) && TryType(element, out _, out _); depth++)
         {
             source = KotoHelper.UnwrapParentheses(element.Left);
-            if ((source is DereferenceKoto dereference && ReferenceTypes.IsPointer(HirTables.TypeOf(dereference.Operand))) ||
-                (source is IndexKoto index && ReferenceTypes.IsPointer(HirTables.TypeOf(index.Left))))
+            if (IsRawRoot(source))
             {
                 return true;
             }

@@ -119,22 +119,12 @@ public sealed partial class Binding
                     this.conformanceOverlapScopes.Add((a, b), scope = new(a.Declaration));
                 }
 
+                // SPEC 8.9.2: the pair's intersection is a's conformance scope with every premise of b's, read along b's scope chain where
+                // b keeps them (a declared path's in its block, an inherited path's in its own scope), as the Contract agreement check
+                // reads them, so the judgment does not depend on which path is declared first.
                 scope.Reset();
                 scope.Parent = a.Scope;
-                var environment = scope.Constraints ??= new();
-                if (b.Scope.Parent?.Constraints is { } other)
-                {
-                    foreach (var fact in other.DirectFacts)
-                    {
-                        this.AddConstraintFact(environment, fact);
-                    }
-
-                    for (var f = 0; f < other.DerivedFacts.Count; f++)
-                    {
-                        var derived = other.DerivedFacts[f];
-                        this.AddConstraintFact(environment, derived.Fact, derived.Source);
-                    }
-                }
+                this.AddOverlapFacts(scope, b.Scope);
 
                 var same = a.WitnessStorage.Count == b.WitnessStorage.Count && a.AssociatedStorage.Count == b.AssociatedStorage.Count && a.PropertyWitnessStorage.Count == b.PropertyWitnessStorage.Count;
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
@@ -224,7 +214,7 @@ public sealed partial class Binding
                 else
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
-                    if (IsRefinement(contract, this.Library.Copy))
+                    if (ReferenceEquals(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }
@@ -339,8 +329,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var identity = this.impls.Find(symbol, contract);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.impls.OfType(symbol) is { } bindings)
+        var identity = this.ConformanceOf(symbol, contract);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {
@@ -425,18 +415,15 @@ public sealed partial class Binding
     {
         if (path.InheritedFrom is not null)
         {
-            if (this.StoredType(path.InheritedBase!, type) is not { } parent)
+            // SPEC 8.8.2: the declared path's conditions at the declared Self at this Type (BoundConformancePath.DeclaredPath); where the
+            // generic Self was refused, the instance's is formed one base clause at a time. A Type past the limit is refused here.
+            this.inheritedPremiseSteps++;
+            if (path.DeclaredSelf is { } layer)
             {
-                return ConstraintProof.Unknown;
+                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope) : ConstraintProof.Unknown;
             }
 
-            var proof = ConstraintProof.Proven;
-            for (var i = 0; i < path.InheritedSourceCount; i++)
-            {
-                proof = CombineProof(proof, this.ProveConformanceConditions(path.InheritedSource(i), parent, scope), true);
-            }
-
-            return proof;
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
         }
 
         if (path.Scope.Parent?.Constraints?.Invalid == true)

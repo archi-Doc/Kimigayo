@@ -97,7 +97,7 @@ defaulttemplate evaluate#1 @139
   bb2:
       StorageDead(_8) @162 s1
       StorageDead(_5) @154 s1
-      drop _4 -> bb21 @151 s1
+      drop _4 -> bb21 [open ((_ as case 0) open (.0 keep))] @151 s1
   bb3:
       StorageLive(_8) @162 s1
       _8 = discriminant(_4) @162 s1
@@ -132,7 +132,7 @@ defaulttemplate evaluate#1 @139
       _7 = const 1_i32 @160 s2
       goto bb11 @160 s2
   bb14:
-      drop _6 -> bb15 @158 s2
+      drop _6 -> bb15 [keep] @158 s2
   bb15:
       StorageDead(_6) @158 s2
       unreachable check bb2 @160 s1
@@ -230,9 +230,9 @@ fn pick @37
       drop _3 -> bb10 [elide] @48 s1
   bb10:
       StorageDead(_3) @48 s1
-      drop _2 -> bb11 @43
+      drop _2 -> bb11 [keep] @43
   bb11:
-      drop _1 -> bb12 @42
+      drop _1 -> bb12 [keep] @42
   bb12:
       unreachable @46
 fn count @49
@@ -524,7 +524,7 @@ fn replicas @169
   bb3:
       StorageDead(_10) @162 s3
       StorageDead(_7) @154 s3
-      drop _6 -> bb22 @151 s3
+      drop _6 -> bb22 [open ((_ as case 0) open (.0 keep))] @151 s3
   bb4:
       StorageLive(_10) @162 s3
       _10 = discriminant(_6) @162 s3
@@ -559,7 +559,7 @@ fn replicas @169
       _9 = const 1_i32 @160 s4
       goto bb12 @160 s4
   bb15:
-      drop _8 -> bb16 @158 s4
+      drop _8 -> bb16 [keep] @158 s4
   bb16:
       StorageDead(_8) @158 s4
       unreachable check bb3 @160 s3

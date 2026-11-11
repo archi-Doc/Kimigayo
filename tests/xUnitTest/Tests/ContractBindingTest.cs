@@ -24,6 +24,16 @@ public class ContractBindingTest
         "    var large: i64 = 4\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n" +
         "    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref";
 
+    private const string NeedOf = "func need<T>(v: T) -> T\n    T is ";
+    private const string UseOfC = "\n    return v@move\nfunc use<T>(v: T) -> T\n    T is C\n    return need(v@move)";
+
+    private const string PutOfT = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\n";
+    private const string PutAtI32 = PutOfT + "struct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: ";
+    private const string PutAtE = PutOfT + "struct Box<E>\n    Self is Put<E>\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
+    private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
+    private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
+    private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
+
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -105,6 +115,97 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
+    }
+
+    // SPEC 8.5.1 Qualification, 8.5.3: in a Contract, `associate C.X is R` names an ancestor C, with its Type arguments, and one of
+    // its associated Types; the Contract itself, under any path, is no ancestor.
+    [Theory]
+    [InlineData("contract D\n    associate Item\n    associate D.Item is i32", false)]
+    [InlineData("group G\n    contract D\n        associate Item\n        associate G.D.Item is i32", false)]
+    [InlineData("contract D<T>\n    associate Item\n    associate D<T>.Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D\n    associate C.Item is i32", false)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate C<i64>.Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate C.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D<T>: C<T>\n    associate C<T>.Item is T\nfunc f<U>(x: U.(C<i32>).Item) -> i32\n    U is D<i32>\n    return x", true)]
+    public void AContractsAssociatedSpecificationNamesAnAncestor(string source, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        }
+    }
+
+    // SPEC 8.5.1 Qualification, 8.5.2, 9.7 (PLAN G705): a Contract qualifier is a bound Contract reference, so a Contract with Type
+    // parameters is named with its Type arguments in every associated selector and projection; without them it names no reference,
+    // whether one bound reference of it is available or several.
+    [Theory]
+    [InlineData("contract D: C<i32>\n    associate C.Item is i32", false)]
+    [InlineData("contract D: C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("    func f(self: ref/Self) -> Self.(C).Item", false)]
+    [InlineData("    func f(self: ref/Self) -> Self.(C<T>).Item", true)]
+    [InlineData("contract A: C<i32>\ncontract B: C<i64>\ncontract D: A, B\n    associate C.Item is i32", false)]
+    [InlineData("contract A: C<i32>\ncontract B: C<i64>\ncontract D: A, B\n    associate C<i32>.Item is i32\n    associate C<i64>.Item is i64", true)]
+    [InlineData("func f<U>(x: U.(::C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", true)]
+    [InlineData("contract D<T>: C<T>\n    associate C.Item is T", false)]
+    [InlineData("contract B: C<i32>\ncontract D: B\n    associate C.Item is i32", false)]
+    [InlineData("contract B: C<i32>\ncontract D: B\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract D: C<i32>\n    Self.(C).Item is i32", false)]
+    [InlineData("contract D: C<i32>\n    Self.(C<i32>).Item is i32", true)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C.Item is i32", false)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract B: C<i32>\nstruct S\n    Self is B\n    associate C.Item is i32", false)]
+    [InlineData("contract B: C<i32>\nstruct S\n    Self is B\n    associate C<i32>.Item is i32", true)]
+    [InlineData("struct S<U>\n    Self is C<i32> when U is Copy\n        associate C.Item is i32", false)]
+    [InlineData("struct S<U>\n    Self is C<i32> when U is Copy\n        associate C<i32>.Item is i32", true)]
+    [InlineData("func f<U>(x: U.(C).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", false)]
+    [InlineData("func f<U>(x: U.(C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C).Item is i32\n    return x", false)]
+    [InlineData("func f<U>(x: U.(C<i32>).Item) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i32\n    return x", true)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32\nfunc g(x: S.(C).Item) -> i32\n    return x", false)]
+    [InlineData("struct S\n    Self is C<i32>\n    associate C<i32>.Item is i32\nfunc g(x: S.(C<i32>).Item) -> i32\n    return x", true)]
+    [InlineData("func f<U>(x: i32) -> i64\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    return x@(U.(C).Item)", false)]
+    [InlineData("func f<U>(x: i32) -> i64\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    return x@(U.(C<i32>).Item)", true)]
+    [InlineData("func apply<U, F>(f: ref/F, x: i64) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    F is Callable<(U.(C).Item) -> i32>\n    return f(x)", false)]
+    [InlineData("func apply<U, F>(f: ref/F, x: i64) -> i32\n    U is C<i32>\n    U.(C<i32>).Item is i64\n    F is Callable<(U.(C<i32>).Item) -> i32>\n    return f(x)", true)]
+    [InlineData("struct W<U>\n    U is C<i32>\n    public let e: U.(C).Item", false)]
+    [InlineData("struct W<U>\n    U is C<i32>\n    public let e: U.(C<i32>).Item", true)]
+    [InlineData("    associate View(a)\ncontract D: C<i32>\n    associate C<i32>.View(a) is i32\nfunc f<U>(x: U.(C).View(static)) -> i32\n    U is D\n    return x", false)]
+    [InlineData("    associate View(a)\ncontract D: C<i32>\n    associate C<i32>.View(a) is i32\nfunc f<U>(x: U.(C<i32>).View(static)) -> i32\n    U is D\n    return x", true)]
+    public void AGenericContractQualifierTakesItsTypeArguments(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract C<T>\n    associate Item\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd && x.Node.ToString() == "C");
+            Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        }
+    }
+
+    // SPEC 8.4.3, 9.7.1 (PLAN G705): a Contract nested in a generic Container is named with its outer Type arguments outside that
+    // Container in every written position: a parent, an associate selector, a projection qualifier and an effect target. Every one is
+    // formed by the one former, whose rule this is, so the effect rows are here and not with the effect owner's records.
+    [Theory]
+    [InlineData("struct X\n    Self is Outer<i32>.C\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("struct X\n    Self is Outer<i32>.C\n    associate Outer.C.Item is i32", false)]
+    [InlineData("func f<U>(x: U.(Outer<i32>.C).Item) -> i32\n    U is Outer<i32>.C\n    U.(Outer<i32>.C).Item is i32\n    return x", true)]
+    [InlineData("contract D: Outer<i32>.C", true)]
+    [InlineData("contract D: Outer.C", false)]
+    [InlineData("contract D: Outer<i32>.C\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("contract D: Outer.C\n    associate Outer.C.Item is i32", false)]
+    [InlineData("contract D: Outer<i32>.C\nstruct S\n    Self is D\n    associate Outer<i32>.C.Item is i32", true)]
+    [InlineData("contract D: Outer<i32>.C\nstruct S\n    Self is D\n    associate Outer.C.Item is i32", false)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer<i32>.G<i64>", true)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer.G<i64>", false)]
+    [InlineData("    public contract G<U>\n        associate Item\ncontract D: Outer<i32>.G<i64>\n    associate Outer<i32>.G<i64>.Item is i32", true)]
+    [InlineData("        func f(self: ref/Self) -> i32\ncontract D: Outer<i32>.C\n    effect Outer<i32>.C.f confined", true)]
+    [InlineData("        func f(self: ref/Self) -> i32\ncontract D: Outer<i32>.C\n    effect Outer.C.f confined", false)]
+    public void ANestedContractReferenceTakesItsOuterTypeArguments(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("struct Outer<T>\n    public contract C\n        associate Item\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
     [Theory]
@@ -429,7 +530,7 @@ public class ContractBindingTest
     [InlineData("string", false)]
     public void RefiningCopyStillRequiresItsIntrinsicDerivation(string field, bool valid)
     {
-        var c = CompilationTestHelper.ParseSuccess($"contract C: Copy\nstruct S\n    Self is C\n    let value: {field}");
+        var c = CompilationTestHelper.ParseSuccess($"contract C: Copy\nstruct S\n    Self is C\n    Self is Copy\n    let value: {field}");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
@@ -524,6 +625,93 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A: Copy\ncontract C\n    func f<T>(x: T)\n        T is A\nstruct S\n    Self is C\n    public func f<U>(x: U)\n        U is Copy\n        ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
+    }
+
+    // SPEC 8.6.3, 8.4.2: a requirement's own identity premise is a premise for compatibility, so the implementation's slots correspond
+    // to the requirement's before it normalizes either side; identification never reads it (PLAN G679).
+    [Theory]
+    [InlineData(PutAtI32 + "U) => ()", "")]
+    [InlineData(PutAtI32 + "U)\n        U is i32\n        return", "")]
+    [InlineData(PutAtI32 + "U)\n        U is bool\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData(PutAtI32 + "i32) => ()", "MissingContractImplementation_Kd")]
+    [InlineData(PutAtE + "E\n        return", "")]
+    [InlineData(PutAtE + "i32\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is i32\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is i32\n        return", "")]
+    [InlineData(PutUW + " => ()", "")]
+    [InlineData(PutUW + "\n        U is i32\n        return", "UnprovenConstraint_Kd")]
+    [InlineData(GetU + "i32 => 0", "")]
+    [InlineData(GetU + "bool => true", "IncompatibleContractImplementation_Kd")]
+    public void RequirementIdentityPremisesJudgeCorrespondingSlots(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.4.1: `Self` in a Contract's requirement denotes the conforming Type, never the Contract, so `U is Self` is an identity
+    // premise (PLAN G701); a conformance supplies no evidence before its implementations are compatible (8.3.2, 8.3.3). A bound
+    // Contract's requirement reads the same (`Put<X>`), and so do a Contract-wide identity of an associated Type and a Contract nested
+    // in a struct, whose `Self` is the conformer and not the struct (6.1.4). A call through the requirement proves `U is Self` for the
+    // receiver's Type only (8.2.3; the last rows).
+    [Theory]
+    [InlineData(PutSelf + "S\n        return", "")]
+    [InlineData(PutSelf + "Self\n        return", "")]
+    [InlineData(PutSelf + "i32\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("struct R\n" + PutSelf + "R\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract Q\n" + PutSelf + "Q\n        return", "IncompatibleContractImplementation_Kd")]
+    [InlineData(PutSelf + "Put\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is S", "")]
+    [InlineData("contract C\n    associate E is Self\nstruct S\n    Self is C\n    associate E is i32", "InvalidAssociatedType_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Self\n        return", "")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U, x: X)\n        U is Self\nstruct S\n    Self is Put<i32>\n    public func put<U>(self: uniq/Self, u: U, x: i32)\n        U is Put<i32>\n        return", "UnprovenConstraint_Kd")]
+    [InlineData("struct S\n    contract C\n        func put<U>(self: ref/Self, u: U)\n            U is Self\n    Self is C\n    public func put<U>(self: ref/Self, u: U)\n        U is S\n        return", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T>(a: ref/T, b: T) -> i32\n    T is Put\n    return a.put(b@move)", "")]
+    [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
+    public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
+    // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).
+    // A Contract that requires Copy, as a parent or a clause, never opts a conforming Type in: the Type's own `Self is Copy` does (3.5.2).
+    [Theory]
+    [InlineData("contract C: PrimitiveInteger", "")]
+    [InlineData("contract C: Kimi.PrimitiveInteger", "")]
+    [InlineData("contract D\ncontract C: D, PrimitiveInteger", "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C<K>: B", "")]
+    [InlineData("contract C: Sealed", "")]
+    [InlineData("contract C: Callable", "InvalidConstraint_Kd")] // SPEC 8.7.1: Callable is written only as Callable<r, S> or Callable<S> in a Constraint.
+    [InlineData("contract C: Callable<(i32) -> i32>", "InvalidConstraint_Kd")]
+    [InlineData("func f<F>(g: F) -> F\n    F is Callable\n    return g@move", "InvalidConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger, Nope", "InvalidConstraint_Kd")]
+    [InlineData("contract C: Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C\n    Self is Copy\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: Copy\ncontract C: B\nenum E\n    Self is C\n    A", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: Copy\ncontract C: B\nenum E\n    Self is Copy\n    Self is C\n    A", "")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C when T is Copy\n    var x: T", "")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    var x: T", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C\n    var x: T", "UnprovenConstraint_Kd")]
+    [InlineData("contract C: Copy\nopen struct A\n    Self is Copy\n    var x: i32\nstruct D: A\n    Self is C", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nstruct S<T>\n    Self is not ObjectPayload\n    var x: T\n    Self is C when T is Copy", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nopen struct A\n    Self is not ObjectPayload\n    var x: i32\nstruct D: A\n    Self is C", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc at<T>(xs: ref/Array<i32>, i: T) -> i32\n    T is C\n    return xs[i]", "")]
+    [InlineData("contract C: PrimitiveInteger\nfunc wide<T>(a: T) -> i64\n    T is C\n    return a@i64", "")]
+    [InlineData("contract C: PrimitiveInteger\nstruct S\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\nenum E\n    Self is C\n    A", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: ObjectPayload\nstruct S\n    Self is C\n    var x: i32", "")]
+    [InlineData("contract C: ObjectPayload\nstruct S\n    Self is not ObjectPayload\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract B: ObjectPayload\ncontract C: B\nstruct S\n    Self is not ObjectPayload\n    Self is C\n    var x: i32", "UnsatisfiedConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\n" + NeedOf + "PrimitiveInteger" + UseOfC, "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\n" + NeedOf + "PrimitiveInteger" + UseOfC, "")]
+    [InlineData("contract C\n" + NeedOf + "PrimitiveInteger" + UseOfC, "UnprovenConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\n" + NeedOf + "Copy" + UseOfC, "")]
+    [InlineData("contract B: PrimitiveInteger\ncontract C: B\n" + NeedOf + "Owned" + UseOfC, "")]
+    [InlineData("contract C\n" + NeedOf + "Copy" + UseOfC, "UnprovenConstraint_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "")]
+    [InlineData("contract C\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "ArithmeticSelection_Kd")]
+    [InlineData("contract C: PrimitiveInteger\nfunc same<T>(a: T, b: T) -> bool\n    T is C\n    return a == b", "")]
+    [InlineData("contract C: PrimitiveInteger\nfunc zero<T>() -> T\n    T is C\n    return 0", "")]
+    public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
+    private static void AssertBindingCodes(string source, string codes)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.Equal(codes.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Distinct().Order()));
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);

@@ -225,7 +225,7 @@ public class TestAttributeCertificateBindingTest
     }
 
     [Theory]
-    [InlineData("#Unknown\nprotected func f() => ()", nameof(BindingFailure.ProtectedPlacement), "ProtectedPlacement_Kd", 1)]
+    [InlineData("group G\n    #Unknown\n    protected func f() => ()", nameof(BindingFailure.ProtectedPlacement), "ProtectedPlacement_Kd", 1)]
     [InlineData(
         "struct Box<T>\n    func f<U>(x: T) => ()\n    #Unknown\n    func f<V>(x: V) => ()",
         nameof(BindingFailure.ParameterShapeMismatch),

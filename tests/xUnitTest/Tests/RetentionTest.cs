@@ -82,6 +82,10 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // The row of `f(target: uniq/(raw/u8) during a, q: …)` where q holds a layer stating `a` by value: through it, target's referent (PLAN G583).
+    private const string HeldLayerRow =
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied";
+
     // A holder whose slot an exclusive Loan Field keeps (PLAN G148 (1)'s review B-1: its raw layers stating `s` are exclusive).
     private const string SlotKept = "struct HS {s}\n    let loan: Loan<uniq/(raw/u8) during s>\n";
 
@@ -807,7 +811,9 @@ public sealed partial class RetentionTest
     // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same inputs (DECISIONS BU-108): with `b` a `ref` input
     // the call writes nothing past it (`reached {}`), with a `uniq` one, or a `ref` and a `uniq` one, its referent; and a holder's method
     // reads a layer stating its slot `s`, which an exclusive Loan Field keeps, as exclusive, declared (`b: raw/…`) or supplied
-    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1).
+    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1). A stated layer an input holds by value writes its members'
+    // referents wherever it lies, as a Tuple's does (SPEC 15.6.4 "a Tuple element, an Option payload, a Field or a Type argument
+    // included"; PLAN G583): an Option payload, a Field of `T`, a Tuple inside an Option.
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
@@ -845,6 +851,11 @@ public sealed partial class RetentionTest
         "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Value, 1 Value, 2 Content, 3 Content}, reached {0 Content, 1 Content, 2 Content, 3 Value}")]
     [InlineData(SlotKept + "    let b: raw/(raw/u8) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("struct Box2<E>\n    public var value: E\n" + SlotKept + "    var b: Box2<raw/(raw/u8) during s>\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: (raw/u8 during a, i32)) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<raw/u8 during a>) => ()", HeldLayerRow)]
+    [InlineData(Wrap + "func f(target: uniq/(raw/u8) during a, q: Wrap<raw/u8 during a>) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<(raw/u8 during a, i32)>) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<raw/u8 during static>) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -1332,7 +1343,7 @@ public sealed partial class RetentionTest
         var at = Function(c, "at").SymbolOf()!;
         var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
         Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
-        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, []), at)), Calls(c, "flush").Single()));
+        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
@@ -1567,7 +1578,7 @@ public sealed partial class RetentionTest
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
 
-            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, []), null);
+            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, [], []), null);
             _ = c.Types.RetainsErasedDestruction(part, gen);
         }));
     }

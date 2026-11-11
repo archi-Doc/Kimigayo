@@ -127,9 +127,11 @@ public struct Array<T>
         P is Position
         // As remove: swapAt's one check rejects -1, the end boundary and an empty Array, so pop then has an element.
         let count = self.length
+        // `0 <= count` bounds the difference.
+        let last = (count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         match index.tryResolve(count)
-            .Some(let position) => self.swapAt(first: position, second: count - 1)
-            .None => self.swapAt(first: -1, second: count - 1)
+            .Some(let position) => self.swapAt(first: position, second: last)
+            .None => self.swapAt(first: -1, second: last)
         match self.pop()
             .Some(let removed) => return removed@move
             .None => $abort("Array index out of range")
@@ -145,7 +147,9 @@ public struct Array<T>
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
             let count = (*handle).length
             if length >= count => return
-            Storage.destroyValues<T>(((*handle).data + length)@raw/u8, count - length)
+            // `0 <= length < count` bounds the difference.
+            let removed = (count@Wrapping<isize> - length@Wrapping<isize>)@isize
+            Storage.destroyValues<T>(((*handle).data + length)@raw/u8, removed)
             (*handle).length = length
 
     /// Moves every element of `other` to the end, in order; `other` is consumed.
@@ -180,7 +184,8 @@ public struct Array<T>
             var index: isize = 0
             while index < count
                 Raw.initialize(storage + index, repeating)
-                index += 1
+                // `index < count` bounds the step.
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             (*handle).length = count
         return result@move
 
@@ -199,7 +204,8 @@ public struct Array<T>
             // source Loan excludes overlapping storage. Only the newly reserved tail is initialized.
             for index in values.indices
                 Raw.initialize(storage + offset + index, values[index])
-            (*handle).length = offset + count
+            // `reserve` returned, so `offset + count <= capacity`.
+            (*handle).length = (offset@Wrapping<isize> + count@Wrapping<isize>)@isize
 
     /// Ensures `capacity >= length + additional`, and moves nothing when the capacity suffices (SPEC 4.9.5).
     ///
@@ -244,7 +250,8 @@ public struct Array<T>
             // From the end: each element moves into the slot the previous step vacated (SPEC 5.2.3).
             var position = length
             while position > index
-                let previous = position - 1
+                // `position > index >= 0` bounds the step.
+                let previous = (position@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 Raw.initialize(data + position, data[previous]@move)
                 position = previous
             Raw.initialize(data + index, value@move)
@@ -256,7 +263,8 @@ public struct Array<T>
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
             let length = (*handle).length
             require length > 0 else => return .None
-            let last = length - 1
+            // The guard `length > 0` bounds the difference.
+            let last = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize
             (*handle).length = last
             return .Some((*handle).data[last]@move)
 
@@ -270,11 +278,12 @@ public struct Array<T>
             require index >= 0 and index < length else => Storage.indexBounds()
             let data = (*handle).data
             let removed = data[index]@move
-            let last = length - 1
+            // `0 <= index < length` bounds the difference, and `position < last` each step.
+            let last = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize
             // From `index`: each element moves into the slot the previous step vacated (SPEC 5.2.3).
             var position = index
             while position < last
-                let next = position + 1
+                let next = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 Raw.initialize(data + position, data[next]@move)
                 position = next
             (*handle).length = last
@@ -316,21 +325,23 @@ public struct Array<T>
         let count = self.length
         var kept: isize = 0
         var index: isize = 0
+        // `kept <= index < count` bounds both steps.
         while index < count
             if not matching(self[index])
                 if kept != index => self.swapAt(first: kept, second: index)
-                kept += 1
-            index += 1
+                kept = (kept@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
         self.truncate(kept)
 
     /// Reverses the order of the elements.
     public func reverse(self: uniq/Self)
         var low: isize = 0
-        var high = self.length - 1
+        // `0 <= length` bounds the difference, and `0 <= low < high` both steps.
+        var high = (self.length@Wrapping<isize> - 1@Wrapping<isize>)@isize
         while low < high
             self.swapAt(first: low, second: high)
-            low += 1
-            high -= 1
+            low = (low@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            high = (high@Wrapping<isize> - 1@Wrapping<isize>)@isize
 
     /// Sorts the elements in nondecreasing `compare` order, without allocation; not stable.
     public func sort(self: uniq/Self)
@@ -341,16 +352,20 @@ public struct Array<T>
         var start = end / 2
         while end > 1
             var parent: isize = 0
+            // `start > 0` and `end > 1` bound the steps.
             if start > 0
-                start -= 1
+                start = (start@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 parent = start
             else
-                end -= 1
+                end = (end@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 self.swapAt(first: 0, second: end)
-            // Only parents with a child compute 2 * parent + 1, so the index cannot overflow.
+            // Only parents with a child compute 2 * parent + 1, so the index cannot overflow: `parent < end / 2` gives
+            // `child < end`, and the sibling is at most `end`.
             while parent < end / 2
-                var child = parent * 2 + 1
-                if child + 1 < end and self[child].compare(self[child + 1]) < 0 => child += 1
+                let doubled = (parent@Wrapping<isize> * 2@Wrapping<isize>)@isize
+                var child = (doubled@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                let sibling = (child@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                if sibling < end and self[child].compare(self[sibling]) < 0 => child = sibling
                 if self[parent].compare(self[child]) >= 0 => exit
                 self.swapAt(first: parent, second: child)
                 parent = child
@@ -367,15 +382,19 @@ public struct Array<T>
             // The first phase builds the heap from start = length / 2 down to 0; the second moves the maximum
             // to the end and restores the heap on the shorter prefix.
             var parent: isize = 0
+            // `start > 0` and `end > 1` bound the steps.
             if start > 0
-                start -= 1
+                start = (start@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 parent = start
             else
-                end -= 1
+                end = (end@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 self.swapAt(first: 0, second: end)
+            // As the Comparable overload: `parent < end / 2` gives `child < end`, and the sibling is at most `end`.
             while parent < end / 2
-                var child = parent * 2 + 1
-                if child + 1 < end and by(self[child], self[child + 1]) < 0 => child += 1
+                let doubled = (parent@Wrapping<isize> * 2@Wrapping<isize>)@isize
+                var child = (doubled@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                let sibling = (child@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                if sibling < end and by(self[child], self[sibling]) < 0 => child = sibling
                 if by(self[parent], self[child]) >= 0 => exit
                 self.swapAt(first: parent, second: child)
                 parent = child
@@ -425,8 +444,9 @@ public struct ArrayOwningIterator<T>
     public func next(self: uniq/Self) -> Option<T>
         require self.count > 0 else => return .None
         let position = self.position
-        self.position += 1
-        self.count -= 1
+        // `count > 0` bounds both steps: the Array holds `position + count` elements.
+        self.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        self.count = (self.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe => return .Some(self.array.data[position]@move)
 
 /// The standard owning fixed-array iterator: each `next` transfers the next unreturned element out, and the unreturned

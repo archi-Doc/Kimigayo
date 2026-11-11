@@ -108,7 +108,7 @@ public class DependentCompoundConstraintBindingTest
     [Fact]
     public void ReplacingAnInputRechecksExistingUses()
     {
-        const string source = "public struct Target<T>\n    T is Copy\npublic func use(value: Target<i32>)\n    return";
+        const string source = "public struct Target<T>\n    T is Copy\nfunc use(value: Target<i32>)\n    return";
         var c = MinimalEmissionTest.Analyze(source);
         var clause = c.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0];
         var original = clause.Right;
@@ -125,7 +125,7 @@ public class DependentCompoundConstraintBindingTest
     [Fact]
     public void WarmInputsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is Copy\npublic func use(value: Target<[2 of i32]>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is Copy\nfunc use(value: Target<[2 of i32]>)\n    return");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -143,14 +143,14 @@ public class DependentCompoundConstraintBindingTest
     }
 
     private static string Use(string clause, string argument)
-        => "public struct Box<T>\npublic struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return";
+        => "public struct Box<T>\npublic struct Target<T>\n    " + clause + "\nfunc use(value: Target<" + argument + ">)\n    return";
 
     private static string Derived(string kind, string subject, string argument)
-        => "public " + kind + " Target<T>\n    T is Copy\n    " + subject + " is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "public func use(value: Target<" + argument + ">)\n    return";
+        => "public " + kind + " Target<T>\n    T is Copy\n    " + subject + " is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "func use(value: Target<" + argument + ">)\n    return";
 
     private static string Unimplemented(string subject)
         => "public contract C\n    func read(self: ref/Self) -> i32\npublic struct Target<T>\n    " + subject + " is C";
 
     private static string Projected(string clause, string item)
-        => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\npublic func use(value: Target<Source>)\n    return";
+        => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\nfunc use(value: Target<Source>)\n    return";
 }

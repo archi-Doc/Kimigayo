@@ -40,7 +40,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     public void EachCutOfOneBodyIsItsOwnRecord()
     {
         var levels = LevelsWithin("parentheses") + 1;
-        var source = $"public func f(c: bool) -> i32\n    let a = {new string('(', levels)}1{new string(')', levels)}\n    return {Plus(LevelsWithin("plus") + 1)}\n";
+        var source = $"func f(c: bool) -> i32\n    let a = {new string('(', levels)}1{new string(')', levels)}\n    return {Plus(LevelsWithin("plus") + 1)}\n";
         var records = this.Compile(source).Records;
         Assert.Equal([nameof(DiagnosticCode.NestingLimit_Kd), nameof(DiagnosticCode.NestingLimit_Kd)], records.Select(static x => x.Code));
         Assert.True(records[0].Span.Start < source.IndexOf("return", StringComparison.Ordinal) && records[1].Span.Start > source.IndexOf("return", StringComparison.Ordinal));
@@ -99,7 +99,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         c.Kotonoha.AddSource(new SourceDocument("a.kimi", Groups(L))); // Group G1023 lies at depth L and has a child.
         if (secondDocument)
         {
-            c.Kotonoha.AddSource(new SourceDocument("b.kimi", "public func g() -> i32 => 1\n"));
+            c.Kotonoha.AddSource(new SourceDocument("b.kimi", "func g() -> i32 => 1\n"));
         }
 
         var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
@@ -140,8 +140,8 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         => shape switch
         {
             "parentheses" => CompilationEntryTest.Parentheses(levels),
-            "plus" => $"public func f(c: bool) -> i32\n    return {Plus(levels)}\n",
-            "type" => $"public func f(x: {string.Concat(Enumerable.Repeat("Option<", levels))}i32{new string('>', levels)}) -> i32 => 0\n",
+            "plus" => $"func f(c: bool) -> i32\n    return {Plus(levels)}\n",
+            "type" => $"func f(x: {string.Concat(Enumerable.Repeat("Option<", levels))}i32{new string('>', levels)}) -> i32 => 0\n",
             "groups" => Groups(levels),
             _ => CompilationEntryTest.LabeledDos(levels),
         };

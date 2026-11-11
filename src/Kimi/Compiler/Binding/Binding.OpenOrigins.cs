@@ -293,7 +293,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.6, 10.8: after selection, a slot that only the argument's own per-call Origin would satisfy is MissingOriginBinding_Kd
     // at the call, whose Reason names the argument and the slot (ReportPerCallOrigin), with the argument related.
-    private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, BoundType?[] slots, Koto argument)
+    private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundType?> slots, Koto argument)
     {
         var slot = -1;
         for (var g = 0; g < selected.GenericArguments.Count; g++)
@@ -321,13 +321,13 @@ public sealed partial class Binding
 
     // SPEC 10.7, 10.8: the slot solutions with each open region of `source` at a required input over a fixed Origin instantiated to that
     // Origin, once the fit holds with it (PerCallStandIn with `fixedOnly`).
-    private void InstantiateOpenOrigins(Span<BoundType?> slots, Koto source, BoundType signature)
+    private void InstantiateOpenOrigins(SlotFrame frame, int count, Koto source, BoundType signature)
     {
-        for (var g = 0; g < slots.Length; g++)
+        for (var g = 0; g < count; g++)
         {
-            if (slots[g] is { } solution)
+            if (frame.Types[g] is { } solution)
             {
-                slots[g] = this.ReplaceOpenOrigins(solution, source, signature, true);
+                frame.SetType(g, this.ReplaceOpenOrigins(solution, source, signature, true));
             }
         }
     }

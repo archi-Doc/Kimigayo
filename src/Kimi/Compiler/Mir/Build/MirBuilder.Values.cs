@@ -132,7 +132,8 @@ internal sealed partial class MirBuilder
             case HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value: // A built-in range selection.
                 this.Slice(destination, (IndexKoto)node);
                 break;
-            case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
+            case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call
+                when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
                 // SPEC 3.5, 14.2.2: a discarded Place's value is its Place evaluated (an Index checks its bounds) and acquired by its bare
                 // acquisition, its plan row's Adjust (DECISIONS R4-M145), as any consumed child's Adjust is (Operand).
                 this.Use(destination, this.Operand(node, HirTables.PlanOf(node).Adjust, this.body.TypeOf(destination), input, destination), node);
@@ -386,12 +387,12 @@ internal sealed partial class MirBuilder
 
     // The one assignment: a node's own value or a part of it, made where it is built from the operands evaluated before it, also where
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
-    // has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never value, or a value assigned
-    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
+    // has an input (an operand, or the Place of a kind that has one, MirDescriptor.HasPlace) whose every input is the Never value (never
+    // an Adapt, whose token is a constant), or a value assigned to the Never value, since a node of Type Never makes none (but its Opaque
+    // value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Storage or MirRvalueKind.Discriminant
-            ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
@@ -405,11 +406,12 @@ internal sealed partial class MirBuilder
 
     // SPEC 3.1.3, 3.8: whether a Place is the Never value, a temp of Type Never, which carries no Loan and fits any operand position; only
     // an unadapted Copy or Move of a Never Place (Acquire), an Opaque value of Type Never and a diverging Call write it (DECISIONS R4-M62,
-    // R5-M38, R5-M33; MirValidator).
-    private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && this.IsNever(place);
+    // R5-M38, R5-M33; MirValidator). It tests the temp's own Type by reference and never premises: the builder declares the Never value
+    // with BoundType.Never itself, and a Place the premises make Never becomes it only through Acquire (IsNever below).
+    private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.
-    private bool IsNever(MirPlace place) => ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
+    private bool IsNever(MirPlace place) => MirTypes.IsNever(this.body, this.body.TypeOf(place));
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)

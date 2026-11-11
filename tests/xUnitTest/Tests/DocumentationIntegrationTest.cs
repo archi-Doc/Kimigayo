@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
+using Kimi.Documentation;
 using Tinyhand;
 using Xunit;
 
@@ -84,7 +84,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void UsesOriginalSpecializationContractAndEffectiveAccess()
     {
-        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("public group Docs\n    /// original\n    public func weight<T>(value: ref/T) -> i32 => 1\n    /// implementation\n    specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
         var c = tree.RootKoto.CodeContext.Compilation;
         Assert.True(c.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;

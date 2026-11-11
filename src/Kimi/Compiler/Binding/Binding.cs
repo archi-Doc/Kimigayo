@@ -20,15 +20,14 @@ namespace Kimi.Compiler;
 /// <summary>Owns reusable Binding storage and updates semantic fields on the existing Koto tree.</summary>
 public sealed partial class Binding
 {
-    // One capacity for `symbols` (one entry per declaration) and `scopes` (one per scope). The library alone fills about 1,400 and 900, which leaves
-    // about 2,600 and 3,100 entries for a program at this size (the prime 4,049). Starting here skips the doubling chain and its rehashing. Past it a
-    // table doubles as before, and a library that grows moves that step too, so review this size then.
-    private const int DeclarationTableCapacity = 4000;
-
     private readonly Compilation compilation;
-    private readonly List<Koto> nodes = new(256);
-    private readonly Dictionary<object, BindingScope> scopes = new(DeclarationTableCapacity, ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<object, BindingSymbol> symbols = new(DeclarationTableCapacity, ReferenceEqualityComparer.Instance);
+    private readonly List<Koto> nodes = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
+    private readonly Dictionary<object, BindingScope> scopes = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<object, BindingSymbol> symbols = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Declarations), ReferenceEqualityComparer.Instance);
+
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
     private readonly TyCtxt types;
@@ -68,6 +67,32 @@ public sealed partial class Binding
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
+
+    /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
+    internal KimiLibrarySize.Tables TableCounts
+        => new(
+            this.nodes.Count,
+            this.symbols.Count,
+            this.scopes.Count,
+            this.types.KeyCount,
+            this.constraints.Count,
+            this.pendingAssociatedTypes.Count,
+            this.memberSelections.Count,
+            this.capabilityNodes.Count,
+            this.substitutedParts.Count);
+
+    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries.</summary>
+    internal KimiLibrarySize.Tables TableFree
+        => new(
+            this.nodes.Capacity - this.nodes.Count,
+            this.symbols.Capacity - this.symbols.Count,
+            this.scopes.Capacity - this.scopes.Count,
+            this.types.KeyFree,
+            this.constraints.Capacity - this.constraints.Count,
+            this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
+            this.memberSelections.Capacity - this.memberSelections.Count,
+            this.capabilityNodes.Capacity - this.capabilityNodes.Count,
+            this.substitutedParts.Free);
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
@@ -190,7 +215,7 @@ public sealed partial class Binding
         this.clausesBindable = true;
         this.PublishInheritedOptOuts();
         this.VerifyEarlyObjectForms();
-        this.RegisterInheritedConformances(complete: true);
+        this.RegisterInheritedConformances();
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
         this.PrepareCases();

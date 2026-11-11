@@ -291,6 +291,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
     }
 
+    // SPEC 4.8.1, 8.15.3 (PLAN G597): a keyed Storage has two operands, its start position, an isize, and the token of its key's Type,
+    // whose start is open in the body (R; the S of Range<S, End> and Range<S, E>, keys whose own IsAbstract is false): no finding. A key
+    // that decides its start takes the unkeyed form, so its token is an Operation finding either way: one that starts at the storage
+    // (Range<Start, End>, Range<Start, E>) and one that displaces (Range<i32, E>, which holds a parameter; Range<FromEnd<i32>, End>;
+    // ResolvedRange). So are a start that is no isize (flag) and a second operand that is no Type token (value); one operand or three is
+    // an Arity finding (fail-before: a Storage with any operand was an Arity finding).
+    [Theory]
+    [InlineData("r", 2, null)]
+    [InlineData("from", 2, null)]
+    [InlineData("both", 2, null)]
+    [InlineData("full", 2, "Operation")]
+    [InlineData("to", 2, "Operation")]
+    [InlineData("at", 2, "Operation")]
+    [InlineData("back", 2, "Operation")]
+    [InlineData("resolved", 2, "Operation")]
+    [InlineData("flag", 2, "Operation")]
+    [InlineData("value", 2, "Operation")]
+    [InlineData("r", 1, "Arity")]
+    [InlineData("r", 3, "Arity")]
+    public void AKeyedStorageTakesAStartAndAnOpenKey(string form, int count, string? rule)
+    {
+        var (body, types) = KeyedStorage(form, count);
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
     // its kind's row, the effects the reserve and append calls it replaces had; `[]` allocates nothing and reports none, and a fixed array is
     // placed in its own storage (fail-before: no aggregate kind had a row).
@@ -699,13 +725,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is not null, use.HasFinding);
     }
 
-    // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their constants, which code generation
-    // reads unchecked, each of its position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, the direct mark a
-    // Bool, a segment's text a string), and its FormatFinish the estimate operands of the FormatBuffer whose buffer its adapter is over,
-    // since code generation places the buffer by the one and ends it by the other: the built bodies are valid, a nested interpolation's
-    // included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for another kind), and a
-    // FormatFinish whose estimate differs from its FormatBuffer's, or whose adapter (here the argument) is over no FormatBuffer's buffer, an
-    // Arity finding at it.
+    // R3-10 (PLAN G157 (37)): an owning interpolation's steps carry their constants, which code generation reads unchecked, each of its
+    // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, a segment's text a string): the built bodies
+    // are valid, a nested interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step
+    // (fail-before: none for another kind). FormatFinish takes only its adapter since R8-W2 a2 (R5-M131's pairing went with the stack form).
     [Theory]
     [InlineData(null, false)]
     [InlineData(null, true)]
@@ -713,9 +736,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("later", false)]
     [InlineData("segment", false)]
     [InlineData("buffer", false)]
-    [InlineData("direct", false)]
-    [InlineData("bytes", false)]
-    [InlineData("lineage", false)]
     public void AnInterpolationsStepsCarryItsEstimate(string? broken, bool nested)
     {
         var c = MirBuildTest.Compile(nested ? "func f(n: i32) -> string => \"a\\(\"b\\(n)\")c\"\n" : Interpolation);
@@ -727,9 +747,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "text" => (IntrinsicId.FormatSegment, 1),
             "later" => (IntrinsicId.FormatSegment, 2),
             "segment" => (IntrinsicId.FormatSegment, 3),
-            "direct" => (IntrinsicId.FormatFinish, 3),
-            "bytes" => (IntrinsicId.FormatFinish, 1),
-            "lineage" => (IntrinsicId.FormatFinish, 0),
             _ => (IntrinsicId.FormatBuffer, 1),
         };
         MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
@@ -737,30 +754,39 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (steps, finishes) = (Steps(id), Steps(IntrinsicId.FormatFinish));
         Assert.Equal(nested ? 2 : 1, finishes.Length);
         Assert.Equal(id == IntrinsicId.FormatSegment ? 3 : finishes.Length, steps.Length);
-        var (step, finish) = (body.Subject(steps[0].Source), body.Subject(finishes[0].Source));
+        var step = body.Subject(steps[0].Source);
         if (broken is not null)
         {
-            MirConst? constant = broken switch
+            MirConst constant = broken switch
             {
-                "text" or "direct" or "bytes" => new(MirConstKind.Integer, BoundType.ISize, broken == "bytes" ? 99 : 0),
+                "text" => new(MirConstKind.Integer, BoundType.ISize, 0),
                 "later" => new(MirConstKind.Bool, BoundType.Boolean, 1),
-                "lineage" => null,
                 _ => new(MirConstKind.TypeToken, BoundType.I32),
             };
-            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = constant is { } value ? MirOperand.Const(body.Const(value)) : MirOperand.Move(new(1));
+            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = MirOperand.Const(body.Const(constant));
         }
 
-        (MirViolation, SourceRef)[] expected = broken switch
-        {
-            "text" or "later" or "segment" => [(MirViolation.Type, step)],
-            "buffer" => [(MirViolation.Type, step), (MirViolation.Arity, finish)],
-            "direct" => [(MirViolation.Type, finish), (MirViolation.Arity, finish)],
-            "bytes" or "lineage" => [(MirViolation.Arity, finish)],
-            _ => [],
-        };
+        (MirViolation, SourceRef)[] expected = broken is null ? [] : [(MirViolation.Type, step)];
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its
+    // instance decides; the body is valid, its Len a sequence's.
+    [Fact]
+    public void ALenOverAnInterpolationBoundRegionIsASequences()
+    {
+        var c = MirBuildTest.Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var len = Assert.Single(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
+        var region = body.TypeOf(len.Rvalue.Place)!;
+        Assert.Equal((BoundTypeKind.FixedArray, LengthOperation.InterpolationBound), (region.Kind, region.LengthExpression!.Operation));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Empty(findings);
     }
 
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body
@@ -1073,14 +1099,19 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
-    // SPEC 13.4, 13.4.1, 5.1, 3.1.3, 8.7.4 (PLAN G662; R8-M15's family): a comparison BinaryOp stands only in the operator table's domain
-    // (ComparisonTypes.OperatorCompares, the whitelist the Backend's Column reads) at its operands' terminals: every comparison at an integer,
-    // a wrapping integer, a floating-point Type, char and a Never terminal (below ref or uniq: it has no value), equality alone at bool, Unit
-    // and a raw pointer (SPEC 5.1: its address; to a string too, directly or below a pair layer, since the walk stops at a raw layer), and
-    // any at an abstract operand, a Type parameter here, whose instance Binding proves (MIR reads the shape). A string's comparison is its
-    // library witness's call (R8-S1e-b), a struct's, an enum's and a Tuple's a Contract call, so a BinaryOp at one, as it is, below ref, uniq
-    // or pair layers (s/string) or as the right operand after a Never left, is a broken contract, as is an ordering at bool, Unit or a raw
-    // pointer; one at i32 is not, after a Never left either.
+    // SPEC 13.2-13.4, 13.4.1, 5.1, 5.3, 3.1.3, 8.7.4 (PLAN G662; R8-M15's family): an operator rvalue stands only in the operator table's
+    // domain (MirTypes.Operates, the whitelist the Backend's Column reads) at its operands' terminals: every comparison at an integer, a
+    // wrapping integer, a floating-point Type, char and a Never terminal (below ref or uniq: it has no value), equality alone at bool, Unit
+    // and a raw pointer (SPEC 5.1: its address; to a string too, directly or below a pair layer, since the walk stops at a raw layer); + - * /
+    // at a numeric Type (+ and - a raw pointer displaced by an isize too), % & | ^ and a shift's left operand at an integer or wrapping
+    // integer, unary - at a numeric Type but an unsigned integer (Wrapping<u32>'s stands), not at bool; at an abstract operand, a Type
+    // parameter here, each binary operator, on Binding's PrimitiveInteger proof (MIR reads the shape), and unary - at Wrapping over one,
+    // but neither unary operator at the parameter itself (a Negatable T's negation is a requirement call; no T is bool by proof). A
+    // string's comparison is its library witness's call (R8-S1e-b), a struct's, an enum's and a Tuple's a Contract call, so a BinaryOp at
+    // one, as it is, below ref, uniq or pair layers (s/string) or as the right operand after a Never left, is a broken contract, as is an
+    // ordering at bool, Unit or a raw pointer, arithmetic at bool, char, Unit, a struct, a Tuple, a string or a raw pointer's product, a
+    // remainder, bitwise operator, shift or not at f64, a bitwise operator or shift at bool or char, and unary - at usize, bool or char;
+    // one at i32 is not, after a Never left either.
     [Theory]
     [InlineData("string", "==", true)]
     [InlineData("ref", "==", true)]
@@ -1107,7 +1138,43 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("refNever", "==", false)]
     [InlineData("refNever", "<", false)]
     [InlineData("uniqNever", "!=", false)]
-    public void AComparisonBinaryOpIsInTheOperatorTablesDomain(string operand, string op, bool reported)
+    [InlineData("bool", "+", true)]
+    [InlineData("char", "*", true)]
+    [InlineData("unit", "-", true)]
+    [InlineData("struct", "+", true)]
+    [InlineData("never struct", "/", true)]
+    [InlineData("tuple", "+", true)]
+    [InlineData("string", "+", true)]
+    [InlineData("raw", "*", true)]
+    [InlineData("f64", "%", true)]
+    [InlineData("bool", "&", true)]
+    [InlineData("f64", "|", true)]
+    [InlineData("char", "^", true)]
+    [InlineData("bool", "<<", true)]
+    [InlineData("f64", ">>", true)]
+    [InlineData("usize", "neg", true)]
+    [InlineData("bool", "neg", true)]
+    [InlineData("char", "neg", true)]
+    [InlineData("i32", "not", true)]
+    [InlineData("f64", "not", true)]
+    [InlineData("i32", "+", false)]
+    [InlineData("never i32", "*", false)]
+    [InlineData("f64", "/", false)]
+    [InlineData("wrapping", "%", false)]
+    [InlineData("usize", "&", false)]
+    [InlineData("wrapping", "<<", false)]
+    [InlineData("i32", "neg", false)]
+    [InlineData("f64", "neg", false)]
+    [InlineData("wrapping", "neg", false)]
+    [InlineData("bool", "not", false)]
+    [InlineData("parameter", "+", false)]
+    [InlineData("parameter", "neg", true)]
+    [InlineData("parameter", "not", true)]
+    [InlineData("wrapping parameter", "neg", false)]
+    [InlineData("wrapping u32", "neg", false)]
+    [InlineData("raw", "+", false)]
+    [InlineData("raw", "-", false)]
+    public void AnOperatorRvalueIsInTheOperatorTablesDomain(string operand, string op, bool reported)
     {
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1129,33 +1196,55 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "bool" => BoundType.Boolean,
             "char" => BoundType.Char,
             "f64" => BoundType.F64,
+            "usize" => BoundType.USize,
             "wrapping" => BoundType.WrappingOf(BoundType.I32),
+            "wrapping u32" => BoundType.WrappingOf(BoundType.Primitives["u32"]),
+            "wrapping parameter" => c.Types.Intern(
+                BoundTypeKind.Constructed, c.Library.GetSymbol(KimiDeclarationId.Wrapping)!, SemanticsKind.Owner, [parameter!]),
             "parameter" => parameter!,
             "refNever" => c.Types.Reference(SemanticsKind.Ref, BoundType.Never),
             "uniqNever" => c.Types.Reference(SemanticsKind.Uniq, BoundType.Never),
             _ => BoundType.I32,
         };
         var left = MirModelTest.Local(body, operand.StartsWith("never", StringComparison.Ordinal) ? BoundType.Never : type);
-        var (right, result, block) = (MirModelTest.Local(body, type), MirModelTest.Local(body, BoundType.Boolean), body.AddBlock());
-        var operands = AddOperands(body, [Read(left), Read(right)]);
-        body.Push(block, MirStatement.Assign(result, MirRvalue.Binary(Op(op), operands, proven: true), At));
+        var (unary, code) = Op(op);
+        var counterpart = code is MirBinaryOp.Shl or MirBinaryOp.Shr ? BoundType.I32 // A shift's count, a raw pointer's displacement.
+            : operand == "raw" && code is MirBinaryOp.Add or MirBinaryOp.Sub ? BoundType.ISize : type;
+        var right = MirModelTest.Local(body, counterpart);
+        var (result, block) = (MirModelTest.Local(body, code >= MirBinaryOp.Eq ? BoundType.Boolean : type), body.AddBlock());
+        var rvalue = unary is { } negation ? MirRvalue.Unary(negation, AddOperands(body, [Read(left)]), proven: true)
+            : MirRvalue.Binary(code, AddOperands(body, [Read(left), Read(right)]), proven: true);
+        body.Push(block, MirStatement.Assign(result, rvalue, At));
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Equal(reported, Validate(body).Any(static x => x.Rule == MirViolation.Operation));
 
         // A value of a Type that is not Copy here (string, uniq/string, a pair layer, a struct or enum without the Contract, a parameter in a
         // body without its definition's premises) is moved, since its Copy is an Operation finding of its own (DECISIONS BU-88).
         MirOperand Read(MirPlace place)
-            => operand is "string" or "uniq" or "pair" or "pair raw" or "struct" or "never struct" or "enum" or "parameter" or "uniqNever"
-            ? MirOperand.Move(place) : MirOperand.Copy(place);
+            => operand is "string" or "uniq" or "pair" or "pair raw" or "struct" or "never struct" or "enum" or "parameter" or "wrapping parameter" or
+                "uniqNever" ? MirOperand.Move(place) : MirOperand.Copy(place);
 
-        static MirBinaryOp Op(string op) => op switch
+        // A unary operator, or a binary one (Add for a unary row: neither a comparison nor a shift).
+        static (MirUnaryOp? Unary, MirBinaryOp Binary) Op(string op) => op switch
         {
-            "==" => MirBinaryOp.Eq,
-            "!=" => MirBinaryOp.Ne,
-            "<" => MirBinaryOp.Lt,
-            "<=" => MirBinaryOp.Le,
-            ">" => MirBinaryOp.Gt,
-            _ => MirBinaryOp.Ge,
+            "neg" => (MirUnaryOp.Neg, MirBinaryOp.Add),
+            "not" => (MirUnaryOp.Not, MirBinaryOp.Add),
+            "+" => (null, MirBinaryOp.Add),
+            "-" => (null, MirBinaryOp.Sub),
+            "*" => (null, MirBinaryOp.Mul),
+            "/" => (null, MirBinaryOp.Div),
+            "%" => (null, MirBinaryOp.Rem),
+            "&" => (null, MirBinaryOp.BitAnd),
+            "|" => (null, MirBinaryOp.BitOr),
+            "^" => (null, MirBinaryOp.BitXor),
+            "<<" => (null, MirBinaryOp.Shl),
+            ">>" => (null, MirBinaryOp.Shr),
+            "==" => (null, MirBinaryOp.Eq),
+            "!=" => (null, MirBinaryOp.Ne),
+            "<" => (null, MirBinaryOp.Lt),
+            "<=" => (null, MirBinaryOp.Le),
+            ">" => (null, MirBinaryOp.Gt),
+            _ => (null, MirBinaryOp.Ge),
         };
     }
 
@@ -2018,6 +2107,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         return body;
+    }
+
+    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597): its key the named
+    // parameter's Type of a generic k; "flag" a bool start under the key R and "value" an Integer constant for the token; of its three
+    // operands (the token twice) the count given.
+    internal static (MirBody Body, TyCtxt Types) KeyedStorage(string form, int count)
+    {
+        var c = MirBuildTest.Compile(
+            "func k<R, S, E>(v: Array<i32>, r: R, from: Range<S, End>, both: Range<S, E>, full: Range<Start, End>, to: Range<Start, E>, " +
+            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange) -> ()\n" +
+            "    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
+        Assert.True(c.Binding.Result.IsComplete);
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "k");
+        BoundType Of(string name) => function.Parameters.Single(x => x.InternalName == name).Type.TypeOf()!;
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (array, pointer) = (MirModelTest.Local(body, Of("v")), MirModelTest.Local(body, c.Types.Pointer(BoundType.I32)));
+        var start = MirOperand.Copy(MirModelTest.Local(body, form == "flag" ? BoundType.Boolean : BoundType.ISize));
+        MirConst key = form == "value" ? new(MirConstKind.Integer, BoundType.ISize, 0) : new(MirConstKind.TypeToken, Of(form == "flag" ? "r" : form));
+        var token = MirOperand.Const(body.Const(key));
+        var block = body.AddBlock();
+        var keyed = MirRvalue.Storage(array, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
+        body.Push(block, MirStatement.Assign(pointer, keyed, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        return (body, c.Types);
     }
 
     // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,

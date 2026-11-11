@@ -69,7 +69,7 @@ internal sealed partial class MirValidator
         // every instance (SPEC 8.7.4; Binding types a literal it fits through an identity premise at the complete Type, BU-72); else a
         // finding.
         private static bool Holds(in MirConst constant) => constant.Kind != MirConstKind.Integer ||
-            (ScalarTypes.Width(constant.Type) is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
+            (constant.Type.Width is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
             : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
                 ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
                 : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)));
@@ -84,11 +84,12 @@ internal sealed partial class MirValidator
             => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceEquals(type, BoundType.String);
 
-        // The operands an rvalue has: one or two, or an aggregate's by its shape (Shape); none for the other kinds.
+        // The operands an rvalue has: one or two, a keyed Storage's two, or an aggregate's by its shape (Shape); none for the other kinds.
         private static int Arity(in MirRvalue rvalue) => rvalue.Kind switch
         {
             MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
             MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
+            MirRvalueKind.Storage when rvalue.Count != 0 => 2, // A key selection's: the start and the key's Type token (G597).
             MirRvalueKind.Aggregate => Shape(rvalue).Count,
             _ => 0,
         };

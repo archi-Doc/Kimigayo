@@ -14,8 +14,9 @@ namespace Kimi.Compiler.Mir;
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
 // W's first step alone (Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
-// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a raw parameter's stated layer
-// also writes the storage its Origin covers (Cover, PLAN G338), and with an argument A5 proves null only that (Keep, PLAN G598).
+// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a stated raw layer at a written
+// input's own address (its own, or one it holds by value at any holder: an element, a Field, a payload) also writes the storage its
+// Origin covers (Cover, PLAN G338, G598, G583), and with an argument A5 proves null only that (Keep, PLAN G598).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
@@ -33,7 +34,7 @@ internal sealed partial class MirBorrows
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
     private readonly Dictionary<(StorageRetention Record, MirBody Body, long View, SourceRef Site), (ulong Proven, ulong Undecided)> solved = new();
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
-    private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147), read and reset by Check.
+    private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147, or a pun, MirBorrows.Puns), read and reset by Check.
     private bool deep; // Whether that store is undecided past a walk's bound (R4-M153), read and reset by Check.
     private ulong reachedVersion; // The program version whose case Types the entry memo answers.
 
@@ -102,6 +103,14 @@ internal sealed partial class MirBorrows
         }
 
         this.covering.Clear();
+        for (var p = 0; p <= call.Count; p++)
+        {
+            if (this.argValues[p] != 0)
+            {
+                this.PunCall(state, call, p, cases.TypeOf(this.Input(call, p)), this.argValues[p]); // The pun rule (MirBorrows.Puns).
+            }
+        }
+
         this.Destroying(state, call, checks);
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
@@ -129,7 +138,7 @@ internal sealed partial class MirBorrows
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
-        var input = this.TypeOf(this.Input(call, position));
+        var input = cases.TypeOf(this.Input(call, position));
         BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
         if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
@@ -149,6 +158,7 @@ internal sealed partial class MirBorrows
             var target = this.targets[t];
             var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
+            value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
         }
     }
@@ -305,7 +315,7 @@ internal sealed partial class MirBorrows
     {
         var value = this.argValues[position];
         var retained = (kind & RetentionKind.Chain) != 0 ? this.Chain(state, value) : 0;
-        retained = (kind & RetentionKind.Content) != 0 || ((kind & RetentionKind.Value) != 0 && Borrows(this.TypeOf(operand)))
+        retained = (kind & RetentionKind.Content) != 0 || ((kind & RetentionKind.Value) != 0 && Borrows(cases.TypeOf(operand)))
             ? this.sets.Union(retained, this.Content(state, value)) : retained;
         return (kind & RetentionKind.Value) != 0 ? this.sets.Union(retained, value) : retained;
     }
@@ -313,10 +323,4 @@ internal sealed partial class MirBorrows
     // The operand at a position of a Call's contract, whose value argValues holds at that position: argument i at i, the callee operand at
     // call.Count.
     private MirOperand Input(in MirTerminator call, int position) => position < call.Count ? this.body.Operands[call.Start + position] : call.Operand;
-
-    // An operand's case Type.
-    private BoundType? TypeOf(int operand) => this.TypeOf(this.body.Operands[operand]);
-
-    private BoundType? TypeOf(in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type : cases.Type(this.body.TypeOf(operand.Place)!);
 }

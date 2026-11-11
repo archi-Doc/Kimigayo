@@ -15,9 +15,8 @@
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims
 // (__kimi_builtin<item>, a comparison's, an arithmetic operation's or a built-in formatting's function under its requirement's signature,
-// Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), a user or library formatter's wrappers (__kimi_write<item>, a conversion over
-// it; ModuleCodegen.Formatting, R5-M130), the property witnesses (__kimi_witness<item>, a standard property witness's function under its
-// key's signature, Shim, written by FunctionCodegen.Shims; R5-M141), K8's ObjectDescriptor items (the module's runtime
+// Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), the property witnesses (__kimi_witness<item>, a standard property witness's
+// function under its key's signature, Shim, written by FunctionCodegen.Shims; R5-M141), K8's ObjectDescriptor items (the module's runtime
 // identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
 // items, whose text is their descriptors' virtual tables (R5-M114).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
@@ -31,13 +30,13 @@
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's and unnamed signature is reused while Abi.Matches holds
 // and every buffer is kept, so a warm module allocates nothing; a request naming an item outside Generated (Requested: its Signature, Glue,
-// Ensure, Shim, Adapter, Factory, Row or Wrapper) is a broken contract, InternalInvariant_Kd at the item's site.
+// Ensure, Shim, Adapter, Factory or Row) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax or HIR, write a
 // partial module, use LINQ, Supports* or catch-alls, or do file I/O but through the caller's writer (it reads embedded templates), whose
 // I/O exceptions are therefore the output's (DECISIONS R5-M169); a broken contract it throws is the command's fault.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
-// entries (ModuleCodegen.Erasures.cs), the formatting wrappers of formatter items (ModuleCodegen.Formatting.cs), the object descriptors
+// entries (ModuleCodegen.Erasures.cs), the object descriptors
 // with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
 // (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
@@ -109,7 +108,6 @@ internal sealed partial class ModuleCodegen
         this.functions.GetStringBuilder().Clear();
         this.helperText.GetStringBuilder().Clear();
         this.externals.Clear();
-        this.wrapped.Clear();
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
         this.Prune();
         this.IsTestBuild = startup.Kind == StartupKind.Test;
@@ -121,8 +119,6 @@ internal sealed partial class ModuleCodegen
                 this.Item(program, collector, item);
             }
         }
-
-        this.WriteWrappers(collector);
 
         if (!this.Start(program, collector, startup, roots, out var start) || this.Records.Count != 0)
         {

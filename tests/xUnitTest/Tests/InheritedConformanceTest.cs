@@ -256,6 +256,22 @@ public class InheritedConformanceTest
 
         """;
 
+    // PLAN G602: Middle conforms to HasBase with Parent Root; S0's Parent is Middle, so Source: S0.HasBase.Parent inherits Middle's HasBase.
+    private const string ProjectedHeir = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init() => ()\nstruct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n";
+    private const string ProjectedSource = "open struct Source: S0.HasBase.Parent\n    public init(): base() => ()\n";
+    private const string ProjectedSource2 = "struct S1\n    Self is HasBase\n    associate HasBase.Parent is Source\nopen struct Source2: S1.HasBase.Parent\n    public init(): base() => ()\n";
+    private const string ProjectedUse = "struct D: Source.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n";
+    private const string ProjectedUse2 = "struct D: Source2.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n";
+    private const string MissingHeir = "contract HasBase\n    associate Parent\nopen struct Root\n    public init() => ()\nopen struct Middle\n    public init() => ()\nstruct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n";
+    private const string CycleHead = "contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\n";
+    private const string CycleA = "open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n";
+    private const string CycleB = "open struct B: A\n    public init(): base() => ()\n";
+    private const string TwoPathBase = "contract C\n    associate E\n    func get(self: ref/Self) -> i32\ncontract C2: C\n    func two(self: ref/Self) -> i32\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nopen struct T0<X, W>\n    public func get(self: ref/Self) -> i32 => 1\n    public func two(self: ref/Self) -> i32 => 2\n";
+    private const string TwoPathDirect = "    Self is C when X is Option<W>\n        associate C.E is X\n";
+    private const string TwoPathUses = "func t(v: ref/T1<Option<i32>, i32>) => use(v)\nfunc u(v: ref/T1<i64, i32>) => use(v)\n";
+    private const string IdentityBase = "contract C\n    associate E\n    E is Copy\n    func get(self: ref/Self) -> i32\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nopen struct T0<X>\n    Self is C when X is Option<i32>\n        associate C.E is X\n    public func get(self: ref/Self) -> i32 => 1\n";
+    private const string GenericHeir = "contract HasBase\n    associate Parent\nopen struct Root<T>\n    public func r(self) -> i32 => 1\n    public init() => ()\nopen struct Middle<T>\n    Self is HasBase\n    associate HasBase.Parent is Root<T>\n    public init() => ()\nstruct S0<T>\n    Self is HasBase\n    associate HasBase.Parent is Middle<T>\nopen struct Source<T>: S0<T>.HasBase.Parent\n    public init(): base() => ()\n";
+
     // PLAN G375: a failed signature is computed at each read, so the channel's cause (SPEC 23.1.1) reaches every reader, a call or a reference.
     // An explicit Constraint's proof names the failed conformance it read, so its readers rest on the Unsupported_Kd too (DECISIONS Q13,
     // rule W; R7-C8 U-D2 fix 2: LimitExplicit's three InvalidConstraint_Kd at Box<Leaf> are dependents).
@@ -408,7 +424,7 @@ public class InheritedConformanceTest
     [InlineData(true)]
     public void RefinementDoesNotInheritCopyWithoutTheDerivedOptIn(bool optIn)
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nopen struct Base\n    Self is C\nstruct Derived: Base\n" + (optIn ? "    Self is Copy\n" : string.Empty) + "func use<T>(value: ref/T)\n    T is C\n    ()\nfunc test(value: ref/Derived) => use(value)");
+        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nopen struct Base\n    Self is Copy\n    Self is C\nstruct Derived: Base\n" + (optIn ? "    Self is Copy\n" : string.Empty) + "func use<T>(value: ref/T)\n    T is C\n    ()\nfunc test(value: ref/Derived) => use(value)");
         Assert.Equal(optIn, c.Bind().IsComplete);
     }
 
@@ -419,6 +435,111 @@ public class InheritedConformanceTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nopen struct Base\n    Self is C\n    associate E is i32\nstruct Derived: Base\n    Self is C\n    associate E is " + associated);
         Assert.Equal(valid, c.Bind().IsComplete);
+    }
+
+    // SPEC 8.2.3, 8.6.2, 8.8.2 (PLAN G695): an inherited path whose condition is an identity premise is verified with its Self normalized
+    // in its conformance scope, as a declared path is: it is available at an heir, two heirs down, and through a base clause's Type
+    // argument; where the condition is refuted the use has no conformance, and no record names a Self mismatch.
+    [Theory]
+    [InlineData("", "T1<Option<i32>>", "clean")]
+    [InlineData("open struct T2<Z> : T1<Z>\n", "T2<Option<i32>>", "clean")]
+    [InlineData("open struct T2<Z> : T1<Option<Z>>\n", "T2<i32>", "clean")]
+    [InlineData("", "T1<i64>", "1*NoApplicableOverload_Kd")]
+    [InlineData("open struct T2<Z> : T1<Z>\n", "T2<i64>", "1*NoApplicableOverload_Kd")]
+    public void AnInheritedPathUnderAnIdentityConditionIsAvailable(string heir, string use, string records)
+    {
+        var source = IdentityBase + "open struct T1<Y> : T0<Y>\n" + heir + "func t(v: ref/" + use + ") => use(v)\n";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        Assert.DoesNotContain(DiagnosticCorpus.Check(source, "Library").Diagnostics, static x => x.Note?.Contains("as Self", StringComparison.Ordinal) == true);
+    }
+
+    // SPEC 8.9.2 (PLAN G695): the heir's own path meets the inherited identity path at Y = Option<i32>, so their bindings of E must
+    // agree: Option<i64> is rejected at both declarations whatever the use, Option<i32> agrees.
+    [Theory]
+    [InlineData("Option<i64>", "T1<i64>", 2)]
+    [InlineData("Option<i64>", "T1<Option<i32>>", 2)]
+    [InlineData("Option<i32>", "T1<i64>", 0)]
+    [InlineData("Option<i32>", "T1<Option<i32>>", 0)]
+    public void AnInheritedIdentityPathMustAgreeWithTheHeirsOwnPath(string associated, string use, int disagreements)
+    {
+        var records = Records(IdentityBase + "open struct T1<Y> : T0<Y>\n    Self is C when Y is Copy\n        associate C.E is " + associated + "\nfunc t(v: ref/" + use + ") => use(v)\n").Split('|');
+        Assert.Equal(disagreements, records.Count(static x => x == "IncompatibleContractImplementation_Kd Self is C"));
+        Assert.True(disagreements != 0 || records is [""], string.Join('|', records));
+    }
+
+    // SPEC 8.2.3, 8.9.2 (PLAN G695): an heir inherits two paths of one Contract, T0's own and the one under C2, which meet where T0's do
+    // (X = Option<W>, W Copy); their agreement is judged under both paths' premises whichever T0 declares first, so the heir is accepted
+    // with or without a use, and a source whose paths disagree is rejected at its two declarations once.
+    [Theory]
+    [InlineData(false, "X", "", 0)]
+    [InlineData(true, "X", "", 0)]
+    [InlineData(false, "X", TwoPathUses, 0)]
+    [InlineData(true, "X", TwoPathUses, 0)]
+    [InlineData(false, "W", "", 2)]
+    [InlineData(true, "W", TwoPathUses, 2)]
+    public void TwoInheritedPathsOfOneContractAgreeInEitherOrder(bool swapped, string associated, string uses, int disagreements)
+    {
+        var refined = "    Self is C2 when X is Copy\n        associate C.E is " + associated + "\n";
+        var source = TwoPathBase + (swapped ? refined + TwoPathDirect : TwoPathDirect + refined) + "open struct T1<A, B> : T0<A, B>\n" + uses;
+        var records = Records(source).Split('|');
+        Assert.Equal(disagreements, records.Count(static x => x.StartsWith("IncompatibleContractImplementation_Kd Self is C", StringComparison.Ordinal)));
+        Assert.True(disagreements != 0 || records is [""], string.Join('|', records));
+    }
+
+    // SPEC 8.6.2 (PLAN G602): a base clause reads a conformance inherited across a projected base, its source declared before or after it,
+    // through two projected levels in both orders, a generic heir, a generic use and a specification hop. Each was rejected before: the
+    // heir's inherited paths were registered after the clauses read them.
+    [Theory]
+    [InlineData(ProjectedHeir + ProjectedSource + ProjectedUse)]
+    [InlineData(ProjectedHeir + ProjectedUse + ProjectedSource)]
+    [InlineData(ProjectedHeir + ProjectedSource + ProjectedSource2 + ProjectedUse2)]
+    [InlineData(ProjectedHeir + ProjectedUse2 + ProjectedSource2 + ProjectedSource)]
+    [InlineData(GenericHeir + "struct D: Source<i32>.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n")]
+    [InlineData(GenericHeir + "func h<U>(x: ref/Source<U>.HasBase.Parent) -> i32 => x.r()\nstruct D<U>: Source<U>.HasBase.Parent\n    public init(): base() => ()\nfunc f(d: ref/D<i32>) -> i32 => d.r()\n")]
+    [InlineData(ProjectedHeir + ProjectedSource + "struct S3\n    Self is HasBase\n    associate HasBase.Parent is Source.HasBase.Parent\nstruct E: S3.HasBase.Parent\n    public init(): base() => ()\nfunc f(e: ref/E) -> i32 => e.r()\n")]
+    public void AClauseReadsAConformanceInheritedAcrossAProjectedBase(string source)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+    }
+
+    // SPEC 8.5.2, 8.6.2 (PLAN G602): the invalid twins keep their records at the clause that has no evidence: the far end lacks HasBase,
+    // through one or two projected levels, or the projection names a Type without it.
+    [Theory]
+    [InlineData(MissingHeir + ProjectedSource + "struct D: Source.HasBase.Parent\n    public init(): base() => ()\n", "Source")]
+    [InlineData(MissingHeir + ProjectedSource + ProjectedSource2 + "struct D: Source2.HasBase.Parent\n    public init(): base() => ()\n", "Source2")]
+    [InlineData(ProjectedHeir + "open struct Other\n    public init() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Other\nopen struct Source: S2.HasBase.Parent\n    public init(): base() => ()\nstruct D: Source.HasBase.Parent\n    public init(): base() => ()\n", "Source")]
+    public void AClauseWithoutTheInheritedConformanceKeepsItsRecords(string source, string heir)
+        => Assert.Equal(
+            $"InvalidTypeFormation_Kd struct|InvalidTypeFormation_Kd {heir}.HasBase.Parent|UnsatisfiedConstraint_Kd {heir}.HasBase.Parent|InvalidTypeFormation_Kd base",
+            Records(source));
+
+    // SPEC 8.6.2 (PLAN G602): a conformance whose requirement returns Self is not inherited, through a projected base as through a nominal
+    // one: the two programs have the same records.
+    [Fact]
+    public void AConformanceReturningSelfIsNotInheritedAcrossAProjectedBase()
+    {
+        const string Make = "contract HasBase\n    associate Parent\n    func make() -> Self\nopen struct Root\n    public init() => ()\nopen struct Middle\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public func make() -> Self => Self.init()\n    public init() => ()\n";
+        const string Use = "struct D: Source.HasBase.Parent\n    public init(): base() => ()\n";
+        var projected = Records(Make + "struct S0\n    Self is HasBase\n    associate HasBase.Parent is Middle\n    public func make() -> Self => Self.init()\n" + ProjectedSource + Use);
+        Assert.Equal("InvalidTypeFormation_Kd struct|UnsatisfiedConstraint_Kd Source.HasBase.Parent|UnsatisfiedConstraint_Kd Source.HasBase.Parent", projected);
+        Assert.Equal(Records(Make + "open struct Source: Middle\n    public init(): base() => ()\n" + Use), projected);
+    }
+
+    // SPEC 9.5 (PLAN G602; the owner's O-120 (a)): a projection T.(C).X in a struct's base clause is an unresolvable dependency cycle when
+    // T is the struct or derives from it, with any Type arguments: B: A, B with its own HasBase, A itself, B<T>: A<i32>, and A's own Parent
+    // B, each in both declaration orders. CyclicBinding_Kd at the projection; its count is not pinned (DECISIONS Q13: the member walk's
+    // second record at the same span is PLAN G602b's).
+    [Theory]
+    [InlineData(CycleA, CycleB + "func f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    [InlineData(CycleA, "open struct B: A\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\nfunc f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    [InlineData("open struct A: A.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n", "func f(a: ref/A) -> i32 => a.r()\n", "A.HasBase.Parent")]
+    [InlineData("open struct A<T>: B<T>.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init(): base() => ()\n", "open struct B<T>: A<i32>\n    public init(): base() => ()\nfunc f(b: ref/B<u8>) -> i32 => b.r()\n", "B<T>.HasBase.Parent")]
+    [InlineData("open struct A: B.HasBase.Parent\n    Self is HasBase\n    associate HasBase.Parent is B\n    public init(): base() => ()\n", CycleB + "func f(b: ref/B) -> i32 => b.r()\n", "B.HasBase.Parent")]
+    public void AProjectionInABaseClauseWhoseSubjectDerivesFromTheStructIsACycle(string first, string second, string projection)
+    {
+        Assert.Contains($"CyclicBinding_Kd {projection}", Records(CycleHead + first + second).Split('|'));
+        Assert.Contains($"CyclicBinding_Kd {projection}", Records(CycleHead + second + first).Split('|'));
     }
 
     // SPEC 8.6.2, 8.9.2: a derived Type inherits every path of its base, also a refinement path the base declares after the refined
@@ -478,4 +599,9 @@ public class InheritedConformanceTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
         Assert.False(c.Generate(TextWriter.Null));
     }
+
+    // A program's records as a Library, by position: the code and the first line of the span's text.
+    private static string Records(string source)
+        => string.Join('|', DiagnosticCorpus.Check(source, "Library").Diagnostics.OrderBy(static x => x.Span!.Value.Start).ThenBy(static x => x.Code, StringComparer.Ordinal)
+            .Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}"));
 }

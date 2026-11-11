@@ -82,7 +82,7 @@ public sealed partial class Binding
     // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
     // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
     private static bool IsNeverValue(Koto operand, BoundType type)
-        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawPlace(operand);
+        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -291,7 +291,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawPlace(conversion.Left))
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
@@ -404,7 +404,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawPlace(conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }
@@ -469,7 +469,7 @@ public sealed partial class Binding
         var signed = KotoHelper.SignedNumber(operand, out _);
         var literal = signed is { IsInteger: true };
         var floatingLiteral = signed is { IsInteger: false };
-        if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target) != 0)
+        if (plain && floatingLiteral && target is { IsInteger: true })
         {
             return this.BindTruncatedLiteral(conversion, target, operand);
         }
@@ -567,13 +567,12 @@ public sealed partial class Binding
                 return Complete(conversion, target);
             }
 
-            // SPEC 13.5.4: an integer conversion is checked against the target's range, whatever its width; only lowering
-            // needs the width of isize and usize.
-            if (!(source.IsInteger && target.IsInteger) &&
-                (ScalarTypes.Width(source) == 0 || ScalarTypes.Width(target) == 0))
+            // SPEC 13.5.4: a conversion between an integer and a floating-point Type; a valid one of a 128-bit integer remains an
+            // implementation boundary. An integer conversion is checked against the target's range, whatever its width.
+            if (!(source.IsInteger && target.IsInteger))
             {
                 var integer = source.IsInteger ? source : target;
-                if (ScalarTypes.Width(integer) is > 0 and <= 64)
+                if (integer.Width <= 64)
                 {
                     conversion.ConversionBinding = ConversionBinding.Numeric;
                     return Complete(conversion, target);

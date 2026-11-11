@@ -15,6 +15,25 @@ namespace XunitTest;
 /// compound updates and guard candidates.</summary>
 public sealed partial class MirBuildTest
 {
+    // SPEC 8.15.3 (PLAN G597; DECISIONS R8-M13): a key selection's view is built by where its key starts in the body
+    // (MirTypes.StartsAtStorage; MirBuilder.First): open (a key of Type R; a start boundary of Type K), the Storage keyed by the start and
+    // the key's Type, which each instance decides, and no Add; at a position, a concrete key's (an isize start, a resolved range) or a
+    // written start's, the Storage and the proven Add; at the storage, the Storage alone (fail-before: an open key built the displaced
+    // form, the stride of every instance).
+    [Theory]
+    [InlineData("<R>", "r: R", "    R is PositionRange\n", "r", "_ = storage((*_), copy _, const type R)")]
+    [InlineData("<K>", "r: Range<K, End>", "    K is Position\n", "r", "_ = storage((*_), copy _, const type Kimi.Range<K, Kimi.End>)")]
+    [InlineData("", "r: Range<isize, End>", "", "r", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    [InlineData("", "r: ResolvedRange", "", "r", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    [InlineData("", "r: Range<Start, End>", "", "r", "_ = storage((*_))")]
+    [InlineData("", "r: isize", "", "r..", "_ = storage((*_))|_ = Add(copy _, copy _) proven")]
+    public void AViewIsBuiltByWhereItsKeyStarts(string generics, string parameter, string constraint, string key, string expected)
+    {
+        var program = Compile($"func h{generics}(v: ref/Array<i32>, {parameter}) -> isize\n{constraint}    return v[{key}].length\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(expected, Views(program, "h"));
+    }
+
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
     // is located (SPEC 4.7.4: copied first where a boundary builds code); nothing backs a written Raw.slice, so its backing is Unit.
@@ -271,6 +290,57 @@ public sealed partial class MirBuildTest
         var dump = text.ToString();
         var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
         Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+    }
+
+    // SPEC 8.2.3, 3.5.1, 13.5.6, 9.6.1 (DECISIONS R8-M9; PLAN G593): a Place whose own Type agrees with the Type Binding names for it only
+    // under the body's identity premises (`uniq/One<T>` against `uniq/One<uniq/Meter during a>`) is Reborrowed and borrowed as it is: the
+    // Reborrow's contract and the Place walks read MirTypes.Agrees, so indexUniq's receiver is a Reborrow at `*_1` (for an argument, a
+    // receiver, or an explicit Type argument's parameter), `one@ref` borrows `_1` itself, under a premise of any Type, and a base's method
+    // borrows the base subobject whose Type agrees (`HBase<T>` against `HBase<i32>`), with no record or finding (fail-before:
+    // InternalInvariant_Kd at the receiver, and a borrow the validator rejects at `one@ref`); a conflict through such a Place is the
+    // analysis' record, as its concrete twin's. Each row: f's parameters, the premise, the statements, a statement of f's MIR and the
+    // module-0 problems.
+    [Theory]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "g(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "one[0].bump()\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is uniq/Meter during a", "gg<Meter>(one[0])\n    return 0", "= &uniq two-phase (*_1): uniq/One<uniq/Meter>", "")]
+    [InlineData("one: uniq/One<T>, w: ref/i32 during a", "T is i32", "let view = one@ref\n    return take(view)", "= &_1: ref/uniq/One<i32>", "")]
+    [InlineData(
+        "one: uniq/One<T>, w: ref/i32 during a",
+        "T is uniq/Meter during a",
+        "let view = one@ref\n    g(one[0])\n    return take(view)",
+        "= &_1: ref/uniq/One<uniq/Meter>",
+        "CallActivationConflict_Kd one[0]|CallActivationConflict_Kd g(one[0])")]
+    [InlineData("x: ref/HLeaf<T>", "T is i32", "return x.read()", "= &(*_1).base1: ref/HBase<i32>", "")]
+    [InlineData("x: uniq/HLeaf<T>", "T is i32", "let p = x.peek()\n    let k = take(p)\n    x.poke()\n    return k", "= &(*_1).base1: ref/HBase<i32>", "")]
+    [InlineData(
+        "x: uniq/HLeaf<T>",
+        "T is i32",
+        "let p = x.peek()\n    x.poke()\n    return take(p)",
+        "= &(*_1).base1: ref/HBase<i32>",
+        "CallActivationConflict_Kd x.poke()")]
+    public void APlaceAgreeingUnderPremisesIsBorrowedAsItIs(string parameters, string premise, string statements, string statement, string problems)
+    {
+        var c = Compile("struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+            "struct One<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n" +
+            "    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            "open struct HBase<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\n    public func read(self) -> i32 => 0\n" +
+            "    public func peek(self) -> ref/T during self => self.v@ref\nstruct HLeaf<T>: HBase<T>\n    public init(v: T): base(v@move) => ()\n" +
+            "    public func poke(self: uniq/Self) => ()\n" +
+            "func g(m: uniq/Meter) => m.bump()\nfunc gg<V>(m: uniq/V) -> () => ()\nfunc take<V>(v: ref/V) -> i32 => 0\n" +
+            $"func f<T>({parameters}) -> i32\n    {premise}\n    {statements}\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString();
+        Assert.Contains(statement, dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], StringComparison.Ordinal);
     }
 
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one

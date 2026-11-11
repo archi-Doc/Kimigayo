@@ -35,11 +35,11 @@ public sealed partial class Binding
 
     // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
     // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
-    private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    private bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
-        if (head is not MemberAccessKoto { Left.BoundSymbol: { } reference } || !IsBoundContractReference(reference))
+        if (head is not MemberAccessKoto member || this.ContractReferenceOf(member.Left) is not { } reference || !IsBoundContractReference(reference))
         {
             return true;
         }
@@ -96,8 +96,7 @@ public sealed partial class Binding
         BindingSymbol? foundReference = null;
         BoundRequirement? alternative = null;
         this.ambiguousAssociatedMatches?.Clear();
-        var contextualQualifier = qualifier is not null && !IsBoundContractReference(qualifier) && qualifier.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 };
-        if (qualifier?.Contract is { } qualified && !contextualQualifier)
+        if (qualifier?.Contract is { } qualified)
         {
             Search(qualified);
         }
@@ -105,7 +104,7 @@ public sealed partial class Binding
         {
             if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
             {
-                SearchAvailable(own);
+                Search(own);
             }
 
             for (var current = scope; current is not null; current = current.Parent)
@@ -119,16 +118,16 @@ public sealed partial class Binding
                 {
                     if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
                     {
-                        SearchAvailable(this.AppliedAssociatedContract(fact, type).Contract!);
+                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
                     }
                 }
             }
 
-            if (type.Symbol is { } symbol && this.impls.OfType(symbol) is { } list)
+            if (type.Symbol is { } symbol && this.ConformancesOf(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
-                    SearchAvailable(list[i].Contract.Contract!);
+                    Search(list[i].Contract.Contract!);
                 }
             }
         }
@@ -141,25 +140,6 @@ public sealed partial class Binding
         }
 
         return found;
-
-        void SearchAvailable(BoundContract shape)
-        {
-            if (!contextualQualifier || ReferenceEquals(shape.Symbol.Declaration, qualifier!.Declaration))
-            {
-                Search(shape);
-            }
-
-            if (contextualQualifier)
-            {
-                for (var i = 0; i < shape.Ancestors.Count; i++)
-                {
-                    if (ReferenceEquals(shape.Ancestors[i].Declaration, qualifier!.Declaration))
-                    {
-                        Search(shape.Ancestors[i].Contract!);
-                    }
-                }
-            }
-        }
 
         void Search(BoundContract shape)
         {
@@ -195,7 +175,7 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { Declaration: ContractKoto } contract)
+        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { IsContract: true } contract)
         {
             if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
             {
@@ -204,12 +184,18 @@ public sealed partial class Binding
 
             qualifier = contract;
             receiver = baseSyntax!;
-            qualified.Right.BoundSymbol = contract;
-            Complete(qualified.Right, BoundType.Unit);
         }
 
-        var receiverSymbol = this.TypeName(receiver, scope, LookupRole.Any);
-        if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol?.Declaration is ContractKoto && TypeSpelling(receiver) != "Self"))
+        // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
+        // projection forms nothing from it.
+        var receiverPath = this.NamePath(receiver, scope);
+        if (receiverPath.End is PathEnd.QualificationStop or PathEnd.Ambiguous)
+        {
+            return null;
+        }
+
+        var receiverSymbol = receiverPath.Symbol;
+        if (receiverSymbol?.Kind == BindingSymbolKind.Container || receiverSymbol is { IsContract: true })
         {
             return null;
         }
@@ -218,6 +204,11 @@ public sealed partial class Binding
         if (type is null || type.Semantics != SemanticsKind.Owner)
         {
             return null;
+        }
+
+        if (this.ProjectsThroughItsOwnClause(syntax, type, scope))
+        {
+            return this.Fail(syntax, BindingFailure.Cycle, true);
         }
 
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
@@ -304,42 +295,26 @@ public sealed partial class Binding
             return target;
         }
 
-        var symbol = this.TypeName(syntax.Right, scope, LookupRole.Any);
+        var selection = this.TypeName(syntax.Right, scope);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
             referenceSyntax = groupedReference.Type;
         }
 
-        if (symbol?.Declaration is ContractKoto && UnwrapTransparentType(referenceSyntax) is GenericsKoto)
-        {
-            symbol = this.BindContractReference(referenceSyntax, symbol, scope);
-        }
-
         receiver = syntax.Left;
-        if (symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto)
+        if (selection is null || (selection.Kind != BindingSymbolKind.Container && !selection.IsContract))
         {
-            var qualifierName = syntax.Right;
-            while (true)
-            {
-                qualifierName.BoundSymbol = symbol;
-                Complete(qualifierName, BoundType.Unit);
-                if (qualifierName is ParenthesizedTypeKoto grouped)
-                {
-                    qualifierName = grouped.Type;
-                }
-                else if (qualifierName is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
-                {
-                    qualifierName = inner;
-                }
-                else
-                {
-                    break;
-                }
-            }
+            return null;
         }
 
-        return symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto ? symbol : null;
+        var symbol = this.QualifierReference(referenceSyntax, selection, scope);
+        if (symbol is not null)
+        {
+            CompleteQualifier(syntax.Right, selection, symbol);
+        }
+
+        return symbol;
     }
 
     private void BindAssociatedSpecification(IsKoto clause, BindingScope scope, BindingSymbol? owner = null)
@@ -359,21 +334,16 @@ public sealed partial class Binding
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-            if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
-            {
-                // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
-                qualifier = this.BindContractReference(member.Left, qualifier, scope);
-            }
 
-            if (qualifier?.Declaration is not ContractKoto)
+            // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
+            if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } bound)
             {
                 this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;
             }
 
-            member.Left.BoundSymbol = qualifier;
-            Complete(member.Left, BoundType.Unit);
+            qualifier = bound;
+            CompleteQualifier(member.Left, selection, bound);
         }
 
         BindingSymbol? reference = null;
@@ -463,7 +433,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && SpecifiesContract(clause, path.RootContract))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.RootContract))
                 {
                     Collect(constraint, path);
                 }
@@ -585,7 +555,7 @@ public sealed partial class Binding
 
         binding.State = 1;
         var scope = path.Scope;
-        var self = this.SelfType(path.Type);
+        var self = this.ConformanceSelf(path);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
         for (var i = 0; i < binding.Candidates.Count; i++)
@@ -712,7 +682,7 @@ public sealed partial class Binding
     // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
     private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
     {
-        if (this.impls.OfType(owner) is not { } identities)
+        if (this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }

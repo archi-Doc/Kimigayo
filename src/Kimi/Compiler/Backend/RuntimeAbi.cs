@@ -58,6 +58,13 @@ internal static class RuntimeAbi
     internal static readonly AbiParameter[] OwnedStringParameters =
         [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), Location, LocationLength];
 
+    // SPEC 22.7, 22.5.1: Console.writeStdout, the WriteStdout intrinsic's routine: the bytes to standard output, KIMI_E_STDOUT at the
+    // call's location (a caller-location body's received one).
+    internal static readonly FunctionAbi Stdout = new(
+        "__kimi_stdout",
+        Unit.ComputationType,
+        [new("ptr", "data", LogicalIndex: 0), new("i64", "length", LogicalIndex: 1), Location, LocationLength]);
+
     // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
     internal static readonly FunctionAbi WriteLine = new(
         "__kimi_write_line",
@@ -96,6 +103,16 @@ internal static class RuntimeAbi
         "__kimi_transfer_bytes",
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
+
+    // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
+    // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
+    internal static readonly FunctionAbi ErasedReserve = new(
+        "__kimi_erased_reserve",
+        "void",
+        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "writer", AbiParameterKind.Value, 0), new("i64", "amount", AbiParameterKind.Value, 1)])
+    {
+        ResultSlot = true,
+    };
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 

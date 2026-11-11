@@ -10,10 +10,13 @@
 // Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
-// without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
-// site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
-// Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault;
+// without one or a refused edge), a Drop's glue of each part its group destroys (DropTargets) and an owner Value call's second target
+// (Rest); a type-driven item's at the default site; on the way the site's by-value uses take their layout verdict (K 4.8) and an operation
+// whose Types depend on slots its capability check (K 4.7).
+// Invariants: one target per site, except a Drop's, one per part its group destroys in DropGlue.Destroyed's order, the order code
+// generation writes them in (PLAN G641), and the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS
+// R5-M102: a departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row
+// is a fault;
 // a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
 // G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
@@ -53,10 +56,11 @@ internal sealed partial class InstanceCollector
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
         {
             this.Work++;
-            var (at, runtime) = this.sites[i];
+            var site = this.sites[i];
+            var (at, runtime) = site;
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, at.Block, block.Terminator)
+                ? this.Edge(program, item, body, site, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -116,17 +120,23 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
     // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
-    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
-    // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
-    // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
-    private int Edge(MirProgram program, int item, MirBody body, int block, in MirTerminator call)
+    // creation's payload descriptor, a DestroyValues' glue) and a Drop's targets, the glue of what its group destroys (DropTargets), none
+    // for a part in a receiver's own storage (never past a Deref) without a layout (Received: no use; its body is checked only); an
+    // intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without
+    // a body or row or a refused edge, and for a Drop, whose targets are added at its site (the template's, its location and runtime bit).
+    private int Edge(MirProgram program, int item, MirBody body, in (MirLocation At, bool Runtime) site, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed || Elided(program, body, block, this.Set.Items[item].View) ||
-                (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
+            if (this.In(item, subject, body.TypeOf(call.Place)!) is { } closed &&
+                !(Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok))
+            {
+                this.DropTargets(program, item, subject, body, site, closed);
+            }
+
+            return -1;
         }
 
         if (callee.Kind == MirCalleeKind.Value)
@@ -236,6 +246,27 @@ internal sealed partial class InstanceCollector
             : -1;
     }
 
+    // K 4.8, SPEC 8.15.3 (PLAN G597): a keyed Storage, a key selection's whose key's start is open in the body, reads its element's stride
+    // where its key, in the item's instance, does not start at the storage (LayoutNeeds): a use of the element there, and none in an
+    // instance whose key starts at the storage. A key still open in the instance is a broken contract (Report: after a failed Binding its
+    // dependent, without a record; DECISIONS R5-M155).
+    private void Keyed(int item, SourceRef subject, MirBody body, in MirRvalue storage)
+    {
+        if (this.In(item, subject, OperandType(body, body.Operands[storage.Start + 1])) is not { } key)
+        {
+            return;
+        }
+
+        if (LayoutNeeds.Of(key) is not { } need)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+        }
+        else if (need != LayoutNeed.None && this.In(item, subject, LayoutNeeds.TypeOf(body, storage)) is { } element)
+        {
+            _ = this.LaysOut(item, subject, element);
+        }
+    }
+
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
     // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body, a Dictionary from none's
     // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124),
@@ -243,7 +274,8 @@ internal sealed partial class InstanceCollector
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
-    // (DECISIONS R5-M108); an operation whose Types depend on slots checked against the capability table (no target).
+    // (DECISIONS R5-M108); an operation whose Types depend on slots checked against the capability table (no target); a keyed Storage's
+    // element a use where its key displaces (Keyed; no target).
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -258,6 +290,12 @@ internal sealed partial class InstanceCollector
                 _ = this.LaysOut(item, subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
             }
 
+            return -1;
+        }
+
+        if (rvalue.Kind == MirRvalueKind.Storage)
+        {
+            this.Keyed(item, subject, body, rvalue);
             return -1;
         }
 

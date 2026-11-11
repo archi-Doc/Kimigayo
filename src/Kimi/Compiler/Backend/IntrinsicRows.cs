@@ -5,7 +5,8 @@
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column Need: the call's layout need (LayoutNeeds;
 // TypeArguments: its Type argument's layout, a use the collector checks; K 4.8, DECISIONS R5-M44, R5-M149). Columns Writer and Routine:
 // how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row no MIR producer
-// makes yet is Unproduced, whose producing unit writes it (DECISIONS R5-M146). Whether a row reads its call's Type argument follows from
+// makes yet is Unproduced, whose producing unit writes it (DECISIONS R5-M146). Column Requests: the module parts a Requested row's routine
+// needs, which its call requests (DECISIONS R8-M18). Whether a row reads its call's Type argument follows from
 // Need and Target (ReadsTypeArgument), the one rule every reader of it applies (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
@@ -28,7 +29,7 @@ internal enum IntrinsicWriter : byte
 {
     Unproduced, // No MIR producer makes its call, so a call is a broken contract; the unit that first produces one writes its row.
     Routine, // The row's runtime routine through the one call writer: the call's operands at its parameters, then the call's location.
-    Requested, // Routine's, the routine the module defines on request: LlvmModuleText's TryAllocate and TransferBytes.
+    Requested, // Routine's, the routine the module defines on request: the module parts the row's Requests column names.
     Allocate, // Raw.allocate: the count, the element's stride and the location to the row's routine.
     Fail, // A fixed SPEC 22.5.2 code's Abort reason and the location to the row's routine (the runtime Abort).
     Initialize, // Raw.initialize: the value put at the storage.
@@ -40,9 +41,9 @@ internal enum IntrinsicWriter : byte
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
-    Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
+    Buffer, // FormatBuffer: an owning interpolation's private buffer on the heap, of its estimate's capacity (FunctionCodegen.Interpolation).
     Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
-    Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
+    Finish, // FormatFinish: the routine over the adapter and its buffer (FunctionCodegen.Interpolation).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
@@ -52,7 +53,14 @@ internal enum IntrinsicWriter : byte
 /// <param name="Need">The call's layout need: TypeArguments where it reads its Type argument's layout (DECISIONS R5-M149).</param>
 /// <param name="Writer">How code generation writes a call.</param>
 /// <param name="Routine">The runtime routine the writer calls, if any.</param>
-internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Target, LayoutNeed Need, IntrinsicWriter Writer, FunctionAbi? Routine)
+/// <param name="Requests">The module parts a Requested row's routine needs, which its call requests (None for another writer).</param>
+internal readonly record struct IntrinsicRow(
+    IntrinsicId Id,
+    IntrinsicTarget Target,
+    LayoutNeed Need,
+    IntrinsicWriter Writer,
+    FunctionAbi? Routine,
+    ModuleCodegen.Needs Requests = ModuleCodegen.Needs.None)
 {
     /// <summary>Gets a value indicating whether the row reads its call's Type argument, the one form its Type-driven columns take: a by-value use
     /// (<see cref="Need"/>) or the Type its target is of (an erased writer's destination, a creation's payload, a DestroyValues'
@@ -65,6 +73,9 @@ internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Tar
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
 internal static class IntrinsicRows
 {
+    // The storage byte primitives' module parts, defined as a pair (DECISIONS R5-M92, R5-M145).
+    private const ModuleCodegen.Needs StorageBytes = ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory;
+
     // One row per IntrinsicId but None, in the enum's order (Complete).
     private static readonly IntrinsicRow[] Rows = Complete(
     [
@@ -72,13 +83,13 @@ internal static class IntrinsicRows
         new(IntrinsicId.RawRelease, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.StorageRelease),
         new(IntrinsicId.RawInitialize, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Initialize, null),
         new(IntrinsicId.RawSlice, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Slice, null),
-        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes),
-        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes),
+        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes, StorageBytes),
+        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes, StorageBytes),
         new(IntrinsicId.Stride, IntrinsicTarget.None, LayoutNeed.TypeArguments, IntrinsicWriter.Stride, null),
         new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LayoutNeed.TypeArguments, IntrinsicWriter.Destroy, null),
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Fail, RuntimeAbi.Abort),
-        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Stdout),
         new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
         new(
             IntrinsicId.ErasedWriter,
@@ -86,7 +97,13 @@ internal static class IntrinsicRows
             LayoutNeed.None,
             IntrinsicWriter.Writer,
             LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
-        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(
+            IntrinsicId.ErasedReserve,
+            IntrinsicTarget.None,
+            LayoutNeed.None,
+            IntrinsicWriter.Requested,
+            RuntimeAbi.ErasedReserve,
+            ModuleCodegen.Needs.ErasedWriter),
         new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
         new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LayoutNeed.None, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LayoutNeed.None, IntrinsicWriter.Create, null),
@@ -105,7 +122,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.None,
             LayoutNeed.None,
             IntrinsicWriter.Buffer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextHeap)!.Abi),
+            LegacyRuntimeHelpers.FormatHeap),
         new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
         new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);

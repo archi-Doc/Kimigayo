@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -401,6 +402,27 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         Assert.True(MirTypes.Observation(f, c.Types, body.Key.Decl, entered).IsNone);
     }
 
+    // SPEC 4.6.1-4.6.2, 8.15.3 (DECISIONS R8-M13; PLAN G597): where a range key's view starts, by the Type that decides it, the start
+    // boundary's of the library's Range or ClosedRange, else the key's own. It starts at its receiver's storage where that boundary is
+    // Start, whatever the end (full, to, closed); it is open where the deciding Type stands for any Type of an instance (r; from, both and
+    // closedFrom, whose own IsAbstract is false); else it displaces: another boundary, though the key holds a parameter (at) or ends at
+    // End (back, last), a resolved range, a Type that is no range (other) and one that did not bind (fail-before: R8-M13's two-valued
+    // answer read every open key as displacing).
+    [Fact]
+    public void ARangeKeysStartIsItsStartBoundarysDecision()
+    {
+        var (body, _) = Probe(
+            "func probe<R, S, E>(r: R, from: Range<S, End>, both: Range<S, E>, closedFrom: ClosedRange<S, i32>, full: Range<Start, End>, " +
+            "to: Range<Start, E>, closed: ClosedRange<Start, i32>, at: Range<i32, E>, back: Range<FromEnd<i32>, End>, last: Range<End, End>, " +
+            "resolved: ResolvedRange, other: i32) -> ()\n    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
+        Assert.Equal(
+            [("r", null), ("from", null), ("both", null), ("closedFrom", null), ("full", true), ("to", true), ("closed", true), ("at", false),
+                ("back", false), ("last", false), ("resolved", false), ("other", false)],
+            Parameters(body).Select(static x => (x.Name, MirTypes.StartsAtStorage(x.Type))));
+        Assert.All(Parameters(body).Where(static x => x.Name is "from" or "both" or "closedFrom"), static x => Assert.False(x.Type.IsAbstract));
+        Assert.False(MirTypes.StartsAtStorage(null));
+    }
+
     // R4-M36, R4-M116: every local Type of every library body is classified and none is deep; a borrow or raw layer always holds a Loan.
     // The output gives the counts.
     [Fact]
@@ -426,6 +448,38 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         output.WriteLine($"library locals {locals}: holding Loans {holding}, observing {observing}");
         Assert.True(holding > 0 && observing > 0);
+    }
+
+    // SPEC 13.3.3 (DECISIONS R5-M126): MIR's pairing of the table (MirTypes.ArithmeticOperation) and Binding's
+    // ArithmeticContractSyntax.Operator, composed with the MIR builder's operator for that token, agree: each Contract with a built-in
+    // witness on i32 has the MIR operation the builder writes for its operator on i32 operands, one each; any other Contract, a comparison
+    // or a Left one, has none.
+    [Fact]
+    public void TheBuiltinArithmeticRowsAreTheBuildersOperators()
+    {
+        var contracts = Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.Supports(BoundType.Primitives["i32"], x)).ToArray();
+        Assert.Equal(6, contracts.Length);
+        foreach (var contract in contracts)
+        {
+            var token = ArithmeticContractSyntax.Operator(contract);
+            var spelling = token switch
+            {
+                KotoKind.Plus => "+",
+                KotoKind.Minus or KotoKind.PrefixMinus => "-",
+                KotoKind.Asterisk => "*",
+                KotoKind.Slash => "/",
+                KotoKind.Percent => "%",
+                _ => throw new InvalidOperationException($"{contract} has no operator."),
+            };
+            var source = token == KotoKind.PrefixMinus ? $"func f(a: i32) -> i32 => {spelling}a\n" : $"func f(a: i32, b: i32) -> i32 => a {spelling} b\n";
+            var body = Assert.Single(MirBuildTest.Compile(source).BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
+            var rvalue = Assert.Single(body.Statements.ToArray(), static x => x.Rvalue.Kind is MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp).Rvalue;
+            Assert.Equal((rvalue.Kind, rvalue.Op), MirTypes.ArithmeticOperation(contract));
+        }
+
+        Assert.Equal(contracts.Length, contracts.Select(static x => MirTypes.ArithmeticOperation(x)).Distinct().Count());
+        var others = Enum.GetValues<KimiDeclarationId>().Except(contracts);
+        Assert.All(others, static x => Assert.Throws<InvalidOperationException>(() => MirTypes.ArithmeticOperation(x)));
     }
 
     private static (MirBody Body, Compilation Compilation) Probe(string function)

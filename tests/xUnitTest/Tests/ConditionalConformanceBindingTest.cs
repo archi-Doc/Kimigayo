@@ -277,9 +277,9 @@ public class ConditionalConformanceBindingTest
     }
 
     [Fact]
-    public void ConditionalRefinementRetainsIntrinsicCopyDerivation()
+    public void ConditionalCopyOptInSatisfiesAConditionalRefinementOfCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(use.Parameters[0].Type.TypeOf()!, use));
@@ -344,6 +344,16 @@ public class ConditionalConformanceBindingTest
         var path = Assert.Single(c.Binding.GetConformanceDefinition(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!.Paths);
         Assert.Equal(PropertyWitnessKind.StorageCopy, Assert.Single(path.PropertyWitnesses).Kind);
     }
+
+    // SPEC 8.5.1, 8.8.2 (PLAN G695): a Contract clause naming the Contract's Self is read with the path's Self normalized in its
+    // conformance scope, as the specification is, so under an identity condition `E is Option<Self>` agrees with
+    // `associate K.E is Option<Self>`; Option<i32> does not. `T is Copy` is the control.
+    [Theory]
+    [InlineData("T is Option<i32>", "Option<Self>", "clean")]
+    [InlineData("T is Copy", "Option<Self>", "clean")]
+    [InlineData("T is Option<i32>", "Option<i32>", "1*InvalidAssociatedType_Kd")]
+    public void AContractClauseNamingSelfIsReadUnderTheConditionsIdentity(string condition, string associated, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("contract K\n    associate E\n    E is Option<Self>\n    func get(self: ref/Self) -> i32\nstruct S<T>\n    Self is K when " + condition + "\n        associate K.E is " + associated + "\n    public func get(self: ref/Self) -> i32 => 1\n"));
 
     [Theory]
     [InlineData("C")]

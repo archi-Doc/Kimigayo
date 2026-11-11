@@ -273,7 +273,7 @@ internal sealed partial class MirBuilder
     {
         var type = TypeOf(dictionary);
         var place = compilation.Library.GetSymbol(KimiDeclarationId.DictionaryStoragePlaceEntry)!;
-        var subst = compilation.Types.Synthesized(place, null, [type.Components[0], type.Components[1]]);
+        var subst = compilation.Types.Synthesized(place, null, [type.Components[0], type.Components[1]], []);
         var built = this.Temp(type, dictionary);
         this.Set(built, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         for (var i = 0; i < dictionary.Entries.Count; i++)

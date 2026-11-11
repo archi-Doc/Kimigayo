@@ -39,6 +39,7 @@ public partial class KimiLibraryShapeTest
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
         (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
+        (KimiDeclarationId.ConsoleWriteStdout, "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
         (KimiDeclarationId.MakeObj, "public func makeObj<T>(value: T) -> obj/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
@@ -46,21 +47,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
-        (KimiDeclarationId.TextFixed, "public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer"),
-        (KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer"),
         (KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter"),
-        (KimiDeclarationId.TextUtf8, "public func utf8(text: ref/string) -> Utf8Slice"),
-        (KimiDeclarationId.TextValidateUtf8, "public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>"),
-        (KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format"),
-        (KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format"),
-        (KimiDeclarationId.TextRelease, "private func release(data: raw/u8)"),
-        (KimiDeclarationId.WindowPush, "public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>"),
-        (KimiDeclarationId.WindowAppend, "public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>"),
-        (KimiDeclarationId.WindowLimit, "public func limit(self: owner/Self, maximum: isize) -> Self{r}\norigin r.source == self.source"),
-        (KimiDeclarationId.WindowCommit, "public func commit(self: owner/Self) -> isize"),
-        (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
-        (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
-        (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
@@ -68,6 +55,8 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageTransferBytes, "internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)"),
         (KimiDeclarationId.StorageStride, "internal func stride<T>() -> isize"),
         (KimiDeclarationId.StorageDestroyValues, "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
+        (KimiDeclarationId.StorageErasedReserve,
+            "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
@@ -110,7 +99,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(181, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(181, KimiLibraryCatalog.Entries.Length); // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704).
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -126,6 +115,30 @@ public partial class KimiLibraryShapeTest
 
         // SPEC 22.1: the Weak family is cataloged but not yet declared in source.
         Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
+    }
+
+    // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
+    // A library change that moves a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
+    [Fact]
+    public void TheStatedSizeIsTheLibrarys()
+    {
+        // A Bind of the empty program: the shared Library compilation has run later stages, which intern further Types.
+        var c = CompilationTestHelper.Parse(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        var counts = c.Binding.TableCounts;
+        Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
+    }
+
+    // KimiLibrarySize's room contract: after a Bind of the library alone, each sized table with a room keeps at least its kind's room
+    // free, so a program smaller than the room resizes none of them, whatever the library holds.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void TheLibraryLeavesEachSizedTableItsRoom()
+    {
+        var c = CompilationTestHelper.Parse(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        var free = c.Binding.TableFree;
+        Assert.True(free.Nodes >= KimiLibrarySize.NodeRoom && free.LeastKeyed >= KimiLibrarySize.KeyedRoom, $"free {free}");
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -410,29 +423,39 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.DictionaryStorageInitialize, "unsafe func initialize(handle: raw/Handle)")]
     [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
+    [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
+    [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
+    [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(\nvalue: ref/T, destination: uniq/[N of u8]\n) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
+    [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
-        => Assert.Equal(header, Line(Library.Value.Library.GetSymbol(id)!.Declaration));
+        => Assert.Equal(header, HeaderLines(Library.Value.Library.GetSymbol(id)!.Declaration, header));
 
-    // SPEC 22.9.3, 22.9.4 (R8-W1a): the buffer operations that became bodies keep the headers their compiler function rows held, found
-    // by their struct and name, since most of them have no catalog entry.
+    // SPEC 22.9.2, 22.9.3, 22.9.4 (R8-W1a, W1c): the buffer and Text operations that became bodies keep the headers their compiler
+    // function rows held, found by their container's path and name, since most of them have no catalog entry.
     [Theory]
-    [InlineData(KimiDeclarationId.FixedBuffer, "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
-    [InlineData(KimiDeclarationId.FixedBuffer, "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
-    [InlineData(KimiDeclarationId.FixedBuffer, "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
-    [InlineData(KimiDeclarationId.FixedBuffer, "clear", "public func clear(self: uniq/Self)")]
-    [InlineData(KimiDeclarationId.FixedBuffer, "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
-    [InlineData(KimiDeclarationId.FixedBuffer, "intoText", "public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "clear", "public func clear(self: uniq/Self)")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
-    [InlineData(KimiDeclarationId.HeapBuffer, "intoString", "public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>")]
-    public void BufferOperationsKeepTheirHeaders(KimiDeclarationId buffer, string name, string header)
-    {
-        var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(Library.Value.Library.GetSymbol(buffer)!.Declaration);
-        Assert.Equal(header, Line(Assert.Single(container.Members.OfType<FunctionKoto>(), x => x.Name == name)));
-    }
+    [InlineData("Text.FixedBuffer", "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
+    [InlineData("Text.FixedBuffer", "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
+    [InlineData("Text.FixedBuffer", "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
+    [InlineData("Text.FixedBuffer", "clear", "public func clear(self: uniq/Self)")]
+    [InlineData("Text.FixedBuffer", "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    [InlineData("Text.FixedBuffer", "intoText", "public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>")]
+    [InlineData("Text.HeapBuffer", "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
+    [InlineData("Text.HeapBuffer", "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
+    [InlineData("Text.HeapBuffer", "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
+    [InlineData("Text.HeapBuffer", "clear", "public func clear(self: uniq/Self)")]
+    [InlineData("Text.HeapBuffer", "reserve", "public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    [InlineData("Text.HeapBuffer", "intoString", "public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>")]
+    [InlineData("WriteWindow", "push", "public func push(self: uniq/Self, byte: u8) -> Result<(), BufferFull>")]
+    [InlineData("WriteWindow", "append", "public func append(self: uniq/Self, bytes: Slice<u8>) -> Result<(), BufferFull>")]
+    [InlineData("WriteWindow", "limit", "public func limit(self: owner/Self, maximum: isize) -> Self{r}\norigin r.source == self.source")]
+    [InlineData("WriteWindow", "commit", "public func commit(self: owner/Self) -> isize")]
+    [InlineData("Utf8Writer", "write", "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format")]
+    [InlineData("Utf8Writer", "status", "public func status(self: ref/Self) -> Result<(), BufferFull>")]
+    [InlineData("Text", "fixed", "public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer")]
+    [InlineData("Text", "utf8", "public func utf8(text: ref/string) -> Utf8Slice")]
+    [InlineData("Text", "validateUtf8", "public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>")]
+    public void BufferOperationsKeepTheirHeaders(string container, string name, string header)
+        => Assert.Equal(header, HeaderLines(Assert.Single(Record(container).Members.OfType<FunctionKoto>(), x => x.Name == name), header));
 
     // SPEC 22.1 and its formatting and arithmetic profiles: the compiler reaches these requirements by name and position.
     [Theory]
@@ -494,8 +517,8 @@ public partial class KimiLibraryShapeTest
     [InlineData("Loan", "public struct Loan<T>")]
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
-    [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic let written: isize\npublic let remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -569,6 +592,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
+    [InlineData("Storage.BufferRepr", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.Utf8Slice", 16, "value", 0)]
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
@@ -580,8 +604,7 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // The writer wrapper and the conversions are runtime glue: they test `failed` and allocate the buffer and writer
-    // records the runtime initializes, at the offset and sizes of the library's named layouts.
+    // The runtime's adapter routines are runtime glue: they test `failed` at the offset of the library's named layout.
     [Fact]
     public void RuntimeGlueMatchesTheNamedLayouts()
     {
@@ -599,10 +622,9 @@ public partial class KimiLibraryShapeTest
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var (writer, writerType) = Layout("Utf8Writer");
         Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.FieldOffsets.Span[AdtDef.IndexOf(writerType, "failed")]}\n", ir, StringComparison.Ordinal);
-        foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
-        {
-            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
-        }
+
+        // R8-W1c: the conversions are bodies, so no glue allocates a buffer or an adapter record.
+        Assert.DoesNotContain("%buffer = alloca", ir, StringComparison.Ordinal);
     }
 
     // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows.
@@ -709,6 +731,16 @@ public partial class KimiLibraryShapeTest
 
     // The header and its direct member lines, one level deeper, without comments or bodies.
     private static string Shape(Koto node) => string.Join('\n', Lines(node, true));
+
+    // A body's pinned header (R8-W1b B2, W1c B1, W1c-2b): the declaration's first source lines, each trimmed, as many as the pin states:
+    // its header, on one line or wrapped within STYLE's 120 columns, then its clause lines (an origin relation, a constraint). The body's
+    // statements follow the clauses at their depth, so the pin's own line count bounds what is read.
+    private static string HeaderLines(Koto node, string header)
+    {
+        var text = node.CodeContext.SourceDocument!.SourceText;
+        var lines = text.Split('\n').Skip(text.AsSpan(0, node.Span.Start).Count('\n')).Take(header.AsSpan().Count('\n') + 1);
+        return string.Join('\n', lines.Select(static x => x.Trim()));
+    }
 
     private static List<string> Lines(Koto node, bool members)
     {

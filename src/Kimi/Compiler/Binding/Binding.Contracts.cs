@@ -19,14 +19,14 @@ public sealed partial class Binding
     /// <param name="contract">The required Contract identity.</param>
     /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
 
     /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
     /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -60,8 +60,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 8.4.3, 8.6.1: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
-    // bound reference of its declaration.
+    // SPEC 8.4.3, 8.6.1: a query by Contract declaration, which the compiler asks (an associated Type's owner, a library Contract), is
+    // satisfied by any bound reference of that declaration. A written Contract is never such a query: with Type parameters it names a
+    // bound reference (QualifierReference, SPEC 8.5.1, 9.7).
     private static bool SatisfiesDeclaration(BindingSymbol candidate, BindingSymbol parent)
         => IsBoundContractReference(candidate) && !IsBoundContractReference(parent) && ReferenceEquals(candidate.Declaration, parent.Declaration);
 
@@ -78,21 +79,6 @@ public sealed partial class Binding
             GenericsKoto { Identifier: { } identifier } => IsRefinementName(identifier), // SPEC 8.4.3: a parent with Type arguments.
             _ => false,
         };
-
-    // SPEC 8.4.3: the Type-argument application of a refinement parent, below transparent wrappers and a root-name form.
-    private static GenericsKoto? GenericParentApplication(Koto name)
-    {
-        if (name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] })
-        {
-            name = rooted;
-            while (name is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null })
-            {
-                name = inner;
-            }
-        }
-
-        return name as GenericsKoto;
-    }
 
     private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {
@@ -116,12 +102,12 @@ public sealed partial class Binding
     private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
     {
         ambiguous = false;
-        if (this.impls.Find(type, contract) is { } direct)
+        if (this.ConformanceOf(type, contract) is { } direct)
         {
             return direct;
         }
 
-        if (IsBoundContractReference(contract) || this.impls.OfType(type) is not { } identities)
+        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
         {
             return null;
         }
@@ -192,10 +178,6 @@ public sealed partial class Binding
 
     private void PrepareContracts()
     {
-        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
-        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
-        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
-        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -300,69 +282,53 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
-            // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
-            var generic = GenericParentApplication(name);
-            var parent = this.TypeName(name, this.scopes[contract], LookupRole.Any);
+            // SPEC 8.4.3: a generic parent is never deferred; its arity and its arguments are the former's (BindContractReference).
+            var generic = ContractApplication(name);
+            var parentPath = this.NamePath(name, this.scopes[contract]);
+            var parent = parentPath.Symbol;
             if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
             {
                 this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
+                if (this.HasUnresolvedConstraintSyntax(syntax))
                 {
                     shape.HasUnresolvedParents = true;
                     continue;
                 }
             }
 
-            if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
-                (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
+            if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
+            {
+                // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                valid = false;
+                continue;
+            }
+
+            if (!this.BuildContract(inherited))
+            {
+                syntax.BoundSymbol = parent;
+                Complete(syntax, BoundType.Unit);
+                name.BoundSymbol = parent;
+                Complete(name, BoundType.Unit);
+                valid = false;
+                continue;
+            }
+
+            // SPEC 8.4.3, 9.7.1: a parent is a written Contract reference, formed as every one is (BindContractReference: its arity, its
+            // own Type arguments and its outer ones), so its requirements carry the child's own parameters
+            // (contract UniqIndexable<Key>: Indexable<Key>).
+            var selection = parent;
+            parent = this.BindContractReference(name, selection, this.scopes[contract]);
+            if (parent is null)
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
             }
 
-            syntax.BoundSymbol = parent;
-            Complete(syntax, BoundType.Unit);
-            name.BoundSymbol = parent;
-            Complete(name, BoundType.Unit);
-            if (!this.BuildContract(inherited))
-            {
-                valid = false;
-                continue;
-            }
-
-            // The parent with Type arguments is refined as its bound reference, whose requirements carry the child's own
-            // parameters (contract UniqIndexable<Key>: Indexable<Key>).
-            if (generic is not null)
-            {
-                // The wrappers between a root-name form and its application resolve with the parent.
-                for (var wrapper = name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : name; !ReferenceEquals(wrapper, generic); wrapper = ((TypeSemanticsKoto)wrapper).Type!)
-                {
-                    wrapper.BoundSymbol = parent;
-                    Complete(wrapper, BoundType.Unit);
-                }
-
-                generic.BoundSymbol = parent;
-                Complete(generic, BoundType.Unit);
-                generic.Identifier!.BoundSymbol = parent;
-                Complete(generic.Identifier, BoundType.Unit);
-                var arguments = this.BindTypeList(
-                    generic.TypeArguments,
-                    this.scopes[contract],
-                    this.TypeContext(generic, this.scopes[contract]).Nested,
-                    BoundTypeKind.Constructed,
-                    parent);
-                if (arguments is null)
-                {
-                    this.Fail(syntax, BindingFailure.InvalidConstraint);
-                    valid = false;
-                    continue;
-                }
-
-                parent = this.BoundContractReference(this.types.Intern(BoundTypeKind.Constructed, parent, SemanticsKind.Owner, (BoundType[])arguments.Components));
-                inherited = parent.Contract!;
-            }
+            CompleteQualifier(syntax, selection, parent);
+            inherited = parent.Contract!;
 
             shape.HasUnresolvedParents |= inherited.HasUnresolvedParents;
 

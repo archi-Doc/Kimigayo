@@ -30,6 +30,131 @@ public class RawPlaceAccessTest
         "func read(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at\nfunc clear(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0\n" +
         "func adopt(pointer: raw/i32) -> raw/i32 during static\n    unsafe => return pointer@(raw/i32 during static)";
 
+    // A destroyed Res prints whether it was destroyed in place, its address equal to its `home`.
+    private const string Res = "struct Res\n    public var home: usize = 0\n    drop\n" +
+        "        if self@raw@usize == self.home => Console.writeLine(\"in place\") else => Console.writeLine(\"moved\")\n" +
+        "struct Tracer\n    drop => Console.writeLine(\"tracer\")\n";
+
+    // SPEC 4.7.1, 15.1.3, 15.1.5 (PLAN G672): a Take of a part of a raw Place that its storage does not hold itself (TyCtxt.RawPart).
+    // An Array element, generic or not, directly, in a Field or Tuple element, holding a fixed array, Tuple or Field, or inside a
+    // fixed-array element, taken as a discard, a binding, an assignment source or in a Closure, is the referent of `index`, which
+    // forms no Move Path: A1's StaticMovePathRequired_Kd, as for a local Array's element. A part past a reference stored in raw storage
+    // is a referent: Binding's ExclusivePathTake_Kd (MIR's record before G672 rests on it, a dependent one).
+    public static TheoryData<string, string> NoRawPartTakes => new()
+    {
+        { "func arrayTake(p: raw/Array<Res>)\n    unsafe => _ = (*p)[0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        { "func arrayTake(p: raw/Array<Res>)\n    unsafe => _ = p[0][0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        { "func take<T>(p: raw/Array<T>)\n    unsafe => _ = (*p)[0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        {
+            "struct Holder\n    public var a: Array<Res>\npublic func main()\n    let p = Raw.allocate<Holder>(1)\n    unsafe\n" +
+            "        _ = (*p).a[0]@move\n        Raw.release(p)\n", "StaticMovePathRequired_Kd"
+        },
+        {
+            "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    unsafe\n        let r = (*p)[0]@move\n        Raw.release(p)\n",
+            "StaticMovePathRequired_Kd"
+        },
+        {
+            "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    var x = Res.init()\n    unsafe\n        x = (*p)[0]@move\n" +
+            "        Raw.release(p)\n", "StaticMovePathRequired_Kd"
+        },
+        {
+            "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    let f = func [p] () => unsafe => _ = (*p)[0]@move\n" +
+            "    unsafe => Raw.release(p)\n", "StaticMovePathRequired_Kd"
+        },
+        {
+            "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    unsafe => Raw.initialize(p, [Res.init()])\n" +
+            "    var f = func [p] () => unsafe => _ = (*p)[0]@move\n    f()\n    unsafe => Raw.release(p)\n", "StaticMovePathRequired_Kd"
+        },
+        { "func nested(p: raw/Array<[2 of Res]>)\n    unsafe => _ = (*p)[0][1]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        { "func nested(p: raw/Array<[2 of [2 of Res]]>)\n    unsafe => _ = (*p)[0][1][0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        {
+            "func nested(p: raw/Array<Box>)\n    unsafe => _ = (*p)[0].r@move\nstruct Box\n    public var r: Res\n" +
+            "    public init(r: Res) => self.r = r@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd"
+        },
+        {
+            "struct Holder\n    public var a: Array<(Res, i32)>\nfunc nested(p: raw/Holder)\n    unsafe => _ = p[0].a[0].0@move\n" +
+            "public func main() => ()\n", "StaticMovePathRequired_Kd"
+        },
+        { "func nested(p: raw/(i32, Array<Res>))\n    unsafe => _ = (*p).1[0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        { "func nested(p: raw/[2 of Array<Res>])\n    unsafe => _ = (*p)[1][0]@move\npublic func main() => ()\n", "StaticMovePathRequired_Kd" },
+        {
+            "struct Link\n    public var q: raw/Array<Res>\nfunc take(p: raw/Link)\n    unsafe => _ = (*(*p).q)[0]@move\n" +
+            "public func main() => ()\n", "StaticMovePathRequired_Kd"
+        },
+        { "public func main()\n    let p: raw/(uniq/[2 of Res]) = Raw.allocate(1)\n    unsafe => _ = (*p)[0]@move\n", "ExclusivePathTake_Kd" },
+        { "public func main()\n    let p: raw/(uniq/(Res, i32)) = Raw.allocate(1)\n    unsafe => _ = (*p).0@move\n", "ExclusivePathTake_Kd" },
+        {
+            "struct Box\n    public var r: Res\n    public init(r: Res) => self.r = r@move\npublic func main()\n" +
+            "    let p: raw/(uniq/Box) = Raw.allocate(1)\n    unsafe => _ = (*p).r@move\n", "ExclusivePathTake_Kd"
+        },
+    };
+
+    // SPEC 5.2, 4.7.1, 15.1.5, 6.4 (PLAN G672): the parts a raw Place's storage holds itself offer an untracked Take: fixed-array
+    // elements at a runtime, constant or from-end position, also generic and nested, a raw pointer's own elements, Tuple elements, a
+    // fixed array in a Tuple element, own and base Fields, a whole Array as a fixed-array element or as a Field, the pointee of a raw
+    // pointer stored in a raw Place's Field, and a Take in a Closure; an Array element of a raw Place is still written, borrowed (each
+    // borrow a fresh anchor, SPEC 5.2.2) and addressed, also through `p[n]`.
+    public static TheoryData<string> RawPartTakes => new()
+    {
+        "func at(q: raw/[2 of Res], i: isize)\n    unsafe\n        _ = (*q)[i]@move\n        _ = (*q)[0]@move\npublic func main()\n" +
+            "    let q = Raw.allocate<[2 of Res]>(1)\n    unsafe => Raw.initialize(q, [Res.init(), Res.init()])\n    at(q, 1)\n" +
+            "    unsafe => Raw.release(q)\n    Console.writeLine(\"end\")\n",
+        "public func main()\n    let p = Raw.allocate<Res>(2)\n    unsafe\n        Raw.initialize(p, Res.init())\n" +
+            "        Raw.initialize(p + 1, Res.init())\n        _ = p[1]@move\n        let r = p[0]@move\n        Raw.release(p)\n" +
+            "    Console.writeLine(\"end\")\n",
+        "public func main()\n    let p = Raw.allocate<(Res, Res)>(1)\n    unsafe\n        Raw.initialize(p, (Res.init(), Res.init()))\n" +
+            "        _ = (*p).0@move\n        _ = (*p).1@move\n        Raw.release(p)\n    Console.writeLine(\"end\")\n",
+        "struct Box\n    public var r: Res\n    public init(r: Res) => self.r = r@move\npublic func main()\n" +
+            "    let p = Raw.allocate<(i32, [2 of Res])>(1)\n    let b = Raw.allocate<Box>(1)\n    unsafe\n" +
+            "        Raw.initialize(p, (1, [Res.init(), Res.init()]))\n        _ = (*p).1[0]@move\n        _ = (*p).1[1]@move\n" +
+            "        Raw.initialize(b, Box.init(Res.init()))\n        _ = (*b).r@move\n        Raw.release(p)\n        Raw.release(b)\n" +
+            "    Console.writeLine(\"end\")\n",
+        "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    unsafe\n        Raw.initialize(p, [Res.init()])\n" +
+            "        (*p)[0] = Res.init()\n        let r = (*p)[0]@ref\n        require r.home == 0 else => $abort(\"r\")\n" +
+            "        let q = (*p)[0]@raw\n        (*q).home = q@usize\n        p[0][0].home = 0\n        let u = (*p)[0]@uniq\n" +
+            "        u.home = 0\n        let a = (*p)@move\n        Raw.release(p)\n    Console.writeLine(\"end\")\n",
+        "public func main()\n    let p = Raw.allocate<[2 of Array<Res>]>(1)\n    unsafe\n        Raw.initialize(p, [[Res.init()], []])\n" +
+            "        _ = (*p)[0]@move\n        _ = (*p)[1]@move\n        Raw.release(p)\n    Console.writeLine(\"end\")\n",
+        "public func main()\n    let p = Raw.allocate<Array<Res>>(1)\n    unsafe\n        Raw.initialize(p, [Res.init()])\n" +
+            "        let a = (*p)[0]@uniq\n        let b = (*p)[0]@uniq\n        a.home = 1\n        b.home = 2\n        a.home = 3\n",
+        "public func main()\n    var p = Raw.allocate<Array<Res>>(1)\n    let keep = p\n    unsafe\n        Raw.initialize(p, [Res.init()])\n" +
+            "        let a = (*p)[0]@uniq\n        p = null\n        a.home = 0\n        let whole = (*keep)@move\n        Raw.release(keep)\n" +
+            "    Console.writeLine(\"end\")\n",
+        "func look(r: ref/Res) -> usize => r.home\nfunc at(q: raw/Res) => unsafe => (*q).home = 7\npublic func main()\n" +
+            "    let p = Raw.allocate<Array<Res>>(1)\n    unsafe\n        Raw.initialize(p, [Res.init()])\n        at(p[0][0]@raw)\n" +
+            "        require look(p[0][0]@ref) == 7 else => $abort(\"look\")\n        let whole = p[0]@move\n        Raw.release(p)\n" +
+            "    Console.writeLine(\"end\")\n",
+        "func take(q: raw/[2 of Res])\n    unsafe => _ = (*q)[^1]@move\npublic func main() => ()\n",
+        "func take<T>(p: raw/[2 of T])\n    unsafe => _ = (*p)[1]@move\npublic func main()\n    let q = Raw.allocate<[2 of Res]>(1)\n" +
+            "    unsafe => Raw.initialize(q, [Res.init(), Res.init()])\n    take(q)\n    unsafe\n        _ = (*q)[0]@move\n" +
+            "        Raw.release(q)\n    Console.writeLine(\"end\")\n",
+        "struct Holder\n    public var a: Array<Res>\n    public init(a: Array<Res>) => self.a = a@move\npublic func main()\n" +
+            "    let p = Raw.allocate<[2 of [2 of Res]]>(1)\n    let h = Raw.allocate<Holder>(1)\n    let i: isize = 1\n    unsafe\n" +
+            "        Raw.initialize(p, [[Res.init(), Res.init()], [Res.init(), Res.init()]])\n        _ = (*p)[1][0]@move\n" +
+            "        _ = (*p)[i][i]@move\n        _ = p[0][0]@move\n        let last = (*p)[0][i]@move\n" +
+            "        Raw.initialize(h, Holder.init([Res.init()]))\n        let whole = h[0].a@move\n        Raw.release(p)\n" +
+            "        Raw.release(h)\n    Console.writeLine(\"end\")\n",
+        "struct Link\n    public var q: raw/[2 of Res]\nfunc take(p: raw/Link)\n    unsafe => _ = (*(*p).q)[1]@move\npublic func main() => ()\n",
+        "public func main()\n    let p = Raw.allocate<[1 of Res]>(1)\n    unsafe => Raw.initialize(p, [Res.init()])\n" +
+            "    var f = func [p] () => unsafe => _ = (*p)[0]@move\n    f()\n    unsafe => Raw.release(p)\n    Console.writeLine(\"end\")\n",
+        "open struct Animal\n    public var r: Res\nstruct Dog : Animal\n    public var s: Res\nfunc take(p: raw/Dog)\n    unsafe\n" +
+            "        _ = (*p).r@move\n        _ = (*p).s@move\npublic func main() => ()\n",
+    };
+
+    [Theory]
+    [MemberData(nameof(NoRawPartTakes))]
+    public void APartARawPlaceDoesNotHoldOffersNoTake(string source, string code)
+        => Assert.Equal([code], DiagnosticCorpus.Check(Res + source).Diagnostics.Select(static x => x.Code));
+
+    [Theory]
+    [MemberData(nameof(RawPartTakes))]
+    public void ARawPlacesOwnPartsOfferTake(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Res + source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
     [Theory]
     [InlineData("let taken = *pointer")]
     [InlineData("let taken = pointer[0]")]
@@ -49,6 +174,17 @@ public class RawPlaceAccessTest
         Assert.Contains(take.Contains('*') ? take.Replace("*pointer", "(*pointer)@move", StringComparison.Ordinal) : take.Replace("pointer[0]", "pointer[0]@move", StringComparison.Ordinal), repaired, StringComparison.Ordinal);
         Assert.Empty(DiagnosticCorpus.Check(repaired).Diagnostics);
     }
+
+    // SPEC 15.1.6, 3.4.1, 5.3: a raw Place Subject, `*p` or `p[n]`, is a bare Place, borrowed in place and never acquired by value; with
+    // shared access its payload binds `ref/T`, also for a Copy T, so a `var` copy of the binding is a `ref/i32` that 7 does not fit.
+    [Theory]
+    [InlineData("func f(p: raw/Option<string>)\n    unsafe\n        match (*p)\n            .Some(let s) => ()\n            .None => ()\n", null)]
+    [InlineData("func f(p: raw/Array<string>) -> usize\n    var n: usize = 0\n    unsafe\n        for s in (*p)\n            n += 1\n    return n\n", null)]
+    [InlineData("func f(p: raw/Option<Resource>) -> i32\n    unsafe\n        match p[1]\n            .Some(let x) => return x.value\n            .None => return 0\n", null)]
+    [InlineData("func f(p: raw/Option<i32>) -> i32\n    unsafe\n        match (*p)\n            .Some(let x) => return x@follow\n            _ => return 0\n", null)]
+    [InlineData("func f(p: raw/Option<i32>) -> i32\n    unsafe\n        match (*p)\n            .Some(let x)\n                var y = x\n                y = 7\n                return y\n            _ => return 0\n", "TypeMismatch_Kd: 7")]
+    public void ARawPlaceSubjectIsBorrowedInPlace(string function, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Resource + function));
 
     [Theory]
     // The bare Take of a Copy-unproven raw Place is Binding's TransferRequired_Kd (SPEC 3.5, 5.2.3; R6-check H1, DECISIONS BU-84).
@@ -85,12 +221,27 @@ public class RawPlaceAccessTest
     }
 
     // SPEC 5.2.2: @ref and @uniq borrow a raw Place, a Field or an element of one. The referent is a fresh anchor, so the result
-    // Origin is fitted to the expected Type, result or storage destination, and other Places are not compared with it.
+    // Origin is fitted to the expected Type, result or storage destination, and other Places are not compared with it. An implicit
+    // borrow at a fixed `ref/U` (SPEC 10.2) is the same borrow (PLAN G688).
     [Theory]
+    [InlineData("func get(pointer: raw/Resource, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return *pointer\n")]
+    [InlineData("func get(p: raw/Array<Resource>, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*p)[0]\n")]
+    [InlineData("struct Pair\n    public var r: Resource\nfunc get(p: raw/Pair, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*p).r\n")]
+    [InlineData("func get(p: raw/Resource) -> ref/Resource during static\n    unsafe => return p[0]\n")]
+    [InlineData("func pick(anchor: ref/Resource during a) -> ref/Resource during a\n    let p = anchor@follow@raw\n    unsafe => return *p\n")]
+    [InlineData("func first(a: ref/Array<Resource>) -> ref/Resource during a => a[0]\nfunc get(p: raw/Array<Resource>, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return first(*p)\n")]
+    [InlineData("func get(p: raw/[2 of Resource], owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*p)[^1]\n")]
+    [InlineData("func get(p: raw/[2 of Resource], owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*p)[^1]@ref\n")]
     [InlineData("func get(pointer: raw/Resource, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*pointer)@ref\n")]
     [InlineData("func get(pointer: raw/Resource, owner: uniq/Resource) -> uniq/i32 during owner\n    unsafe => return pointer[1].value@uniq\n")]
     [InlineData("func get(pointer: raw/Resource) -> ref/Resource\n    unsafe => return pointer[0]@ref/Resource\n")]
     [InlineData("struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\nfunc view(pointer: raw/Resource, owner: ref/Resource) -> View during owner\n    unsafe => return View.init((*pointer)@ref)\n")]
+    // An Array element of a raw Place is borrowed through its receiver, the raw Place (SPEC 4.7.1): the anchor, which offers no Take
+    // (PLAN G672), is fitted to a result's Origin, `static`, or the pointer's stated Origin.
+    [InlineData("func get(p: raw/Array<Resource>, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*p)[0]@ref\n")]
+    [InlineData("func get(p: raw/Array<Resource>, owner: uniq/Resource) -> uniq/Resource during owner\n    unsafe => return (*p)[0]@uniq\n")]
+    [InlineData("func get(p: raw/Array<Resource>) -> ref/Resource during static\n    unsafe => return p[0][0]@ref\n")]
+    [InlineData("func pick(anchor: ref/Array<Resource> during a) -> ref/Resource during a\n    let p = anchor@follow@raw\n    unsafe => return (*p)[0]@ref\n")]
     public void ARawPlaceBorrowFitsItsDestination(string function)
     {
         var c = MinimalEmissionTest.Analyze(Resource + function + "public func main() => ()\n");
@@ -98,10 +249,11 @@ public class RawPlaceAccessTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // A returned borrow takes the declared result's Origin, in concrete and generic functions.
+    // A returned borrow of a raw Place, explicit or implicit (SPEC 10.2), is the anchor fitted to the declared result, in concrete
+    // and generic functions; its emission secures the return like any other borrow's.
     [Fact]
     public void AReturnedRawPlaceBorrowTakesTheResultOrigin()
-        => ScalarEmissionTest.EmitFixture("RawPlaceBorrowResult", "func get(p: raw/i32, owner: ref/i32) -> ref/i32 during owner\n    unsafe => return (*p)@ref\nfunc generic<T>(p: raw/T, owner: ref/T) -> ref/T during owner\n    unsafe => return (*p)@ref\nvar number: i32 = 5\nlet r = get(number@raw, number@ref)\nlet g = generic(number@raw, number@ref)\nrequire r == 5 and g == 5 else => $abort(\"value\")\nConsole.writeLine(\"returned\")", "returned\n");
+        => ScalarEmissionTest.EmitFixture("RawPlaceBorrowResult", "func get(p: raw/i32, owner: ref/i32) -> ref/i32 during owner\n    unsafe => return (*p)@ref\nfunc generic<T>(p: raw/T, owner: ref/T) -> ref/T during owner\n    unsafe => return (*p)@ref\nfunc implicit(p: raw/i32, owner: ref/i32) -> ref/i32 during owner\n    unsafe => return *p\nfunc implicitGeneric<T>(p: raw/T, owner: ref/T) -> ref/T during owner\n    unsafe => return *p\nvar number: i32 = 5\nlet r = get(number@raw, number@ref)\nlet g = generic(number@raw, number@ref)\nlet i = implicit(number@raw, number@ref)\nlet j = implicitGeneric(number@raw, number@ref)\nrequire r == 5 and g == 5 and i == 5 and j == 5 else => $abort(\"value\")\nConsole.writeLine(\"returned\")", "returned\n");
 
     // SPEC 5.2.2, 15.6.7: an exclusive borrow of a raw Place, its Field or element, passed at an exclusive argument or as an
     // exclusive receiver is reserved and Reborrowed for the call like any other exclusive argument; the callee's writes reach

@@ -129,6 +129,112 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         Assert.Contains(records, static x => x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd));
     }
 
+    // SPEC 8.6.2, 8.8.2 (PLAN G665; its review's `h41-u`, `hgt-u41`, `hgt-u44`): L(k)'s declaring layer L0<W^(200k)<X>> passes the limit
+    // from k = 41, so a use of the marker at L(k)<i32> forms it and is refused at its own site, never a Language record or a fault
+    // (fail-before: dev faults on the 44-level chain). The siteless InternalInvariant_Kd of the generic composition's refusal is PLAN G651's.
+    [Theory]
+    [InlineData(41, 41)]
+    [InlineData(44, 41)]
+    [InlineData(44, 44)]
+    public void AUseThroughAnInheritedLayerPastTheLimitIsRecordedAtIt(int n, int k)
+    {
+        var source = Heirs("W", n, "Self is U") + $"func t(v: ref/L{k}<i32>) => useU(v)\n" + Main;
+        var record = Assert.Single(this.Compile(source).Records, static x => x.Code != nameof(DiagnosticCode.InternalInvariant_Kd));
+        AssertHeightRecord(record, source, "useU(v)");
+    }
+
+    // SPEC 8.8.2 (PLAN G665; the Front's ruling 3, item 2): a path with premises states them at its generic declaring layer, so where that
+    // layer passes the limit the definition is refused at the first such heir's base clause and the use at its own site, valid (`oc41-u`,
+    // `ocown-191`: Option<T> is Copy) or not (`h41-c`, `hgt-c41`, `hgt-c44`: W<T> is not); never a fault (fail-before: dev faults on all
+    // five). The failed clauses' dependents beside them are PLAN G325's.
+    [Theory]
+    [InlineData("W", 41, 0, "L41<i32>", "struct L41")]
+    [InlineData("W", 44, 0, "L41<i32>", "struct L41")]
+    [InlineData("W", 44, 0, "L44<i32>", "struct L41")]
+    [InlineData("Option", 41, 0, "L41<i32>", "struct L41")]
+    [InlineData("Option", 40, 191, "M<i32>", "struct M")]
+    public void APathWithPremisesPastTheLimitIsRecordedAtItsClauseAndItsUse(string wrapper, int n, int owner, string use, string refused)
+    {
+        var heir = owner > 0 ? $"open struct M<s/T> : L40<s/{Nest(wrapper, owner, "T")}>\n    s is owner\n" : string.Empty;
+        var source = Heirs(wrapper, n, "Self is U when X is Copy") + heir + $"func t(v: ref/{use}) => useU(v)\n" + Main;
+        var records = this.Compile(source).Records.Where(static x => x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd)).ToArray();
+        var at = source.IndexOf(refused, StringComparison.Ordinal);
+        AssertHeightRecord(Assert.Single(records, x => x.Span.Start > at && x.Span.Start < source.IndexOf('\n', at)), source, "L40<", at);
+        var call = source.IndexOf("useU(v)", StringComparison.Ordinal);
+        AssertHeightRecord(Assert.Single(records, x => x.Span.Start >= call), source, "useU(v)");
+    }
+
+    // DECISIONS BU-153: a Type's display does not recurse on the Type, so a record naming a Type under H, or a closure whose
+    // display nests a chain of closure signatures (an edge the height does not count, BU-71), is reported on the caller's stack. The
+    // CLI runs the display in tier-0 code: dev's recursion overflowed its 1.5 MB stack from about 820 layers (1,856 B a frame). This
+    // host compiles optimized code (QuickJit off), whose frames hold H, so each row runs alone in a fresh process in tier-0 code.
+    [Theory]
+    [InlineData(nameof(ARecordNamingADeepTypeIsReported))]
+    [InlineData(nameof(ARecordNamingAClosureChainIsReported))]
+    public Task TierZeroCodeDisplaysADeepType(string row) => FreshProcess.RunExplicit(typeof(TypeHeightLimitTest), row, ("DOTNET_TC_QuickJit", "1"));
+
+    [Fact(Explicit = true)]
+    public void ARecordNamingADeepTypeIsReported()
+    {
+        var chain = Chain(8190, "i32");
+        var mismatch = Assert.Single(this.Compile(Doubling(12) + $"func p() -> ()\n    let x: {chain} = true\n    return\n" + Main).Records);
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), mismatch.Code);
+        Assert.StartsWith("expected ((((", mismatch.Label, StringComparison.Ordinal); // A record elides a long text in its middle.
+        Assert.EndsWith(", i32), i32), found bool", mismatch.Label, StringComparison.Ordinal);
+
+        // The valid twin, and the Origin relation that fails at the outer layer of the same Type (its facts name both Types).
+        var (c, d) = ($"ref/({chain}) during c", $"ref/({chain}) during d");
+        Assert.Empty(this.Compile(Doubling(12) + $"func f(x: {c}, y: {d}) -> {c}\n    return x@move\n" + Main).Records);
+        var relation = Assert.Single(this.Compile(Doubling(12) + $"func f(x: {c}, y: {d}) -> {d}\n    return x@move\n" + Main).Records);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), relation.Code);
+    }
+
+    // A closure's display shows its signature (SPEC 7.7): a closure whose anonymous function takes the previous closure nests the
+    // display four frames deeper at a height under 8.
+    [Fact(Explicit = true)]
+    public void ARecordNamingAClosureChainIsReported()
+    {
+        var source = new System.Text.StringBuilder("func pass<F, G>(f: ref/F, g: G) -> G\n    G is Callable<(ref/F) -> i32>\n    return g@move\n");
+        source.Append("public func main()\n    let c0 = func [] () -> i32 => 1\n");
+        for (var i = 1; i <= 512; i++)
+        {
+            source.Append($"    let c{i} = pass(c{i - 1}@ref, func [] (x) -> i32 => 1)\n");
+        }
+
+        var mismatch = Assert.Single(this.Compile(source.Append("    let z: i32 = c512\n").ToString()).Records);
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), mismatch.Code);
+        Assert.StartsWith("expected i32, found closure (ref/closure (ref/closure (", mismatch.Label, StringComparison.Ordinal);
+        Assert.EndsWith(" -> i32) -> i32) -> i32", mismatch.Label, StringComparison.Ordinal);
+    }
+
+    // A Tuple chain of the given height over `bottom`: D_n<T>.Item adds 2^n layers.
+    private static string Chain(int height, string bottom)
+    {
+        for (var n = 0; n < 13; n++)
+        {
+            if ((height >> n & 1) != 0)
+            {
+                bottom = $"D{n}<{bottom}>.Item";
+            }
+        }
+
+        return bottom;
+    }
+
+    // A marker conformance of L0 inherited through L(i)<X> : L(i-1)<wrapper^200<X>>, i = 1..n.
+    private static string Heirs(string wrapper, int n, string marker)
+    {
+        var s = new System.Text.StringBuilder($"contract U\nfunc useU<T>(value: ref/T)\n    T is U\n    ()\nstruct W<T>\n    var v: T\nopen struct L0<X>\n    {marker}\n");
+        for (var i = 1; i <= n; i++)
+        {
+            s.Append($"open struct L{i}<X> : L{i - 1}<{Nest(wrapper, 200, "X")}>\n");
+        }
+
+        return s.ToString();
+    }
+
+    private static string Nest(string wrapper, int k, string inner) => string.Concat(Enumerable.Repeat(wrapper + "<", k)) + inner + new string('>', k);
+
     // D0's Item is (T, i32); each D_i's is D_{i-1}<D_{i-1}<T>.Item>.Item, so D_n<i32>.Item has height 2^n.
     private static string Doubling(int n)
     {
@@ -160,10 +266,11 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         var accepted = checkedAll && c.Accepts;
-        var records = c.Diagnostics.Finalize(rejected: !accepted).Diagnostics.Select(static x => new DiagnosticEntryView(x.Code, x.Category, x.Message, x.Span ?? default)).ToArray();
+        var records = c.Diagnostics.Finalize(rejected: !accepted).Diagnostics
+            .Select(static x => new DiagnosticEntryView(x.Code, x.Category, x.Message, x.Span ?? default, x.Label)).ToArray();
         output.WriteLine(string.Join(", ", records.Select(static x => $"{x.Code} {x.Span}")));
         return (records, accepted);
     }
 
-    private readonly record struct DiagnosticEntryView(string Code, DiagnosticCategory Category, string Message, SourceSpan Span);
+    private readonly record struct DiagnosticEntryView(string Code, DiagnosticCategory Category, string Message, SourceSpan Span, string? Label);
 }

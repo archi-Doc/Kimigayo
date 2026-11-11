@@ -18,17 +18,17 @@ internal sealed partial class MirBorrows
     /// or, for a destroying one, shallow as a write (R4-M68), and that call's observing destruction of the old value past what the write
     /// hits (err(destroy), E11); a destruction past the destruction walk's bound is not classified (OwnershipDepthLimit_Kd, as A4's Deep); a Call's
     /// or Drop's effect on a mutable static root by A4's keys, a read or a write of the whole root, shallow (SPEC 15.6.4, 15.6.2;
-    /// MirBorrows.Effects).</summary>
+    /// MirBorrows.Effects). The deep kinds (<see cref="Deep"/>) are SharedBorrow through Activate.</summary>
     private enum AccessKind : byte
     {
         Read,
         SharedBorrow,
         UniqueBorrow,
         Move,
-        Write,
-        Destroy,
         Observe,
         Activate,
+        Write,
+        Destroy,
         ActivateInPlace,
         ActivateThrough, // An activation at its parent Loans' Places on a root (SPEC 15.6.3, 15.6.7), shallow: it meets a shared Loan, no reservation (R4-M68).
         ObservePast, // err(destroy): the Loans an observing destruction hits and the destroying activation's write does not, in every mode.
@@ -55,6 +55,10 @@ internal sealed partial class MirBorrows
     private static (MirProjectionKind Kind, int Arg) StepKey(in MirStep step)
         => (step.Kind, step.Kind is MirProjectionKind.Deref or MirProjectionKind.Index ? 0 : step.Arg);
 
+    // A3 5's deep(k): an access that reaches every Loan below its Place, through every Deref: a Move or a borrow, an observing
+    // destruction (E3) and a reservation's activation, as an exclusive borrow (R4-M68).
+    private static bool Deep(AccessKind kind) => kind is >= AccessKind.SharedBorrow and <= AccessKind.Activate;
+
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one. In a run
     // with rule W's elements the scan goes on past the first: the access is derived exactly when every conflicting candidate is
@@ -63,7 +67,7 @@ internal sealed partial class MirBorrows
     // only the drop tier takes and so hides no real one (Report records it as the depth limit, R4-M153).
     private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
-        var (first, dropped, met) = (None, None, MirOutcome.None);
+        var (first, rested, dropped, met) = (None, None, None, MirOutcome.None);
         this.causes.Clear();
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
@@ -71,9 +75,10 @@ internal sealed partial class MirBorrows
             {
                 var outcome = this.candidates[c].Outcome(taking);
                 met = met.Join(outcome);
-                if (outcome.IsDeep)
+                if (!outcome.IsDecided)
                 {
-                    dropped = dropped == None ? c : dropped;
+                    rested = rested == None && outcome.IsLimit ? c : rested;
+                    dropped = dropped == None && outcome.IsDeep ? c : dropped;
                     continue;
                 }
 
@@ -86,7 +91,8 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return met.IsDecided ? first : dropped;
+        var undecided = rested == None ? dropped : rested;
+        return met.IsDecided ? first : undecided;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
@@ -133,8 +139,7 @@ internal sealed partial class MirBorrows
         }
 
         var past = kind == AccessKind.ObservePast; // The write's hits, negated.
-        if (steps.Length >= loan.Count || kind is AccessKind.Move or AccessKind.SharedBorrow or AccessKind.UniqueBorrow or AccessKind.Activate or
-            AccessKind.Observe)
+        if (steps.Length >= loan.Count || Deep(kind))
         {
             return !past;
         }
@@ -170,6 +175,7 @@ internal sealed partial class MirBorrows
     {
         var mark = Markers + candidate;
         var met = (this.markSeen[mark] == this.stamp ? MirOutcome.Decided : MirOutcome.None)
+            .Join(this.markRested[mark] == this.stamp ? MirOutcome.Limit : MirOutcome.None)
             .Join(this.drops.Count > 0 && this.markDropped[mark].Stamp == this.stamp ? MirOutcome.Deep : MirOutcome.None);
         if (met.IsNone || this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
         {
@@ -178,7 +184,7 @@ internal sealed partial class MirBorrows
 
         if (!met.IsDecided)
         {
-            this.Limit(this.Declaration(this.markDropped[mark].Via), met);
+            this.Limit(met.IsLimit ? this.Subject(at) : this.Declaration(this.markDropped[mark].Via), met);
             return;
         }
 

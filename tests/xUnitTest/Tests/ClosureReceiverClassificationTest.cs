@@ -688,4 +688,52 @@ public class ClosureReceiverClassificationTest
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
         Assert.Equal(ExclusiveCallNote, error.Note);
     }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // G622: ClosureEffects' store is sized by the nodes a Classify meets, never by the module. A cold Bind's bytes of a program with a
+        // capturing Closure, less those of its twin that classifies no capture use, are what the classification pays (valid programs:
+        // plain functions, SPEC 7.1; a Copy capture or a local read, SPEC 7.7.2, 7.7.3 Shared). Their growth from the small size to the
+        // large one is what the added units cost:
+        // - A function beside the Closure adds nothing (one capture use, 500 and 8,000 plain functions; the twin has no Closure, since
+        //   any Closure's Classify would pay a store by the module): 0 B, bounded by 4 B a function either way. A store by the module's
+        //   syntax ids costs eight ids a function (1 B an id: 60,000 B).
+        // - A capture use of one consumer adds its node's row, 32 B and a 4-byte bucket, which the table's doubling keeps under 96 B a use
+        //   (4,000 and 8,000 elements of one literal, 303,136 B, 76 B a use; the twin's `c` is the Closure's body local).
+        // The series opens with the large capturing program, unread: a process's first Bind of a size also pays what it keeps across
+        // compilations. The sizes give the bounds room for the one reading a series cannot hold still: the kept compilations grow the
+        // heap into a background collection, and the Bind its pause falls in is charged up to one allocation context's tail (8 KB) more
+        // or less. Without the concurrent collector every reading is the same in every run.
+        [Theory]
+        [InlineData(false, 500, 8000, -4, 4)]
+        [InlineData(true, 4000, 8000, 36, 96)]
+        public void AColdClassificationPaysByTheNodesItMeets(bool uses, int small, int large, int least, int most)
+        {
+            var compilations = new Compilation[5];
+            var bytes = AllocationMeasurement.MeasureSeries(compilations.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(Source(uses, capture: (i & 1) == 0, i is 1 or 2 ? small : large), "Hello.kimi");
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static x => Assert.True(x.Binding.Result.IsComplete, MinimalEmissionTest.Describe(x)));
+            var growth = (bytes[4] - bytes[3]) - (bytes[2] - bytes[1]);
+            var units = large - small;
+            output.WriteLine($"cold Bind bytes {string.Join(", ", bytes)}; the store's growth {growth} B over {units} units");
+            Assert.True(growth >= (least * units) - 64 && growth <= (most * units) + 64, $"cold Bind bytes {string.Join(", ", bytes)}; the store's growth {growth} B over {units} units");
+
+            static string Source(bool uses, bool capture, int size)
+            {
+                if (uses)
+                {
+                    var (outer, head, inner) = capture ? ("    let c: i32 = 1\n", "[c] ", string.Empty) : (string.Empty, string.Empty, "        let c: i32 = 1\n");
+                    return $"func g() -> isize\n{outer}    let f = func {head}() -> isize\n{inner}        let xs: Array<i32> = [{string.Join(", ", Enumerable.Repeat("c", size))}]\n        return xs.length\n    return f()\n()\n";
+                }
+
+                return string.Concat(Enumerable.Range(0, size).Select(static k => $"func f{k}(a: i32) -> i32 => a + {k} * 2\n")) +
+                    (capture ? "func g() -> i32\n    let c: i32 = 1\n    let f = func [c] () -> i32\n        return c\n    return f()\n()\n" : "func g() -> i32\n    let c: i32 = 1\n    return c\n()\n");
+            }
+        }
+    }
 }
