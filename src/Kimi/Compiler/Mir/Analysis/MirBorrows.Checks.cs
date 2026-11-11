@@ -67,7 +67,7 @@ internal sealed partial class MirBorrows
     // only the drop tier takes and so hides no real one (Report records it as the depth limit, R4-M153).
     private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
-        var (first, dropped, met) = (None, None, MirOutcome.None);
+        var (first, rested, dropped, met) = (None, None, None, MirOutcome.None);
         this.causes.Clear();
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
@@ -75,9 +75,10 @@ internal sealed partial class MirBorrows
             {
                 var outcome = this.candidates[c].Outcome(taking);
                 met = met.Join(outcome);
-                if (outcome.IsDeep)
+                if (!outcome.IsDecided)
                 {
-                    dropped = dropped == None ? c : dropped;
+                    rested = rested == None && outcome.IsLimit ? c : rested;
+                    dropped = dropped == None && outcome.IsDeep ? c : dropped;
                     continue;
                 }
 
@@ -90,7 +91,8 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return met.IsDecided ? first : dropped;
+        var undecided = rested == None ? dropped : rested;
+        return met.IsDecided ? first : undecided;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,
@@ -173,6 +175,7 @@ internal sealed partial class MirBorrows
     {
         var mark = Markers + candidate;
         var met = (this.markSeen[mark] == this.stamp ? MirOutcome.Decided : MirOutcome.None)
+            .Join(this.markRested[mark] == this.stamp ? MirOutcome.Limit : MirOutcome.None)
             .Join(this.drops.Count > 0 && this.markDropped[mark].Stamp == this.stamp ? MirOutcome.Deep : MirOutcome.None);
         if (met.IsNone || this.Covered(this.body.Common(this.Source(at).Scope, this.body.Locals[candidate].Source.Scope), -1, -1))
         {
@@ -181,7 +184,7 @@ internal sealed partial class MirBorrows
 
         if (!met.IsDecided)
         {
-            this.Limit(this.Declaration(this.markDropped[mark].Via), met);
+            this.Limit(met.IsLimit ? this.Subject(at) : this.Declaration(this.markDropped[mark].Via), met);
             return;
         }
 

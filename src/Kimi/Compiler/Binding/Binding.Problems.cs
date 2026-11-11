@@ -48,7 +48,7 @@ public sealed partial class Binding
             BindingFailure.ConflictingImportSignature => DiagnosticCode.ConflictingImportSignature_Kd,
             BindingFailure.ConflictingRuntimeSymbol => DiagnosticCode.ConflictingRuntimeSymbol_Kd,
             BindingFailure.ConflictingImportSupply => DiagnosticCode.ConflictingImportSupply_Kd,
-            BindingFailure.UnsafeFunctionValue => DiagnosticCode.UnsafeFunctionValue_Kd,
+            BindingFailure.DirectCallFunctionValue => DiagnosticCode.DirectCallFunctionValue_Kd,
             BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
             BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
             BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,

@@ -140,7 +140,7 @@ public class ClosedConformancePrerequisiteBindingTest
         int Work(int count)
         {
             var declarations = Enumerable.Range(0, count).Select(i =>
-                "public struct X" + i + "\n    " + (i == count - 1 ? "i32" : "Held" + (i + 1)) + " is Copy\n    Self is R\n" +
+                "public struct X" + i + "\n    " + (i == count - 1 ? "i32" : "Held" + (i + 1)) + " is Copy\n    Self is Copy\n    Self is R\n" +
                 "public struct Held" + i + "\n    Self is Copy\n    var first: Pair<X" + i + ">\n");
             var c = Bind("public contract R: Copy\npublic struct Pair<T>\n    Self is Copy when T is R\n    var first: T\n" +
                 string.Concat(reverse ? declarations.Reverse() : declarations));
@@ -189,7 +189,7 @@ public class ClosedConformancePrerequisiteBindingTest
         const string r = "public contract R: Copy\n";
         const string pair = "public struct Pair<T>\n    Self is Copy when T is R\n    var first: T\npublic struct HeldY\n    Self is Copy\n    var first: Pair<Y>\n";
         const string x = "public struct X\n    HeldY is Copy\n    Self is K\n";
-        const string y = "public struct Y\n    Self is R\n";
+        const string y = "public struct Y\n    Self is Copy\n    Self is R\n";
         const string useK = "func useK<T>(x: T) -> i32\n    T is K\n    return 1\nfunc g(x: X) -> i32\n    return useK(x@move)\n";
         const string ranked = "public struct X\n    H1 is Copy\n    Self is K\n";
         const string ranks = "public struct P1<T>\n    Self is Copy when T is R1\n    var first: T\n" +
@@ -197,7 +197,7 @@ public class ClosedConformancePrerequisiteBindingTest
             "public struct P3<T>\n    Self is Copy when T is R3\n    var first: T\n" +
             "public struct H1\n    Self is Copy\n    var first: P1<Y1>\npublic struct H2\n    Self is Copy\n    var first: P2<Y2>\n" +
             "public struct H3\n    Self is Copy\n    var first: P3<Y3>\n" +
-            "public struct Y1\n    Self is R1\npublic struct Y2\n    Self is R2\npublic struct Y3\n    Self is R3\n";
+            "public struct Y1\n    Self is Copy\n    Self is R1\npublic struct Y2\n    Self is Copy\n    Self is R2\npublic struct Y3\n    Self is Copy\n    Self is R3\n";
         const string r1 = "public contract R1: Copy\n    H2 is Copy\n";
         const string r2 = "public contract R2: Copy\n    H3 is Copy\n";
         const string c = "public contract C\n";
@@ -210,7 +210,7 @@ public class ClosedConformancePrerequisiteBindingTest
         return family switch
         {
             "cap6" => (string.Empty, [x, k, r, pair, y], string.Empty),
-            "cap6n" => (string.Empty, [x, k, r, pair, "public struct Y\n    i32 is Copy\n    Self is R\n"], useK),
+            "cap6n" => (string.Empty, [x, k, r, pair, "public struct Y\n    i32 is Copy\n    Self is Copy\n    Self is R\n"], useK),
             "cap3b" => (string.Empty, [x, k, r, "public struct Pair<T>\n    T is R\n    Self is Copy\n    var first: T\npublic struct HeldY\n    Self is Copy\n    var first: Pair<Y>\n", y], useK),
             "cap9" => (
                 string.Empty,
@@ -221,7 +221,7 @@ public class ClosedConformancePrerequisiteBindingTest
             "n3b" => (string.Empty, [r1, r2, "public contract R3: Copy\n    i32 is Copy\n", ranked, k, ranks], useK),
             "n3c" => (
                 string.Empty,
-                [x, "public struct Y\n    HeldZ is Copy\n    Self is R\n", "public struct Z\n    i32 is Copy\n    Self is R\n", k, r, pair,
+                [x, "public struct Y\n    HeldZ is Copy\n    Self is Copy\n    Self is R\n", "public struct Z\n    i32 is Copy\n    Self is Copy\n    Self is R\n", k, r, pair,
                     "public struct HeldZ\n    Self is Copy\n    var first: Pair<Z>\n"],
                 useK),
             "n3d" => (string.Empty, [r1, r2, "public contract R3: Copy\n    H1 is Copy\n", ranked, k, ranks], useK),
