@@ -7113,7 +7113,8 @@ resumed by R4-M86 (2026-10-20).
     table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type obligations unjudged);
     judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
-- **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap); amended by R5-M164)
+- **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap), BU-166
+  (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`); amended by R5-M164)
   (2026-10-22; designs A′ and B′, design-final
   §14 "B′+"; unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one
   slot whose role the Semantics decides (0 B; B′'s +8 B field is not taken). `Origin` never reads a raw layer's; `RawOrigin` only a raw
@@ -11178,7 +11179,8 @@ resumed by R4-M86 (2026-10-20).
     instance's key (review 1 B1); a path-span reader; a `LayerOrigin` reader; a raw Origin in the key (review 3 N14); an
     Origin-erased key; Binding computing the pun facts; a `CallRetention` or `MirDescriptors` column for the no-store bit.
 - **BU-146 A raw Place's parts: `TyCtxt.RawPart`** (2026-11-10; PLAN G672; Major, an acceptance mover; design review 2 ACCEPT,
-  implementation review ACCEPT; the Middle's consent C-194; supersedes R4-M21's untracked-Take clause) SPEC 3.4, 4.7.1, 5.2, 5.2.2,
+  implementation review ACCEPT; the Middle's consent C-194; supersedes R4-M21's untracked-Take clause; superseded in part by BU-166)
+  SPEC 3.4, 4.7.1, 5.2, 5.2.2,
   15.1.5, 15.1.6.
   - `TyCtxt.RawPart(container)` is the one rule of which parts of a raw Place are raw Places: an `owner` struct's, Tuple's or fixed
     array's storage holds the part itself (a stored Field or base, an element, a fixed-array element at any position, from-end
@@ -11436,6 +11438,38 @@ resumed by R4-M86 (2026-10-20).
   - Removal. G443's unit (R7-I2 d) forms the common Type's Origins over every source and deletes the row; its pinning theory
     `ApplicabilityChainRegressionTest.ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443` (g586h1-h6) moves to
     `ACommonTypeFormationHasItsVerdict` with no records.
+- **BU-166 A raw Place's root is a Place of Binding's Place classification: `ElementAccess.IsRawRoot` (PLAN G688)** (2026-11-11;
+  Front, Binding; Major, an acceptance mover; design review 1 REVISE, revision 1, design review 2 ACCEPT, implementation review
+  ACCEPT; the Middle's consent C-223 (RP17); supersedes BU-146's clause "The borrow, address and place-ness sites read a separate
+  fact, `ElementAccess.IsRawRooted`" for place-ness and implicit borrows, and BU-24's `BorrowRawPlace` declared-result fit) SPEC
+  3.4.1, 5, 5.2, 5.2.2, 5.3, 5.7, 7.3, 10.2, 11.1, 11.5, 15.1.5, 15.1.6.
+  - Rule. `ElementAccess.IsRawRoot(node)`, `*p` or `p[n]`, is the one test of a raw Place's root. The raw walks (`IsRawPlace`,
+    `IsRawRooted`, `IsPointerPath`), the Place classification (`IsBarePlace`, `LendsPlace`, `PlaceOrigin`, `PlaceOriginSource`,
+    `Writable`, `TakeJudgment`), the path step `NextPathStep` and `RequiresUnsafe` (SPEC 5's unsafe context) read it.
+  - Place classification. `IsBarePlace` counts a raw root as a bare Place (SPEC 3.4.1: a raw Place is a Place), so every implicit
+    acquisition (an argument or result at a fixed `ref/U`, a stored value, a receiver, a Subject) treats `*p`, `p[n]` and their
+    owned parts as Places, never as Temporaries. `LendsPlace` lends a raw root in either mode, never as static storage (5.2.2, 5.7;
+    only a safe shared layer inside it denies, 15.6.2). `PlaceOrigin` names a Place rooted at one through owned parts by
+    `RawAnchor`: a fresh `OriginKind.Anchor` atom met with the Origin the pointer states (`PathOrigin`). `PlaceOriginSource` stops
+    at `p[n]`.
+  - One Origin rule. `RawAnchor` is the Origin of every `@ref`/`@uniq` and implicit borrow of a raw Place (`@raw`'s own borrow,
+    which ends at once, stays typed `static`: `BindAddress`; PLAN G672's line): `BorrowRawPlace`'s declared-result fit (8248cd501)
+    is deleted with `ResultFunction`. It was added because emission rejected a returned borrow whose Origin was not the result's;
+    the anchor fits every result, and the return runs with it (`RawPlaceAccessTest.AReturnedRawPlaceBorrowTakesTheResultOrigin`,
+    explicit and implicit, concrete and generic). No verdict moved on any twin set; one record did: a written return through a
+    pointer stating a body-local borrow's Origin now has the implicit form's two `UnsatisfiedOriginRelation_Kd` records (PLAN
+    G56/G430's twin pair, G720's).
+  - HIR. `IsPlace` and `IsNeverValue` read `IsBarePlace` alone. `IsRawRooted` (a Place rooted at a raw root, passing a reference
+    stored in raw storage and stopping at a from-end position; not `IsRawRoot`, the root node) now routes only written
+    `@ref`/`@uniq`/`@raw` (`Binding.Conversions`, `Binding.Conversions.Raw`) and HIR `ExclusiveUse`.
+  - Why BU-146's clause no longer holds. `IsBarePlace` lacked the root, so `IsRawRooted` stood in for place-ness at HIR's sites
+    while the implicit paths classified `*p` as a Temporary Value (a body-local Origin, no exclusive lending of its inline parts, a
+    Subject acquired by value). With the root counted, the two differ only on a stored Field with a custom getter, a getter result
+    by SPEC 11.1/11.5 (`IsBarePlace`'s answer); no built-in index of a receiver Type lies outside `IsBarePlace`'s kinds.
+  - Open (PLAN G672). Written borrows of a raw-rooted Place still route through `IsRawRooted` to `BorrowRawPlace`.
+  - Rejected: a raw case in each consumer (one form per site); routing implicit borrows to `BorrowRawPlace` (it decides a written
+    conversion's result); the fact in `TyCtxt.RawPart` (it answers which parts a Take moves, not what is a Place); keeping the
+    declared-result fit beside the anchor (two Origin rules for one borrow).
 - **BU-158 An import taken as a value is rejected where an unsafe function is: `Binding.DirectCallOnly`, one failure
   `DirectCallFunctionValue` (PLAN G677)** (2026-11-11; Front, Binding; Major, an acceptance mover; the owner's O-149 (a), verbatim
   「a」) SPEC 22.6, 7.6, 7.7.4.

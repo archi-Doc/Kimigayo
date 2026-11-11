@@ -59,6 +59,12 @@ public class RawStorageTest
 
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
 
+    // A `during self` raw Field read through a shared receiver, and a Field whose exclusive receiver lends its slot, reached through a
+    // pointer stating an exclusive borrow of its holder.
+    private const string SelfStore = "struct Store\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n";
+    private const string Slots = "struct Counter\n    public var value: i32 = 0\n    public func slot(self: uniq/Self) -> uniq/i32 during self => self.value@uniq\n" +
+        "struct Pair\n    public var n: i32 = 0\n    public var c: Counter = Counter.init()\nfunc f() -> i32\n    var b = Pair.init()\n    let u = b@uniq\n    let p = u@follow@raw\n";
+
     [Fact]
     public void StorageIsAllocatedInitializedTakenAndReleased()
     {
@@ -441,14 +447,41 @@ public class RawStorageTest
         => Assert.Equal(records is null ? [] : records.Split(" | "), RawPointerSyntaxTest.Records(declarations));
 
     // SPEC 5.2.2, 5.6, 5.7 (D14): a borrow of a raw Place, and Raw.slice's result, lie within the Origin the pointer states, so neither
-    // reaches past the borrow the pointer was read through.
+    // reaches past the borrow the pointer was read through, whose Loan stays live while the borrow is used (SPEC 15.6.2). An implicit
+    // borrow (SPEC 10.2: a returned or stored value, a receiver, a Subject, an argument) is the same borrow (PLAN G688): the pointer's
+    // Origin stated by a local typed path, a `during self` Field read through the receiver, or a slot Field.
     [Theory]
     [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during static\n    unsafe => return b.data[0]@ref", "UnprovenOriginRelation_Kd: b.data[0]@ref")]
     [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during static\n    unsafe => return Raw.slice(b.data, b.length)", "UnprovenOriginRelation_Kd: b.data")]
     [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during b\n    unsafe => return b.data[0]@ref", null)]
     [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during b\n    unsafe => return Raw.slice(b.data, b.length)", null)]
+    [InlineData("func pick(anchor: ref/i32 during a, b: ref/i32 during c) -> ref/i32 during c\n    let p = anchor@follow@raw\n    unsafe => return *p", "UnprovenOriginRelation_Kd: *p")]
+    [InlineData("func pick(anchor: ref/i32 during a) -> ref/i32 during a\n    let p = anchor@follow@raw\n    unsafe => return *p", null)]
+    [InlineData("func put(anchor: ref/i32, b: ref/i32, h: uniq/(ref/i32 during b))\n    let p = anchor@follow@raw\n    unsafe => h@follow = *p", "UnprovenOriginRelation_Kd: *p")]
+    [InlineData("func put(anchor: ref/i32, h: uniq/(ref/i32 during anchor))\n    let p = anchor@follow@raw\n    unsafe => h@follow = *p", null)]
+    [InlineData(SelfStore + "    public func get(self: ref/Self, other: ref/i32) -> ref/i32 during other\n        unsafe => return *self.data", "UnprovenOriginRelation_Kd: *self.data")]
+    [InlineData(SelfStore + "    public func get(self: ref/Self) -> ref/i32 during self\n        unsafe => return *self.data", null)]
+    [InlineData(View + "func read(lens: ref/View<i32>, other: ref/i32) -> ref/i32 during other\n    unsafe => return *lens.at", "UnprovenOriginRelation_Kd: *lens.at")]
+    [InlineData(View + "func read(lens: ref/View<i32>) -> ref/i32 during lens.source\n    unsafe => return *lens.at", null)]
+    [InlineData(View + "func f() -> i32\n    var b: i32 = 1\n    let u = b@uniq\n    let p = u@follow@raw\n    unsafe\n        let lens = View<i32>.init(*p)\n        b = 2\n        return *lens.at", "ComparisonLoanConflict_Kd: b = 2")]
+    [InlineData(Slots + "    unsafe\n        let k = (*p).c.slot()\n        b.n = 9\n        k@follow += 1\n    return b.n", "ComparisonLoanConflict_Kd: b.n = 9")]
+    [InlineData(Slots + "    unsafe\n        let k = (*p).c.slot()\n        k@follow += 1\n        b.n = 9\n    return b.n", null)]
+    [InlineData("func f() -> i32\n    var o: Option<i32> = .Some(1)\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = o@uniq\n    let p = u@follow@raw\n    unsafe\n        match (*p)\n            .Some(let x) => keep = x\n            _ => ()\n    o = .None\n    return keep@follow", "ComparisonLoanConflict_Kd: o = .None")]
+    [InlineData("func f() -> i32\n    var o: Option<i32> = .Some(1)\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = o@uniq\n    let p = u@follow@raw\n    unsafe\n        match (*p)\n            .Some(let x) => keep = x\n            _ => ()\n    let v = keep@follow\n    o = .None\n    return v", null)]
+    [InlineData("func f() -> i32\n    var arr: Array<i32> = [1, 2]\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = arr@uniq\n    let p = u@follow@raw\n    unsafe\n        for x in (*p)\n            keep = x\n    arr = []\n    return keep@follow", "ComparisonLoanConflict_Kd: arr = []")]
+    [InlineData("func f() -> i32\n    var arr: Array<i32> = [1, 2]\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = arr@uniq\n    let p = u@follow@raw\n    unsafe\n        for x in (*p)\n            keep = x\n    let v = keep@follow\n    arr = []\n    return v", null)]
     public void ARawPlaceBorrowLiesWithinThePointersOrigin(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Buffer + declarations));
+
+    // SPEC 5.2.2, 15.6.5: a pointer stating a body-local borrow's Origin rejects the returned borrow, implicit or explicit; the verdict
+    // only, as A5 records a Refuted returned borrow at the Return and at the borrow, in either form (PLAN G720).
+    [Theory]
+    [InlineData("*p")]
+    [InlineData("(*p)@ref")]
+    public void ABodyLocalPointerOriginRejectsAReturnedRawPlaceBorrow(string borrow)
+        => Assert.Contains(
+            RawPointerSyntaxTest.Records("func make(c: ref/i32) -> ref/i32 during c\n    let n: i32 = 1\n    let r = n@ref\n    let p = r@follow@raw\n    unsafe => return " + borrow),
+            static x => x.StartsWith(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), StringComparison.Ordinal));
 
     // A valid program on H5's (e) list under PQ-10: Binding completes, and the check's only Error records are A5's located Unsupported_Kd,
     // one at the subject in each context.
