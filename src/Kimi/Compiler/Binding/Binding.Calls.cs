@@ -319,25 +319,25 @@ public sealed partial class Binding
                 if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
                 {
                     // The candidates that were considered explain the failed selection; recorded only when it fails.
-                    var rejected = new RejectedCandidate[count];
+                    var start = this.rejectedRows.Count;
                     for (var i = 0; i < count; i++)
                     {
-                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
+                        var rejected = new RejectedCandidate((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
                         var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
                         if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
                         {
-                            rejected[i] = rejected[i] with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
+                            rejected = rejected with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
                         }
 
                         if (evaluated[i].Symbol!.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
                             cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
                         {
-                            rejected[i] = rejected[i] with { ObjectClone = true };
+                            rejected = rejected with { ObjectClone = true };
                         }
 
                         if (evaluated[i].ClosureReceiver is { } receivers)
                         {
-                            rejected[i] = rejected[i] with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
+                            rejected = rejected with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
                         }
 
                         for (var a = 0; a < argumentCount; a++)
@@ -345,20 +345,22 @@ public sealed partial class Binding
                             var operation = operations[(i * operationStride) + a];
                             if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
                             {
-                                rejected[i] = rejected[i] with { Actual = actual, Expected = parameter };
+                                rejected = rejected with { Actual = actual, Expected = parameter };
                                 break;
                             }
 
                             // Signature-refusal facts have no selected parameter operation.
                             if (operation.ParameterIndex == -1 && operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required)
                             {
-                                rejected[i] = rejected[i] with { Actual = signature, Expected = required, CallableSignature = true };
+                                rejected = rejected with { Actual = signature, Expected = required, CallableSignature = true };
                                 break;
                             }
                         }
+
+                        this.rejectedRows.Add(rejected);
                     }
 
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
+                    this.RecordRejected(call, start);
                 }
                 else if (this.acquisitionFailure is { } acquisition)
                 {
@@ -430,7 +432,8 @@ public sealed partial class Binding
                         }
                     }
 
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [rejected];
+                    this.rejectedRows.Add(rejected);
+                    this.RecordRejected(call, this.rejectedRows.Count - 1);
                     return this.Fail(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate, true);
                 }
             }
@@ -610,18 +613,17 @@ public sealed partial class Binding
         }
 
         var evaluated = evaluation.Evaluated;
-        var remaining = new RejectedCandidate[evaluation.Applicable];
-        var next = 0;
+        var start = this.rejectedRows.Count;
         var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
         for (var i = 0; i < evaluation.Count; i++)
         {
             if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
             {
-                remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
+                this.rejectedRows.Add(new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure));
             }
         }
 
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+        this.RecordRejected(call, start);
         return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
     }
 
