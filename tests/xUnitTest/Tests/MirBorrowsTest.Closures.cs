@@ -713,8 +713,9 @@ public sealed partial class MirBorrowsTest
     // = x` in the uniq view) and the argument's store into the environment given one kind for every holder W reaches, E past the written
     // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
     // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself). The pair rows' `v@follow = x` conflicts in the
-    // uniq view (2) go since a `var` pair local's slot is a region (PLAN G758): A5's limit record at the Closure's store, PLAN G572's
-    // (DECISIONS BU-127; the owner's O-174 (a)), takes their place in that view, as for the concrete twin; it is not listed here.
+    // uniq view (2) go since a `var` pair local's slot is a region (PLAN G758): those independent records are lost (G758's design R1.7,
+    // the owner's O-174 (a)), while A5's limit record at the Closure's store, PLAN G572's (DECISIONS BU-127), is reported in that view, as
+    // for the concrete twin; it is not listed here.
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
