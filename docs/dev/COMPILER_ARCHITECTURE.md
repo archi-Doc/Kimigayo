@@ -285,6 +285,8 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - G621's, removed at R7-D2 d3 when conformance declarations are read by demand (DECISIONS BU-140): `conformancesRegistered`,
     `earlyProjections` and `VerifyEarlyProjections` (`Binding.Contracts.Registration`; `BindAssociatedProjection` notes a read), an
     unqualified projection over a declared Type read before the conformance declarations register, read again after they do;
+  - G586's, removed at R7-I2 d (G443's unit; DECISIONS BU-156): `Binding.BindWaitedSources`' row that records the located
+    `Unsupported_Kd` at a late source differing from a step-2 Target Result Type in Origins alone;
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).

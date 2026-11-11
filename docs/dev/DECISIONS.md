@@ -11418,6 +11418,24 @@ resumed by R4-M86 (2026-10-20).
   - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
     inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
     inference (`InferLocalOrigins`), stated from the code and not probed.
+- **BU-156 A late join source that differs from the Target Result Type in Origins alone is the located `Unsupported_Kd` until G443's
+  unit (PLAN G586, G443)** (2026-11-11; Front, Binding; Major, an interim with its removal condition) SPEC 14.9.2, 15.6.1.
+  - Rule. A source that waited and takes the Target Result Type late (SPEC 14.9.2 step 3, `BindWaitedSources`) and whose Type there
+    fits that Type's structural part (SPEC 15.6.1, `FitsStructurallyAt`: a Function component's Origin part stays judged) but not
+    its Origins records the located `Unsupported_Kd` at itself, and the join rests on it (rule W, BU-79). It is no misfit of the
+    join.
+  - Reason. Where one typed source supplies step 2's common Type, that Type keeps the source's own Origins instead of local regions
+    (G443's cause). The late fit then failed with no fact, and `DecideResult` reported `InternalInvariant_Kd` on valid programs:
+    `if c => (y, u@ref) else => (2, v@ref)` in either order, as a call argument, in arrays, fills and nested joins, with `uniq`, and
+    G394's form. AGENTS "Diagnostics": a valid form no common rule covers yet is a located `Unsupported_Kd`, never an internal
+    error.
+  - Rejected. Passing the dropped fact on: a Language record on a valid program. Fitting the late source by `CheckTypeUse`: the
+    join's Type would still name one Loan, and soundness is not established. The pre-selection entry `FitsStructuralPartAt` as the
+    condition: it equates a Function contract's Origins too, so the row would cover an invalid program (no program found reaching
+    it, since the element's own fit records the contract first).
+  - Removal. G443's unit (R7-I2 d) forms the common Type's Origins over every source and deletes the row; its pinning theory
+    `ApplicabilityChainRegressionTest.ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443` (g586h1-h6) moves to
+    `ACommonTypeFormationHasItsVerdict` with no records.
 - **BU-158 An import taken as a value is rejected where an unsafe function is: `Binding.DirectCallOnly`, one failure
   `DirectCallFunctionValue` (PLAN G677)** (2026-11-11; Front, Binding; Major, an acceptance mover; the owner's O-149 (a), verbatim
   「a」) SPEC 22.6, 7.6, 7.7.4.
