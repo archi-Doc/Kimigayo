@@ -40,6 +40,8 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Box = "struct Box<T>\n    public var item: T\n";
 
+    private const string Id = "func id<V>(x: V) -> V => x@move\n";
+
     private const string Optional = "struct H {a}\n    public var o: uniq/Option<string> during a\n";
 
     private const string Lens = "struct Lens<T> {source}\n    internal let at: ref/T during source\n";
@@ -192,6 +194,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(Holder2 + "func leak(holder: uniq/(Holder2 during a) during h, c: bool) -> uniq/i32 during a\n    let r = if c => holder.link else => holder.link\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "r", "requires h outlives a, which is not proven")]
     [InlineData(View + "func leak(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    var x = h.o\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires s outlives a, which is not proven")]
     [InlineData(View + "func leak(h: uniq/(H2 during a) during s, c: bool) -> objuniq/P during a\n    let r = if c => h.o else => h.o\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "r", "requires s outlives a, which is not proven")]
+    // SPEC 3.5.1, 10.1 step 1 (PLAN G757): so is one passed bare at a parameter that is no reference; the call's result carries it.
+    [InlineData(Id + "func leak(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a => id(p@follow)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(p@follow)", "requires b outlives a, which is not proven")]
+    [InlineData(Id + View + "func leak(h: uniq/(H2 during a) during s) -> objuniq/P during a => id(h.o)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(h.o)", "requires s outlives a, which is not proven")]
     public void ABorrowThroughLayersIsContainedInEach(string body, string code, string text, string label)
     {
         var source = body + Main;
@@ -283,6 +288,13 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [h.o]\n    _ = d@move\n    return 0\n")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> i32\n    let d = [1: h.link]\n    _ = d@move\n    return 0\n")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> i32\n    let d = [h.link]\n    _ = d@move\n    return 0\n")]
+    // SPEC 3.5.1, 10.1 step 1 (PLAN G757): a stored `uniq/i32` or `objuniq/P` reached through an exclusive layer, passed bare at a
+    // parameter that is no reference, binds the Reborrow's Type, contained in the layers that reach it (formerly UnprovenOriginRelation_Kd
+    // at the argument: the slot kept the stored Origin).
+    [InlineData(Id + "func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during b => id(p@follow)\n")]
+    [InlineData(Id + Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during s => id(h.link)\n")]
+    [InlineData(Id + View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during s => id(h.o)\n")]
+    [InlineData(Id + "func f(h: uniq/(uniq/i32 during a)) -> i32\n    let r = id(h@follow)\n    _ = r\n    return 0\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)

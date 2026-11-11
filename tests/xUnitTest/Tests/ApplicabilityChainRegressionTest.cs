@@ -529,4 +529,24 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
+
+    // PLAN G765: a failed selection's rejected candidates are rows reused between passes, so a warm rebind of the rejected call allocates
+    // nothing: no applicable candidate (one, two), an ambiguous call (SPEC 10.4), an unfixed and a mismatched function reference (SPEC
+    // 10.5), and a call whose recovered argument list rejects every candidate without a record of its own (SPEC 23.1.2).
+    [Theory]
+    [Trait("Purpose", "Allocation")]
+    [InlineData("func f(x: i32) -> i32 => x\npublic func main() -> ()\n    let y = f(true)\n", "NoApplicableOverload_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let y = f(true)\n", "NoApplicableOverload_Kd")]
+    [InlineData("func choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\npublic func main() -> ()\n    choose(1)\n", "AmbiguousBinding_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g = f\n", "AmbiguousBinding_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g: (bool) -> i32 = f\n", "NoApplicableOverload_Kd")]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(1,, 2)\n", null)]
+    public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
 }

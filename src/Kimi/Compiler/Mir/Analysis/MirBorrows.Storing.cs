@@ -173,7 +173,7 @@ internal sealed partial class MirBorrows
                 }
 
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
-                all |= this.PointerType(this.body.TypeOf(statement.Place)) ? this.Redirect(statement.Place, 0) : this.ThroughRaw(statement.Place);
+                all |= this.PointerType(statement.Place) ? this.Redirect(statement.Place, 0) : this.ThroughRaw(statement.Place);
                 if (this.Reborrowing(statement) is var mode and not MirRefKind.Raw)
                 {
                     all |= mode != MirRefKind.Shared && this.Redirect(this.body.Operands[rvalue.Start].Place, 1);
@@ -190,7 +190,7 @@ internal sealed partial class MirBorrows
                 for (var o = rvalue.Start; rvalue.Kind is not (MirRvalueKind.Ref or MirRvalueKind.Storage) && o < rvalue.Start + rvalue.Count; o++)
                 {
                     if (this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var read } && this.IsInput(read.Root) &&
-                        this.PointerType(this.body.TypeOf(read)))
+                        this.PointerType(read))
                     {
                         this.owning |= read.Projection != 0 && this.StoringInput(read.Root) && this.Depth(read) == 0; // A by-value input's pointer part.
                         all |= this.body.Operands[o].Kind == MirOperandKind.Move && this.Redirect(read, 1); // It may write where it points.
@@ -201,16 +201,16 @@ internal sealed partial class MirBorrows
             var terminator = data.Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
-                all |= this.PointerType(this.body.TypeOf(terminator.Place)) ? this.Redirect(terminator.Place, 0) : this.ThroughRaw(terminator.Place);
+                all |= this.PointerType(terminator.Place) ? this.Redirect(terminator.Place, 0) : this.ThroughRaw(terminator.Place);
                 all |= terminator.Callee.Kind == MirCalleeKind.Value && terminator.Operand.Kind != MirOperandKind.Const;
                 for (var o = terminator.Start; !all && o < terminator.Start + terminator.Count; o++)
                 {
-                    all = this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var argument } && this.PointerType(this.body.TypeOf(argument));
+                    all = this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var argument } && this.PointerType(argument);
                 }
             }
             else if (terminator.Kind == MirTerminatorKind.Drop)
             {
-                all |= this.PointerType(this.body.TypeOf(terminator.Place));
+                all |= this.PointerType(terminator.Place);
             }
         }
 
@@ -252,8 +252,8 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
-    private bool PointerType(BoundType? type) => type is not null && this.Holds(cases.Type(type), out _);
+    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
+    private bool PointerType(MirPlace place) => this.Holds(cases.TypeOf(place), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()
@@ -405,7 +405,7 @@ internal sealed partial class MirBorrows
         }
 
         var storage = last + 1 < count ? place with { Projection = this.mustSteps[last + 1].Prefix } : place;
-        var type = types.Erase(cases.Type(this.body.TypeOf(storage)!));
+        var type = types.Erase(cases.TypeOf(storage));
         var slot = MirCallee.Slot(this.body.Key.Decl!, input - 1);
         foreach (var written in this.contract.Writes)
         {
