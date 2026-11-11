@@ -483,7 +483,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
+            if (!LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&
