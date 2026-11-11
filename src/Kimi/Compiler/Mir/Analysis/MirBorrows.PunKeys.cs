@@ -53,15 +53,21 @@ internal sealed partial class MirBorrows
         }
 
         var loan = this.loans[entry];
-        var key = PlaceKey.Root(this.body.TypeOf(new MirPlace(loan.Place.Root))!);
-        for (var s = loan.Start; s < loan.Start + loan.Count; s++)
-        {
-            key = this.loanSteps[s].Kind == MirProjectionKind.Base ? types.Base(key) : types.Select(key, this.loanSteps[s].Arg);
-        }
-
-        var index = this.Key(key);
+        var index = this.Key(this.KeyOf(loan.Place.Root, this.loanSteps.AsSpan(loan.Start, loan.Count)));
         this.entryKeys[entry] = index + 1;
         return index;
+    }
+
+    // A Place's key: its root's, stepped along the Place's steps (TyCtxt.Select, TyCtxt.Base).
+    private PlaceKey KeyOf(int root, ReadOnlySpan<MirStep> steps)
+    {
+        var key = PlaceKey.Root(this.body.TypeOf(new MirPlace(root))!);
+        foreach (var step in steps)
+        {
+            key = step.Kind == MirProjectionKind.Base ? types.Base(key) : types.Select(key, step.Arg);
+        }
+
+        return key;
     }
 
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
