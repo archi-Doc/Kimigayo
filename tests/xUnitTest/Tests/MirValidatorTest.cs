@@ -416,6 +416,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Empty(Validate(body));
     }
 
+    // G749's review N1: a diverging Call's destination, which MirUses does not report (the Call writes none, G131), is still a Place of the
+    // body that A5 and code generation read, so the validator checks it as it checks every reported Place: a root or a chain out of range is
+    // a Place finding, and a first step its root's Type does not admit (a Field of an isize) a Projection finding, at the Call; a projected
+    // destination whose step is admitted is valid (fail-before: no rule checked the destination, so each broken one had no finding).
+    [Theory]
+    [InlineData("root", "Place")]
+    [InlineData("chain", "Place")]
+    [InlineData("step", "Projection")]
+    [InlineData("field", null)]
+    public void ADivergingCallsDestinationIsCheckedAsAPlace(string form, string? rule)
+    {
+        var body = Build(null);
+        var abort = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Target: -1 });
+        var locals = Enumerable.Range(0, body.Locals.Length);
+        var destination = form switch
+        {
+            "root" => new MirPlace(99),
+            "chain" => body.Blocks[abort].Terminator.Place with { Projection = 99 },
+            "step" => body.Project(new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
+            _ => body.Project(new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
+        };
+        body.Terminate(abort, body.Blocks[abort].Terminator with { Place = destination, Source = Broken });
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
     // (MirCases). In a body with two binders, naming the other one is a finding: Binder for the operand, Projection for the step, whose Type
     // ProjectedType does not give. An adaptation family `p@r` (SPEC 13.5.5; PLAN G755) names its binder too (TyCtxt.PairBinder).
