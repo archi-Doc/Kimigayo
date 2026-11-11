@@ -273,8 +273,8 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(pending, pendingProof, mode, pendingFrame);
                 for (Koto? node = pending.Parent; node is not null; node = ReferenceEquals(node, owner) ? null : node.Parent)
                 {
-                    var frame = this.BeginConsultation(node);
-                    this.RequireConstraintInFrame(node, pendingProof, mode, frame, pending);
+                    var nodeFrame = this.BeginConsultation(node);
+                    this.RequireConstraintInFrame(node, pendingProof, mode, nodeFrame, pending);
                 }
 
                 changed |= previous != owner.BindingState;
