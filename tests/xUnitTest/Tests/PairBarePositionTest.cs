@@ -64,8 +64,8 @@ public sealed class PairBarePositionTest
 
     // SPEC 8.14, 8.15.2 (G642): an acquisition's Copy evidence is the 8.3 proof of the complete Type in each Semantics case, at every
     // reader: a bare Place (a Tuple, a Closure), a Consuming call (7.7.3), `@copy` (13.5.3), a special receiver's part (6.3.4), and at
-    // 64 cases, the bound, inclusive, and an omitted capture list (7.7.2, BU-84 S3; PLAN G748). Labels from SPEC: the first seven are
-    // valid (owner or ref, T is Copy: `(T, i32)`, `(ref/T, i32)`, the Closure over them and an omitted list's Copy, nested too); each
+    // 64 cases, the bound, inclusive, and an omitted capture list (7.7.2, BU-84 S3; PLAN G748). Labels from SPEC: rows 1, 2 and 5-9 are
+    // valid (owner or ref, T is Copy: an omitted list's Copy, nested too, `(T, i32)`, `(ref/T, i32)` and the Closure over them); each
     // other row is invalid in one case (a uniq case, or an owner case without Copy evidence, 3.5.2) with its record.
     [Theory]
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let g = func () -> i32\n        let z = value\n        return 0\n    _ = g()\n", "")]
@@ -127,6 +127,20 @@ public sealed class PairBarePositionTest
         => AssertCheck(
             "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h<U>(u: U) -> i32 => 0\n" +
             "func f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n" + body +
+            "public func main()\n    Console.writeLine(\"p\")\n",
+            code);
+
+    // SPEC 15.6.7, 8.14 (A3 E13 (4); PLAN G755): a family `p@s` passed as a call's input is exclusive only by case and reserves where
+    // it is acquired, so the call's later operand may read `p` (f5); a family a call result keeps is that result's Loan (f6, f7). Labels
+    // from SPEC: the first two are valid; the third moves `p` while `r`, which keeps the objuniq case's Reborrow, lives.
+    [Theory]
+    [InlineData("    return h2(p@s, p.n)\n", "")]
+    [InlineData("    let r = id(p@s)\n    _ = r\n    let q = p@move\n    return 0\n", "")]
+    [InlineData("    let r = id(p@s)\n    let q = p@move\n    _ = r\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AFamilyCallInputReservesWhereItIsAcquired(string body, string code)
+        => AssertCheck(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h2<U>(u: U, k: i32) -> i32 => 0\n" +
+            "func id<V>(x: V) -> V => x@move\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n" + body +
             "public func main()\n    Console.writeLine(\"p\")\n",
             code);
 
