@@ -103,6 +103,21 @@ public class IndexableContractTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
+    // SPEC 4.7.1, 23.1.2 (G715's review B2): a written indexUniq call's result is a reference, not a Place, so assigning to it is
+    // InvalidAssignment_Kd whether or not the value fits, and a literal that fits no uniq/i32 is its own TypeMismatch_Kd; the destination's
+    // check skipped for a failed value had left the write to the MIR validator.
+    [Theory]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) = 5")]
+    public void AWrittenCallResultIsNoDestinationWhateverItsValue(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssignment_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+    }
+
     // SPEC 4.7.1, 8.5.2 (PLAN G715): Array conforms to UniqIndexable<isize>, so a projection through it or its parent names the element
     // Type; another Key names none.
     [Theory]
