@@ -16,7 +16,7 @@ public sealed partial class Binding
     // activeRequirementContract and normalizingAssociated's set fixed, so each distinct part is rewritten once per query. The set changes
     // only by a push after a part's components are rewritten, popped before that part returns, and what runs under the push enters
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
-    private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops)> contractParts = new();
+    private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
     // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (ImplTable), so
     // a warm pass allocates none.
@@ -27,20 +27,19 @@ public sealed partial class Binding
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
     /// (DECISIONS BU-19). Any other part is rewritten once per call (contractParts, DECISIONS BU-64).</remarks>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
-        => this.ContractType(type, scope, out _, self, normalize);
+        => this.ContractTypeAnswer(type, scope, self, normalize).Image;
 
-    // ContractType with the hops its answer resolved through (the component summaries' walk).
-    private BoundType ContractType(BoundType type, BindingScope scope, out ResolutionHops? hops, BoundType? self = null, bool normalize = true)
+    // ContractType's answer with the hops it resolved through (the component summaries' walk) and its Completion (W4, ContractSolver's):
+    // Complete for its own image, else ContractTypeCore's; the associated collection's batch is Provisional whatever it stored.
+    private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractTypeAnswer(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
-        hops = null;
         if (!type.HasAbstractPart && !type.CarriesOrigin)
         {
-            return type;
+            return (type, null, Completion.Complete);
         }
 
         var query = this.contractParts.Begin(this.storageVersion);
-        (var image, hops) = this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
-        return image;
+        return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
     }
 
     // SPEC 8.4, 8.3.2: a Contract reference written in a Contract's declaration (a clause's Contract, an ancestor) for the conforming Type
@@ -55,7 +54,7 @@ public sealed partial class Binding
 
         var type = contract.Type!;
         var image = reference is null || self is null ? this.ContractType(type, scope, self, normalize)
-            : this.ContractType(this.SubstituteContractReference(this.WithConformingSelf(type, self), reference), scope, null, normalize);
+            : this.ContractType(this.SubstituteContractReference(this.WithConformingSelf(type, self), reference, out _), scope, null, normalize);
         return ReferenceEquals(image, type) ? contract : this.BoundContractReference(image);
     }
 
@@ -94,11 +93,11 @@ public sealed partial class Binding
 
     // A component of a query: the associated collection's batch answers it where one is open (unchanged); otherwise a component with
     // components is recorded, a leaf being cheaper to rewrite again than to record and a query's root met once (DECISIONS BU-55).
-    private (BoundType Image, ResolutionHops? Hops) ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractPart(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         if (!type.HasAbstractPart && !type.CarriesOrigin)
         {
-            return (type, null);
+            return (type, null, Completion.Complete);
         }
 
         if (this.collectingAssociated is not null)
@@ -120,36 +119,39 @@ public sealed partial class Binding
         return answer;
     }
 
-    // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch).
-    private (BoundType Image, ResolutionHops? Hops) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch);
+    // Provisional (W4) whatever the batch stored, as the batch is open.
+    private (BoundType Image, ResolutionHops? Hops, Completion Completion) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         var batch = this.collectingAssociated!;
         var key = (type, scope, self, normalize, this.activeRequirementContract);
-        if (batch.Normalized.TryGetValue(key, out var known))
+        if (!batch.Normalized.TryGetValue(key, out var known))
         {
-            return known;
+            var result = this.ContractTypeCore(type, scope, self, normalize, query);
+            batch.Normalized[key] = known = (result.Image, result.Hops);
         }
 
-        var result = this.ContractTypeCore(type, scope, self, normalize, query);
-        batch.Normalized[key] = result;
-        return result;
+        return (known.Image, known.Hops, Completion.Provisional);
     }
 
     // The image and its hops: a projection resolved by a specification adds its path and itself, its components normalized, to its
-    // subject's (component 0's) hops.
-    private (BoundType Image, ResolutionHops? Hops) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
+    // subject's (component 0's) hops. W4: the meet of the environment's and the requirement's substitutions, the parts', the held
+    // Type's, the length's, the projection's specification (W5) and every availability the identity loop asks (W6); a Contract Self, a
+    // kind not normalized and the guard's hit (normalizingAssociated, empty when a reading's formation starts) add nothing.
+    private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
-        type = this.ApplyContractEnvironment(type, scope);
+        type = this.ApplyContractEnvironment(type, scope, out var completion);
         if (this.activeRequirementContract is { } bound)
         {
-            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.1, 8.6.4: the requirement of a bound reference.
+            type = this.SubstituteContractReference(type, bound, out var substituted); // SPEC 8.4.1, 8.6.4: the requirement of a bound reference.
+            completion = Meet(completion, substituted);
         }
 
         // SPEC 8.4: Self of any Contract, including an ancestor whose requirement is read here, is the conforming Type. A
         // reference to a Contract, such as a projection's declaring Contract, only has its Type arguments substituted.
         if (IsContractSelf(type))
         {
-            return (self ?? this.EnclosingContractSelf(scope) ?? type, null);
+            return (self ?? this.EnclosingContractSelf(scope) ?? type, null, completion);
         }
 
         var count = type.Components.Count;
@@ -163,6 +165,7 @@ public sealed partial class Binding
                 var part = this.ContractPart(type.Components[i], scope, self, normalize, query);
                 components![i] = part.Image;
                 inner = i == 0 ? part.Hops : inner;
+                completion = Meet(completion, part.Completion);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
@@ -170,30 +173,43 @@ public sealed partial class Binding
             if (TyCtxt.HeldType(type) is { } held)
             {
                 // DECISIONS BU-60: the Type instance a closure's context holds is normalized with the Closure Type.
-                var image = this.ContractType(held, scope, self, normalize);
+                (var image, _, var heldPart) = this.ContractTypeAnswer(held, scope, self, normalize);
+                completion = Meet(completion, heldPart);
                 result = ReferenceEquals(image, held) ? result : this.WithContext(result, this.types.HeldContext(type.Symbol!, image));
             }
 
-            result = this.ContractLength(result, scope, self, normalize);
+            result = this.ContractLength(result, scope, self, normalize, out var length);
+            completion = Meet(completion, length);
             if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
             {
-                return (result, null);
+                return (result, null, completion);
             }
 
             try
             {
-                if (result.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(result, scope) is { Type: { } specified } outcome)
+                if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
-                    var hops = outcome.Path is { } path ? this.Hop(path, result, inner) : inner;
-
-                    // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
-                    // that identity too; the active query above still guards recursive specifications.
-                    if (outcome.Subject is not { } subject)
+                    var outcome = this.ProjectionSpecification(result, scope);
+                    completion = Meet(completion, outcome.Completion);
+                    if (outcome.Type is { } specified)
                     {
-                        return (specified, hops);
-                    }
+                        var hops = outcome.Path is { } path ? this.Hop(path, result, inner) : inner;
 
-                    return (this.StoredType(specified, subject) is { } stored ? this.ContractType(stored, scope, self) : result, hops);
+                        // A container substitution can expose another associated projection (Wrapper<S>.Element -> S.Element). Normalize
+                        // that identity too; the active query above still guards recursive specifications.
+                        if (outcome.Subject is not { } subject)
+                        {
+                            return (specified, hops, completion);
+                        }
+
+                        if (this.StoredType(specified, subject) is not { } stored)
+                        {
+                            return (result, hops, Completion.Provisional);
+                        }
+
+                        var instance = this.ContractTypeAnswer(stored, scope, self);
+                        return (instance.Image, hops, Meet(completion, instance.Completion));
+                    }
                 }
 
                 for (var current = scope; current is not null; current = current.Parent)
@@ -205,14 +221,22 @@ public sealed partial class Binding
 
                     foreach (var fact in environment.Facts)
                     {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, result, out var required) && this.AvailableConstraintFact(environment, fact) && required is not null)
+                        if (fact.Kind != ConstraintKind.TypeIdentity || !this.FactStates(fact, result, out var required))
                         {
-                            return (this.ContractType(required, scope, self), null);
+                            continue;
+                        }
+
+                        var available = this.AvailableConstraintFact(environment, fact, out var availability);
+                        completion = Meet(completion, availability);
+                        if (available && required is not null)
+                        {
+                            var identity = this.ContractTypeAnswer(required, scope, self);
+                            return (identity.Image, null, Meet(completion, identity.Completion));
                         }
                     }
                 }
 
-                return (result, null);
+                return (result, null, completion);
             }
             finally
             {
@@ -232,14 +256,16 @@ public sealed partial class Binding
     // this rewrite normalizes the Type, a Contract's Self and a completed projection included, which a substitution leaves
     // (Binding.SubstituteLength), and the term folded again (TyCtxt.InterpolationBound); any other Type itself. A term is only a fixed
     // array's length or a substitution's length entry (Binding.InstanceLength), never an operand or an Item's length argument (R8-W2 a2).
-    private BoundType ContractLength(BoundType type, BindingScope scope, BoundType? self, bool normalize)
+    private BoundType ContractLength(BoundType type, BindingScope scope, BoundType? self, bool normalize, out Completion completion)
     {
+        completion = Completion.Complete;
         if (type is not { Kind: BoundTypeKind.FixedArray, LengthExpression: { Values: { HasAbstractPart: true } values } term })
         {
             return type;
         }
 
-        var length = this.types.InterpolationBound(this.ContractType(values, scope, self, normalize), term.Value);
+        (var image, _, completion) = this.ContractTypeAnswer(values, scope, self, normalize);
+        var length = this.types.InterpolationBound(image, term.Value);
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [type.Components[0]], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
     }
 

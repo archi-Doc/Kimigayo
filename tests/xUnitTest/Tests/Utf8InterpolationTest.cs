@@ -137,8 +137,9 @@ public class Utf8InterpolationTest
     // SPEC 22.10.5 (DECISIONS R5-M133): MIR code generation defers a segment's literal text exactly when a value follows, so these forms keep
     // the old generator's allocations and bytes: the O2 corpus kernel's line (literals before bounded values and a user
     // formatter reserving twice), a deferred literal written at the first reservation, then grown by an unbounded string (a literal before
-    // a bounded value after a value that writes nothing is OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix's Empty row), and an
-    // owning interpolation inside another (fail-before under MIR code generation: C9c's interim record).
+    // a bounded value after a value that writes nothing is OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix's Empty row), an
+    // owning interpolation inside another (fail-before under MIR code generation: C9c's interim record), and a bool's body whose leaf write
+    // takes the deferred literal and grows once by the hint of the literal after it (Utf8Writer.reserve, R8-M18).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(
@@ -154,6 +155,7 @@ public class Utf8InterpolationTest
         34,
         "x5abcdefghijklmnopqrstuvwxyz0123\n")]
     [InlineData("Nested", "let s = \"abc\"\nlet text = \"<\\(\"[\\(s)]\")>\"\nConsole.writeLine(text)", 2, 12, "<[abc]>\n")]
+    [InlineData("BoundedGrowsByItsHint", "let text = \"\\(Empty.init())x\\(true)tail\"\nConsole.writeLine(text)", 1, 9, "xtruetail\n")]
     public void DeferredLiteralTextKeepsTheOldGeneratorsAllocations(string name, string statements, int allocations, int bytes, string expected)
     {
         const string Formatters = """
