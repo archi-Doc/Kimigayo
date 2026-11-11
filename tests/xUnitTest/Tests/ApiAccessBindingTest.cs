@@ -66,6 +66,22 @@ public class ApiAccessBindingTest
         }
     }
 
+    // SPEC 9.4.4: a public Contract's associated specification is checked in the Contract's domain, also as a member of the Contract
+    // (G683: no Constraint of it), through a named or a grouped selector.
+    [Theory]
+    [InlineData("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract C\n    associate Item\npublic contract D: C\n    associate C.Item is Source.Hidden.Element", false)]
+    [InlineData("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract C\n    associate Item\npublic contract D: C\n    associate (C).Item is Source.Hidden.Element", false)]
+    [InlineData("public contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract C\n    associate Item\npublic contract D: C\n    associate C.Item is Source.Hidden.Element", true)]
+    public void AContractsAssociatedSpecificationUsesTheContractsDomain(string source, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        }
+    }
+
     [Theory]
     [InlineData("public", true)]
     [InlineData("internal", false)]

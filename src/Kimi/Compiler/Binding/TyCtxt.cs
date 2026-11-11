@@ -36,9 +36,17 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
     internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
 
+    // SPEC 13.5.5, 8.15.2: the pair binder whose Semantics case decides a Type's case Type at its outer layer (its SemanticsTarget, the
+    // PairBinder.Target): the original `s/T`, an application `s/U` and an adaptation family `p@s` (Binding.TryAdaptationSelector); null for
+    // any other Type. MIR's one binder fact: the Semantics-case views (MirCases.Binder, so a family's call input reserves, A3 E13 (4)),
+    // the validator's PairAcquire and PairLayer checks (MirBody.ProjectedType), MirTypes.IsReference (an EndBorrow ends a family's
+    // borrow; A5's Borrows and Storing rows count it). Layer's PairLayer is the original's and an application's, whose one direct
+    // target a follow selects.
+    internal static BindingSymbol? PairBinder(BoundType? type) => type is not null && Binding.TryAdaptationSelector(type, out _) ? type.Symbol : null;
+
     // SPEC 3.4.3, 13.5.5: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
-    // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
-    // PairBinder.Target); Value, below which is the Type itself, for any other Type.
+    // pair layer, with the Type below it and, for a PairLayer, its pair binder (PairBinder's fact); Value, below which is the Type
+    // itself, for any other Type.
     internal static HirPlaceKind Layer(BoundType? type, out BoundType? below, out BindingSymbol? binder)
     {
         binder = null;
@@ -50,7 +58,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         if (Binding.TryPairLayer(type, out _, out var target))
         {
-            (below, binder) = (target, type!.Symbol);
+            (below, binder) = (target, PairBinder(type));
             return HirPlaceKind.PairLayer;
         }
 
@@ -105,6 +113,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             {
                 return components[0];
             }
+        }
+
+        // SPEC 3.1.3, 22.1: the Kimi declaration `Never` is the compiler-intrinsic uninhabited Type, never represented as the
+        // declared struct: every written form that lookup resolves to the declaration forms this one instance.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Never)
+        {
+            return BoundType.Never;
         }
 
         // SPEC 3.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core

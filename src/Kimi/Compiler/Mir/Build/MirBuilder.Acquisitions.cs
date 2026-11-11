@@ -30,7 +30,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(place);
         }
 
-        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node))
+        if (adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node) || !this.IsNever(place))
         {
             return this.Acquired(adjust, place, expected, input, node, into);
         }
@@ -50,14 +50,18 @@ internal sealed partial class MirBuilder
         switch (adaptation)
         {
             case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase:
-                if (this.ByCase(place, type, input) is not { } formed)
+                // SPEC 8.14, 15.6.3 (DECISIONS BU-27; PLAN G254): of the Type its consumer expects where that is the stored one but
+                // for Origins (MirTypes.Agree; no identity premise, BU-72), Binding's name for the by-case Reborrow (its met slot), as
+                // Reborrowed types a stored `uniq`'s; else of the stored Type, as a Copy-only plan or a consumer without one takes it.
+                var named = expected is not null && MirTypes.Agree(expected, type) ? expected : type;
+                if (this.ByCase(place, named, input) is not { } formed)
                 {
                     return MirOperand.Copy(place);
                 }
 
                 // A PairAcquire, a marked Use, goes only into the whole Place of a local; a Reborrow into any place of its Type.
                 var destination = formed.Kind == MirRvalueKind.Use && into is not { Projection: 0, Root: >= 0 } ? null : into;
-                return this.Temporary(type, formed, node, destination);
+                return this.Temporary(named, formed, node, destination);
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {

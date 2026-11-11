@@ -118,24 +118,6 @@ public sealed partial class Binding
 
     private static bool IsTransfer(Koto source) => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer };
 
-    // The function whose result the expression is: the operand of a return, or the single-item body.
-    private static FunctionKoto? ResultFunction(Koto node)
-    {
-        var parent = node.Parent;
-        while (parent is ParenthesizedKoto)
-        {
-            parent = parent.Parent;
-        }
-
-        return parent switch
-        {
-            ReturnKoto jump => KotoHelper.ResolveTransferTarget(jump) as FunctionKoto,
-            CodeBlockKoto { IsExpressionBody: true, Parent: FunctionKoto owner } => owner,
-            FunctionKoto owner when ReferenceEquals(owner.ExpressionBody, node) => owner,
-            _ => null,
-        };
-    }
-
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
     // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
     // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.1.3).
@@ -305,6 +287,18 @@ public sealed partial class Binding
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
+            }
+            else if (!receiver && actual.ContainsPairLayer && actual.Kind != BoundTypeKind.Semantics && source.ErasedFunctionType is null &&
+                IsBarePlace(source) && this.BareReborrowLayer(actual, source) is { } layer)
+            {
+                // SPEC 3.5.1, 8.14 (DECISIONS BU-27): a bare Place whose per-case plan alone (every pair-layer form) Reborrows the layer
+                // in an exclusive case is Reborrowed in its own Semantics; the path is walked only then (ReachOf). A receiver is taken by
+                // its call's receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition; a stored `uniq/T` at a parameter
+                // that is no reference is named after inference, at the reference Type the parameter takes (the branch below; PLAN G757
+                // owns that order).
+                adapted = this.ReborrowedType(actual, layer, this.ReachOf(source));
+                quality = ArgumentAdaptation.SameSemanticsReborrow;
+                kind = ArgumentOperationKind.Reborrow;
             }
             else if (judged && !fixedExpectation && !this.AcquiresBare(source, actual, actual, pattern, deferAcquisition))
             {

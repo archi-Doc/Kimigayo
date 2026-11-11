@@ -1047,7 +1047,7 @@ public sealed partial class MirBorrowsTest
     // A function's one problem's facts: kind and its site's first line.
     private static string[] FactsOf(Compilation c, MirProgram program, string function)
     {
-        var problem = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == function);
+        var problem = Array.FindIndex(program.Problems.All.ToArray(), x => program.Body(x.Body).Key.Decl?.Name == function);
         return [.. program.Problems.Facts(problem).ToArray().Select(x => $"{x.Kind} {Line(c, x.Site)}")];
     }
 

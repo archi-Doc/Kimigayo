@@ -139,7 +139,7 @@ public sealed partial class Binding
     /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.14)</c>.</returns>
     internal string FailingCaseNote(BoundType type, Koto node)
     {
-        if (!TryPairLayer(type, out var whole, out _) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
+        if (!TryAdaptationSelector(type, out var whole) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
         {
             return string.Empty;
         }

@@ -187,7 +187,7 @@ internal enum BindingFailure : byte
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,
-    UnsafeFunctionValue,
+    DirectCallFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidInlineLayout,
@@ -720,7 +720,6 @@ public sealed record BoundType
         var result = new Dictionary<string, BoundType>(StringComparer.Ordinal)
         {
             ["()"] = Unit,
-            ["Never"] = Never,
             ["bool"] = Boolean,
         };
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
@@ -746,11 +745,29 @@ public sealed record BoundType
     }
 }
 
+// A scope's link (Parent, the Constraints object, ConformancePath) is written only through its setters, each counting a change in
+// LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private BindingScope? parent;
+    private ConstraintEnvironment? constraints;
+    private BoundConformancePath? conformancePath;
+
     internal Koto Owner { get; } = owner;
 
-    internal BindingScope? Parent { get; set; }
+    internal BindingScope? Parent
+    {
+        get => this.parent;
+        set => this.Link(ref this.parent, value);
+    }
+
+    // The number of changes of this scope's link.
+    internal int LinkVersion { get; private set; }
+
+    // The view this scope last denoted (ContractSolver.SerialOf): its serial and the chain state it named.
+    internal int ViewSerial { get; set; }
+
+    internal (int Environment, int Link, int Parent) ViewState { get; set; }
 
     internal FunctionKoto? Function { get; set; }
 
@@ -762,12 +779,20 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
 
-    internal ConstraintEnvironment? Constraints { get; set; }
+    internal ConstraintEnvironment? Constraints
+    {
+        get => this.constraints;
+        set => this.Link(ref this.constraints, value);
+    }
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
-    internal BoundConformancePath? ConformancePath { get; set; }
+    internal BoundConformancePath? ConformancePath
+    {
+        get => this.conformancePath;
+        set => this.Link(ref this.conformancePath, value);
+    }
 
     internal void Reset()
     {
@@ -776,6 +801,16 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+    }
+
+    private void Link<T>(ref T? field, T? value)
+        where T : class
+    {
+        if (!ReferenceEquals(field, value))
+        {
+            field = value;
+            this.LinkVersion++;
+        }
     }
 }
 

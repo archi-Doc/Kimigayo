@@ -42,6 +42,24 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteCleared" + name, source, allocations, allocations, bytes, "7xyz\n");
     }
 
+    // SPEC 22.10.1, 22.9.4: built-in formatting reserves the exact encoded length once, so a bool's body into a fixed buffer three
+    // bytes long fails with BufferFull and commits nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ABoolLongerThanAFixedBufferCommitsNothing()
+    {
+        const string Source = """
+            var bytes = [3 of 0@u8]
+            var buffer = Text.fixed(bytes@uniq)
+            var writer = Text.writer(buffer@uniq)
+            match $tryWrite(writer@uniq, "\(true)")
+                .Ok(_) => $abort("must fail")
+                .Err(_) => ()
+            require buffer.length == 0 else => $abort("committed")
+            """;
+        NativeAllocationAudit.WriteFixture("Utf8TryWriteBoolFull", Source, 0, 0, 0);
+    }
+
     [Theory]
     [InlineData("writer", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
     [InlineData("42", DiagnosticCode.TypeMismatch_Kd)]

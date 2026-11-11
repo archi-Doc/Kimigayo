@@ -28,7 +28,8 @@ public readonly record struct DocumentationMarkdownParameter(string Name, bool I
 /// <param name = "DescriptionSpan">The description's normalized range.</param>
 /// <param name = "Kind">The classification; list candidates remain unclassified until declaration information is supplied.</param>
 /// <param name = "ParameterMatchCount">Number of matches when classified.</param>
-public readonly record struct DocumentationMarkdownItem(string Name, DocumentationMarkdownNode Node, SourceSpan DescriptionSpan, DocumentationMarkdownItemKind Kind, int ParameterMatchCount = 0)
+public readonly record struct DocumentationMarkdownItem(
+    string Name, DocumentationMarkdownNode Node, SourceSpan DescriptionSpan, DocumentationMarkdownItemKind Kind, int ParameterMatchCount = 0)
 {
     public SourceSpan SourceDescriptionSpan => this.Node.Document.GetSourceSpan(this.DescriptionSpan);
 }
@@ -81,32 +82,16 @@ public sealed partial class DocumentationMarkdownDocument
                 ref readonly var data = ref this.nodes[block];
                 if (data.Kind == DocumentationMarkdownKind.Heading)
                 {
-                    for (var level = data.Argument; level <= 6; level++)
+                    EndDescriptions(ref result, pending[data.Argument..], data.Start);
+                    if (this.HeadingName(data.First) is { } name && IsStandardItem(name))
                     {
-                        if (pending[level] >= 0)
-                        {
-                            ref var item = ref result[pending[level]];
-                            item = item with { DescriptionSpan = SourceSpan.FromBounds(item.DescriptionSpan.Start, data.Start) };
-                            pending[level] = -1;
-                        }
-                    }
-
-                    if (this.TryName(data.First, heading: true, out var name, out _) && IsStandardItem(name))
-                    {
-                        pending[data.Argument] = result.Add(new(name, new(this, block), SourceSpan.FromBounds(data.End, this.Text.Length), DocumentationMarkdownItemKind.Standard));
+                        var description = SourceSpan.FromBounds(data.End, this.Text.Length);
+                        pending[data.Argument] = result.Add(new(name, new(this, block), description, DocumentationMarkdownItemKind.Standard));
                     }
                 }
                 else if (data.Kind is DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList)
                 {
-                    for (var item = data.First; item != 0; item = this.nodes[item].Next)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        var paragraph = this.nodes[item].First;
-                        if (paragraph != 0 && this.nodes[paragraph].Kind == DocumentationMarkdownKind.Paragraph && this.TryName(this.nodes[paragraph].First, heading: false, out var name, out var start))
-                        {
-                            result.Add(new(name, new(this, item), SourceSpan.FromBounds(start, this.nodes[item].End), DocumentationMarkdownItemKind.Unclassified));
-                        }
-                    }
+                    this.AddListItems(ref result, block, cancellationToken);
                 }
             }
 
@@ -119,11 +104,41 @@ public sealed partial class DocumentationMarkdownDocument
         }
     }
 
+    // A root heading ends the pending descriptions of its level and every deeper level at its start.
+    private static void EndDescriptions(ref MarkdownBuffer<DocumentationMarkdownItem> result, scoped Span<int> pending, int end)
+    {
+        foreach (ref var index in pending)
+        {
+            if (index >= 0)
+            {
+                ref var item = ref result[index];
+                item = item with { DescriptionSpan = SourceSpan.FromBounds(item.DescriptionSpan.Start, end) };
+                index = -1;
+            }
+        }
+    }
+
+    // The list-item walk: an item whose first child is a paragraph starting with a name and a colon is an unclassified candidate.
+    private void AddListItems(ref MarkdownBuffer<DocumentationMarkdownItem> result, int list, CancellationToken cancellationToken)
+    {
+        for (var item = this.nodes[list].First; item != 0; item = this.nodes[item].Next)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var paragraph = this.nodes[item].First;
+            if (paragraph != 0 && this.nodes[paragraph].Kind == DocumentationMarkdownKind.Paragraph &&
+                this.ItemName(this.nodes[paragraph].First, out var start) is { } name)
+            {
+                result.Add(new(name, new(this, item), SourceSpan.FromBounds(start, this.nodes[item].End), DocumentationMarkdownItemKind.Unclassified));
+            }
+        }
+    }
+
     /// <summary>Classifies candidates using exact declaration names, retaining duplicates and unknown names.</summary>
     /// <param name = "parameters">All parameter namespaces and explicit receiver roles from the declaration.</param>
     /// <param name = "cancellationToken">Cancellation of this independent classification.</param>
     /// <returns>A read-only result; declaration-dependent classifications are not cached on the syntax snapshot.</returns>
-    public ReadOnlyMemory<DocumentationMarkdownItem> ClassifyItems(ReadOnlySpan<DocumentationMarkdownParameter> parameters, CancellationToken cancellationToken = default)
+    public ReadOnlyMemory<DocumentationMarkdownItem> ClassifyItems(
+        ReadOnlySpan<DocumentationMarkdownParameter> parameters, CancellationToken cancellationToken = default)
     {
         var candidates = this.GetItemCandidates(cancellationToken);
         if (candidates.IsEmpty)
@@ -169,7 +184,12 @@ public sealed partial class DocumentationMarkdownDocument
                 }
             }
 
-            var kind = count == 1 ? DocumentationMarkdownItemKind.Parameter : count > 1 ? DocumentationMarkdownItemKind.Ambiguous : IsStandardItem(item.Name) ? DocumentationMarkdownItemKind.Standard : DocumentationMarkdownItemKind.Unknown;
+            var kind = count switch
+            {
+                1 => DocumentationMarkdownItemKind.Parameter,
+                > 1 => DocumentationMarkdownItemKind.Ambiguous,
+                _ => IsStandardItem(item.Name) ? DocumentationMarkdownItemKind.Standard : DocumentationMarkdownItemKind.Unknown,
+            };
             item = item with
             {
                 Kind = kind,
@@ -180,10 +200,13 @@ public sealed partial class DocumentationMarkdownDocument
         return result;
     }
 
-    private static bool IsStandardItem(string name) => name is "return" or "abort" or "safety" or "note" or "warning" or "example";
+    private static bool IsStandardItem(string name) => StandardName(name) is not null;
 
     // Standard names are shared literals; only other names allocate.
-    private static string CreateName(ReadOnlySpan<char> name) => name switch
+    private static string CreateName(ReadOnlySpan<char> name) => StandardName(name) ?? name.ToString();
+
+    // The standard item names (SPEC 2.3), as shared literals; null for any other name.
+    private static string? StandardName(ReadOnlySpan<char> name) => name switch
     {
         "return" => "return",
         "abort" => "abort",
@@ -191,95 +214,111 @@ public sealed partial class DocumentationMarkdownDocument
         "note" => "note",
         "warning" => "warning",
         "example" => "example",
-        _ => name.ToString(),
+        _ => null,
     };
 
-    private bool TryName(int first, bool heading, out string name, out int descriptionStart)
+    // A heading names an item by its whole text, or by one code span alone; null when it names none.
+    private string? HeadingName(int first)
     {
-        name = string.Empty;
-        descriptionStart = 0;
         if (first == 0)
         {
-            return false;
+            return null;
         }
 
-        var code = this.nodes[first].Kind == DocumentationMarkdownKind.Code;
-        var node = first;
-        StringBuilder? builder = null;
-        if (code)
+        ref readonly var leading = ref this.nodes[first];
+        if (leading.Kind == DocumentationMarkdownKind.Code)
         {
-            name = CreateName(this.GetText(this.nodes[first]));
-            node = this.nodes[first].Next;
-            if (heading)
-            {
-                return node == 0 && name.Length > 0;
-            }
+            var name = CreateName(this.GetText(leading));
+            return leading.Next == 0 && name.Length > 0 ? name : null;
         }
 
-        while (node != 0)
+        StringBuilder? builder = null;
+        for (var node = first; node != 0; node = this.nodes[node].Next)
         {
             ref readonly var data = ref this.nodes[node];
             if (data.Kind != DocumentationMarkdownKind.Text)
             {
-                return false;
+                return null;
+            }
+
+            if (data.Next == 0 && builder is null)
+            {
+                var name = CreateName(this.GetText(data));
+                return name.Length > 0 ? name : null;
+            }
+
+            (builder ??= new()).Append(this.GetText(data));
+        }
+
+        var joined = builder!.ToString();
+        return joined.Length > 0 ? joined : null;
+    }
+
+    // A list item's paragraph names an item by its text before a colon, or by a code span directly before the colon; whitespace
+    // or a line break follows the colon. Null when it names none; otherwise the description starts after the colon.
+    private string? ItemName(int first, out int descriptionStart)
+    {
+        descriptionStart = 0;
+        if (first == 0)
+        {
+            return null;
+        }
+
+        var code = this.nodes[first].Kind == DocumentationMarkdownKind.Code;
+        var name = code ? CreateName(this.GetText(this.nodes[first])) : string.Empty;
+        StringBuilder? builder = null;
+        for (var node = code ? this.nodes[first].Next : first; node != 0; node = this.nodes[node].Next)
+        {
+            ref readonly var data = ref this.nodes[node];
+            if (data.Kind != DocumentationMarkdownKind.Text)
+            {
+                return null;
             }
 
             var value = this.GetText(data);
-            var colon = heading ? -1 : value.IndexOf(':');
+            var colon = value.IndexOf(':');
             if (colon >= 0)
             {
-                if (code && colon != 0)
-                {
-                    return false;
-                }
-
                 if (!code)
                 {
                     name = builder is null ? CreateName(value[..colon]) : builder.Append(value[..colon]).ToString();
                 }
 
-                if (name.Length == 0)
+                if ((code && colon != 0) || name.Length == 0 || this.AfterColon(data, value, colon) is not (' ' or '\t' or '\n'))
                 {
-                    return false;
-                }
-
-                var next = data.Next;
-                var following = colon + 1 < value.Length ? value[colon + 1] : next == 0 || this.nodes[next].Kind is DocumentationMarkdownKind.SoftBreak or DocumentationMarkdownKind.HardBreak ? '\n' : this.nodes[next].Kind == DocumentationMarkdownKind.Text && this.GetText(this.nodes[next]).Length > 0 ? this.GetText(this.nodes[next])[0] : '\0';
-                if (following is not (' ' or '\t' or '\n'))
-                {
-                    return false;
+                    return null;
                 }
 
                 descriptionStart = data.TextStart >= 0 ? data.TextStart + colon + 1 : data.End;
-                return true;
+                return name;
             }
 
-            if (code)
+            if (code || data.Next == 0)
             {
-                return false;
-            }
-
-            if (!heading && data.Next == 0)
-            {
-                return false;
-            }
-
-            if (heading && data.Next == 0 && builder is null)
-            {
-                name = CreateName(value);
-                return name.Length > 0;
+                return null;
             }
 
             (builder ??= new()).Append(value);
-            node = data.Next;
         }
 
-        if (!heading || builder is null)
+        return null;
+    }
+
+    // The character after an item name's colon: the rest of its text, a line break at a break or the paragraph's end, or the
+    // next text's first character ('\0' if none).
+    private char AfterColon(in MarkdownNodeData data, ReadOnlySpan<char> value, int colon)
+    {
+        if (colon + 1 < value.Length)
         {
-            return false;
+            return value[colon + 1];
         }
 
-        name = builder.ToString();
-        return name.Length > 0;
+        var next = data.Next;
+        if (next == 0 || this.nodes[next].Kind is DocumentationMarkdownKind.SoftBreak or DocumentationMarkdownKind.HardBreak)
+        {
+            return '\n';
+        }
+
+        return this.nodes[next].Kind == DocumentationMarkdownKind.Text && this.GetText(this.nodes[next]).Length > 0 ? this.GetText(this.nodes[next])[0] : '\0';
     }
 }

@@ -61,7 +61,7 @@ public sealed partial class Binding
 
         if ((admitted & SemanticsMask.ObjectBorrow) != 0 && (TryAdaptationSelector(source, out _) || IsObjectSemantics(source.Semantics)))
         {
-            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin), true);
+            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin, scope), true);
         }
 
         if ((admitted & ~objectFamily) == 0)
@@ -83,7 +83,7 @@ public sealed partial class Binding
         }
         else if ((admitted & objectFamily) != 0 && (TryAdaptationSelector(source, out _) || IsObjectSemantics(source.Semantics)))
         {
-            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin), true);
+            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin, scope), true);
         }
 
         var target = ReferenceEquals(payload, semantics.Pair.Type) && origin is null

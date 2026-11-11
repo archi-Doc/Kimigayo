@@ -116,6 +116,10 @@ public sealed partial class Binding
             {
                 this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
+            else if (conformance.Scope.Parent?.Constraints is { Invalid: true } invalid)
+            {
+                return this.InvalidEnvironment(invalid);
+            }
 
             return ConstraintProof.Error;
         }
@@ -168,9 +172,10 @@ public sealed partial class Binding
                 }
             }
 
-            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).ConformanceJudged)
+            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).Judged)
             {
-                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
+                // SPEC 8.7.1: the judgment of `Self is K`, as a Contract clause is proven; a declared Copy is validated where it opts in.
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
