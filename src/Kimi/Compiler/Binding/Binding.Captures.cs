@@ -114,7 +114,8 @@ public sealed partial class Binding
         // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
+                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
+                    this.ObjectCases(type, this.ConstraintScope(function), out _) != SemanticsMask.None))))
         {
             // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
             // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent

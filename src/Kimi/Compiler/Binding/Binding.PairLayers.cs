@@ -83,6 +83,43 @@ public sealed partial class Binding
         return SemanticsMask.None;
     }
 
+    /// <summary>Gets the View Target an object layer designates through stored references (SPEC 3.4.3, 13.5.5): a concrete handle's or
+    /// view's, or a pair layer's in every case (<see cref="ObjectCases"/>); null for any other Type.</summary>
+    /// <param name="type">A complete Type.</param>
+    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
+    /// <returns>The View Target, or null.</returns>
+    internal BoundType? ViewTarget(BoundType? type, Koto at)
+    {
+        while (ReferenceTypes.IsStorage(type))
+        {
+            type = type!.Components[0];
+        }
+
+        return type is not null && this.ObjectCases(type, this.ConstraintScope(at), out var view) != SemanticsMask.None ? view : null;
+    }
+
+    /// <summary>Tells whether a receiver's Place is reached through a stored reference or a borrow in every case (SPEC 4.7.1, 4.8.2): a
+    /// storage reference (<see cref="ReferenceTypes.IsStorage"/>), or an object layer whose every case is an object borrow
+    /// (<see cref="ObjectCases"/>); a case that is an owning handle keeps an owned root, as a concrete handle does.</summary>
+    /// <param name="type">The receiver's Type.</param>
+    /// <param name="at">The receiver, whose scope gives a pair layer's admitted set.</param>
+    /// <returns>Whether no owned root holds the selected Place.</returns>
+    internal bool BorrowsInEveryCase(BoundType? type, Koto at)
+        => ReferenceTypes.IsStorage(type) ||
+            (type is not null && this.ObjectCases(type, this.ConstraintScope(at), out _) is var cases && cases != SemanticsMask.None && (cases & ~SemanticsMask.ObjectBorrow) == 0);
+
+    /// <summary>Gets the Semantics of a shared borrow of a stored value (SPEC 4.7.1, 10.2): `ref` of an owned value or a stored `uniq`,
+    /// `objref` of an object layer in every case (<see cref="ObjectCases"/>; a shared view is Copy and never asks); null otherwise.</summary>
+    /// <param name="stored">The stored Type.</param>
+    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
+    /// <returns>The borrow's Semantics, or null.</returns>
+    internal SemanticsKind? SharedBorrowSemantics(BoundType stored, Koto at) => stored.Semantics switch
+    {
+        SemanticsKind.Owner or SemanticsKind.Uniq => SemanticsKind.Ref,
+        SemanticsKind.ObjRef => null,
+        _ => this.ObjectCases(stored, this.ConstraintScope(at), out _) != SemanticsMask.None ? SemanticsKind.ObjRef : null,
+    };
+
     // SPEC 13.5.5: the admitted set of a pair layer that may be followed, or None.
     private SemanticsMask FollowablePair(BoundType type, BindingScope scope, out BoundType target)
     {

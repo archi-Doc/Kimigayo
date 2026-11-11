@@ -25,8 +25,9 @@ internal static class ElementAccess
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
-    internal static bool IsBorrowedReceiver(BoundType? receiver)
-        => receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || ReferenceTypes.IsBorrow(receiver);
+    internal static bool IsBorrowedReceiver(Koto receiverNode)
+        => AccessType(receiverNode) is var receiver &&
+            (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || receiverNode.CodeContext.Compilation.Binding.BorrowsInEveryCase(receiver, receiverNode));
 
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source);
@@ -231,7 +232,8 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || receiver is { IsObjectBorrow: true } || receiver?.HandleMode is not null)
+            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) ||
+                (receiver is not null && field.CodeContext.Compilation.Binding.ObjectCases(receiver, field.CodeContext.Compilation.Binding.ConstraintScope(field.Left), out _) != SemanticsMask.None))
             {
                 return field.Left;
             }
@@ -342,7 +344,7 @@ internal static class ElementAccess
             !Binding.IsGetterResult(selection); depth++)
         {
             var receiver = AccessType(selection.Left);
-            if (receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver))
+            if (receiver?.Kind == BoundTypeKind.Slice || selection.CodeContext.Compilation.Binding.BorrowsInEveryCase(receiver, selection.Left))
             {
                 return true;
             }
