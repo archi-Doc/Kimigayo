@@ -551,7 +551,8 @@ public sealed partial class Binding
         }
 
         var call = evaluation.Call;
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(solution.Function, null, null, ConstraintFailure: failure)];
+        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
+        this.RecordRejected(call, this.rejectedRows.Count - 1);
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;
     }

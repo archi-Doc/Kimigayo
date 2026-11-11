@@ -61,17 +61,16 @@ public sealed partial class Binding
 
             if (pending || matches != 1)
             {
-                var rejected = new RejectedCandidate[matches == 0 ? count : matches];
-                var next = 0;
+                var start = this.rejectedRows.Count;
                 for (var i = 0; i < count; i++)
                 {
                     if (matches == 0 || applicable[i])
                     {
-                        rejected[next++] = new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null);
+                        this.rejectedRows.Add(new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null));
                     }
                 }
 
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+                this.RecordRejected(use, start);
                 return this.Fail(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
         }

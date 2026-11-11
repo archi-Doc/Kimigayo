@@ -5,6 +5,7 @@
 // publishes. The judgments stay with their owners (Binding.Closures, the receiver table in Binding.Structs); this file never re-runs
 // one to explain a failure.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -13,6 +14,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private const string HelperBorrowNote = "the helper borrow may be passed to helpers but cannot be captured (SPEC 16.3.1)";
+
+    // The rows of every capture list's RepeatedCaptures range, cleared by ResetPrerequisites with their capacity kept, so a warm rebind
+    // of a list that repeats a name allocates none. A range is contiguous: RepeatedCaptures appends all of its rows before any other
+    // check runs.
+    private readonly List<CaptureRepeat> captureRepeatRows = [];
 
     // SPEC 7.7.2, 16.3.1: the capture a closure failed at, recorded only when it fails (CaptureFailure).
     private Dictionary<Koto, CaptureFailure>? captureFailures;
@@ -120,7 +126,7 @@ public sealed partial class Binding
     // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
     private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var repeats = list.Repeats;
+        var repeats = CollectionsMarshal.AsSpan(this.captureRepeatRows).Slice(list.Repeats.Start, list.Repeats.Count);
         if (list.Failure != BindingFailure.None)
         {
             var entryRequirement = DiagnosticRequirement.Binding(list.Failure);
@@ -160,14 +166,14 @@ public sealed partial class Binding
 
     // A capture entry that failed with its facts (null for an entry without facts, such as an unresolved name), or, in a list that
     // repeats a name, the repeats with that entry's failure and facts beside them, so it is published as in a list without repeats.
-    private BoundType? FailCaptureEntry(FunctionKoto function, CaptureRepeat[]? repeats, BindingFailure failure, CaptureFailure? fact)
-        => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, failure, fact))
+    private BoundType? FailCaptureEntry(FunctionKoto function, (int Start, int Count) repeats, BindingFailure failure, CaptureFailure? fact)
+        => repeats.Count != 0 ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, failure, fact))
             : fact is { } entry ? this.FailExplained(ref this.captureFailures, function, failure, entry)
             : this.Fail(function, failure);
 
     // SPEC 16.3.1: an explicit entry that captures a value carrying the helper borrow fails its Closure, as a capture of self does.
     private BoundType? FailHelperEntry(
-        FunctionKoto function, CaptureRepeat[]? repeats, CaptureKoto capture, BindingSymbol source, (BoundOrigin Carrier, BoundOrigin Helper) helper)
+        FunctionKoto function, (int Start, int Count) repeats, CaptureKoto capture, BindingSymbol source, (BoundOrigin Carrier, BoundOrigin Helper) helper)
         => this.FailCaptureEntry(function, repeats, BindingFailure.Capture, this.HelperCaptureFact(capture.Span, source, helper));
 
     // SPEC 16.3.1, 23.1: the facts of a capture site that captures the helper borrow (H) through `carrier`: H, and the value that brought H
@@ -214,7 +220,7 @@ public sealed partial class Binding
 
     // The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.1.2): its failure, none
     // when every other entry is valid, and its facts, null for an entry without facts, such as an unresolved name.
-    private readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, BindingFailure Failure, CaptureFailure? Entry);
+    private readonly record struct CaptureListFailure((int Start, int Count) Repeats, BindingFailure Failure, CaptureFailure? Entry);
 
     // The first occurrence of an environment binding in its omitted-list Closure, in source order: a name that resolves to it, or the
     // entry or first occurrence of the nested Closure's binding that it forwards.
