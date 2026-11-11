@@ -11639,6 +11639,24 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** keeping a word set in the association aligned with the parser's (two copies of one rule); passing the header start
     from each `Document` caller (eight sites would each pass the same fact, and an enum Case and `associate` take no context);
     recording only the first modifier word with the introducer as each caller's default (a fallback at eight sites).
+- **BU-172 A short adaptation's family has the cases its binder admits where the adaptation is written (PLAN G764)** (2026-11-11;
+  Front, Binding; Major; design review 1 ACCEPT, implementation review 1 ACCEPT) SPEC 7.1, 7.5, 8.3.4, 8.8.2, 8.15.2.
+  - Cause: `AdaptationFamily` read the binder's admitted set at its declaration (`pair.Scope`), while `BindSemanticsAdaptation`
+    chose the operation at the adaptation's scope, so in a conditional member or a `when` block the family kept every declared case
+    (SPEC 8.3.4: "at a point"; 7.5; 8.8.2; 8.15.2).
+  - Decision: the family producer takes the adaptation's scope (`SemanticsAdaptation`, `AdaptationFamily`, `AdaptedType`): a
+    family's cases are the binder's admitted set there, within a family source's own cases. A family source takes the pair layer's
+    path (`TryAdaptationSelector`), so `TransformFamily` has no Adapt arm and no Semantics parameter. Readers read the mask, never a
+    scope. Why this is sound: a family never reaches a reader in a scope wider than where it was formed (result and parameter Types
+    are declared, SPEC 7.1; Closures and local functions only extend the chain, and the admitted set only narrows along it), so the
+    cases any reader selects lie within the family's mask. The same reason lets G759's `FamilyApplication` compare only the cases
+    (its "over the binder's own admitted set" reads "over the family's mask"), with no `pair.Scope` comparison.
+  - Rejected: passing the computed mask (a nested binder, `q@s` with `q: t/Node`, needs its own set at the same point); forming over
+    the declared set and filtering at readers (a second copy of the rule at every reader); a formation scope stored in the family
+    Type (the mask is that fact; a scope in a Type breaks interning across uses); an optional scope on `TransformFamily` (an omitted
+    one silently gives every case).
+  - Kept: `SubstituteFamily` re-keys a family by the substituted binder's declared set intersected with the mask (no point exists in
+    a substitution); `LayerAdmitted` (BU-3) and the AssociatedOrigins support gate are declaration facts by contract.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
