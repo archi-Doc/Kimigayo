@@ -37,7 +37,7 @@ public static partial class Parser
                 }
 
                 ParseAttachedOriginBlock(ref reader, associated);
-                reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
+                reader.Document(associated, associated.Span.End);
 
                 // SPEC 8.5.1: in a Contract a Name with `is` declares its associated Type with that requirement, a Constraint of the
                 // Contract; every other item is a specification (8.5.1, 8.5.3), a member of its owner, whatever the owner.
@@ -86,7 +86,7 @@ public static partial class Parser
                     formation is null ? [head] : [head, formation],
                     separator: TokenKind.For.ToText());
                 ParseAttachedOriginBlock(ref reader, associated);
-                reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));
+                reader.Document(associated, associated.Span.End);
                 container.AddLast(associated);
             }
         }

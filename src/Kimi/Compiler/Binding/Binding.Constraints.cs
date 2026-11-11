@@ -376,7 +376,7 @@ public sealed partial class Binding
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
-    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
@@ -388,24 +388,31 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Invalidate();
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
 
             foreach (var fact in environment.Facts)
             {
-                if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
                 {
-                    var previous = scope.Owner.BindingState;
-                    changed |= !environment.Invalid;
-                    environment.Invalidate();
-                    // Other input facts can have independent contradictions. Record a
-                    // sole missing-name cause only when this is the entire environment.
-                    this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                    changed |= previous != scope.Owner.BindingState;
-                    break;
+                    this.DropConsultation(frame);
+                    continue;
                 }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
             }
         }
 
@@ -513,7 +520,11 @@ public sealed partial class Binding
         if (input || requirement.Kind == ConstraintKind.Error)
         {
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            if (this.AddConstraintFact(environment, requirement))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
@@ -523,28 +534,33 @@ public sealed partial class Binding
         // Self clauses remain implementation obligations, never assumptions.
     }
 
-    private void AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    // Adds a fact and its conjuncts; true when one of them is an Error. BindConstraints and BindAssociatedSpecification name their clause
+    // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
+    // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
+    // environment stays valid (PLAN G651's open item).
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
     {
         if (fact.HasUnresolved)
         {
-            return;
+            return false;
         }
 
         environment.Add(fact, source);
         if (fact.Kind == ConstraintKind.And)
         {
-            this.AddConstraintFact(environment, fact.Left!, source);
-            this.AddConstraintFact(environment, fact.Right!, source);
+            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
         }
+
+        return fact.Kind == ConstraintKind.Error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid)
+        if (evidence.Invalid is { } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         var positive = evidence.Positive;

@@ -118,7 +118,9 @@ public sealed partial class Binding
 
                 this.ScopeReads = default;
                 this.sourceChecks++;
+                var frame = this.BeginConsultation(symbol.Declaration); // A site frame: the state's declaration publishes it.
                 var proof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)symbol.Declaration);
+                this.DropConsultation(frame);
                 var cause = this.ProofCause(proof);
                 stateChanged |= proof != ConstraintProof.Unknown;
                 limitChanged |= (cause is null) != (symbol.SourceCause is null);
