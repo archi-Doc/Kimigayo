@@ -11564,6 +11564,27 @@ resumed by R4-M86 (2026-10-20).
   - Open: design review 1's N3, triaged 2026-11-11: c01 `keep<() -> u32>(zero)` has G719's cause and joins PLAN G719; c02 is invalid
     as written (SPEC 6.1.1, 9.5: a root function is not visible from a group), so its `UnresolvedBinding_Kd` is correct and its two
     `Unsupported_Kd` are the existing P42 limits (R5-M82).
+- **BU-162 An associate item is read once for every owner (PLAN G683)** (2026-11-11; Front, Parsing and Binding; Major; design
+  revision 2, design review 2 and implementation review ACCEPT; the owner's O-160 (a)) SPEC F.6.2, 8.5.1, 8.5.3, 8.5.4, F.5.
+  - Rule: `associate` before any start of an AssociatedTypeName introduces the item (`StartsType`, the one start predicate of
+    `IsTypeConstraintStart`). `ParseAssociatedConstraint` reads the head once, its selector one node before its `. Name` (a group, a
+    rooted first segment or a Type head, then `ParseTypeSuffixes`), and `IsAssociatedTypeName` judges it once: any other head, in
+    every owner, is `ExpectedSyntax_Kd` ("Expected Name") at the head and the item a recovery. In a Contract a Name with `is`
+    declares its associated Type with that requirement (8.5.1) and stays among the Contract's Constraints; every other item is an
+    associated specification and a member of its owner, whatever the owner (struct, enum, conditional block, Contract).
+  - `BindAssociatedSpecification` binds every specification; `BindAssociatedName` judges its name once: the selector's one lookup in
+    its `UseRow` row, its Contract reference formed from `WrittenReference` (one group around a NamedReference, F.5, F.6.2; also the
+    `.(C).` suffix's), and `SelectorQualifies` on the selector (a Contract's proper ancestor; a Type's declared conformance or its
+    ancestor), never on the identity found. A Contract's bound specification is a premise of the Contract (its environment and its
+    clauses), not a Constraint clause. `IsAssociatedRequirement` reads the parser's placement.
+  - Removed: `BindAssociatedRefinement`; `BindConstraint`'s specification arm and its Type-path lookup of the name;
+    `DeclareAssociatedType`'s qualified return; `Access.cs`'s dead half.
+  - Moves: valid newly accepted (class 3): `(C).X`, `(C<T>).X`, `::C.X`, `::C<i32>.X`, `Self.Inner.X`, `(G.C).X` in every owner kind
+    (37 probes); invalid newly rejected (class 1): a descendant selector (`associate D.Item` with D a child of the conformance;
+    g34c), `T.((C)).Item` in a signature, a function's Constraint region and a Contract's Constraint (g36, t40, t41), and
+    `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
+  - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
+    effect target in this unit (PLAN G740).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
