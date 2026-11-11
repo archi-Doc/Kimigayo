@@ -10,12 +10,19 @@ public sealed partial class Binding
 {
     // `T.(Iterable).IteratorType(a)` with `T = [N of E]`: the witness's result Type at `E` and `N`, its one Origin
     // parameter replaced by the projection's argument. Null for any other projection. No closure: this runs on every
-    // associated-projection normalization.
-    private BoundType? FixedArrayIteratorType(BoundType projection)
+    // associated-projection normalization. W5 (ContractSolver's Completion): Complete at the static gate (WitnessGroup), Provisional
+    // past it (the witness is read and substituted).
+    private BoundType? FixedArrayIteratorType(BoundType projection, out Completion completion)
     {
+        completion = Completion.Complete;
         if (projection.Symbol is not { Name: "IteratorType" } associated || associated.Scope.Owner.BoundSymbol is not { } contract ||
-            WitnessGroup(projection.Components[0], contract.LibraryDeclaration) is not { } group ||
-            this.ContractWitness(group, contract) is not { Declaration: FunctionKoto witness } target)
+            WitnessGroup(projection.Components[0], contract.LibraryDeclaration) is not { } group)
+        {
+            return null;
+        }
+
+        completion = Completion.Provisional;
+        if (this.ContractWitness(group, contract) is not { Declaration: FunctionKoto witness } target)
         {
             return null;
         }
