@@ -11871,6 +11871,29 @@ resumed by R4-M86 (2026-10-20).
   - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
   - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
     takes this form.
+- **BU-164 A Tuple or array literal argument is ranked position by position: `BoundArgumentOperation.Positions` (PLAN G743)**
+  (2026-11-11; Front, Binding; Major, an acceptance mover: eight valid programs newly accepted (Q17 class 3); design review 2
+  ACCEPT, implementation review ACCEPT; the owner's O-162 (A), SPEC 10.4 by D-354) SPEC 10.4 step 1, 10.5.1, 10.2.2.
+  - **Rule.** Step 1 compares each explicit argument's adaptation class and, for a Tuple or array literal argument, the class of
+    each element position, recursively, as an argument there; step 2 is unchanged (it compares each argument's substituted parameter
+    Type, so `cd([n, m])` with `cd(x: Array<i32>)` beside `cd<length N>(x: [N of ref/i32])` is decided at step 1). A fill stays one
+    argument. An erasure and any other class at one position are incomparable, as at an argument (`CompareClasses`).
+  - **Representation.** `BoundArgumentOperation.Positions`, a slice of `Binding.positionClasses` (owned by the ranking,
+    `Binding.CandidateEvaluation`), holds the positions' classes in the fit's order; `Adaptation` stays the literal's own fit
+    (`Literal` by value, the class the open path gives a literal whose slot stays open; `CrossSemanticsBorrow` for a borrowed
+    temporary). The one writer is the element row `FitElement` (`FitArgument` at the position, called by `ProbeAggregateArgument`);
+    the one reader is `BetterCandidate`. Each candidate evaluation removes what it appended when it ends, beside its retained child
+    rows.
+  - **Comparison.** Two fits of one argument walk its syntax alike, so two fitted candidates record the same positions. A candidate
+    that leaves the argument open (no Type) records none and the pair is compared at the argument only (step 2 then makes it
+    incomparable). Two non-empty, unequal counts are a broken contract: `InternalInvariant_Kd` at the argument, the pair
+    incomparable.
+  - **Not recorded:** a nested literal's or a nested fill's own class at its position: a nested aggregate fits only by value today,
+    so it always ties. Removal condition: the unit that lets a nested literal fit a `ref/(...)` element position (a borrowed
+    temporary, SPEC 10.2 row 2; `r-nref3`, PLAN G746, `NoApplicableOverload_Kd` today) records it.
+  - **Rejected:** an operation slot per position (consumers index operations by argument; the count is known only after the fit); a
+    per-argument summary class (dominance is position by position); a class on the retained position rows (composed from each
+    candidate's pattern, so their structure differs between candidates); a per-candidate array (an allocation per candidate).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
