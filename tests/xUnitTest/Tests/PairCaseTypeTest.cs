@@ -13,6 +13,8 @@ public class PairCaseTypeTest
 {
     private const string Box = "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\n";
 
+    private const string Node = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
+
     [Fact]
     public void CaseTypeFormsTheCompleteTypeOfEachCase()
     {
@@ -110,15 +112,21 @@ public class PairCaseTypeTest
     [InlineData("s is value or valueborrow\n    T is Copy", SemanticsMask.None, SemanticsMask.Uniq)]
     [InlineData("s is owner or rc\n    T is Copy", SemanticsMask.Rc, SemanticsMask.None)]
     [InlineData("s is objref or objuniq", SemanticsMask.None, SemanticsMask.ObjUniq)]
-    public void BareAcquisitionPlansEachAdmittedCase(string premises, SemanticsMask failing, SemanticsMask reborrow)
+    [InlineData("s is objref or objuniq", SemanticsMask.None, SemanticsMask.ObjUniq, true)]
+    public void BareAcquisitionPlansEachAdmittedCase(string premises, SemanticsMask failing, SemanticsMask reborrow, bool family = false)
     {
-        var c = Parse($"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
+        // A family row plans the body local `y = p@s`, an adaptation family (SPEC 13.5.5; PLAN G755): each case is its complete child.
+        var c = Parse(family
+            ? Node + $"func f<s/T>(value: s/T, o: obj/Node) -> ()\n    {premises}\n    var p = o@move\n    let y = p@s\n    ()"
+            : $"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
         c.Bind();
         var f = Function(c, "f");
-        var type = f.Parameters[0].Type.TypeOf()!;
-        Assert.Equal(failing, c.Binding.BareAcquisition(type, f.Parameters[0].Type, out var reborrowed));
+        Koto node = family ? KotoTree.Walk(f).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y") : f.Parameters[0].Type;
+        var type = family ? node.SymbolOf()!.Type! : f.Parameters[0].Type.TypeOf()!;
+        Assert.Equal(family, type.Kind == BoundTypeKind.SemanticsAdaptation);
+        Assert.Equal(failing, c.Binding.BareAcquisition(type, node, out var reborrowed));
         Assert.Equal(reborrow, reborrowed);
-        Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, f.Parameters[0].Type, out var none));
+        Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, node, out var none));
         Assert.Equal(SemanticsMask.None, none);
     }
 
