@@ -72,6 +72,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
+            var first = this.positionClasses.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
                 var result = this.ProbeAggregateArgument(array.Elements[i], expected.Components[0], scope);
@@ -79,6 +80,11 @@ public sealed partial class Binding
                 {
                     return result;
                 }
+            }
+
+            if (array.FillLength is not null)
+            {
+                this.positionClasses.RemoveRange(first, this.positionClasses.Count - first); // SPEC 10.4: a fill stays one argument.
             }
 
             return CandidateApplicability.Applicable;
@@ -122,8 +128,20 @@ public sealed partial class Binding
             return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, expected.Components[1], this.EndType, scope);
         }
 
-        // SPEC 10.5.1: every other part is an argument at its element position; a waiting one is checked by the selected candidate.
-        var fit = this.FitArgument(source, expected, scope, source, out _);
+        return this.FitElement(source, expected, scope);
+    }
+
+    // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
+    // adaptation class appended to the positions the candidate is ranked by (positionClasses). A waiting one is checked by the selected
+    // candidate (Applicable here).
+    private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
+    {
+        var fit = this.FitArgument(part, type, scope, part, out var operation);
+        if (fit is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+        {
+            this.positionClasses.Add(operation.Adaptation);
+        }
+
         return fit == CandidateApplicability.Waiting ? CandidateApplicability.Applicable : fit;
     }
 
@@ -199,17 +217,28 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.4 step 1, 10.5.1: a Tuple or array literal argument is ranked by its own fit (Literal by value, as where its slot stays open,
+    // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively; a fill's element is no
+    // position (it stays one argument), nor is a nested literal's own fit (by value only, so it ties). A join formed part by part records
+    // no position here: SPEC 10.5.1 ranks each of its positions as one control-flow argument (PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
+        var first = this.positionClasses.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
+        if (result != CandidateApplicability.Applicable)
+        {
+            this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
+        }
+
         operation = result != CandidateApplicability.Applicable ? default : new(
             part,
             valueType,
             type,
             borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
-            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal);
+            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
+            Positions: first..this.positionClasses.Count);
         return result;
     }
 
