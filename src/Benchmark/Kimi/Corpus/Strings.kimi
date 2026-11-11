@@ -1,6 +1,7 @@
 // O2 timing corpus (O2Corpus.md): string comparison over heap and Static strings with long common prefixes, string
-// destruction through both release kinds, and built-in integer formatting. Each part is a function of its own: `main`
-// calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per part.
+// destruction through both release kinds, built-in integer formatting, and char, Unit and bool formatting. Each part
+// is a function of its own: `main` calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output
+// reads per part.
 
 // The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
 // from 16 up, whose periods are long.
@@ -149,6 +150,19 @@ func formatting(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
     sum += Text.utf8(Text.toString((wide & 0x7FFF_FFFF)@i32)).length@i64
     return sum
 
+// One round: eight chars of one to four UTF-8 bytes in a turning order, Unit and a bool, each by `$tryWrite` into the
+// cleared fixed buffer.
+func characters(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
+    let letters: [8 of char] = ['A', 'z', 'é', 'ß', '€', 'あ', '😀', '𝄞']
+    state@follow = next(state)
+    let shift = ((state >> 16) & 7)@i32
+    var sum: i64 = 0
+    for i in 0..8
+        sum += written(buffer, letters[(i + shift) & 7]) * (i + 1)@i64
+    sum += written(buffer, ())
+    sum += written(buffer, (state >> 19) & 1 == 0)
+    return sum
+
 public func main()
     var checksum: i64 = 0
     var state: i64 = 1
@@ -182,4 +196,7 @@ public func main()
     checksum = fold(checksum, formatting(buffer@uniq, state@uniq))
     for round in 1..65536
         checksum = fold(checksum, formatting(buffer@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, characters(buffer@uniq, state@uniq))
+    for round in 1..65536
+        checksum = fold(checksum, characters(buffer@uniq, state@uniq) + round@i64)
     Console.writeLine("checksum \(checksum)")

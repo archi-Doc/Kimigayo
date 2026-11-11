@@ -42,7 +42,7 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
                     ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
-                    this.AvailableConstraintFact(environment, fact))
+                    this.AvailableConstraintFact(environment, fact, out _))
                 {
                     return true;
                 }
@@ -218,7 +218,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     Add(this.AppliedAssociatedContract(fact, self), this.ArithmeticFactUse(fact, current));
                 }

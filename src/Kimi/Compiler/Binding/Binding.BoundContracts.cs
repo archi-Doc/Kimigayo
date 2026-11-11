@@ -4,6 +4,20 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// BoundContracts (G705): the one path from a Contract reference written in source to its bound reference. SPEC 8.4.3, 8.5, 8.6, 9.7.
+// - Responsibility: BindContractReference forms every written Contract reference: a parent (BuildContract), an associate selector
+//   (BindAssociatedRefinement, BindAssociatedSpecification), a projection qualifier (ProjectionQualifier), an effect target (EffectTarget)
+//   and a requirement's Contract (BindRequirement); QualifierReference is its entry for a qualifier whose selection may be no Contract. It
+//   owns every check of the written reference: the arity of its own list (`C<>` is parsed as one error argument), its own Type arguments
+//   in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins, and the completion of its syntax.
+// - Inputs: the reference's syntax, the declaration its lookup selected, the use-site scope. Outputs: the bound reference (the declaration
+//   itself when it has no parameters, or for its own parameters inside it), each level completed with it; null after a located failure.
+// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax. Its callers: that path, internal
+//   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
+//   (ContractReferenceOf).
+// - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
+//   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, ConformanceByDeclaration, IsRefinement over a
+//   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
@@ -23,19 +37,39 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.7: the own Type-argument application of a written Contract reference, below a root-name form and its transparent wrappers;
+    // null when no list is written. BindContractReference reads the list from it; BuildContract asks it only to keep a generic parent from
+    // deferral.
+    private static GenericsKoto? ContractApplication(Koto name)
+    {
+        if (name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] })
+        {
+            name = rooted;
+            while (name is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null })
+            {
+                name = inner;
+            }
+        }
+
+        return name as GenericsKoto;
+    }
+
     // The bound Contract reference a Contract use names: the one its Type is (BindContractReference, CompleteQualifier), else its selection.
     private BindingSymbol? ContractReferenceOf(Koto use)
         => use.BoundType is { Symbol.Declaration: ContractKoto } reference ? this.BoundContractReference(reference) : use.BoundSymbol;
 
-    // SPEC 8.4, 9.7.1: the bound Contract reference a Contract qualifier's Type arguments form (BindContractReference, which completes the
-    // qualifier with its Type), else the qualifier's selection itself; null when the reference fails.
+    // SPEC 8.4, 8.5.1, 9.7.1: the bound Contract reference a Contract qualifier names, formed from its Type arguments (BindContractReference,
+    // which completes the qualifier with its Type and checks the arity, so a Contract with Type parameters named without its arguments
+    // names none); a selection that is no Contract is itself; null when the reference fails.
     private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
-        => selection.IsContract && UnwrapTransparentType(qualifier) is GenericsKoto ? this.BindContractReference(qualifier, selection, scope) : selection;
+        => selection.IsContract ? this.BindContractReference(qualifier, selection, scope) : selection;
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
-        // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written
-        // list, also one on a Contract without parameters, meets the arity check before the fast path.
+        // SPEC 8.4, 9.7: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written
+        // list, also one on a Contract without parameters, meets the arity check before the fast path. The list is read below a root-name
+        // form too (`::C<i32>`, ContractApplication). An empty list `C<>` (F.6: no TypeArguments) is parsed as one error argument
+        // (ParseGenericsPostfix), so this check or that argument's own failure rejects it: it is never an application.
         var unwrapped = syntax;
         while (unwrapped is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
         {
@@ -43,7 +77,7 @@ public sealed partial class Binding
         }
 
         var container = (DeclarationContainerKoto)declaration.Declaration;
-        var generic = unwrapped as GenericsKoto;
+        var generic = ContractApplication(unwrapped);
         if ((generic?.TypeArguments.Count ?? 0) != container.GenericParameterNodes.Count)
         {
             this.BindUnappliedArguments(generic, scope, this.TypeContext(syntax, scope).Nested);
@@ -75,6 +109,13 @@ public sealed partial class Binding
         {
             this.Fail(syntax, BindingFailure.InvalidOrigin);
             return null;
+        }
+
+        // The levels between a root-name form and its application resolve with the reference, as a parent's do (BuildContract).
+        for (var level = generic is not null && unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : null; level is not null; level = ReferenceEquals(level, generic) ? null : ((TypeSemanticsKoto)level).Type)
+        {
+            level.BoundSymbol = declaration;
+            Complete(level, reference);
         }
 
         if (!ReferenceEquals(unwrapped, syntax))
@@ -179,29 +220,39 @@ public sealed partial class Binding
         => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
             ? this.BoundContractReference(substituted) : contract;
 
-    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope)
+    // W4 (ContractSolver's Completion): SubstituteContractReference's.
+    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope, out Completion completion)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.ConformancePath?.Contract is { Type: { } reference } contract && !ReferenceEquals(reference.Symbol, contract))
             {
-                return this.SubstituteContractReference(type, contract);
+                return this.SubstituteContractReference(type, contract, out completion);
             }
         }
 
+        completion = Completion.Complete;
         return type;
     }
 
     // The caller supplies the requirement's exact declaring reference. Substituting every ancestor would give an
-    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement.
-    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
+    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement. W4: Provisional where StoredType's null
+    // (a height refusal, or no image) is absorbed.
+    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract, out Completion completion)
     {
+        completion = Completion.Complete;
         if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
         {
             return type;
         }
 
-        return this.StoredType(type, reference) ?? type;
+        if (this.StoredType(type, reference) is { } stored)
+        {
+            return stored;
+        }
+
+        completion = Completion.Provisional;
+        return type;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)
