@@ -62,10 +62,11 @@ public partial class OriginRelationDiagnosticTest
             "struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\n", [], "Missing", "i32", []
         },
 
-        // Any number of hops, and a meet by MeetNode's rule: its fixed operand's edge is judged at once.
+        // Any number of hops, and a meet by MeetNode's rule: its fixed operand's edge is judged at once. The bound `y.s == a` of a failed
+        // clause's declaration substitutes (H11b-0 B1), so a chain's last edge is the one into `y.s`.
         {
             Cell + "struct D {a, c}\n    public let f: (" + Hops + ")\n        origin x.s == zz\n        origin y.s == a\n",
-            [Unproven + "ref/(ref/i32 during y.s) during a"], "x.s == zz", "x.s == a", [Unproven + "ref/(ref/i32 during c) during x.s"]
+            [Unproven + "ref/(ref/i32 during x.s) during y.s"], "x.s == zz", "x.s == a", [Unproven + "ref/(ref/i32 during c) during x.s"]
         },
         {
             Cell + "struct D {a, c}\n    public let f: (" + Hops + ", Missing)\n        origin x.s == a\n        origin y.s == a\n",
@@ -112,13 +113,13 @@ public partial class OriginRelationDiagnosticTest
         },
         {
             Cell + "struct D {a, b}\n    public let f: (" + Paths + ")\n        origin x.s == zz\n        origin y.s == a\n",
-            [Unproven + "ref/(ref/i32 during x.s) during a", Unproven + "ref/(ref/i32 during y.s) during a"], "x.s == zz", "x.s == a",
+            [Unproven + "ref/(ref/i32 during b) during y.s", Unproven + "ref/(ref/i32 during x.s) during a"], "x.s == zz", "x.s == a",
             [Unproven + "ref/(ref/i32 during b) during x.s", Unproven + "ref/(ref/i32 during b) during y.s"]
         },
         {
             Cell + "struct D<s/T> {a, b}\n    s is owner or ref\n    T is Copy\n    public let f: (" + Nested + ")\n" +
             "        origin x.s == zz\n        origin y.s == a\n",
-            [Unproven + "ref/(ref/i32 during x.s) during a", Unproven + "ref/(ref/i32 during y.s) during a"], "x.s == zz", "x.s == a",
+            [Unproven + "ref/(s/T during b) during y.s", Unproven + "ref/(ref/i32 during x.s) during a"], "x.s == zz", "x.s == a",
             [Unproven + "ref/(ref/i32 during b) during x.s", Unproven + "ref/(s/T during b) during y.s"]
         },
         {
@@ -127,15 +128,15 @@ public partial class OriginRelationDiagnosticTest
             "        origin x.s == a\n", [Unproven + "ref/C{x} during a"], "Missing", "i32", [Unproven + "ref/(s/T during b) during x.s"]
         },
 
-        // The failed declaration's bound clauses judge its chains (`b outlives a` proves this one), but never a row: the bound `x.s == a`
-        // cannot cut b >= x.s >= a.
+        // A failed clause's declaration keeps its bound clauses (H11b-0 B1): `b outlives a` proves the first; in the second the bound
+        // `x.s == a` substitutes, so it reports its twin's record.
         {
             Cell + OpenBase + "struct D {a, b} : B<(" + Chain + ")>\n    origin b outlives a\n    origin x.s == zz\n    public init() : base() => ()\n", [],
             "x.s == zz", "x.s == a", []
         },
         {
             Cell + OpenBase + "struct D {a, b, c} : B<(" + Chain + ")>\n    origin x.s == a\n    origin c outlives zz\n    public init() : base() => ()\n",
-            [Unproven + "ref/C{x} during a"], "c outlives zz", "c outlives a", [Unproven + "ref/(ref/i32 during b) during x.s"]
+            [Unproven + "ref/(ref/i32 during b) during x.s"], "c outlives zz", "c outlives a", [Unproven + "ref/(ref/i32 during b) during x.s"]
         },
 
         // A chain through two failed declarations' Origins, and a signature's well-formed input, a premise at its use, which forms no edge.

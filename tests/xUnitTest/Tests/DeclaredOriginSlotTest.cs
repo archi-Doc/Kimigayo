@@ -68,13 +68,20 @@ public class DeclaredOriginSlotTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 15.3.2: after a slot is renamed, each projection of the old name is one record at the slot name, and the unbound result slot
-    // and the mismatch of identically spelled Types that follow from it are not reported as independent problems.
+    // SPEC 15.3.2: after a slot is renamed, each projection of the old name is one record at the slot name, and the mismatch of
+    // identically spelled Types that follows from it is not reported as an independent problem. The failed clause fails only itself
+    // (SPEC 15.3.3, 23.1.2; H11b-0 B1), so `forward`'s body is checked: `return value`'s transfer, which the repaired twin
+    // (`result.buffer == value.buffer`) reports too, is independent; the unbound result slot, which no bound Origin of the clause names, is
+    // a dependent reported (Q13, counted).
     [Fact]
     public void AProjectionOfAnAbsentSlotIsReportedOncePerProjection()
     {
         var source = "public struct Renamed<T> {buffer}\n    private let data: ref/T during buffer\nfunc forward<T>(value: Renamed<T>) -> Renamed<T>{result}\n    origin result.source == value.source\n    return value\n" + Main;
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        var errors = records.Where(static x => x.Code == nameof(DiagnosticCode.InvalidOriginBinding_Kd)).ToArray();
+        Assert.Equal(
+            [$"{nameof(DiagnosticCode.MissingOriginBinding_Kd)} Renamed<T>{{result}}", $"{nameof(DiagnosticCode.TransferRequired_Kd)} value"],
+            records.Where(static x => x.Code != nameof(DiagnosticCode.InvalidOriginBinding_Kd)).Select(x => $"{x.Code} {Text(source, x.Span)}").Order(StringComparer.Ordinal));
         Assert.Equal(2, errors.Length);
         Assert.All(errors, error =>
         {
