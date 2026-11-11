@@ -7451,6 +7451,8 @@ resumed by R4-M86 (2026-10-20).
     2 B4), on a walk through the local (review 3 B7, w1) or on the published FixedBy (an outlives relation has none: qbp-put). Open:
     O1 (G254b); edge (ii), a further chain resting on a noted local, not reached by any probe; G757 (the generic-slot order,
     cu-id-v).
+  - Interim removed (2026-11-11; PLAN G758, DECISIONS BU-171): G758 opens a `var` local's pair slot as a local region, the interim's
+    removal condition, and removes the interim above whole; its rows are accepted.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -9749,9 +9751,10 @@ resumed by R4-M86 (2026-10-20).
   and 2)
   - Subject source and owner: `Binding.Transfers`. After a Final pass's publication (BU-81's seam), `CheckTransfers` scans each
     module's published Op, Adjust and PlaceShape rows once (0 B). S1 is a written Place in a value Op whose Adjust is `Move` and
-    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof other
-    than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
-    acquisition is not Copy, fails the Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
+    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof
+    other than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
+    acquisition is not Copy (amended by BU-168: whose Type does not Copy in every admitted case, `CopiesInEveryCase`), fails the
+    Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
   - Records: requirement `Binding.TransferRequired`, at the Place, Take's repair (`ReportAcquisition`). A pair-layer Place carries the
     case fact over the definition's full case set through BU-82's renderer (Q14 run 2): the cases whose complete Type (`CaseType`,
     which names each layer by its own binder, a nested layer's included) the rows of SPEC 3.5 move. A prepared parameter or its owned
@@ -10938,6 +10941,8 @@ resumed by R4-M86 (2026-10-20).
   - IMPL A.4 states the limit only (the owner's O-89 (a), verbatim 「O89 aで決定します」); the measure is `BoundType.Height` (BU-71),
     the depth of the compiler's internal term for the Type, `BoundType`. Rejected: an enumeration of the counted parts in IMPL (three
     independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
+  - Extended by BU-161 (PLAN G651 U1): judgment and site frames for the six passes a form reaches past H, and an Invalid environment
+    that names its failed node; a refusal with no frame open stays `InternalInvariant_Kd`.
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 - **BU-153 A Type's display does not recurse on the Type (PLAN G348, unit G348-d)** (2026-11-11; Front; Major; design
@@ -11029,9 +11034,10 @@ resumed by R4-M86 (2026-10-20).
     `ContainsPairLayer` is each case's Type proven. Where the cases exceed `PairBinder.CaseBound` (64 inclusive; 65 are not
     analyzed), the 8.3 proof decides alone; that definition records `OwnershipCaseLimit_Kd` (`CheckCaseBound`). A warm query
     allocates nothing.
-  - Binding readers (7): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s per-case
-    plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion; the explicit
-    adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part.
+  - Binding readers (8): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s
+    per-case plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion;
+    the explicit adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part; S3
+    (an omitted capture list, BU-84; added by BU-168).
   - MIR readers (5), through `TyCtxt.CopyFacts`: the validator's Copy rule (`MirValidator.Rvalues.cs`), A5's effects
     (`MirEffects.Solve.cs`), drop observation (`MirTypes.Destruction.cs`), drop retention (`MirBorrows.Destructions.cs`) and the
     object payload copy (`ModuleCodegen.Objects.cs`).
@@ -11615,6 +11621,145 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+- **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
+  (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
+  Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
+  - **Rule.** Where a declaration's header starts after its prelude (SPEC 2.3: the Attributes, blank lines and comments before it)
+    is the item prefix's fact: `Parser.ConsumeAttributeAndModifier` records, at each line of the prefix and after each `#` form, the
+    token position of that line's first word (`TokenReader.HeaderPosition`); the item's is the last, the first word of its line
+    after the Attributes and directives: its first modifier or else its introducer. `TokenContext` carries it, so an item list
+    nested in a header (a function value's body in an initializer or a default) restores the outer item's, and taking the context
+    keeps it. `TokenReader.Document(declaration, headerEnd, attributes)` passes it to the association
+    (`DocumentationSource.Associate(declaration, headerPosition, headerEnd, ...)`: a token position and a source offset), whose
+    header runs from that token to `headerEnd`.
+  - **Removed.** `DocumentationSource.IsHeaderPrefix` (a second header-word set: it omitted `static` and `abstract`, added `func`,
+    took `specialize` without the `func` look-ahead and `unsafe` before any declaration), the association's token search and
+    walk-back, and the `Math.Max` guards that could only hide a stale start (a violation now fails `SourceSpan.FromBounds`).
+  - **Invalid headers.** The header starts at the first word of the item's line after its last `#` form, valid or not (a `static`, a
+    misplaced `open`, a rejected access word; in `public #Test func f()` at `func`, as before). Each such word is a syntax Error, so
+    `DocumentationSource.Finish` drops every association of that source and no published documentation changes; only
+    `DeclarationSpan` of a comment left without a Declaration now covers a `static` header too, as it already did for the other
+    invalid words.
+  - **Cost.** One int store per prefix line; `TokenContext` stays 48 bytes, `TokenReader` grows from 200 to 208 bytes (copied by
+    each lookahead); the association loses a binary search and a walk-back per documented declaration. No allocation.
+  - **Rejected:** keeping a word set in the association aligned with the parser's (two copies of one rule); passing the header start
+    from each `Document` caller (eight sites would each pass the same fact, and an enum Case and `associate` take no context);
+    recording only the first modifier word with the introducer as each caller's default (a fallback at eight sites).
+- **BU-171 A `var` local's pair slot is a local region; a pair slot difference is an Origin difference everywhere (PLAN G758)**
+  (2026-11-11; Front, Binding; Major; design review 1 ACCEPT with conditions, the Middle's RP17 consent C-239, implementation
+  review 1 ACCEPT; the owner's O-174 (a), verbatim 「(a) 3 本を G572 の制限に加わるものとして名前を挙げ、G758 を着地させる」) SPEC 15.4.2, 15.6.5, 8.1.2,
+  15.3.6, 10.8, 14.9.2.
+  - **Rule.** `LocalBorrowType` opens a pair layer's outer-Origin slot (`OuterOrigin`: the original's `o` or an annotation) of a
+    mutable unannotated local as a region slot of the local, as it opens a concrete layer's Origin, and recurses by `StoresOrigin`;
+    a `let` local, an application without a slot and a family stay unopened.
+  - **Comparisons.** A pair layer's slot difference is an Origin difference in every comparison, never structure: `FitOuterOrigins`
+    relates two pair layers' slots with or without a Binding (without one, the binder's declaration's Binding gives `o`, as
+    `InactiveOuterOrigin` already reads it; 9ec507d75's fail-closed rule superseded); `CommonOriginType` meets two pair slots (its
+    presence exclusion superseded); `CallSlots.Infer`'s leaf rule fails an interned leaf only where its Origin is the pattern's or
+    its closure context differs (a pair layer is the one leaf with an outer Origin).
+  - **Join.** The join reads `CommonOriginType`; `CommonBorrowResult` is deleted. This is PLAN G443's (R7-I2 d) part for typed
+    sources that differ in Origins alone, a pair layer's slot, an `Option` or a Tuple included; G443 keeps the common Type's Origins
+    over every source, invariant positions, Tuples' formation and the waited sources, and G586's interim stays.
+  - **A5.** A5 reads the opened slot through the existing case Types (`CaseType` forms `uniq/T during r`) and C1-F4 rows (row 8 in
+    the local's body, row 6 in a nested Closure body); no new row.
+  - **G254a's interim removed.** G758 lands after G254a (F's (c)) and removes G254a's G758 interim, its removal condition
+    (O-168 (a); BU-27's amendment): `unregionedPairSlots`, `NoteUnregionedPairSlots`, `UnregionedPairSlot`, `NotedLocal`,
+    `JudgeCallPosition`'s fixing input, `FailExplained`'s test and the reset (-91 lines). Its rows (ClosureEnvironmentOriginTest
+    qb1, qb3, qb-cl, qbp-put, qb4, tl1; ClosureReceiverClassificationTest AByValueUse `var local = q; local = x`) are accepted.
+  - **Moves (Q13).** Valid newly accepted: qb1 over every pair set, k01, k02, k03v, e2v, k06, k08, the Q-B class after G254a, pair
+    array literals (PairAnnotationBindingTest both, back2, nest), pair joins (j0, j3-PRU) and typed `Option`/Tuple joins (j1, j3);
+    by the Middle's A5 oracle (C-239: 8 of 1,764 programs move, no invalid program accepted), PLAN G443's 8 array rows s12b, s12t,
+    s12l and s12f, each in jroot and match_array_same, a join of array literals borrowing two `var` locals
+    (`let a = if c => [u@ref] else => [v@ref]`), now inferred because a `var` local's pair slot is a local region. Valid newly
+    rejected, G572's class (O-174 (a)): `t1-r18-PR`, `t1-r18-POR`, `t12-i1-PR`, accepted on the base only because the slot stayed
+    `o`, with their concrete twins' A5 limit record; MirBorrowsTest G1, G2 and RuleGs lose six independent uniq-view
+    `ComparisonLoanConflict_Kd` (1, 1, 4) beside A5's limit record at the Closure's store (G572's retention side).
+  - **Corrections.** A false `NoApplicableOverload_Kd` (15.3.6) becomes the concrete twin's relation record at the argument (pres,
+    pres2, c6bad) or none (k08). A false relation at a valid reassignment moves to the use that needs it (esc, esc2, esc3, k05, k11,
+    e2, t2-longbad, t9-nest2bad) or becomes the parent's Loan conflict (k03, SPEC 3.5.1). t5-w-PR leaves G430's twin pair (the
+    generic concrete twin's records). The invalid e1-closure-store-escape gains two `ComparisonLoanConflict_Kd` (3:5, 6:12;
+    R4-M148's self-store conflicts, as its concrete twin e1c) beside its kept `UnprovenOriginRelation_Kd`: a record move on a
+    rejected program (implementation review 1; C-239 N2).
+  - **Rejected:** opening the slot alone (the reverted attempt: 11 inapplicable candidates); a pair case per comparer;
+    canonicalizing `s/T during o` to `s/T` (not needed once comparisons relate slots); waiting for all of G443; lifting G572 here
+    (an A5 oracle reading at the shorter end plus G572's retention row: their own unit).
+
+- **BU-172 A short adaptation's family has the cases its binder admits where the adaptation is written (PLAN G764)** (2026-11-11;
+  Front, Binding; Major; design review 1 ACCEPT, implementation review 1 ACCEPT) SPEC 7.1, 7.5, 8.3.4, 8.8.2, 8.15.2.
+  - Cause: `AdaptationFamily` read the binder's admitted set at its declaration (`pair.Scope`), while `BindSemanticsAdaptation`
+    chose the operation at the adaptation's scope, so in a conditional member or a `when` block the family kept every declared case
+    (SPEC 8.3.4: "at a point"; 7.5; 8.8.2; 8.15.2).
+  - Decision: the family producer takes the adaptation's scope (`SemanticsAdaptation`, `AdaptationFamily`, `AdaptedType`): a
+    family's cases are the binder's admitted set there, within a family source's own cases. A family source takes the pair layer's
+    path (`TryAdaptationSelector`), so `TransformFamily` has no Adapt arm and no Semantics parameter. Readers read the mask, never a
+    scope. Why this is sound: a family never reaches a reader in a scope wider than where it was formed (result and parameter Types
+    are declared, SPEC 7.1; Closures and local functions only extend the chain, and the admitted set only narrows along it), so the
+    cases any reader selects lie within the family's mask. The same reason lets G759's `FamilyApplication` compare only the cases
+    (its "over the binder's own admitted set" reads "over the family's mask"), with no `pair.Scope` comparison.
+  - Rejected: passing the computed mask (a nested binder, `q@s` with `q: t/Node`, needs its own set at the same point); forming over
+    the declared set and filtering at readers (a second copy of the rule at every reader); a formation scope stored in the family
+    Type (the mask is that fact; a scope in a Type breaks interning across uses); an optional scope on `TransformFamily` (an omitted
+    one silently gives every case).
+  - Kept: `SubstituteFamily` re-keys a family by the substituted binder's declared set intersected with the mask (no point exists in
+    a substitution); `LayerAdmitted` (BU-3) and the AssociatedOrigins support gate are declaration facts by contract.
+
+- **BU-161 A Binding refusal records at its frame; an Invalid environment names its cause (PLAN G651 U1)** (2026-11-11; Front,
+  Binding; Major; design reviews 1-3, implementation review ACCEPT; the owner's O-152 (b) now, with (a) its removal condition, and
+  O-156 (a), no ratchet before a1) IMPL A.4; SPEC 8.3.3 (Limits), 23.1.2. Extends BU-134.
+  - Rule (b): a Type over H refused during Binding's run is `TypeHeightLimit_Kd` at the open consultation frame's node; with no
+    frame open it stays `InternalInvariant_Kd` at the project, only past H. A substitution within H with no frame open writes
+    nothing.
+  - Frames, three forms: the walk's (`BindNode`, `BindType`); a judgment frame (`BeginConsultation(use)` before a validation check's
+    proof, `RequireConstraintInFrame` after it) at the node the judgment's Language record names; a site frame (`BeginConsultation`,
+    `DropConsultation`) around a pass element that publishes facts. U1 frames the passes a form reaches past H:
+    ValidateConstraintUses (a clause; a constructed Type node), ValidateConstraintEnvironments (the owner),
+    ValidateClosedTypeConstraints (the clause, then its owner resting on it), ValidateConformances' agreement (the first path's
+    use), PublishSourceStates (the state's declaration), PrepareVirtualOverrides' premises (the override). Every other pass is G651
+    a1-a4's.
+  - `ConstraintEnvironment`'s invalidity is the node whose failure caused it (`Failed`, written by `Fail` alone; nine writers name
+    it); as an `ICheckCause` it is what a proof that reads it rests on (`InvalidEnvironment`, the one proof read; `Evidence.Invalid`
+    carries it until C3), so a use derives by `RestsOnRecoveryOrLimit` and keeps an independent record otherwise. A Constraint
+    record's diagnostic cause is a missing-information node (`IsMissingInformation`, one predicate for `FailConstraint` and the
+    reporter).
+  - Interim: `sitelessHeightRefusal` is `[Transitional("G651 a1")]`. Removal condition: G651 a1 makes the site `SubstituteType`'s
+    input (the C# build as the census); a2-a4 frame BindDeclarations', ValidateBoundDeclarations' and Check's steps; the in-run
+    siteless branch goes with the last. No corpus ratchet (O-156 (a)).
+  - Records moved (Q13): none on the snapshot corpus; past H the seven programs give `TypeHeightLimit_Kd` instead of
+    `InternalInvariant_Kd`. By rule W, two kinds of dependent removal, both of a use that reads an Invalid environment whose failed
+    node's record is reported: one `PrerequisiteUnavailable_Kd` (ErasureOwnedDiagnosticTest's identity-step row: `let p` reads S's
+    environment) and one `InvalidConstraint_Kd` (the implementation review's `inherited` probe: the call `use(d)` reads a
+    conditional block's environment, whose own `InvalidConstraint_Kd` is reported).
+  - Open (PLAN G651): the witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's
+    premises (ContractSolver) can add an Error fact and name no node, so such an environment stays valid; no program shows it.
+  - Rejected: `InternalInvariant_Kd` on every frameless substitution (a corpus closure rejects unreached valid programs: review 2's
+    ovcond); a corpus count of frameless cases or steps (vacuous at 607 of 607 cases; rises with coverage, review 3 R3-B1); the
+    proof scope's owner as the site; a whitelist of proof-entry callers; a fact-to-clause map; a second field beside the bool.
+  - After the run (PLAN G651 U2): one substitution-query outcome; the collector and MIR construction record it at their site, code
+    generation treats it as a broken contract, Hover writes none.
+
+- **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
+  G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
+  ACCEPT, the Middle's reviewer ACCEPT on the MIR hunks and RP17's A5 oracle (C-238); the owner's O-166 (a), narrowed by O-171 (a);
+  amends BU-84's S3 and BU-138's readers) SPEC 3.5, 7.7.2, 8.3.4, 8.14, 8.15.2, 13.5.5.
+  - Plan (owner `Binding.PairCases`): each admitted case of a pair layer takes its complete Type (`CaseType`), planned by
+    `BareAcquire`'s rows under the case (SPEC 3.5.1), for every node form: the original `s/T`, an application `s/U`, an adaptation
+    family `p@s` (`TryAdaptationSelector`). The hand-written ref/uniq/owner rows are gone. Readers: `BareAcquire`,
+    `BareAcquisition`, `BareReborrows`, `CopiesInEveryCase` (BU-138) and `FailingCaseNote`.
+  - Reading: BU-84's S3 accepts an omitted-list capture that Copies in every admitted case (`CopiesInEveryCase`), the answer MIR
+    validates its Copy by; the admitted set is SPEC 7.7.2's declared evidence (8.3.4).
+  - Fact: `TyCtxt.PairBinder` is MIR's one binder fact for every node form of a pair layer; `TyCtxt.Layer` keeps the follow kind and
+    the Type below, and its binder output is `PairBinder`'s. Its readers:
+    - `MirCases.Binder`, so a family-typed call input reserves (A3 E13 (4));
+    - the validator's PairAcquire and PairLayer checks (`MirBody.ProjectedType`);
+    - `MirTypes.IsReference`, so an abandoned family temp ends its borrow, and A5's Borrows and Storing rows count it.
+  - Not covered (O-171 (a)): a layer an identity premise makes (SPEC 8.2.3) is planned by its stored Type, as before. Its plan needs
+    the identical Type for Binding and MIR alike (PLAN G355 / G170).
+  - Rejected:
+    - `BareAcquire` answering Copy for an all-Copy pair layer: it moves HIR and MIR of valid programs.
+    - A family branch beside the pair rows: a second form of one rule.
+    - A family row in `TyCtxt.Layer`: a family has no single target.
+    - A premise reading with a Binding or MIR interim (design rounds 1 and 2): each interim approximated "a layer only the premises
+      make" by a Type comparison, because no component publishes that fact.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
