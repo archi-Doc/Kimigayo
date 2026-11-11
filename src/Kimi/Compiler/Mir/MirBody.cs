@@ -50,7 +50,7 @@ internal sealed class MirBody
 
     internal MirDefKey Key { get; private set; }
 
-    /// <summary>Gets or sets the body's position in its program (<see cref="MirProgram.Bodies"/>), set where the program begins it.</summary>
+    /// <summary>Gets or sets the body's ordinal in its program (<see cref="MirProgram.Body"/>), set where the program begins it.</summary>
     internal int Ordinal { get; set; }
 
     /// <summary>Gets the syntax of the body, where a finding without a statement is located.</summary>
