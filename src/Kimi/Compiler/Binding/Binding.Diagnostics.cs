@@ -486,16 +486,8 @@ public sealed partial class Binding
     // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
     // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
     // failure's code.
-    // Interim (PLAN G758; Binding.LocalRegions.Types.cs): an Origin relation record on a mutable local's unopened pair slot, formed
-    // against that local, whatever recorded it (a fit, a pending relation, a call's position, an obligation), is the analysis limit, a
-    // located Unsupported_Kd at the relation's `At`, where the Language record it replaces would sit.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (failure == BindingFailure.OriginRelation && fact is OriginRelationFact relation && this.UnregionedPairSlot(node, relation))
-        {
-            return this.Fail(relation.At, BindingFailure.Unsupported);
-        }
-
         if (node.BindingFailure == BindingFailure.None)
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
