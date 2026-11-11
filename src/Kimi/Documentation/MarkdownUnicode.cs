@@ -7,7 +7,8 @@ namespace Kimi.Documentation;
 internal static class MarkdownUnicode
 {
     // CommonMark whitespace is Zs plus TAB, LF, FF, CR. Neither VT nor NEL is whitespace.
-    internal static bool IsWhitespace(int scalar) => scalar < 0 || scalar is 0x09 or 0x0A or 0x0C or 0x0D or 0x20 or 0xA0 or 0x1680 or (>= 0x2000 and <= 0x200A) or 0x202F or 0x205F or 0x3000;
+    internal static bool IsWhitespace(int scalar)
+        => scalar < 0 || scalar is 0x09 or 0x0A or 0x0C or 0x0D or 0x20 or 0xA0 or 0x1680 or (>= 0x2000 and <= 0x200A) or 0x202F or 0x205F or 0x3000;
 
     internal static bool IsAsciiPunctuation(char value) => value is (>= '!' and <= '/') or (>= ':' and <= '@') or (>= '[' and <= '`') or (>= '{' and <= '~');
 
@@ -61,6 +62,8 @@ internal static class MarkdownUnicode
         }
 
         var first = text[offset];
-        return char.IsHighSurrogate(first) && offset + 1 < text.Length && char.IsLowSurrogate(text[offset + 1]) ? char.ConvertToUtf32(first, text[offset + 1]) : first;
+        return char.IsHighSurrogate(first) && offset + 1 < text.Length && char.IsLowSurrogate(text[offset + 1])
+            ? char.ConvertToUtf32(first, text[offset + 1])
+            : first;
     }
 }
