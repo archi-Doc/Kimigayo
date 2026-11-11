@@ -55,7 +55,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only.
+    // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each
+    // element as an argument at its position (FitElement), so a nested literal fits a ref/(...) position as a borrowed temporary.
     private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -75,7 +76,7 @@ public sealed partial class Binding
             var first = this.positionClasses.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
-                var result = this.ProbeAggregateArgument(array.Elements[i], expected.Components[0], scope);
+                var result = this.FitElement(array.Elements[i], expected.Components[0], scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -99,7 +100,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var result = this.ProbeAggregateArgument(tuple.Elements[i], expected.Components[i], scope);
+                var result = this.FitElement(tuple.Elements[i], expected.Components[i], scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -128,12 +129,13 @@ public sealed partial class Binding
             return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, expected.Components[1], this.EndType, scope);
         }
 
-        return this.FitElement(source, expected, scope);
+        throw new InvalidOperationException("A composite argument is a Tuple or array literal, a join or a mixed range (InternalInvariant).");
     }
 
     // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
-    // adaptation class appended to the positions the candidate is ranked by (positionClasses). A waiting one is checked by the selected
-    // candidate (Applicable here).
+    // adaptation class appended to the positions the candidate is ranked by (positionClasses) after a nested literal's own positions:
+    // a nested literal's own class is its own fit's (FitComposite), Literal by value or a borrowed temporary at ref/(...). A waiting one
+    // is checked by the selected candidate (Applicable here).
     private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
     {
         var fit = this.FitArgument(part, type, scope, part, out var operation);
@@ -218,9 +220,9 @@ public sealed partial class Binding
     }
 
     // SPEC 10.4 step 1, 10.5.1: a Tuple or array literal argument is ranked by its own fit (Literal by value, as where its slot stays open,
-    // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively; a fill's element is no
-    // position (it stays one argument), nor is a nested literal's own fit (by value only, so it ties). A join formed part by part records
-    // no position here: SPEC 10.5.1 ranks each of its positions as one control-flow argument (PLAN G729).
+    // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively, a nested literal's own
+    // fit among them; a fill's element is no position (it stays one argument). A join formed part by part records no position here:
+    // SPEC 10.5.1 ranks each of its positions as one control-flow argument (PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
