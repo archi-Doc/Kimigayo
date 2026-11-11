@@ -33,11 +33,11 @@ internal static partial class MirDump
     /// <param name="text">The output.</param>
     internal static void Write(MirProgram program, ushort module, StringBuilder text)
     {
-        for (var ordinal = 0; ordinal < program.Bodies.Length; ordinal++)
+        foreach (var body in program.Bodies)
         {
-            if (program.Bodies[ordinal].Source.Module == module)
+            if (body.Source.Module == module)
             {
-                Write(program.Bodies[ordinal], text, program.Drops, ordinal);
+                Write(body, text, program.Drops);
             }
         }
 
@@ -55,9 +55,9 @@ internal static partial class MirDump
     /// <summary>Writes one body.</summary>
     /// <param name="body">The body.</param>
     /// <param name="text">The output.</param>
-    /// <param name="drops">The drop table of the body's program, whose verdicts and flags are written (none for a body it does not hold).</param>
-    /// <param name="ordinal">The body's ordinal in the table.</param>
-    internal static void Write(MirBody body, StringBuilder text, MirDropTable drops, int ordinal)
+    /// <param name="drops">The drop table of the body's program, whose verdicts and flags of the body's ordinal are written (none for a
+    /// body it does not hold).</param>
+    internal static void Write(MirBody body, StringBuilder text, MirDropTable drops)
     {
         var name = body.Key.Decl?.Name ?? "top-level"; // A Closure has no name.
         text.Append(body.Key.Kind.ToString().ToLowerInvariant()).Append(name.Length == 0 ? string.Empty : " ").Append(name);
@@ -120,14 +120,14 @@ internal static partial class MirDump
             text.Append('\n');
         }
 
-        Blocks(text, body, drops, ordinal);
+        Blocks(text, body, drops);
     }
 
     // The flags, then each block's statements and terminator with their flag points and each Drop's verdicts (DECISIONS R4-M6a).
-    private static void Blocks(StringBuilder text, MirBody body, MirDropTable drops, int ordinal)
+    private static void Blocks(StringBuilder text, MirBody body, MirDropTable drops)
     {
-        var points = drops.PointsOf(ordinal);
-        if (drops.FlagsOf(ordinal) is > 0 and var flags)
+        var points = drops.PointsOf(body.Ordinal);
+        if (drops.FlagsOf(body.Ordinal) is > 0 and var flags)
         {
             Points(text.Append("  flags ").Append(flags), body, points, new(0, -1)).Append('\n');
         }
@@ -154,7 +154,7 @@ internal static partial class MirDump
             Terminator(text.Append(terminator.Source.StatementStart ? "    * " : "      "), body, terminator);
             if (terminator.Kind == MirTerminatorKind.Drop)
             {
-                Verdicts(text, body, drops, ordinal, i);
+                Verdicts(text, body, drops, i);
             }
 
             Info(Points(text, body, points[first..next], new(i, block.Count)), terminator.Source);

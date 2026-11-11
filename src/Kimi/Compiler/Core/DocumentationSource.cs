@@ -149,7 +149,8 @@ public sealed partial class DocumentationSource
     internal void Exclude(int start, int syntaxEnd, int nextToken)
         => this.Collect((start, syntaxEnd, nextToken), static (source, value) => source.ExcludeCore(value.start, value.syntaxEnd, value.nextToken));
 
-    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    // The header runs from the token at headerPosition, a position in tokens (TokenReader.HeaderPosition), to the source offset headerEnd.
+    internal void Associate(Koto declaration, int headerPosition, int headerEnd, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
         if (this.failed)
         {
@@ -158,7 +159,7 @@ public sealed partial class DocumentationSource
 
         try
         {
-            this.AssociateCore(declaration, header, attributes, tokens);
+            this.AssociateCore(declaration, headerPosition, headerEnd, attributes, tokens);
         }
         catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
         {
@@ -256,35 +257,12 @@ public sealed partial class DocumentationSource
         }
     }
 
-    private void AssociateCore(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    private void AssociateCore(Koto declaration, int headerPosition, int headerEnd, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
-        var headerStart = header.Start;
-        var tokenIndex = 0;
-        var high = tokens.Length;
-        while (tokenIndex < high)
-        {
-            var middle = (tokenIndex + high) / 2;
-            if (tokens[middle].Span.Start < headerStart)
-            {
-                tokenIndex = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-
-        // No caller passes the written header start (a function's span starts at its name, another declaration's at its
-        // introducer): recover the header words written before it.
-        var prefix = tokenIndex - 1;
-        while (prefix >= 0 && this.IsHeaderPrefix(tokens[prefix], declaration))
-        {
-            headerStart = tokens[prefix].Span.Start;
-            prefix--;
-        }
+        var headerStart = tokens[headerPosition].Span.Start;
 
         // Header/Attribute-interior comments cannot become a later declaration's prelude.
-        this.Suppress(SourceSpan.FromBounds(headerStart, Math.Max(headerStart, header.End)));
+        this.Suppress(SourceSpan.FromBounds(headerStart, headerEnd));
         var candidateIndex = this.FindBefore(headerStart);
         while (candidateIndex >= 0 && (!this.comments[candidateIndex].IsRecognized || this.comments[candidateIndex].IsSuppressed))
         {
@@ -309,7 +287,7 @@ public sealed partial class DocumentationSource
             return;
         }
 
-        for (var i = prefix; i >= 0 && tokens[i].Span.End > candidate.Span.End; i--)
+        for (var i = headerPosition - 1; i >= 0 && tokens[i].Span.End > candidate.Span.End; i--)
         {
             var token = tokens[i];
             if (token.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
@@ -335,24 +313,7 @@ public sealed partial class DocumentationSource
         }
 
         candidate.Declaration = declaration;
-        candidate.DeclarationSpan = SourceSpan.FromBounds(headerStart, Math.Max(header.End, headerStart));
-    }
-
-    // The words of a declaration header (SPEC F.3.3) written before the span the parser documents: the access words; a modifier,
-    // the keyword `open` or by spelling `unsafe`, and `virtual` or `override` before a function; and the introducer, since a
-    // function is documented from its name: `func`, and by spelling a specialization's `specialize`.
-    private bool IsHeaderPrefix(Token token, Koto declaration)
-    {
-        var word = token.Kind == TokenKind.Identifier ? this.Source.AsSpan().Slice(token.Span.Start, token.Length) : default;
-        return token.Kind switch
-        {
-            TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal => true,
-            TokenKind.Open => true,
-            TokenKind.Identifier when word is "unsafe" || (declaration is FunctionKoto && word is "virtual" or "override") => true,
-            TokenKind.Func => true,
-            TokenKind.Identifier => word is "specialize",
-            _ => false,
-        };
+        candidate.DeclarationSpan = SourceSpan.FromBounds(headerStart, headerEnd);
     }
 
     /// <summary>Gets optional documentation diagnostics, independently of language diagnostics.</summary>
