@@ -7455,6 +7455,12 @@ resumed by R4-M86 (2026-10-20).
     cu-id-v).
   - Interim removed (2026-11-11; PLAN G758, DECISIONS BU-171): G758 opens a `var` local's pair slot as a local region, the interim's
     removal condition, and removes the interim above whole; its rows are accepted.
+  - Amended (2026-11-11; PLAN G757; the Middle's consent C-250): AdaptInput's branch for a parameter that is no reference names the
+    Reborrow before inference for every bare Place whose acquisition Reborrows (`StoresExclusiveReference`: a stored `uniq/T` or
+    `objuniq/T`, or a pair layer in an exclusive case; G254a's `BareReborrowLayer` and `ReborrowedType`), so a bare slot or a
+    pair-layer pattern binds the Reborrow's Type (SPEC 10.2.2 step 1, 10.8, 3.5.1), class `SameSemanticsReborrow` (10.2.2). Formerly
+    a stored `uniq/T` there was Exact, the slot bound its stored Origin, and the later Reborrow's fit required the reaching layers
+    (a Closure's receiver ρ, an outer exclusive reference) to outlive it.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -11639,6 +11645,7 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+  - Extended by BU-173 (PLAN G740): the effect target's group is read through `WrittenReference` too.
 - **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
   (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
   Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
@@ -11837,6 +11844,39 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+- **BU-173 An effect target's group is a grouped Contract reference (PLAN G740)** (2026-11-11; Front, Parsing and Binding; Major;
+  design review 1 REVISE (B1), design review 2 ACCEPT, implementation review ACCEPT; the owner's O-160 (a); commit 6d91ceb9a on
+  `claude/f-g740`; extends BU-162) SPEC F.6.2, F.5, 8.11.1.
+  - Rule: `ParseEffectTarget` reads a ContractSelector's group as F.6.2 writes it, `"(" ContractReference ")"`: one Type and its
+    closer in every position (an empty group or a list is a syntax Error, applying item or not), written as every grouped Contract
+    reference's node (`ParenthesizedTypeKoto`). `EffectTarget` looks the selector up once in its row and forms its reference from
+    `WrittenReference` (one group around a NamedReference): a group inside the group names no Contract (`NotContract`, the item's
+    one `InvalidEffectBound_Kd`).
+  - Removed: `EffectTarget`'s walk over every group and wrapper; the effect target's `ParenthesizedKoto`; `CompleteQualifier`'s
+    `ParenthesizedKoto` arm.
+  - Moves: invalid newly rejected (class 1): `effect ((A)).r`, `(((A)))`, `((P<i32>))`, `((::A))`, `((G.A))`, `((Outer<i32>.C))` in
+    a Contract; records on invalid programs only otherwise (Q13): the Label of `((C)).r` and `((A)).zz` ("names no Contract").
+  - Rejected: a second group kind in `WrittenReference` (two representations of one form); a parser rejection of the inner group
+    (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
+    empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
+    1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
+
+- **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
+  design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
+  - Cause: a rejected call's candidates, a Phantom or static slot's failing Semantics cases and a capture list's repeats were arrays
+    formed at the failing check on every pass (32-720 B a warm Bind of a rejected program), although their dictionaries were reused.
+  - Decision: each is now a `(Start, Count)` range of one row list per row type (`rejectedRows`, `pairCaseRows`,
+    `captureRepeatRows`), appended by the check and cleared by ResetPrerequisites with its capacity kept (a bounded warm reuse: each
+    list keeps its high-water capacity across passes, as the prerequisite store does; unmeasured); the adapter reads the span. The
+    form is the existing one: six dictionary-and-rows pairs now (the prerequisites, the parameter shapes, the callable selection and
+    the three new ones).
+  - Invariant: a range is contiguous because a check appends its rows with no other append to the same list between its first row
+    and its record (stated at each rows field).
+  - Rejected: forming the facts at reporting (re-runs selection over released scratch); facts cached per node across passes (a
+    second lifetime, stale after an edit); a generic row-store type (a wrapper without semantics over a List and a tuple).
+  - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
+  - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
+    takes this form.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -14973,6 +15013,10 @@ structure is recorded here by the unit that first implements it.
   - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
   - Superseded in part by BU-67: under SPEC 15.6 (the owner's 「(B)」, G264 S1, 2026-10-30) litDropOk, lit2DropOk and litObjOk are invalid;
     MIR's E is the verdict.
+  - Amended (2026-11-11; PLAN G730, the Middle's unit): every `MirDescriptors` intrinsic row states the Abort and Allocation its
+    lowering can perform (WriteStdout, RawAllocate, RawRelease, MakeObj, MakeRc, MakeArc, Clone, FormatBuffer and the Adapt rvalue
+    gain Abort; TestTempDirectory gains Allocation), pinned by `MirValidatorTest.AnIntrinsicsRowStatesItsLoweringsEffects`; a new
+    intrinsic row updates the pinned sets.
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26; under R5-M18
   form 2 (G:format), R5-M30, R5-M67, R5-M92, R5-M108, R5-M114, R5-M126 and R5-M128; PLAN G157 (10), (22), (28))
   - BuiltinFormat shim: a BuiltinFormat item is C8f's `__kimi_builtin<item>` (R5-M126's form and signature, caller-location), the built-in

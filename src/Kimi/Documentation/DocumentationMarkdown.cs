@@ -128,8 +128,12 @@ public sealed class DocumentationMarkdown
 
     private static void AddParameters(Koto declaration, List<DocumentationMarkdownParameter> parameters, CancellationToken cancellationToken)
     {
-        var generics = declaration is FunctionKoto function ? function.GenericArguments
-            : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
+        var generics = declaration switch
+        {
+            FunctionKoto function => function.GenericArguments,
+            DeclarationContainerKoto container => container.GenericParameterNodes,
+            _ => [],
+        };
         foreach (var generic in generics)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -140,9 +144,13 @@ public sealed class DocumentationMarkdown
             }
         }
 
-        var origins = declaration is FunctionKoto callable ? callable.Origins
-            : declaration is DeclarationContainerKoto type ? type.OriginNames
-            : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
+        var origins = declaration switch
+        {
+            FunctionKoto function => function.Origins,
+            DeclarationContainerKoto container => container.OriginNames,
+            PropertyAccessorKoto accessor => accessor.Origins,
+            _ => [],
+        };
         foreach (var origin in origins)
         {
             parameters.Add(new(origin));
