@@ -157,6 +157,7 @@ public sealed partial class Binding
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
         var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics));
+        var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
         var used = this.flagScratch.Rent(Math.Max(1, maxParameters));
@@ -223,6 +224,8 @@ public sealed partial class Binding
                     {
                         this.BindType(syntax, scope);
                     }
+
+                    explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
                 }
             }
 
@@ -236,6 +239,7 @@ public sealed partial class Binding
                 Self = self,
                 Requirements = requirementGroup,
                 Frame = solveFrame,
+                ExplicitTypes = explicitTypes,
                 ExplicitLengths = explicitLengths,
                 Mapping = mapping,
                 Used = used,
@@ -271,7 +275,7 @@ public sealed partial class Binding
                     : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
-            if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
+            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
             {
                 return Complete(call, null);
             }
@@ -402,7 +406,6 @@ public sealed partial class Binding
 
                 var state = this.TryCandidate(
                     this.Solution(evaluation, winnerIndex, selected, selectedType),
-                    explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
                     expected,
@@ -575,6 +578,7 @@ public sealed partial class Binding
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(waitingContexts, clearArray: true);
+            this.typeScratch.Return(explicitTypes, clearArray: true);
             this.flagScratch.Return(completedWaiting);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);

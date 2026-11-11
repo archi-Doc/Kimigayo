@@ -156,7 +156,6 @@ public sealed partial class Binding
                         Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                         ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
                     },
-                    [],
                     mapping,
                     previous.ArgumentMap,
                     expected,
@@ -231,7 +230,7 @@ public sealed partial class Binding
             }
 
             checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
-            this.InitializeCallSlots(call, selectedFunction, construction, frame, fixedConstruction: true);
+            _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frame, fixedConstruction: true);
             if (count > 1)
             {
                 allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);

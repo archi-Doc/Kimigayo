@@ -185,6 +185,8 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count);
         var settled = this.RentSlotSet(count);
         var adapted = this.typeScratch.Rent(count);
+        var fixedTypes = this.typeScratch.Rent(slots);
+        var fixedLengths = this.lengthScratch.Rent(slots);
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
@@ -229,7 +231,19 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 6.5.2 step 2, 10.8: the slots the qualifier and the expected Type fix before any evidence, each payload's adaptation reads
+            // them and a payload they complete is settled. Each supplies every slot (SPEC 8.1.3), so a Case construction fixes all or none
+            // and never holds an open slot beside a fixed one; none fixed is no Types (FixedSlots).
+            frame.Types[..slots].CopyTo(fixedTypes);
+            frame.Lengths[..slots].CopyTo(fixedLengths);
+            var allFixed = true;
+            for (var i = 0; i < slots; i++)
+            {
+                allFixed &= fixedTypes[i] is not null;
+            }
+
             var solution = this.Solution(call, declaration, scope, frame, origins);
+            solution.Fixed = new(declaration, allFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), allFixed);
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
@@ -352,6 +366,8 @@ public sealed partial class Binding
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            this.lengthScratch.Return(fixedLengths, clearArray: true);
+            this.typeScratch.Return(fixedTypes, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.ReturnSlotSet(settled);
@@ -377,7 +393,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
+            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Fixed.Types, solution.Fixed.Lengths) is { } fixedType &&
                 !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
             {
                 settled.Add(i);
@@ -552,7 +568,7 @@ public sealed partial class Binding
             // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
             // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-            var fits = this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
+            var fits = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
                 (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);

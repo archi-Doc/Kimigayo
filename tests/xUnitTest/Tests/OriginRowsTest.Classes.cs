@@ -68,7 +68,8 @@ public sealed partial class OriginRowsTest
     // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form. Row 4, an environment
     // binding's own atom, stays a Finite root under `owner/Self` (DECISIONS R4-M126 P5, superseding the interim Finite in every receiver
     // mode); under a borrowed receiver it resolves to ρ, so its relation is fixed-fixed and Binding's, no row (AClosuresValueAndAReceiverAre
-    // ClassedByTheirRole reads its class); an end a Binding failure left Unbound (a repeated binding set's) is Dependent (R4-M118).
+    // ClassedByTheirRole reads its class). A local whose failed clause names no bound Origin keeps its Type's Origins (SPEC 15.3.3: a
+    // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is Fixed, the parameter's set.
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
@@ -77,7 +78,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
-    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Dependent", "None")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Fixed", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
@@ -87,8 +88,8 @@ public sealed partial class OriginRowsTest
 
     // Rows 1, 2' and 8 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
     // inference Inferred, and a call's meet of its call regions Inferred (MeetTrans' `t@uniq`; Unclassed while they were the callee's
-    // Parameter atoms, U3-design.md's twelfth amendment); an end a Binding failure left Unbound, and a meet of such ends, are Dependent
-    // (DECISIONS R4-M118).
+    // Parameter atoms, U3-design.md's twelfth amendment); an end a Binding failure left Unbound, a slot a local's failed clause names
+    // (FailedClause), is Dependent (DECISIONS R4-M118). RepeatedSet's `k`, whose clause names no bound Origin, is no row (H11b-0 B1).
     [Theory]
     [InlineData(EnvStoreConsuming, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]
@@ -96,12 +97,20 @@ public sealed partial class OriginRowsTest
     [InlineData(MeetTrans, "mt", "t@uniq", "Inferred")]
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
-    [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
     [InlineData(LocalOmission, "f", "x", "Inferred")]
     public void TheShorterEndOfARowTakesItsClass(string source, string body, string site, string kind)
     {
         var (slice, row) = RowAt(source, body, site);
         Assert.Equal(kind, slice.Atoms[row.Shorter].Kind.ToString());
+    }
+
+    // SPEC 15.3.3 (H11b-0 B1): a local's clause assumes nothing, so RepeatedSet's `k`, whose failed clause names no bound Origin, rests on
+    // nothing and `run` has no row at `k` (before B1 its slot was a Dependent end).
+    [Fact]
+    public void ALocalsFailedClauseNamingNoBoundOriginFormsNoRow()
+    {
+        var c = MirBuildTest.Compile(MirOriginsTest.RepeatedSet + Main);
+        Assert.False(Has(c, Bodies(c).First(static x => x.Key.Decl?.Name == "run").Key, "k"));
     }
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent

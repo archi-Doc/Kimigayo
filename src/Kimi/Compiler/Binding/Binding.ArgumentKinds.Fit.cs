@@ -290,7 +290,7 @@ public sealed partial class Binding
         }
 
         if (!this.AdaptInput(
-                node, type, actual, scope, null, null, out var adapted, out var quality, out var kind, recordPair: false, deferAcquisition: true) ||
+                node, FixedPattern.Open(type), actual, scope, null, null, out var adapted, out var quality, out var kind, recordPair: false, deferAcquisition: true) ||
             !this.FitsStructuralPartAt(adapted, type, use))
         {
             return CandidateApplicability.Inapplicable;
