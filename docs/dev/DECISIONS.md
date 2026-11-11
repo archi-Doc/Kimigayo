@@ -11926,6 +11926,42 @@ resumed by R4-M86 (2026-10-20).
     a-fill: a narrow subset, AGENTS Diagnostics); the nested temporary's Origin input here (not one path with the root Literal's
     `InferInput`; the value-call path passes only by reading no children: G585); a non-final failure of the call (its re-evaluation
     lost the failed part's evidence: `UnboundTypeArgument_Kd`).
+- **BU-177 A short adaptation's family is interned only when no pair application has its cases; an object layer is read by one fact,
+  `Binding.ObjectCases` (PLAN G759, G760)** (2026-11-12; Front, Binding; Major; design `front\G759\design.md`, review 5 ACCEPT;
+  implementation review ACCEPT; the owner's O-181 (a), O-183 (a)) SPEC 13.5.1, 3.4.3, 8.15.2.
+  - Cause: SPEC 13.5.1 gives `p@s` the Type `s/U`; Binding formed a finite result-Type family also where its cases are exactly the
+    application's, so one SPEC Type had two representations and the relation (by kind) rejected `let y: s/Node = p@s`. Member
+    selection, the object receivers and the top-level helpers Binding reads tested an object layer by its concrete kind, so a pair
+    layer whose admitted set lies in the object family had no View Target for them (SPEC 3.4.3, 8.15.2).
+  - Decision: `TypeFamily`, the one interning point of families, returns the pair application whose case Types (`CaseType`) over the
+    family's mask are its cases (`FamilyApplication`); a one-case list stays its concrete case (`TyCtxt.Intern`), every other list a
+    family (a ref or uniq case borrowing the operand's slot beside an object case; owner with an object operand).
+    `Binding.ObjectCases(type, scope, out view)` gives a concrete object layer's Semantics and View Target, and a pair layer's
+    admitted set and direct target where the set lies in the object family. Its readers, by the census: member selection
+    (`ViewBelow`, R1), the shared object receiver (R2), the payload projection (R3; exclusive access reads
+    `PlaceAuthority.ExclusivelyAcquirable`), accessor receivers (R4), a value call's callee (R7), `Binding.ViewTarget` (R20),
+    `Binding.BorrowsInEveryCase` (ElementAccess, R19, R21, R23), `BorrowedPathRoot` (R22), `Binding.SharedBorrowSemantics` (R24) and
+    Captures' environment entry (R25); MIR's payload projection steps the receiver's own layer (`Follow`). A write through a
+    receiver's own shared layer asks `PlaceAuthority.SharesOwnLayer` (one `SharedLayer` set, R5). An object pair layer at a fixed
+    object borrow runs the whole input rule (`AdaptInput`) on each case (R6): a case that does not adapt fails it, a case that needs
+    a spelling gives that rule's record, and where every case adapts the per-case adaptation is the located `Unsupported_Kd` until
+    PLAN G762 (the call's one obstacle; a case's spelling, then an earlier input's record, take precedence).
+    `ReferenceTypes.ViewTarget` and `SharedReadTypes` are deleted.
+  - Moves: valid, newly accepted (class 3): an object shorthand's written application (e01-e03, e07); a member or receiver through
+    an object pair layer (m01-m12, r21, r26; G766's x12d by R1); a value call through one (c05); an environment entry of one (c08,
+    k1); with G764's scope r32, r33. Class 2: a valid `x@s` over a two-case family local gave `InternalInvariant_Kd` (t03 accepted,
+    t04 `SharedPathAccess_Kd` only). Valid forms at the located limit until G762: a01, m13, t1r, t1u, t5, c02r, e3, and the object
+    setter p2s, p2o (were `NoApplicableOverload_Kd` or `UnresolvedBinding_Kd`). Invalid forms take their concrete twins' records:
+    n01-n03, c04 `SharedPathAccess_Kd`, n05 `NoApplicableOverload_Kd`; p2, c06 `InvalidAssignment_Kd`; t1
+    `ExclusiveBorrowRequired_Kd`; c02 `NoApplicableOverload_Kd`; k2 `InvalidAssignment_Kd` and `SharedPathAccess_Kd`, k3
+    `TransferRequired_Kd`.
+  - Kept, named: a concrete explicit target on a pair operand (`y@objref`, `y@objuniq`: G762) and a runtime type test (`y is D`, the
+    located `Unsupported_Kd`: G770); `BindSemanticsAdaptation`'s own application branch for object sources without an object-borrow
+    case (folding it would re-form its pair-source branch as nested families).
+  - Rejected: identifying a family with an application in the relation (two representations stay; every consumer needs a family
+    arm); forming the application in `BindSemanticsAdaptation` only (a second copy of AdaptedType's per-case Origin rule); a
+    pair-layer clause in member lookup alone (receivers stay unresolved; one clause per site); a separate limit predicate
+    `ObjRef || ExclusivelyAcquirable` (a partial second copy of the input rule).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
