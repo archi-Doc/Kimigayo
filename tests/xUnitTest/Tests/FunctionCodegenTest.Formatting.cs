@@ -38,8 +38,8 @@ public sealed partial class FunctionCodegenTest
     private const string Formats =
         "func ctWriteI64(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU8(writer: uniq/Utf8Writer, n: u8) -> Result<(), BufferFull> => writer.write(n)\n" +
-        "func ctWriteText(writer: uniq/Utf8Writer, s: ref/string) -> Result<(), BufferFull> => writer.write(s)\n" +
-        "func ctWriteView(writer: uniq/Utf8Writer, v: Text.Utf8Slice) -> Result<(), BufferFull> => writer.write(v)\n" +
+        "func ctWriteI8(writer: uniq/Utf8Writer, n: i8) -> Result<(), BufferFull> => writer.write(n)\n" +
+        "func ctWriteI32(writer: uniq/Utf8Writer, n: i32) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteI16(writer: uniq/Utf8Writer, n: i16) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU16(writer: uniq/Utf8Writer, n: u16) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU32(writer: uniq/Utf8Writer, n: u32) -> Result<(), BufferFull> => writer.write(n)\n" +
@@ -66,9 +66,9 @@ public sealed partial class FunctionCodegenTest
         "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
         "    return show(value, writer)\n" +
         "func apI32(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apText(s: ref/string, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(s, w)\n" +
+        "func apTiny(n: ref/i8, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apShort(n: ref/i16, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apView(v: ref/Text.Utf8Slice, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(v, w)\n" +
+        "func apWord(n: ref/u32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apLong(n: ref/u64, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apWide(x: ref/u128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(x, w)\n" +
         "func apItemOf(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
@@ -266,7 +266,7 @@ public sealed partial class FunctionCodegenTest
         var (writes, shims) = (FunctionsOf(ir, c, "write"), ShimsOf(ir, text));
         foreach (var (name, kind) in new[]
         {
-            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteText", 16), ("ctWriteView", 17), ("ctWriteI16", 3), ("ctWriteU16", 4), ("ctWriteU32", 6),
+            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteI8", 1), ("ctWriteI32", 5), ("ctWriteI16", 3), ("ctWriteU16", 4), ("ctWriteU32", 6),
         })
         {
             var write = Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writes.Contains);
@@ -320,7 +320,7 @@ public sealed partial class FunctionCodegenTest
             var kind = Regex.Match(call.Shape, @"^call void @\(ptr %, ptr %, ptr %, i32 (\d+), ptr %, i64 %\)$").Groups[1].Value;
             return int.Parse(kind, CultureInfo.InvariantCulture);
         });
-        Assert.Equal([3, 5, 8, 10, 16, 17], kinds.Order()); // i16, i32, u64, u128, string, Utf8Slice (Unit, f64: table rows, R8-S2a, S2c).
+        Assert.Equal([1, 3, 5, 6, 8, 10], kinds.Order()); // i8, i16, i32, u32, u64, u128 (string, the view: R8-S2d1's body and member).
         var location = $", ptr @, i64 {Located(FormatShims, "value.format(writer)")})"; // After the value's and the writer's pointers.
         Assert.All(
             FunctionsOf(ir, c, "apAppend"),
@@ -362,13 +362,18 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 22.5.1, 22.10.2 (R8-S2a): bool's, char's and Unit's format witnesses are the witness table's bodies with CallerLocation rows, so
-    // the write instance forwards the location it received, its last two parameters, to the body, and the body forwards its own to the
-    // leaf writeUtf8, whose reservation Aborts there (fail-before: no body instance; without the rows, no location pair).
+    // SPEC 22.5.1, 22.10.2 (R8-S2a, R8-S2c, R8-S2d1): bool's, char's, Unit's, f32's, f64's and string's format witnesses are the witness
+    // table's bodies, and the view's its declared member, each with a CallerLocation row, so the write instance forwards the location it
+    // received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose reservation Aborts there
+    // (fail-before: no body instance; without the rows, no location pair).
     [Theory]
     [InlineData("bool")]
     [InlineData("char")]
     [InlineData("()")]
+    [InlineData("f32")]
+    [InlineData("f64")]
+    [InlineData("string")]
+    [InlineData("Text.Utf8Slice")]
     public void ATableBodyWriteReportsItsCallersLocation(string type)
     {
         var source = $"func wlDirect(writer: uniq/Utf8Writer, v: {type}) -> Result<(), BufferFull> => writer.write(v)\n";
@@ -383,6 +388,27 @@ public sealed partial class FunctionCodegenTest
         var leafCalls = CallsOf(body).Where(x => x.Callee == leaf).ToArray();
         Assert.NotEmpty(leafCalls);
         Assert.All(leafCalls, x => Assert.Equal(body.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
+    }
+
+    // SPEC 22.5.1, 3.1.1 (R8-S2d1): Wrapping<u8>'s format witness is the witness table's WrappingFormat body with a CallerLocation row: the
+    // write instance at Wrapping<u8> forwards its received location to the body, and the body forwards its own to its write of the u8,
+    // whose instance passes it to u8's BuiltinFormat shim until R8-S2b1 (fail-before: no body; the write calls the shim directly).
+    [Fact]
+    public void AWrappingBodyForwardsItsCallersLocationToItsInteger()
+    {
+        var source = "func wlDirect(writer: uniq/Utf8Writer, v: Wrapping<u8>) -> Result<(), BufferFull> => writer.write(v)\n";
+        var c = Analyze(source, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var body = Assert.Single(FunctionsOf(ir, c, "format"));
+        var shim = Assert.Single(ShimsOf(ir, text));
+        var writes = FunctionsOf(ir, c, "write").ToArray();
+        var outer = Assert.Single(writes, x => CallsOf(x).Any(y => y.Callee == body));
+        var inner = Assert.Single(writes, x => CallsOf(x).Any(y => y.Callee == shim));
+        Assert.Equal(outer.Parameters.TakeLast(2), Assert.Single(CallsOf(outer), x => x.Callee == body).Operands.TakeLast(2));
+        Assert.Equal(body.Parameters.TakeLast(2), Assert.Single(CallsOf(body), x => x.Callee == inner).Operands.TakeLast(2));
+        Assert.Equal(inner.Parameters.TakeLast(2), Assert.Single(CallsOf(inner), x => x.Callee == shim).Operands.TakeLast(2));
+        Assert.Contains(", i32 2, ptr %", Assert.Single(CallsOf(shim)).Shape, StringComparison.Ordinal); // u8's kind.
     }
 
     // SPEC 22.10.1, 22.9.2, 7.7.4 (R8-W1b-4, W1c): a user formatter runs through the write body and the conversion bodies, a direct write, a
@@ -557,7 +583,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
-    // char, bool, Unit and string; -1 exactly for a Type without built-in formatting.
+    // char, bool, Unit and string; -1 exactly for a Type FormattingTypes.IsBuiltin does not answer, the Types whose Utf8Format conformance the
+    // compiler states (a declared one, as the view's since R8-S2d1, has no kind).
     [Fact]
     public void FormatKindsAreTheRuntimesNumbering()
     {

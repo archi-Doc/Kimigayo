@@ -350,7 +350,6 @@ entry:
     i32 9, label %integer9
     i32 10, label %integer10
     i32 16, label %bytes
-    i32 17, label %bytes
   ]
 integer1:
   %n1 = load i8, ptr %value, align 1
