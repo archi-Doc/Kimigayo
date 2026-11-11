@@ -636,6 +636,74 @@ public sealed partial class MirBorrowsTest
                     usep(slot)
                 """));
 
+    // SPEC 15.6 Holders, 15.6.4, 5.2.1 (PLAN G582): a keeper held by value (no dereference: a Field or a Tuple element of the argument)
+    // is that argument's own value, so a raw layer without an Origin that the call writes through it never keeps the keeper's Loan, and
+    // `usep(slot)` is valid (keeperOk, keeperTupOk, as uBad's `usep(slot)`). That exclusion is 15.6.4's raw-layer sentence only: safe
+    // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
+    // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
+    // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
+    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
+    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    [Fact]
+    public void AByValueKeeperIsItsArgumentsOwnValue()
+        => Assert.Equal(
+            [
+                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
+                "keeperTupResultBad: usep(slot)",
+            ],
+            Problems("""
+                func usep<T>(p: raw/T) => ()
+                struct K {s}
+                    public var r: uniq/(raw/u8) during s
+                    public init(r: uniq/(raw/u8) during s) => self.r = r
+                func f(w: K during a) => ()
+                func fTup(w: (uniq/(raw/u8) during a, i32)) => ()
+                func fBorrowed(w: uniq/(K during a)) => ()
+                func fChain(w: (uniq/(K during a) during b, i32)) => ()
+                func fOther(w: K during a, t: uniq/(raw/u8)) => ()
+                func fResult(w: K during a) -> raw/u8
+                    return null
+                func fTupResult(w: (uniq/(raw/u8) during a, i32)) -> raw/u8
+                    return null
+                func keeperOk()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    f(w@move)
+                    usep(slot)
+                func keeperTupOk()
+                    var slot: raw/u8 = null
+                    fTup((slot@uniq, 1))
+                    usep(slot)
+                func keeperBorrowedBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fBorrowed(w@uniq)
+                    usep(slot)
+                func keeperChainBad()
+                    var slot: raw/u8 = null
+                    var kk = K.init(r: slot@uniq)
+                    fChain((kk@uniq, 1))
+                    usep(slot)
+                func keeperOtherBad()
+                    var other: raw/u8 = null
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fOther(w@move, other@uniq)
+                    slot = null
+                    usep(other)
+                func keeperResultBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    let x = fResult(w@move)
+                    usep(slot)
+                    usep(x)
+                func keeperTupResultBad()
+                    var slot: raw/u8 = null
+                    let x = fTupResult((slot@uniq, 1))
+                    usep(slot)
+                    usep(x)
+                """));
+
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-52, BU-40): `append` and `insertOrReplace` write only their result and their receiver's element
     // storage, so the raw layers an added value holds by value (an enum's payload, a struct's Field, an Option's Type argument) are no
     // storage they write, and `slot`, which the added value addresses, keeps nothing of the call: appEnumOk, dictEnumOk, appStructOk and
