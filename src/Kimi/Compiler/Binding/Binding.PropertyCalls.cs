@@ -102,7 +102,7 @@ public sealed partial class Binding
         var owner = node.Left.BoundType!;
         var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
-        if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
+        if (!this.AdaptInput(node.Left, FixedPattern.Open(type), owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
             this.FailWrite(node, node);
             return null;
@@ -213,7 +213,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                if (!this.AdaptInput(receiver, required, actual, scope, selection.Path, declaringType, out var adapted, out var quality, out var kind, receiver: true))
+                if (!this.AdaptInput(receiver, FixedPattern.Open(required), actual, scope, selection.Path, declaringType, out var adapted, out var quality, out var kind, receiver: true))
                 {
                     if (!this.ReceiverRestsOnAccessorShape(node, accessor, receiver, actual, declaringType, null, scope, false))
                     {

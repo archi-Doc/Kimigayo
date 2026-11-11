@@ -97,8 +97,8 @@ public sealed partial class Binding
     // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
     // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (each failing operand of a meet its own
     // record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
-    // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use and a failed enclosing declaration's cleared
-    // clauses (RejectedRelations). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
+    // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use, a failed clause's declaration's included (its
+    // bound clauses; H11b-0 B1). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
     // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
     // leaves such a relation to this judge as a row. A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract
     // the view throws at (DECISIONS BU-102).
@@ -106,8 +106,6 @@ public sealed partial class Binding
     {
         this.callRelationScratch.Clear();
         this.CollectDeclarationRows();
-        var saved = this.readingFailedContracts;
-        this.readingFailedContracts = this.originPremiseDepth;
         var frame = this.EnterBody(ExecutableBody.Declarations);
         try
         {
@@ -122,7 +120,6 @@ public sealed partial class Binding
         finally
         {
             this.formingBody = frame;
-            this.readingFailedContracts = saved;
         }
 
         foreach (var row in this.unboundRows)

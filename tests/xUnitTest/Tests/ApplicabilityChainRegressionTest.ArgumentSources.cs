@@ -30,6 +30,16 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string NestedTwins = "func fv(p: (ref/(i32, i32) during a, i32)) -> i32 => p.1\nfunc fw(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => p.1\nfunc fw2(p: (ref/(ref/i32 during a, i32) during a, i32), w: i32) -> i32 => p.1\nstruct S2\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: ((i32, i32), i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nstruct P3\n    public var k: i32\n    public init(p: ((i32, i32), i32)) => self.k = 0\n    public init(p: (ref/(ref/i32 during a, i32) during a, i32)) => self.k = 1\nfunc fgy<T>(p: (ref/(T, i32) during a, i32)) -> i32 => 0\nfunc fgy(p: ((i32, i32), i32)) -> bool => true\nfunc fa4(x: Array<ref/[2 of ref/i32 during a] during a>) -> i32 => 0\nfunc fa4(x: Array<[2 of i32]>) -> bool => true\nfunc fgx<T>(p: (ref/T during a, i32)) -> i32 => 0\nfunc fgx(p: ((i32, i32), i32)) -> bool => true\nfunc fa3(x: Array<ref/[2 of i32] during a>) -> i32 => 0\nfunc fa3(x: Array<[2 of i32]>) -> bool => true\nfunc fl3(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fl3(p: ([2 of i32], i32)) -> bool => true\nfunc fgu<T>(p: (uniq/T during a, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
 
+    private const string FixedSlots = "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\nstruct Tool\n    public var id: i32\n    public init(id: i32) => self.id = id\n    public func pick<U>(self: ref/Self, v: U) -> U => v@move\nfunc identity<U>(value: U) -> U => value@move\nfunc hg<U>(v: U) -> U\n    U is PrimitiveInteger\n    return v\nfunc same<U>(a: U, b: U) -> U => a@move\nfunc two<A, B>(a: A, b: B) -> A => a@move\nfunc look<U>(v: ref/U) -> () => ()\n";
+
+    private const string FixedSlotForms = FixedSlots + "struct Pair<A>\n    public var a: A\n    public init(a: A) => self.a = a@move\n    public func with<B>(self: ref/Self, x: A, y: B) -> B => y@move\nfunc keep<s/T>(x: s/T) -> () => ()\nfunc lk<length N>(v: ref/[N of i32]) -> i32 => 0\nfunc ln<length N, T>(v: ref/[N of T], w: T) -> T => w@move\nfunc app<U>(v: U, f: (U) -> U) -> U => v@move\nfunc dflt<U>(v: U, w: i32 = 0) -> U => v@move\n";
+
+    private const string FixedViews = "struct View<T> {source}\n    public let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n";
+
+    private const string FixedCases = "enum R<T> {src}\n    A(ref/T during src)\n    B((T, ref/i32 during src))\n    N\n";
+
+    private const string FixedItems = "func zero() -> u32 => 0\nfunc one() -> u32 => 1\nfunc inc(value: u32) -> u32 => value + 1\nunsafe func raw() -> u32 => 0\nfunc keep<T>(value: T) -> T => value@move\nfunc both<T>(a: T, b: T) -> T => a@move\nfunc pair<T, U>(first: T, second: U) -> T => first@move\nfunc look<T>(value: ref/T) -> () => ()\nstruct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
+
     private const string FunctionContracts = "func kg(c: bool, y: i32, s: ref/i32 during j, t: ref/i32 during k, fa: (ref/i32 during j) -> ref/i32 during j, fb: (ref/i32 during k) -> ref/i32 during k) -> i32\n";
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
@@ -130,7 +140,7 @@ public partial class ApplicabilityChainRegressionTest
     // position value-read. A source conflict only makes the argument wait for the selected candidate (SPEC 10.5.1).
     [InlineData("guard", "e10", Sources + SourcesBody + "    r = g<Array<i32>>([u@ref])\n    return r\n", "")]
     [InlineData("I2", "e11", Sources + SourcesBody + "    r = g<Array<i32>>(if c => [y] else => [u@ref])\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "e12", Sources + SourcesBody + "    r = ga<i32>([u@ref])\n    return r\n", "", Explicit = true)]
+    [InlineData("guard", "e12", Sources + SourcesBody + "    r = ga<i32>([u@ref])\n    return r\n", "")]
     [InlineData("I2", "e13", Sources + SourcesBody + "    r = ga<i32>(if c => [u@ref] else => [y])\n    return r\n", "", Explicit = true)]
     [InlineData("guard", "e14", Sources + SourcesBody + "    r = fai([u@ref])\n    return r\n", "")]
     [InlineData("I2", "e15", Sources + SourcesBody + "    r = fai(if c => [u@ref] else => [y])\n    return r\n", "", Explicit = true)]
@@ -244,6 +254,88 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("I2", "x13r", "func k(c: bool, w: ref/i32) -> i32\n    let j = if c => Option.None else => Option.Some(w)\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "x13n", "func k(c: bool) -> i32\n    let j = if c => Option.None else => Option.None\n    return 0\n", "*: let j = if c => Option.None else => Option.None | ...")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.2.2 step 1, 10.2, 8.1.3 (PLAN G719): explicit Type arguments bind first and supply every slot, so each argument fits its fixed
+    // parameter Type by the common adaptation: a value read at a read Type (fr1-fr4; fr5 through a caller's proven parameter), a new shared
+    // borrow or one shared reference at a fixed `ref/U` (fb1-fb3), each argument alone (fs1, fs2), at a method (fm1), a join's sources and a
+    // call's result (fj1, fc1). The n rows are their invalid twins: no conversion, no read of a Type that is no read Type and no implicit
+    // exclusive borrow. A pair layer is read once G703 lands (fp1, fp2); a pair that does not qualify is never followed (fp1n). The same
+    // holds beside the declaring Type's slot, at a `uniq` receiver, a pair slot, length slots, an anonymous function, a default, named
+    // arguments, a Never source, a Tuple and an exact argument beside a borrow (fm2-ft1). A fixed slot can make a further candidate
+    // applicable, and SPEC 10.4 ranks it (fo1-fo3): it is selected (fo1), opposing advantages leave none (fo1n), and the selected
+    // candidate's result is the call's (fo2n).
+    // The same entry serves a construction's Type (fv1: `ConstructorType` forms `source` from the adapted argument) and a Case
+    // construction's payload whose Type holds the enum's own Origin (fc1, fc2), and a written Function Type takes an Item's or
+    // a group member's call signature as its evidence, erased at the fit (fe1-fe5; PLAN G731 c01). An unsafe function's Item is no
+    // value (fe3n), nor an import's (fe4n; SPEC 22.6, DECISIONS BU-158).
+    [Theory]
+    [InlineData("guard", "fr1", FixedSlots + "func k(n: ref/i32) -> i32 => identity<i32>(n)\n", "")]
+    [InlineData("guard", "fr2", FixedSlots + "func k(n: ref/i32) -> i32\n    let a = identity<i32>(n)\n    return a\n", "")]
+    [InlineData("guard", "fr3", FixedSlots + "func k(u: uniq/i32) -> i32 => identity<i32>(u)\n", "")]
+    [InlineData("guard", "fr4", FixedSlots + "func k(n: ref/i32) -> i32\n    let rr = n@ref\n    return identity<i32>(rr)\n", "")]
+    [InlineData("guard", "fr5", FixedSlots + "func k<T>(n: ref/T) -> T\n    T is PrimitiveInteger\n    return identity<T>(n)\n", "")]
+    [InlineData("guard", "fb1", FixedSlots + "func k(v: i32) -> i32\n    let r = identity<ref/i32>(v)\n    return r\n", "")]
+    [InlineData("guard", "fb2", FixedSlots + "func k(un: uniq/Node) -> i32\n    let r = identity<ref/Node>(un)\n    return r.weight\n", "")]
+    [InlineData("guard", "fb3", FixedSlots + "func k(n: ref/i32) -> ()\n    let rr = n@ref\n    look<i32>(rr)\n", "")]
+    [InlineData("guard", "fs1", FixedSlots + "func k(n: ref/i32, v: i32) -> i32 => same<i32>(v, n)\n", "")]
+    [InlineData("guard", "fs2", FixedSlots + "func k(n: ref/i32, m: ref/i64) -> i32 => two<i32, i64>(n, m)\n", "")]
+    [InlineData("guard", "fm1", FixedSlots + "func k(tool: ref/Tool, n: ref/i32) -> i32 => tool.pick<i32>(n)\n", "")]
+    [InlineData("guard", "fj1", FixedSlots + "func k(c: bool, n: ref/i32, m: ref/i32) -> i32 => identity<i32>(if c => n else => m)\n", "")]
+    [InlineData("guard", "fc1", FixedSlots + "func k(n: ref/i32) -> i32 => identity<i32>(identity(n))\n", "")]
+    [InlineData("guard", "fr1n", FixedSlots + "func k(n: ref/i32) -> i64 => identity<i64>(n)\n", "NoApplicableOverload_Kd: func k(n: ref/i32) -> i64 => identity<i64>(n)")]
+    [InlineData("guard", "fr5n", FixedSlots + "func k<T>(n: ref/T) -> T => identity<T>(n)\n", "NoApplicableOverload_Kd: func k<T>(n: ref/T) -> T => identity<T>(n)")]
+    [InlineData("guard", "fr6n", FixedSlots + "func k(node: ref/Node) -> i32\n    let c = identity<Node>(node)\n    return c.weight\n", "NoApplicableOverload_Kd: let c = identity<Node>(node) | ...")]
+    [InlineData("guard", "fb1n", FixedSlots + "func k() -> i32\n    var node = Node.init(1)\n    let r = identity<uniq/Node>(node)\n    return r.weight\n", "ExclusiveBorrowRequired_Kd: let r = identity<uniq/Node>(node) | ...")]
+    [InlineData("guard", "fb3n", FixedSlots + "func k(n: ref/i32) -> () => look<i64>(n)\n", "NoApplicableOverload_Kd: func k(n: ref/i32) -> () => look<i64>(n)")]
+    [InlineData("guard", "fs2n", FixedSlots + "func k(n: ref/i32, m: ref/i64) -> i64 => two<i64, i32>(n, m)\n", "NoApplicableOverload_Kd: func k(n: ref/i32, m: ref/i64) -> i64 => two<i64, i32>(n, m)")]
+    [InlineData("guard", "fm1n", FixedSlots + "func k(tool: ref/Tool, n: ref/i32) -> i64 => tool.pick<i64>(n)\n", "NoApplicableOverload_Kd: func k(tool: ref/Tool, n: ref/i32) -> i64 => tool.pick<i64>(n)")]
+    [InlineData("guard", "fo1", FixedSlots + "func f<U>(v: ref/U, w: ref/(ref/i64 during b)) -> i32 => 0\nfunc f<U>(v: ref/i32, w: ref/i64) -> (U, bool) => $abort(\"b\")\nfunc t(n: ref/i32, m: ref/i64) -> i32\n    let x = n@ref\n    let y = m@ref\n    let r = f<i32>(x, y)\n    return r\n", "")]
+    [InlineData("guard", "fo2", FixedSlots + "func f<U>(v: U, w: ref/(ref/i64 during b)) -> i32 => 0\nfunc f<U>(v: U, w: ref/i64) -> bool => true\nfunc t(n: ref/i32, m: ref/i64) -> i32\n    let y = m@ref\n    let r = f<i32>(n, y)\n    return r\n", "")]
+    [InlineData("guard", "fo3", FixedSlots + "func f<U>(v: ref/U) -> i32 => 0\nfunc f<U>(v: ref/(ref/U during c)) -> bool => true\nfunc t(n: ref/i32) -> bool\n    let x = n@ref\n    let r = f<i32>(x)\n    return r\n", "")]
+    [InlineData("guard", "fm2", FixedSlotForms + "func t(p: ref/Pair<i32>, n: ref/i32, m: ref/i64) -> i64 => p.with<i64>(n, m)\n", "")]
+    [InlineData("guard", "fm3", FixedSlotForms + "func t(tool: uniq/Tool, n: ref/i32) -> i32 => tool.pick<i32>(n)\n", "")]
+    [InlineData("guard", "fp3", FixedSlotForms + "func t(n: ref/i32) -> () => keep<i32>(n)\n", "")]
+    [InlineData("guard", "fl1", FixedSlotForms + "func t(a: ref/[2 of i32]) -> i32\n    let rr = a@ref\n    return lk<2>(rr)\n", "")]
+    [InlineData("guard", "fl2", FixedSlotForms + "func t(a: ref/[2 of i32], n: ref/i32) -> i32 => ln<2, i32>(a, n)\n", "")]
+    [InlineData("guard", "fa1", FixedSlotForms + "func t(n: ref/i32) -> i32 => app<i32>(n, func (x: i32) -> i32 => x)\n", "")]
+    [InlineData("guard", "fs3", FixedSlotForms + "func t(n: ref/i32, v: i32) -> i32\n    let r = same<ref/i32>(n, v)\n    return r\n", "")]
+    [InlineData("guard", "fs4", FixedSlotForms + "func t(n: ref/i32, v: i32) -> i32\n    let r = same<ref/i32>(v, n)\n    return r\n", "")]
+    [InlineData("guard", "fs5", FixedSlotForms + "func t(n: ref/i32, m: ref/i64) -> i32 => two<i32, i64>(b: m, a: n)\n", "")]
+    [InlineData("guard", "fj2", FixedSlotForms + "func t(c: bool, n: ref/i32) -> i32 => identity<i32>(if c => n else => (return 0))\n", "")]
+    [InlineData("guard", "fb4", FixedSlotForms + "func t(u: uniq/i32) -> ()\n    let ru = u@ref\n    look<i32>(ru)\n", "")]
+    [InlineData("guard", "fd1", FixedSlotForms + "func t(n: ref/i32) -> i32 => dflt<i32>(n)\n", "")]
+    [InlineData("guard", "ft1", FixedSlots + "func p2<T>(x: (T, T)) -> i32 => 0\nfunc t(n: ref/i32, m: ref/i32) -> i32 => p2<i32>((n, m))\n", "")]
+    [InlineData("guard", "fo1n", FixedSlots + "func f<U>(v: ref/U, w: ref/(ref/i64 during b)) -> i32 => 0\nfunc f<U>(v: ref/(ref/U during c), w: ref/i64) -> i32 => 1\nfunc t(n: ref/i32, m: ref/i64) -> i32\n    let x = n@ref\n    let y = m@ref\n    return f<i32>(x, y)\n", "AmbiguousBinding_Kd: return f<i32>(x, y)")]
+    [InlineData("guard", "fo2n", FixedSlots + "func f<U>(v: ref/U, w: ref/(ref/i64 during b)) -> i32 => 0\nfunc f<U>(v: ref/i32, w: ref/i64) -> (U, bool) => $abort(\"b\")\nfunc t(n: ref/i32, m: ref/i64) -> bool\n    let x = n@ref\n    let y = m@ref\n    let r = f<i32>(x, y)\n    return r.1\n", "TypeMismatch_Kd: return r.1")]
+    [InlineData("guard", "fm2n", FixedSlotForms + "func t(p: ref/Pair<i32>, n: ref/i32, m: ref/i64) -> i64 => p.with<i64>(m, n)\n", "NoApplicableOverload_Kd: func t(p: ref/Pair<i32>, n: ref/i32, m: ref/i64) -> i64 => p.with<i64>(m, n)")]
+    [InlineData("guard", "fp3n", FixedSlotForms + "func t(n: ref/i32) -> () => keep<i64>(n)\n", "NoApplicableOverload_Kd: func t(n: ref/i32) -> () => keep<i64>(n)")]
+    [InlineData("guard", "fl1n", FixedSlotForms + "func t(a: ref/[2 of i32]) -> i32\n    let rr = a@ref\n    return lk<3>(rr)\n", "NoApplicableOverload_Kd: return lk<3>(rr)")]
+    [InlineData("guard", "fl2n", FixedSlotForms + "func t(a: ref/[2 of i32], n: ref/i32) -> i64 => ln<2, i64>(a, n)\n", "NoApplicableOverload_Kd: func t(a: ref/[2 of i32], n: ref/i32) -> i64 => ln<2, i64>(a, n)")]
+    [InlineData("guard", "fa1n", FixedSlotForms + "func t(n: ref/i32) -> i64 => app<i64>(n, func (x: i64) -> i64 => x)\n", "NoApplicableOverload_Kd: func t(n: ref/i32) -> i64 => app<i64>(n, func (x: i64) -> i64 => x)")]
+    [InlineData("guard", "fx1n", FixedSlotForms + "func t(n: ref/i32) -> i32 => identity<i32, i32>(n)\n", "NoApplicableOverload_Kd: func t(n: ref/i32) -> i32 => identity<i32, i32>(n)")]
+    [InlineData("guard", "fx2n", FixedSlotForms + "func t(n: ref/i32) -> i64\n    let r: i64 = identity<i32>(n)\n    return r\n", "NoApplicableOverload_Kd: let r: i64 = identity<i32>(n)")]
+    [InlineData("guard", "fb5n", FixedSlotForms + "func t(n: ref/i32) -> i32\n    let r = identity<uniq/i32>(n)\n    return r\n", "NoApplicableOverload_Kd: let r = identity<uniq/i32>(n)")]
+    [InlineData("guard", "fb6n", FixedSlotForms + "func t() -> () => look<bool>(1)\n", "NoApplicableOverload_Kd: func t() -> () => look<bool>(1)")]
+    [InlineData("guard", "fv1", FixedViews + "func t(n: ref/i32) -> ref/i32\n    let rr = n@ref\n    let w = View<i32>.init(rr)\n    return w.data\n", "")]
+    [InlineData("guard", "fc1", FixedCases + "func t(n: ref/i32) -> i32\n    let rr = n@ref\n    let e = R<i32>.A(rr)\n    return 0\n", "")]
+    [InlineData("guard", "fc2", FixedCases + "func t(n: ref/i32, r: ref/i32) -> i32\n    let e = R<i32>.B((n, r))\n    return 0\n", "")]
+    [InlineData("guard", "fe1", FixedItems + "func t() -> u32\n    let f = keep<() -> u32>(zero)\n    return f()\n", "")]
+    [InlineData("guard", "fe2", FixedItems + "func t() -> u32\n    let b = Box<() -> u32>.init(zero)\n    return b.value()\n", "")]
+    [InlineData("guard", "fe3", FixedItems + "func t() -> u32\n    let f = both<() -> u32>(zero, one)\n    return f()\n", "")]
+    [InlineData("guard", "fe4", FixedItems + "func t() -> u32\n    let f = keep<(u32) -> u32>(inc)\n    return f(1)\n", "")]
+    [InlineData("guard", "fe5", FixedItems + "func t() -> u32\n    let f = pair<() -> u32, u32>(zero, 1@u32)\n    return f()\n", "")]
+    [InlineData("guard", "fv1n", FixedViews + "func t(n: ref/i32) -> i32\n    let rr = n@ref\n    let w = View<i64>.init(rr)\n    return 0\n", "NoApplicableOverload_Kd: let w = View<i64>.init(rr)")]
+    [InlineData("guard", "fc1n", FixedCases + "func t(n: ref/i32) -> i32\n    let rr = n@ref\n    let e = R<i64>.A(rr)\n    return 0\n", "TypeMismatch_Kd: let e = R<i64>.A(rr)")]
+    [InlineData("guard", "fc2n", FixedCases + "func t(n: ref/i32, r: ref/i32) -> i32\n    let e = R<i64>.B((n, r))\n    return 0\n", "TypeMismatch_Kd: let e = R<i64>.B((n, r))")]
+    [InlineData("guard", "fe1n", FixedItems + "func t() -> ()\n    let f = keep<() -> i32>(zero)\n", "NoApplicableOverload_Kd: let f = keep<() -> i32>(zero)")]
+    [InlineData("guard", "fe2n", FixedItems + "func t() -> ()\n    look<() -> u32>(zero)\n", "NoApplicableOverload_Kd: look<() -> u32>(zero)")]
+    [InlineData("guard", "fe3n", FixedItems + "func t() -> ()\n    let f = keep<() -> u32>(raw)\n", "*: let f = keep<() -> u32>(raw)")]
+    [InlineData("guard", "fe4n", FixedItems + "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public func value() -> u32\nfunc t() -> ()\n    let f = keep<() -> u32>(Native.value)\n", "*: let f = keep<() -> u32>(Native.value)")]
+    [InlineData("G703", "fp1", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return identity<i32>(x)\n", "", Explicit = true)]
+    [InlineData("G703", "fp2", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return hg<i32>(x)\n", "", Explicit = true)]
+    [InlineData("guard", "fp1n", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    return identity<i32>(x)\n", "NoApplicableOverload_Kd: return identity<i32>(x)")]
+    public void AnExplicitTypeArgumentFixesItsParameterType(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than

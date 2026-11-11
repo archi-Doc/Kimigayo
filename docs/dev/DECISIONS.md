@@ -762,6 +762,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
   - Amended by BU-129 (R7-E1d): CaseLimit takes the slot from a resting `InvalidOrigin` of the function's own clause.
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): BU-129's amendment above; no owner holds its clause's resting
+    `InvalidOrigin` any more.
 - **R4-M45** (2026-10-17, tooling session; plan §8 of the Complete Polonius A5 Plan, R4-M35; amends R4-M17's MIR side) The
   SPEC-example oracle, which gives R4-M17's tier 1 its expected codes as an always-on theory beside `RequestedCorpus`.
   `tests/diagnostics/spec-cases.json` gives SPEC examples the Error records the SPEC gives them: the code DIAGNOSTICS names, else the
@@ -9047,6 +9049,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by R5-M194 (H15, 2026-11-06; the owner, verbatim 「一括承認します。」): the copy's removal stage is R7 with PLAN G318
     (`[Transitional("R7")]`); "R6-check" in the staged move above reads R7, and H11's fit twins go with H11b to R7 (R5-M192's
     amendment).
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): the unavailable contract (`RejectedRelations`, the cleared relations, the
+    pending uses completed as dependents). `PendingFailure` keeps its one writer and its meaning.
 
 - **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
   them read it** (2026-10-30; PLAN G309, unit bu82) SPEC 3.8, R4's V16: a walk's work is linear in the distinct parts of an interned
@@ -9306,6 +9310,9 @@ resumed by R4-M86 (2026-10-20).
     x-upper-failed, x-eq-beside, m3 and meet-ret. Only incomplete compilations change.
   - Rejected: resting every slot of a local (the cause above); a failure lookup per binder (R4-M118).
 
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): no failed clause makes the whole declaration unavailable any more ("A
+    failed clause that names no bound Origin, and a contract's failed clause, make the whole declaration unavailable as before"); a
+    failed clause fails only itself, and this entry's named-slot rule holds for every owner.
 - **BU-69 A fixed-fixed fit record rests on a failed contract only when that contract could prove it** (2026-10-31; PLAN G306 (3), unit
   bu85 U2; R4 agreed to the partial supersession of R4-M133 on three conditions; supersedes in part BU-62's premise contract and
   R4-M133's clause "a failure no chain refutes in a failed Origin environment a dependent of it") SPEC 23.1.2: a failed fit is a
@@ -9339,6 +9346,8 @@ resumed by R4-M86 (2026-10-20).
     t2-cross.
   - Rejected: one walk over enclosing declarations only (a contract reaching the use through a Type's premises); a repair ranging over
     every Origin (an enclosing contract's clause cannot name a nested signature's own Origins).
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): the dependence query's reads of a failed contract's bound clauses
+    (`RejectedRelations`), since they are premises already. Its repairs stay.
 
 - **BU-71 Binding publishes each interned Type's height, `BoundType.Height`, and each substitution's, `Subst.Height`** (2026-10-31;
   PLAN G332, unit bu91; the owner approved G332 and this entry together, verbatim 「まとめて承認します」) SPEC-neutral: a measure of the Type
@@ -10686,6 +10695,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the row at contract matching (BU-120); a revisited conformance as evidence (8.3.3); judging a signature after the conformance inside matching (a second judge); removing the reads with nothing in their place (a Property would supply evidence after its declaration failed, nine `IsVerified` rows); splitting `ValidateAccessor` and keeping the four reads (+27/−27 lines, two reads of one fact); removing S3 here (BU-65's judge, 16 rows).
 - **BU-125 R7-E1 Problem records: two records over one fact vocabulary** (2026-11-07; plan RP3, RP19, §5.1 E1; the owner exception RQ6: one candidate, prototype-first). Binding records problems in `BindingReport`: `BindingProblem(Code, Requirement, SourceRef Subject, Condition)` per check key, its facts `ProblemFact` rows, the vocabulary moved from `MirFact` to Core; `MirProblem` stays. Reason: Binding's key is the check's and supports a retried attempt, MIR's merges views and numbers conditions at `Merged`, so one type needs a mode. A Type-valued fact's `Value` is an index in the report's kept Types, references only; a struct payload boxes per warm pass (measured). A side of a mismatch that is no Type is a closed `MismatchForm` row, an enumeration of Binding's that the vocabulary only names, as `MirStorageTable` is MIR's (an anonymous function with its parameter count, an integer literal, a floating-point literal, a Type proven Position or PositionRange), whose text the adapter owns (`Binding.DiagnosticTypes`), so no check writes text into a fact: `Keep` takes a `BoundType`, and a ratchet holds it (F's ruling on review 1, a new representation). The subject is a `SourceRef`: the recorder's state write is the numbering point; R7-N5 follows (`SourceRef`, or `SyntaxId` within one module's columns). `Record` adds a problem and sets state and slot only as a node's first failure (DIAGNOSTICS rule 4). `Actual`, `Expected`, `Span`, `ActualForm` and `ExpectedForm` are appended after `Cause`, Binding only, with no renumbering; a MIR record carrying one is `InternalInvariant_Kd` (C-103), and `ProblemFactKind` is not an ARCH-closed vocabulary (R4-M92's reading). One-way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one-way in control: until a family migrates, its sites read the slot to decide whether to record, which is the first-failure rule kept per site. `CodeOf(node, failure)` is the one table, out of `CountStates`. A failure leaves a node inside a pass through `ClearFailure`, or a snapshot that saves the chain (`PropertyTypeVisitor`); `SyntheticKoto.Resolve` and `Koto.ReplaceAt` stay on the pass reset, since no `Record` reaches them and an edit resets the pass, and `HirTables.Reset` of a try's arms comes before anything binds them (`SemanticsIndexed`). The site of a fact is a node the check read, numbered by `SourceRef.Of` on a rejected program only if no semantic write did; `MinimalEmissionTest.Analyze` asserts that none is. Rejected: a recorder private to Binding (a third record shape), one type with a phase payload, an interned Type id. Temporaries: below.
   - Amended by BU-129 (R7-E1d): the first failure, but a resting `InvalidOrigin` of the node's own clause yields.
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): BU-129's amendment above; no owner holds its clause's resting
+    `InvalidOrigin` any more.
 - **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record beyond the first stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published with the node's first record, as before (temporary until E5, when `Binding.Issues` is the problem list). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record beyond the first is one `OriginRecord` fact, an index in the report's kept records, numbered after the chain's conditions and published under the requirement of the node's first record: temporary until E4's relation fact, which takes both phases' records. A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family).
 - **BU-127 A local region at a fixed longer end is A5's** (2026-11-08; PLAN G572, U1 round 2 and U3's rows; Major; RP17 consent C-131; the owner's O-57 (a), verbatim 「両方とも(a)でお願いします。」, O-59 (a) 「すべて (a)」, O-61 (a) 「O-61 a」, O-63 (a) 「(a) もう 1 回設計」 and O-77 (a) 「a」) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5.
   - Cause. A local region is an inference variable, solved over all its bounds (15.3.6). In a Closure's body an enclosing region is fixed
@@ -10801,6 +10812,9 @@ resumed by R4-M86 (2026-10-20).
   Rejected: a new slot value (every reader answers anew, review 1's B2); a resting problem with a `RestsOn` fact (stays resting after a
   same-value failure, review 2's R3); rule 4 as written, the later failure as a further problem (unmigrated families record no problem and
   their facts explain the slot's failure only).
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): the yield. No owner holds its clause's resting `InvalidOrigin` any more,
+    so `FailedOriginClause` and the cases of it in `Fail`, `SlotTaken` (now inlined as "the slot holds a failure") and `IsDerived`
+    go. The slot's first-failure rule stays.
 - **BU-130 One width of `isize` and `usize`, the profile's, and one literal-fit rule** (2026-11-08; board C-134, the owner's O-79 (a), verbatim 「O-79 aでお願いいたす」;
   design `F\Lit\design.md` revision 1, design review 2 ACCEPT). Validity read a target fact. `Compilation.PointerWidth` was
   `IrTarget`'s width: 0 without a target, 32 or 16 on i686 or AVR. Each reader decided what 0 meant (a literal length failed, an
@@ -11455,7 +11469,11 @@ resumed by R4-M86 (2026-10-20).
     the type).
   - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
     inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
-    inference (`InferLocalOrigins`), stated from the code and not probed.
+    inference (`InferLocalOrigins`), stated from the code and not probed. Closed by BU-159 (2026-11-11): no contract is unavailable
+    any more, so nothing rests on an unavailable contract.
+  - Amended by BU-159 (2026-11-11, H11b-0 B1): the read members lose `Unavailable` and `RejectedRelations`, and the accessor's
+    contract states BU-159's rule. ArchitectureRulesTest's `Forming` row: `Binding.OriginDeclarations.Failures.cs` 11 → 5,
+    `Binding.OriginDeclarations.cs` 30 → 29.
 - **BU-156 A late join source that differs from the Target Result Type in Origins alone is the located `Unsupported_Kd` until G443's
   unit (PLAN G586, G443)** (2026-11-11; Front, Binding; Major, an interim with its removal condition) SPEC 14.9.2, 15.6.1.
   - Rule. A source that waited and takes the Target Result Type late (SPEC 14.9.2 step 3, `BindWaitedSources`) and whose Type there
@@ -11760,6 +11778,65 @@ resumed by R4-M86 (2026-10-20).
     - A family row in `TyCtxt.Layer`: a family has no single target.
     - A premise reading with a Binding or MIR interim (design rounds 1 and 2): each interim approximated "a layer only the premises
       make" by a Type comparison, because no component publishes that fact.
+- **BU-159 A failed Origin clause fails itself, not its owner or the declaration's other clauses** (2026-11-11; Front, Binding;
+  Major; H11b-0 B1; F's ruling 3; design review 1 ACCEPT; the Middle's C-228 and the Back's C-229) SPEC 15.3.3, 15.3.4, 23.1.2.
+  - **Rule.** A clause that does not bind (a guessed operator, an unavailable operand) fails itself. It supplies no equality,
+    outlives edge, elision evidence, premise or obligation, and its owner's state and slot are untouched. The declaration completes
+    without it: its bound clauses are its relations, its equalities substitute, and its pending slots complete. The exception is a
+    slot that the clause's bound Origins name (BU-68's rule, now for every owner): it stays Unbound and rests on the clause
+    (`PendingCause`). The dependence query reads a failed clause only as a repair (BU-69).
+  - **Supersedes in part:**
+    - BU-62: the unavailable contract (`RejectedRelations`, the cleared relations, the pending uses completed as dependents).
+      `PendingFailure` keeps its one writer and its meaning.
+    - BU-69: the dependence query's reads of a failed contract's bound clauses, since they are premises already. Its repairs stay.
+    - BU-129: the yield. No owner holds its clause's resting `InvalidOrigin` any more, so `FailedOriginClause` and the cases of it
+      in `Fail`, `SlotTaken` (now inlined as "the slot holds a failure") and `IsDerived` go. The slot's first-failure rule stays.
+    - BU-125 and R4-M18, as BU-129 amended them.
+  - **Amends BU-154.** The read members lose `Unavailable` and `RejectedRelations`. The accessor's contract states the rule above.
+    ArchitectureRulesTest's `Forming` row: `Binding.OriginDeclarations.Failures.cs` 11 → 5, `Binding.OriginDeclarations.cs` 30 → 29.
+  - **Reason.** SPEC's clauses are conjunctive, and 23.1.2 lets only a dependent failure go unreported. Failing the owner and its
+    contract made 40+ readers treat independent checks as dependents: 18 direct state reads, 24 fact readers, `FailConstraint` and
+    the skipping checks. Three censuses of the unavailable contract's readers also missed readers.
+  - **Consequences for other phases.** A definition whose only failure is its own clause is Resolved: HIR publishes its body, MIR
+    builds it, and A5 judges it over the bound clauses (C-228). A verdict that only the failed clause would prove is a counted
+    dependent until H11b-0 U3. Code generation never runs on these programs (C-229). A slot named only by the failed clause (a
+    result, parameter, Field or payload slot) stays Unbound and reaches its uses: A5 treats it as Dependent, and Binding's fit
+    reports `UnprovenOriginRelation_Kd` at uses outside the failed declaration, a counted dependent on a rejected program (Q13; PLAN
+    G739).
+  - **Rejected:**
+    - Option A, two facts over a hand census (review 4's REJECT).
+    - An unavailable contract without failing the owner. Every empty-`Relations` reader would still need the dependence channel, so
+      the cause stays.
+    - A new slot value (BU-129's review 1).
+
+- **BU-163 The slot bindings fixed before any evidence are one fact, and the adaptation entry takes only a pattern under them (PLAN
+  G719, G731 c01, G356 gt1/gt2)** (2026-11-11; Front, Binding; Major; design reviews 1-3: B1, B2-1, B2-2, ACCEPT; the owner's O-158
+  (a)) SPEC 6.5.2, 8.1.3, 10.2.2, 10.8, 10.8.1.
+  - Decision: `FixedSlots` (Binding.CallSlots.cs) is a solution's slot bindings fixed before any evidence (SPEC 10.8, 10.8.1, 6.5.2
+    step 2): its owner, each slot's binding, the lengths and whether every own slot is fixed. An open slot has one encoding, its own
+    parameter, and only an inferred construction leaves one beside fixed slots; when no slot is fixed there are no Types. A Case
+    construction fixes all or none (its qualifier and its expected Type each supply every slot, SPEC 8.1.3, 6.5.2 item 2).
+    Producers: `FixCallSlots` (a candidate: a function's explicit Type arguments and lengths; a constructor's declaring Type),
+    `ConstructionSlots` (a construction Type, shared with `ConstructorType` before the candidate's frame exists) and the Case
+    construction's seeding. `SlotSolution.Fixed` holds a solution's.
+  - The adaptation entry `AdaptInput` takes a `FixedPattern`, which only `FixedPattern.Of(pattern, FixedSlots)` (the pattern under
+    the fixed bindings; an open slot stays a slot) or `FixedPattern.Open(pattern)` (a reader of a completed or slot-free Type,
+    stated at the call) makes, so the build names every reader: 16 call sites, 4 through `Of` (`InferAdapted`, also for a Case
+    construction's unsettled payload; `ConstructorType`; `CheckCallShapeContracts`' collection; `SolveValueCallOrigins`, whose
+    value-call solution fixes none) and 12 through `Open`. A Function Type at the fixed pattern also gives the argument's call
+    signature (`SignatureAtFunction`, also in a join's typed position), so a Function Item at a written Function Type is evidence by
+    its signature and erased at the fit. `commonOrigins` is off exactly when every own slot is fixed; a Case construction's
+    `settled` reads the same `FixedSlots`.
+  - Permanent: these are SPEC 10.8's fixed bindings. R7-P3's `FnSig` normalization may carry them; that is not a removal condition.
+    Lifetime: the call (`FixedSlots` is a `ref struct` over the call's pooled explicit Types, the declaring Type's components or the
+    Case construction's scratch). Cost: one memoized `SubstituteType` query per reader where a slot is fixed; warm 0 B (RP8 measures
+    it).
+  - Replaced: `InitializeCallSlots`, both explicit-list loops (TryCandidateCore, CheckCallShapeContracts),
+    `SlotSolution.InfersConstruction`, TryCandidate's `explicitLengths` parameter, the constructor and explicit arms of
+    `InferAdapted`'s adaptation pattern, and the Case construction's reading of its frame for `settled`.
+  - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
+    reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
+    evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
