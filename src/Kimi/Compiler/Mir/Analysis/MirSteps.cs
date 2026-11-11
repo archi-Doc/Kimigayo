@@ -75,9 +75,9 @@ internal sealed class MirSteps(MirCases cases)
             var @class = row.Kind switch
             {
                 MirProjectionKind.Deref => row.Prefix == 0 && Prepared(body, place.Root)
-                    ? MirStepClass.Inline : Deref(cases.Type(body.TypeOf(prefix)!).Semantics),
+                    ? MirStepClass.Inline : Deref(cases.TypeOf(prefix).Semantics),
                 MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer.Semantics) : (MirStepClass?)null,
-                MirProjectionKind.Index => MirTypes.View(cases.Type(body.TypeOf(prefix)!)) is { } view ? Deref(view) : MirStepClass.Index,
+                MirProjectionKind.Index => MirTypes.View(cases.TypeOf(prefix)) is { } view ? Deref(view) : MirStepClass.Index,
                 _ => MirStepClass.Inline,
             };
 
@@ -100,10 +100,10 @@ internal sealed class MirSteps(MirCases cases)
 
     // A sequence Place's element step after its count steps, as an Index of it walks above: a view's Deref, else an Index step; a Storage's
     // walk (O-92 (a)). Returns the new count.
-    internal int Element(MirBody body, MirPlace place, int count, ref MirStep[] into)
+    internal int Element(MirPlace place, int count, ref MirStep[] into)
     {
         MirDataflow.Grow(ref into, count + 1);
-        var @class = MirTypes.View(cases.Type(body.TypeOf(place)!)) is { } view ? Deref(view) : MirStepClass.Index;
+        var @class = MirTypes.View(cases.TypeOf(place)) is { } view ? Deref(view) : MirStepClass.Index;
         into[count] = new(MirProjectionKind.Index, @class, -1, place.Projection);
         return count + 1;
     }
