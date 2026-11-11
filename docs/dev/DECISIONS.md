@@ -9310,6 +9310,9 @@ resumed by R4-M86 (2026-10-20).
     x-upper-failed, x-eq-beside, m3 and meet-ret. Only incomplete compilations change.
   - Rejected: resting every slot of a local (the cause above); a failure lookup per binder (R4-M118).
 
+  - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): no failed clause makes the whole declaration unavailable any more ("A
+    failed clause that names no bound Origin, and a contract's failed clause, make the whole declaration unavailable as before"); a
+    failed clause fails only itself, and this entry's named-slot rule holds for every owner.
 - **BU-69 A fixed-fixed fit record rests on a failed contract only when that contract could prove it** (2026-10-31; PLAN G306 (3), unit
   bu85 U2; R4 agreed to the partial supersession of R4-M133 on three conditions; supersedes in part BU-62's premise contract and
   R4-M133's clause "a failure no chain refutes in a failed Origin environment a dependent of it") SPEC 23.1.2: a failed fit is a
@@ -11466,7 +11469,8 @@ resumed by R4-M86 (2026-10-20).
     the type).
   - **Open (H11b-0 B1's, not open issues):** what the readers of `Resolves`/`Substitution`, the ungated `Relations` readers and the
     inherited copy rest on when the contract is unavailable; an unavailable local still gets substitutions from its initializer's
-    inference (`InferLocalOrigins`), stated from the code and not probed.
+    inference (`InferLocalOrigins`), stated from the code and not probed. Closed by BU-159 (2026-11-11): no contract is unavailable
+    any more, so nothing rests on an unavailable contract.
   - Amended by BU-159 (2026-11-11, H11b-0 B1): the read members lose `Unavailable` and `RejectedRelations`, and the accessor's
     contract states BU-159's rule. ArchitectureRulesTest's `Forming` row: `Binding.OriginDeclarations.Failures.cs` 11 → 5,
     `Binding.OriginDeclarations.cs` 30 → 29.
