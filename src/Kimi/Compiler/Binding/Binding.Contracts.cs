@@ -178,10 +178,6 @@ public sealed partial class Binding
 
     private void PrepareContracts()
     {
-        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
-        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
-        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
-        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)

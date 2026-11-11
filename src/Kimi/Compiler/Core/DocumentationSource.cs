@@ -133,7 +133,9 @@ public sealed partial class DocumentationSource
     }
 
     internal void SetLocation(string logicalName, string? modId = null, int additionOrder = 0)
-        => this.Collect((logicalName, modId, additionOrder), static (source, value) => source.SetLocationCore(value.logicalName, value.modId, value.additionOrder));
+        => this.Collect(
+            (logicalName, modId, additionOrder),
+            static (source, value) => source.SetLocationCore(value.logicalName, value.modId, value.additionOrder));
 
     internal void Merge(DocumentationSource nested)
         => this.Collect(nested, static (source, value) => source.MergeCore(value));
@@ -272,25 +274,12 @@ public sealed partial class DocumentationSource
             }
         }
 
-        // Function parser spans start at the name. Recover the written header prefix.
+        // No caller passes the written header start (a function's span starts at its name, another declaration's at its
+        // introducer): recover the header words written before it.
         var prefix = tokenIndex - 1;
-        while (prefix >= 0)
+        while (prefix >= 0 && this.IsHeaderPrefix(tokens[prefix], declaration))
         {
-            var token = tokens[prefix];
-            var isPrefix = token.Kind is TokenKind.Func or TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open;
-            if (token.Kind == TokenKind.Identifier)
-            {
-                var spelling = this.Source.AsSpan().Slice(token.Span.Start, token.Length);
-                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize") ||
-                    (declaration is FunctionKoto && (spelling.SequenceEqual("virtual") || spelling.SequenceEqual("override")));
-            }
-
-            if (!isPrefix)
-            {
-                break;
-            }
-
-            headerStart = token.Span.Start;
+            headerStart = tokens[prefix].Span.Start;
             prefix--;
         }
 
@@ -331,7 +320,8 @@ public sealed partial class DocumentationSource
             var inAttribute = false;
             for (var attribute = attributes; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (ReferenceEquals(attribute.CodeContext.SourceDocument, this.Source) && attribute.Span.Start <= token.Span.Start && attribute.Span.End >= token.Span.End)
+                if (ReferenceEquals(attribute.CodeContext.SourceDocument, this.Source) &&
+                    attribute.Span.Start <= token.Span.Start && attribute.Span.End >= token.Span.End)
                 {
                     inAttribute = true;
                     break;
@@ -346,6 +336,23 @@ public sealed partial class DocumentationSource
 
         candidate.Declaration = declaration;
         candidate.DeclarationSpan = SourceSpan.FromBounds(headerStart, Math.Max(header.End, headerStart));
+    }
+
+    // The words of a declaration header (SPEC F.3.3) written before the span the parser documents: the access words; a modifier,
+    // the keyword `open` or by spelling `unsafe`, and `virtual` or `override` before a function; and the introducer, since a
+    // function is documented from its name: `func`, and by spelling a specialization's `specialize`.
+    private bool IsHeaderPrefix(Token token, Koto declaration)
+    {
+        var word = token.Kind == TokenKind.Identifier ? this.Source.AsSpan().Slice(token.Span.Start, token.Length) : default;
+        return token.Kind switch
+        {
+            TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal => true,
+            TokenKind.Open => true,
+            TokenKind.Identifier when word is "unsafe" || (declaration is FunctionKoto && word is "virtual" or "override") => true,
+            TokenKind.Func => true,
+            TokenKind.Identifier => word is "specialize",
+            _ => false,
+        };
     }
 
     /// <summary>Gets optional documentation diagnostics, independently of language diagnostics.</summary>
@@ -506,7 +513,8 @@ public sealed class DocumentationComment
 
     // Walks the comment lines. With null outputs it only measures; otherwise it
     // fills the normalized text and both offset tables in the same order.
-    private static (int Lines, int Length) ScanLines(SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
+    private static (int Lines, int Length) ScanLines(
+        SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
     {
         var source = document.SourceText;
         var position = range.Start;
