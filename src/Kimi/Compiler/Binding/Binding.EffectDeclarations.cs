@@ -140,7 +140,7 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, conforming) && fact.Contract?.Contract is { } shape &&
-                    this.AvailableConstraintFact(environment, fact))
+                    this.AvailableConstraintFact(environment, fact, out _))
                 {
                     Add(shape, current.Owner, fact);
                 }
