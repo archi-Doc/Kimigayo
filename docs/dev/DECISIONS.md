@@ -11808,6 +11808,35 @@ resumed by R4-M86 (2026-10-20).
     - An unavailable contract without failing the owner. Every empty-`Relations` reader would still need the dependence channel, so
       the cause stays.
     - A new slot value (BU-129's review 1).
+
+- **BU-163 The slot bindings fixed before any evidence are one fact, and the adaptation entry takes only a pattern under them (PLAN
+  G719, G731 c01, G356 gt1/gt2)** (2026-11-11; Front, Binding; Major; design reviews 1-3: B1, B2-1, B2-2, ACCEPT; the owner's O-158
+  (a)) SPEC 6.5.2, 8.1.3, 10.2.2, 10.8, 10.8.1.
+  - Decision: `FixedSlots` (Binding.CallSlots.cs) is a solution's slot bindings fixed before any evidence (SPEC 10.8, 10.8.1, 6.5.2
+    step 2): its owner, each slot's binding, the lengths and whether every own slot is fixed. An open slot has one encoding, its own
+    parameter, and only an inferred construction leaves one beside fixed slots; when no slot is fixed there are no Types. A Case
+    construction fixes all or none (its qualifier and its expected Type each supply every slot, SPEC 8.1.3, 6.5.2 item 2).
+    Producers: `FixCallSlots` (a candidate: a function's explicit Type arguments and lengths; a constructor's declaring Type),
+    `ConstructionSlots` (a construction Type, shared with `ConstructorType` before the candidate's frame exists) and the Case
+    construction's seeding. `SlotSolution.Fixed` holds a solution's.
+  - The adaptation entry `AdaptInput` takes a `FixedPattern`, which only `FixedPattern.Of(pattern, FixedSlots)` (the pattern under
+    the fixed bindings; an open slot stays a slot) or `FixedPattern.Open(pattern)` (a reader of a completed or slot-free Type,
+    stated at the call) makes, so the build names every reader: 16 call sites, 4 through `Of` (`InferAdapted`, also for a Case
+    construction's unsettled payload; `ConstructorType`; `CheckCallShapeContracts`' collection; `SolveValueCallOrigins`, whose
+    value-call solution fixes none) and 12 through `Open`. A Function Type at the fixed pattern also gives the argument's call
+    signature (`SignatureAtFunction`, also in a join's typed position), so a Function Item at a written Function Type is evidence by
+    its signature and erased at the fit. `commonOrigins` is off exactly when every own slot is fixed; a Case construction's
+    `settled` reads the same `FixedSlots`.
+  - Permanent: these are SPEC 10.8's fixed bindings. R7-P3's `FnSig` normalization may carry them; that is not a removal condition.
+    Lifetime: the call (`FixedSlots` is a `ref struct` over the call's pooled explicit Types, the declaring Type's components or the
+    Case construction's scratch). Cost: one memoized `SubstituteType` query per reader where a slot is fixed; warm 0 B (RP8 measures
+    it).
+  - Replaced: `InitializeCallSlots`, both explicit-list loops (TryCandidateCore, CheckCallShapeContracts),
+    `SlotSolution.InfersConstruction`, TryCandidate's `explicitLengths` parameter, the constructor and explicit arms of
+    `InferAdapted`'s adaptation pattern, and the Case construction's reading of its frame for `settled`.
+  - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
+    reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
+    evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
