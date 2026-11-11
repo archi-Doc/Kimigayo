@@ -559,6 +559,49 @@ public class PairFollowTest
         Assert.Equal(code is { } expected ? [expected] : Array.Empty<DiagnosticCode>(), c.Binding.Issues.Select(x => x.Code));
     }
 
+    // SPEC 3.4.3, 8.15.2, 13.5.5 (PLAN G760): a pair layer whose admitted set lies in the object family is an object handle or borrow in
+    // every case, so it has its View Target's declarations, for a member and a receiver, with the weakest capability of its cases.
+    // Labels from SPEC: rows 1-11 are valid (a family local `p@s`, an application parameter, `s is objuniq` alone writing and calling an
+    // exclusive method, owning cases `obj or rc` reading, a writable `var` over `obj or objuniq` writing and calling an exclusive method);
+    // rows 12-19 are invalid: a write or an exclusive receiver through a shared case (objref, rc) or a `let` over an owning case, or a
+    // member Node lacks. Row 20 is invalid as its concrete twin: a setter needs an exclusive receiver (11.3.1). Row 21 calls each view's
+    // callable payload (7.3, 7.7.3), valid.
+    [Theory]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.n\n", "")]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y: s/Node = p@s\n    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is objuniq", "    y.n = 1\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.get()\n", "")]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.get()\n", "")]
+    [InlineData("y: s/Node", "s is objuniq", "    y.bump()\n", "")]
+    [InlineData("y: s/Node", "s is obj or rc", "    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is obj or rc", "    let v = y.get()\n", "")]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    y.n = 1\n", "")]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    y.bump()\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    var y = p@s\n    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is obj or rc", "    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is obj or rc", "    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    let y = a@move\n    y.n = 1\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    let y = a@move\n    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.q\n", nameof(DiagnosticCode.UnresolvedBinding_Kd))]
+    [InlineData("y: s/Gauge", "s is objref or objuniq", "    y.level = 3\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("h: s/((i32) -> i32)", "s is objref or objuniq", "    let v = h(1)\n", "")]
+    public void AnObjectPairLayerHasItsViewTargetsMembers(string parameter, string premise, string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func get(self: ref/Self) -> i32 => self.n\n" +
+            "    public func bump(self: uniq/Self) => self.n += 1\n    public func peek(self: objref/Self) -> i32 => self.n\n" +
+            "    public func claim(self: objuniq/Self) -> i32 => self.n\n" +
+            "struct Gauge\n    public var level: i32 = 0\n        get() -> i32\n            return storage\n        set(value: i32) -> ()\n" +
+            "            storage = value\n    public init() => ()\n" +
+            "func take(x: objref/Node) -> i32 => x.n\nfunc takeU(x: objuniq/Node) -> i32 => x.n\n" +
+            $"func f<s/T>(m: s/T, {parameter}) -> i32\n    {premise}\n" + body + "    return 0\npublic func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && code.Split(',').All(x => codes.Contains(x, StringComparison.Ordinal)), codes);
+    }
+
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
     [Fact]
     public void PairApplicationsAgreeOnSemantics()

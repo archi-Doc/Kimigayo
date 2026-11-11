@@ -57,6 +57,32 @@ public sealed partial class Binding
         => node.BoundType is { } type && this.ConstraintScope(node) is var scope && this.FollowablePair(type, scope, out var target) != SemanticsMask.None
             ? this.PairTerminal(target, scope) : null;
 
+    /// <summary>Gets the object Semantics a Type takes in every case and the View Target they share (SPEC 3.4.3, 8.1.1, 8.15.2): a
+    /// concrete object handle's or borrow's own, and a pair layer's admitted set where it lies in the object family, each case an object
+    /// form of its direct target; None for any other Type. Selection and receivers read an object layer by it alone.</summary>
+    /// <param name="type">A complete Type.</param>
+    /// <param name="scope">The scope whose premises give a pair layer's admitted set.</param>
+    /// <param name="view">The View Target.</param>
+    /// <returns>The object Semantics of the cases.</returns>
+    internal SemanticsMask ObjectCases(BoundType type, BindingScope scope, out BoundType view)
+    {
+        const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
+        if (type is { Kind: BoundTypeKind.Semantics, Components: [var target] } && IsObjectSemantics(type.Semantics))
+        {
+            view = target;
+            return type.Semantics.ToMask();
+        }
+
+        if (TryPairLayer(type, out var whole, out view) && this.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
+            (admitted & ~objectFamily) == 0)
+        {
+            return admitted;
+        }
+
+        view = null!;
+        return SemanticsMask.None;
+    }
+
     // SPEC 13.5.5: the admitted set of a pair layer that may be followed, or None.
     private SemanticsMask FollowablePair(BoundType type, BindingScope scope, out BoundType target)
     {
@@ -68,6 +94,12 @@ public sealed partial class Binding
         var admitted = this.AdmittedSemantics(whole, scope);
         return admitted != SemanticsMask.None && (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0 ? admitted : SemanticsMask.None;
     }
+
+    // SPEC 3.4.3: the Type a selection continues at below a safe reference layer (its referent) or an object layer in every case (its View
+    // Target, ObjectCases); null for any other Type (a pair layer admitting a value case is followed after its own lookup, FollowablePair).
+    private BoundType? ViewBelow(BoundType type, BindingScope scope)
+        => type is { Kind: BoundTypeKind.Semantics, Components: [var below] } && IsBorrow(type.Semantics) ? below
+            : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
     // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
     // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
