@@ -121,7 +121,7 @@ public sealed partial class Binding
 
                 if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
                 {
-                    environment.Invalidate();
+                    environment.Fail(scope.Owner);
                     this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
                 }
             }

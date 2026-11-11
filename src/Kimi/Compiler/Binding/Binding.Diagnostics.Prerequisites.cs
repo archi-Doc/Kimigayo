@@ -8,6 +8,10 @@ namespace Kimi.Compiler;
 // Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
+// A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
+// BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
+// RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
+// frame (BeginConsultation(element) around a pass element that publishes facts and records no proof, DropConsultation after it).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
 public sealed partial class Binding
 {
@@ -164,7 +168,7 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
-    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame): nothing becomes its prerequisite.
+    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
     private void DropConsultation((int Start, Koto? Node) parent)
     {
         this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
