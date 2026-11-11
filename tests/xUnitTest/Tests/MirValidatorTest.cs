@@ -90,6 +90,30 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(new[] { IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.TestRequireAbort }, Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x).Diverges));
     }
 
+    // SPEC 22.5.1, 22.5.2 (G730): an intrinsic's row states its lowering's effects (IntrinsicRows): Abort where it may Abort with a SPEC
+    // 22.5.2 code, an allocation's included (as the Array aggregate's, DECISIONS R5-M129), and Allocation where it allocates;
+    // TryAllocateBytes gives null instead (fail-before: WriteStdout, the Raw pair, the creations, Clone and FormatBuffer without Abort,
+    // TestTempDirectory without Allocation).
+    [Fact]
+    public void AnIntrinsicsRowStatesItsLoweringsEffects()
+    {
+        Assert.Equal(
+            new[]
+            {
+                IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.WriteStdout, IntrinsicId.MakeObj,
+                IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone, IntrinsicId.TestRequireAbort, IntrinsicId.StaticEnsure,
+                IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+            },
+            Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Abort) != 0));
+        Assert.Equal(
+            new[]
+            {
+                IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.TryAllocateBytes, IntrinsicId.MakeObj, IntrinsicId.MakeRc,
+                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory, IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+            },
+            Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Allocation) != 0));
+    }
+
     // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
     // row says the result retains is one the builder adds beyond them (RawSlice's backing).
     [Fact]
@@ -161,8 +185,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(["-1 Borrows Uniq", "StaticWrite 0", "5 Writes, Defines"], Uses(body, entry, 5));
         Assert.Equal(["Copy", "4 Reads", "IntToPointer -1", "6 Writes, Defines"], Uses(body, entry, 6));
         Assert.Equal(["Unknown 0", "3 Reads, Writes, Borrows Shared", "0 Writes, Defines"], Uses(body, entry, 7));
-        Assert.Equal(["Copy", "7 Reads, CaseDependent", "Const", "7 CaseDependent", "Allocation -1", "2 Writes, Defines"], Uses(body, entry, 8));
-        Assert.Equal(["Copy", "0 Reads", "Allocation -1", "0 Writes, Defines"], Uses(body, entry, 9));
+        Assert.Equal(["Copy", "7 Reads, CaseDependent", "Const", "7 CaseDependent", "Abort, Allocation -1", "2 Writes, Defines"], Uses(body, entry, 8));
+        Assert.Equal(["Copy", "0 Reads", "Abort, Allocation -1", "0 Writes, Defines"], Uses(body, entry, 9));
         Assert.Equal(["Const", "Abort -1"], Uses(body, abort, 0));
         Assert.Equal(["3 DropUse"], Uses(body, drop, 0));
         Assert.Equal(["0 Moves"], Uses(body, exit, 0));

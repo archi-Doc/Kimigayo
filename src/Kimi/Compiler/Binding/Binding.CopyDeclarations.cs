@@ -9,8 +9,9 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, CopyDeclaration> copyDeclarations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeclarationContainerKoto, List<CopyDeclaration>> copyByType = new(ReferenceEqualityComparer.Instance);
 
+    // A pending atom (Provisional: its name is missing) names a Contract or a complete Type once found, both positive (SPEC 8.8.1).
     private static bool PositiveRequirement(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable;
+        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable or ConstraintKind.Unresolved;
 
     // SPEC 3.5.2, 8.7.1: only the Type's own `Self is Copy` opts in; a Contract that requires Copy, as a parent or a clause, never does.
     private bool DeclaresCopy(BoundConstraint constraint)

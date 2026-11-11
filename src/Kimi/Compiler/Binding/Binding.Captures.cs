@@ -16,51 +16,6 @@ internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earli
 
 public sealed partial class Binding
 {
-    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
-    // allocates nothing.
-    private static CaptureRepeat[]? RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
-    {
-        List<CaptureRepeat>? repeats = null;
-        for (var i = 0; i < captures.Length; i++)
-        {
-            var name = captures[i].Name;
-            var repeated = false;
-            for (var j = 0; j < i && !repeated; j++)
-            {
-                if (captures[j].Name == name)
-                {
-                    (repeats ??= new()).Add(new(captures[i].Span, captures[j].Span, name, false));
-                    repeated = true;
-                }
-            }
-
-            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
-            {
-                if (function.Parameters[p].InternalName == name)
-                {
-                    (repeats ??= new()).Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
-                    repeated = true;
-                }
-            }
-        }
-
-        return repeats?.ToArray();
-    }
-
-    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
-    private static bool RepeatsEarlierEntry(CaptureRepeat[] repeats, CaptureKoto capture)
-    {
-        for (var i = 0; i < repeats.Length; i++)
-        {
-            if (!repeats[i].Parameter && repeats[i].Later == capture.Span)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 7.7.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
     private static bool IsContextualBinding(BindingSymbol symbol)
         => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch
@@ -69,6 +24,51 @@ public sealed partial class Binding
             PropertyAccessorKoto accessor => symbol.Name == "self" || (symbol.Name == "value" && accessor.AccessorKind == PropertyAccessorKind.Set),
             _ => false,
         };
+
+    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
+    // empty for a valid list.
+    private (int Start, int Count) RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
+    {
+        var start = this.captureRepeatRows.Count;
+        for (var i = 0; i < captures.Length; i++)
+        {
+            var name = captures[i].Name;
+            var repeated = false;
+            for (var j = 0; j < i && !repeated; j++)
+            {
+                if (captures[j].Name == name)
+                {
+                    this.captureRepeatRows.Add(new(captures[i].Span, captures[j].Span, name, false));
+                    repeated = true;
+                }
+            }
+
+            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
+            {
+                if (function.Parameters[p].InternalName == name)
+                {
+                    this.captureRepeatRows.Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
+                    repeated = true;
+                }
+            }
+        }
+
+        return (start, this.captureRepeatRows.Count - start);
+    }
+
+    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
+    private bool RepeatsEarlierEntry((int Start, int Count) repeats, CaptureKoto capture)
+    {
+        for (var i = repeats.Start; i < repeats.Start + repeats.Count; i++)
+        {
+            if (!this.captureRepeatRows[i].Parameter && this.captureRepeatRows[i].Later == capture.Span)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
     // unsupported captured Type is reported at the written capture entry when there is one, resting on the projection use that formed
