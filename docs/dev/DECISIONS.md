@@ -11639,6 +11639,7 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+  - Extended by BU-173 (PLAN G740): the effect target's group is read through `WrittenReference` too.
 - **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
   (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
   Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
@@ -11837,6 +11838,22 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+- **BU-173 An effect target's group is a grouped Contract reference (PLAN G740)** (2026-11-11; Front, Parsing and Binding; Major;
+  design review 1 REVISE (B1), design review 2 ACCEPT, implementation review ACCEPT; the owner's O-160 (a); commit 6d91ceb9a on
+  `claude/f-g740`; extends BU-162) SPEC F.6.2, F.5, 8.11.1.
+  - Rule: `ParseEffectTarget` reads a ContractSelector's group as F.6.2 writes it, `"(" ContractReference ")"`: one Type and its
+    closer in every position (an empty group or a list is a syntax Error, applying item or not), written as every grouped Contract
+    reference's node (`ParenthesizedTypeKoto`). `EffectTarget` looks the selector up once in its row and forms its reference from
+    `WrittenReference` (one group around a NamedReference): a group inside the group names no Contract (`NotContract`, the item's
+    one `InvalidEffectBound_Kd`).
+  - Removed: `EffectTarget`'s walk over every group and wrapper; the effect target's `ParenthesizedKoto`; `CompleteQualifier`'s
+    `ParenthesizedKoto` arm.
+  - Moves: invalid newly rejected (class 1): `effect ((A)).r`, `(((A)))`, `((P<i32>))`, `((::A))`, `((G.A))`, `((Outer<i32>.C))` in
+    a Contract; records on invalid programs only otherwise (Q13): the Label of `((C)).r` and `((A)).zz` ("names no Contract").
+  - Rejected: a second group kind in `WrittenReference` (two representations of one form); a parser rejection of the inner group
+    (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
+    empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
+    1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
