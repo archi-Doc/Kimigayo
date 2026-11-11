@@ -61,7 +61,7 @@ public static partial class Parser
         reader.RestoreContext(propertyContext with { AttributeKoto = null });
         var property = new PropertyKoto(ref reader, token, nameKoto, typeKoto, initializerKoto, hasInlineAccessors);
         property.SetAttributeChain(propertyContext.AttributeKoto);
-        reader.Document(property, SourceSpan.FromBounds(token.Span.Start, nameKoto.Span.End), propertyContext.AttributeKoto);
+        reader.Document(property, nameKoto.Span.End, propertyContext.AttributeKoto);
         reader.Hover(property, nameKoto.Span);
 
         var unavailableAccessor = false;
