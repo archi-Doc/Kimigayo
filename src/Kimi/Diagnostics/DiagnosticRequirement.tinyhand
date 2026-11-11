@@ -481,8 +481,8 @@
   + Name="Binding.ConflictingImportSupply"
     Description="the imports of one symbol agree on their supply"
 
-  + Name="Binding.UnsafeFunctionValue"
-    Description="the unsafe function is only called directly"
+  + Name="Binding.DirectCallFunctionValue"
+    Description="the function that supports direct calls only is not used as a value"
 
   + Name="Binding.UnavailableReservedImport"
     Description="the reserved import is available"
