@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -337,6 +338,7 @@ public class PairFollowTest
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
         { "Scaled", Scaled, "Scaled.\n" },
         { "Reads", Reads, "21 21 22 80 40 40 40 40 13 13 20 20 true false\n" },
+        { "DeepReads", DeepReads(), "21 21 21 21\n" },
         { "Collected", Collected, "Owned elements total 6.\nBorrowed elements total 30.\nExclusive elements total 73.\n" },
     };
 
@@ -668,7 +670,8 @@ public class PairFollowTest
     // PLAN G703 (SPEC 8.7.4, 8.1.1; 3.4.3, 3.5.3, 10.2; 13.5.2): a pair target standing alone has the capabilities its Constraints
     // prove, as a Type slot has; a value read follows qualifying pair layers at every read position (an annotated let, an argument,
     // a result, an assignment, a condition, an operand, a conversion's operand), in any order with ref and uniq layers, and ends
-    // only in a read Type; a pair of one admitted Semantics is its head (SPEC 8.2.3).
+    // only in a read Type; a pair of one admitted Semantics is its head (SPEC 8.2.3). Each Loan and Move twin below has its counterpart
+    // here (the read after the Loan's last use or before the Move), and the pair itself keeps its Object Target rule (SPEC 8.7.3).
     [Theory]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b")]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return (a % b) << b")]
@@ -696,6 +699,10 @@ public class PairFollowTest
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    return x@i64")]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v: i32 = x\n    let z = x@move\n    return v")]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = h(x)\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    let v = x + 0\n    return v + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = x + 0\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = x@i32\n    let z = x@move\n    return v")]
+    [InlineData("func f<s/T>(x: s/T) -> i32\n    s is owner\n    T is ObjectPayload\n    let o: Option<obj/(s/T)> = .None\n    return 0")]
     public void PairTargetsAndValueReadsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -703,8 +710,9 @@ public class PairFollowTest
     }
 
     // The invalid counterparts: no capability without its proof, no read through a pair layer that does not qualify, no conversion
-    // by a read, no read of a Type that is no read Type, a read through a live exclusive Loan or of a Moved Place, and a pair target
-    // as a runtime test's target (SPEC 13.6.4; `v is s/T` does not name the pair).
+    // by a read, no read of a Type that is no read Type, a read through a live exclusive Loan or of a Moved Place, a pair as an Object
+    // Target without its owner proof (SPEC 8.7.3), and a pair target as a runtime test's target (SPEC 13.6.4; `v is s/T` does not name
+    // the pair under any admitted Semantics).
     [Theory]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return -a", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 128\n    return v", DiagnosticCode.InvalidNumericLiteral_Kd)]
@@ -726,11 +734,40 @@ public class PairFollowTest
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = x@i32\n    return v", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is T", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is s/T", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner\n    return v is s/T", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("func f<s/T>(x: s/T) -> i32\n    T is ObjectPayload\n    let o: Option<obj/(s/T)> = .None\n    return 0", DiagnosticCode.UnprovenConstraint_Kd)]
     public void PairTargetsAndValueReadsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Contains(code, Codes(c));
+    }
+
+    // SPEC 13.6.4: a runtime test's target is one named struct Core, so the grouped pair of `v is (s/T)` is a syntax error, published.
+    [Fact]
+    public void AGroupedPairIsNoRuntimeTestTarget()
+        => Assert.Contains(
+            nameof(DiagnosticCode.ExpectedSyntax_Kd),
+            ContextualCaptureTest.PublishedRecords("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is (s/T)\npublic func main() => ()\n").Select(static x => x.Code));
+
+    // PLAN G703 (SPEC 3.4.3, 3.5.3, 10.2; the Middle's C-219 condition 1): a let, an argument and an operand read through 17 and 18
+    // nested qualifying pair layers, in an owner instance and in a ref instance of as many `@ref` steps.
+    private static string DeepReads()
+    {
+        var source = new StringBuilder("func h(v: i32) -> i32 => v\n");
+        foreach (var layers in new[] { 17, 18 })
+        {
+            source.Append($"func f{layers}<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n    let v: i32 = x\n    return v + h(x) + x\n");
+        }
+
+        source.Append("public func main()\n    let n: i32 = 7\n    let one: i32 = 1\n    let r1 = n@ref\n");
+        for (var k = 2; k <= 18; k++)
+        {
+            source.Append($"    let r{k} = r{k - 1}@ref\n");
+        }
+
+        return source.Append("    let a = f17(n, one)\n    let b = f17(r17, one@ref)\n    let c = f18(n, one)\n    let d = f18(r18, one@ref)\n")
+            .Append("    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d)\")\n").ToString();
     }
 
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)

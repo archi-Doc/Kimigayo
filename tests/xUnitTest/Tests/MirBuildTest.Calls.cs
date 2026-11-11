@@ -193,17 +193,35 @@ public sealed partial class MirBuildTest
             body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
     }
 
-    // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2): a value read through a qualifying pair layer at an annotated let, an
-    // argument and a result is a Copy of the layer's projection in the one body every Semantics case shares, and forms no reference.
+    // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2 and condition 1): a value read through qualifying pair layers at an annotated
+    // let, an argument, an operand and a result, through one layer and through 17 and 18, is a Copy of the projection that takes every
+    // layer in the one body every Semantics case shares, and forms no reference.
     [Theory]
-    [InlineData("    let v: i32 = x\n    return v\n")]
-    [InlineData("    return h(x)\n")]
-    [InlineData("    return x\n")]
-    public void AValueReadThroughAPairLayerCopiesItsProjection(string read)
+    [InlineData("    let v: i32 = x\n    return v\n", 1)]
+    [InlineData("    return h(x)\n", 1)]
+    [InlineData("    return x\n", 1)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 17)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 18)]
+    public void AValueReadThroughAPairLayerCopiesItsProjection(string read, int layers)
     {
-        var body = Body("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or valueborrow\n" + read, "f");
+        var body = Body($"func h(v: i32) -> i32 => v\nfunc f<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n" + read, "f");
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref });
-        Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && body.Projections[x.Place.Projection].Kind == MirProjectionKind.PairLayer);
+        Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && PairLayerSteps(x.Place.Projection) == layers);
+
+        // The steps of a projection chain that takes only pair layers, else -1.
+        int PairLayerSteps(int projection)
+        {
+            var steps = 0;
+            for (var id = projection; id != 0; id = body.Projections[id].Prefix, steps++)
+            {
+                if (body.Projections[id].Kind != MirProjectionKind.PairLayer)
+                {
+                    return -1;
+                }
+            }
+
+            return steps;
+        }
     }
 
     // A3 E13 (4): a pair-layer acquisition is always the whole rvalue of its own Assign to a local, marked with the Reborrow its exclusive
