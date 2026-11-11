@@ -123,7 +123,7 @@ internal sealed partial class MirBorrows
         if (this.Untracked(result))
         {
             this.Work++; // The Type walk (A3 6.2).
-            result = MirTypes.HoldsRaw(cases.Type(this.body.TypeOf(call.Place)!), this.seen) ? this.sets.Union(result, this.escapedSet) : result;
+            result = MirTypes.HoldsRaw(cases.TypeOf(call.Place), this.seen) ? this.sets.Union(result, this.escapedSet) : result;
         }
 
         this.Store(state, call.Place, result, 0, issue: false);

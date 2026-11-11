@@ -7455,6 +7455,12 @@ resumed by R4-M86 (2026-10-20).
     cu-id-v).
   - Interim removed (2026-11-11; PLAN G758, DECISIONS BU-171): G758 opens a `var` local's pair slot as a local region, the interim's
     removal condition, and removes the interim above whole; its rows are accepted.
+  - Amended (2026-11-11; PLAN G757; the Middle's consent C-250): AdaptInput's branch for a parameter that is no reference names the
+    Reborrow before inference for every bare Place whose acquisition Reborrows (`StoresExclusiveReference`: a stored `uniq/T` or
+    `objuniq/T`, or a pair layer in an exclusive case; G254a's `BareReborrowLayer` and `ReborrowedType`), so a bare slot or a
+    pair-layer pattern binds the Reborrow's Type (SPEC 10.2.2 step 1, 10.8, 3.5.1), class `SameSemanticsReborrow` (10.2.2). Formerly
+    a stored `uniq/T` there was Exact, the slot bound its stored Origin, and the later Reborrow's fit required the reaching layers
+    (a Closure's receiver ρ, an outer exclusive reference) to outlive it.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -15030,6 +15036,10 @@ structure is recorded here by the unit that first implements it.
   - Amended by BU-52: litDropOk, lit2DropOk and litObjOk err on the MIR as an owner-accepted interim until part-level raw reach (PLAN G303).
   - Superseded in part by BU-67: under SPEC 15.6 (the owner's 「(B)」, G264 S1, 2026-10-30) litDropOk, lit2DropOk and litObjOk are invalid;
     MIR's E is the verdict.
+  - Amended (2026-11-11; PLAN G730, the Middle's unit): every `MirDescriptors` intrinsic row states the Abort and Allocation its
+    lowering can perform (WriteStdout, RawAllocate, RawRelease, MakeObj, MakeRc, MakeArc, Clone, FormatBuffer and the Adapt rvalue
+    gain Abort; TestTempDirectory gains Allocation), pinned by `MirValidatorTest.AnIntrinsicsRowStatesItsLoweringsEffects`; a new
+    intrinsic row updates the pinned sets.
 - **R5-M130 The BuiltinFormat shim, user-formatter wrappers and the erased writer in MIR code generation (C9b)** (2026-10-26; under R5-M18
   form 2 (G:format), R5-M30, R5-M67, R5-M92, R5-M108, R5-M114, R5-M126 and R5-M128; PLAN G157 (10), (22), (28))
   - BuiltinFormat shim: a BuiltinFormat item is C8f's `__kimi_builtin<item>` (R5-M126's form and signature, caller-location), the built-in
