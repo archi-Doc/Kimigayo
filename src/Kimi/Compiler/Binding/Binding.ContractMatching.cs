@@ -182,6 +182,7 @@ public sealed partial class Binding
 
             var proof = declarationProof;
             IsKoto? specification = null;
+            Koto? failedRequirement = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -192,6 +193,13 @@ public sealed partial class Binding
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
                         specification ??= part;
+                        continue;
+                    }
+
+                    if (this.HasFailureCauses(identity.Symbol.Declaration))
+                    {
+                        // SPEC 23.1.2: a requirement that failed in its Contract has no Type to bind; the absence rests on it (G686).
+                        failedRequirement ??= identity.Symbol.Declaration;
                         continue;
                     }
 
@@ -229,6 +237,12 @@ public sealed partial class Binding
             if (specification is not null)
             {
                 return RestOnSpecification(specification);
+            }
+
+            if (failedRequirement is not null)
+            {
+                this.partPrerequisites[conformance.Use] = failedRequirement;
+                return Invalid(BindingFailure.InvalidAssociatedType);
             }
 
             if (inheritedProof is { } inheritedResult)
