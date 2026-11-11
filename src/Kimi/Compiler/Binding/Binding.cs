@@ -133,14 +133,14 @@ public sealed partial class Binding
         try
         {
             // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered. Its
-            // ordinal is its position, the library's last.
+            // ordinal is its position; the library's is the fixed SyntaxTable.LibraryModule.
             var modules = this.compilation.SourceModules;
             for (var i = 0; i < modules.Length; i++)
             {
                 modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
             }
 
-            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, (ushort)modules.Length);
+            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule);
 
             // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
             // leaves no result behind.
