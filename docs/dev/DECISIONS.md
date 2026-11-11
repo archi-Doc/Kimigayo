@@ -11504,6 +11504,27 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the contextual reading in SPEC (option D; 9.7, Principles 1 and 2); filtering by arity in the lookup (option B: the
     lookup keeps a mismatching declaration for the former's record, and it would need a `PathEnd` entry); a distinct "unapplied
     declaration" representation (option C: no path produces one any more); a further `BuildContract` patch (the owner's O-151).
+- **BU-157 `Never` is the Kimi declaration; `TyCtxt.Intern` gives its symbol the intrinsic Type (PLAN G704)** (2026-11-11; Front,
+  Binding; Major; F's rulings 1 and 3; the Back's consent C-217; the owner's O-141 (a), verbatim "(a) Land, name them", and O-147
+  (c), verbatim 「O-147はcにします。内部エラーを残さないでください。作業が収束しなかったら、連絡してください。」) SPEC 3.1.3, 22.1.
+  - Rule. `public struct Never` is declared in `Core.kimi` with the catalog row `KimiDeclarationId.Never` (`ManagedRepresentation`:
+    no constructor is synthesized, SPEC 22.1). `TyCtxt.Intern`, where a Type is made from its parts, returns `BoundType.Never` for
+    that symbol whatever kind is asked (a non-generic declaration interns as Nominal), as it gives `Wrapping<integer>` its Scalar; a
+    Type never carries the struct's symbol, so every reader keeps judging Never by `BoundType.Never`.
+  - Lookup. Every written form (bare, `Kimi.Never`, `::Kimi.Never`, shadowed by a nearer declaration) is one ordinary lookup, in a
+    Type position and a requirement atom alike. The primitive spelling table (`BoundType.Primitives`) holds the lexer's primitive
+    keywords and `()` only.
+  - Moves (Q17). Valid programs dev rejected are accepted: `T is Never` in every Constraint region, the written forms above, and
+    under `T is owner/Never` each use of the value that dev gave `InternalInvariant_Kd` (MIR's part: R5-M38's G704 amendment);
+    invalid programs stay rejected with changed records (o2, o3, c4 and the Loan and Move twins: `InternalInvariant_Kd` to the
+    twin's `UninitializedPlace_Kd`, `ComparisonLoanConflict_Kd` or `MovedPlace_Kd`). f33 (`let b = a`, then `return b`) and f38
+    (`let b: T = g()` with `g: () -> T`, then `return b`) under `T is owner/Never`, accepted on dev though the assumed completion
+    leaves `b` uninitialized (SPEC 14.10.3), are `UninitializedPlace_Kd`, the twin's record (class 1). Invalid programs newly
+    accepted: the consequence below.
+  - Rejected: reading the table for both syntax shapes (A: a second statement of what `Never` names, `::Kimi.Never` still
+    unresolved); forming the intrinsic after an empty lookup (A': a try-then-fallback).
+  - Consequence named by O-141 (a): `T is Never` with a second, conflicting identity premise is accepted until R7-C3's premise-error
+    judge (PLAN G615).
 - **BU-158 An import taken as a value is rejected where an unsafe function is: `Binding.DirectCallOnly`, one failure
   `DirectCallFunctionValue` (PLAN G677)** (2026-11-11; Front, Binding; Major, an acceptance mover; the owner's O-149 (a), verbatim
   「a」) SPEC 22.6, 7.6, 7.7.4.
@@ -12406,6 +12427,14 @@ structure is recorded here by the unit that first implements it.
   every consumer takes the Never temp as it is, and the placement rule is unchanged. R5 consented (2026-11-05) on these conditions:
   this line names G428 and its reason and keeps the other clauses, and a Never writer reaching `MirBuilder.Format` (G410) and
   R5-M159's diverging index stay Diverges nodes (G428's design review 3 measured both unchanged).
+  - Amended (PLAN G704, G355; 2026-11-11; the owner's O-147 (c); the Middle's C-221): the Never value's rule reads a Place's Type
+    through the body's identity premises: `MirTypes.IsNever(body, type)` is Never itself or an abstract Type that
+    `MirTypes.Premised` makes Never (a concrete Type is answered by the reference test alone). Its readers are
+    `MirBuilder.IsNever(place)` (so `Acquire` acquires `a: T` under `T is Never` into the Never value; tested after Binding's Never
+    form), a call's divergence (a result `U := T`) and `MirValidator.WritesNever`; `IsNeverValue` keeps the reference test on the
+    builder's own temp. G355's interim (MIR Places keep the parameter their premise identifies, BU-72): removed at R7-Y5, where MIR
+    Types are the identical Types and `IsNever` is the reference test again. Rejected: a located `Unsupported_Kd` (rejects valid
+    programs its twin accepts); premising every Never test (`IsNeverValue` is on `Set`'s path; no form needs it).
 - **R5-M39 `TyCtxt.Erase`** (2026-10-18; plan K3; under R5-M18) `TyCtxt.Erase(BoundType)` and `TyCtxt.Erase(Subst)`
   (`Binding/TyCtxt.Instances.cs`, X26's placement) give the Origin-erased form, the one identity rule of instance keys, descriptors,
   glue and layouts (SPEC 3.3.1, 8.13.3). Every Origin becomes `BoundOrigin.Static`: a reference's (`ref`, `uniq`, `objref`,
