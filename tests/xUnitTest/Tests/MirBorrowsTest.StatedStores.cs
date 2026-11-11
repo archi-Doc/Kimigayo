@@ -528,7 +528,9 @@ public sealed partial class MirBorrowsTest
     // condition 3), each an error at spare's declaration before. An exposed holder (a non-shared pointer to it formed anywhere in the
     // body) and a call result are never null, so a scalar written through a raw pointer A5 does not follow, a store over q, a heap address
     // on one arm, a later iteration, in a Tuple, from a call or from Raw.allocate keeps E (the Bad rows from punnedBad to allocatedBad,
-    // dev's records). A null A5 cannot prove at the store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183):
+    // dev's records; fieldPunBad, tuplePunnedBad and tupleCopiedPunBad, a Scalar at a struct's or a Tuple's whole address, rest on the
+    // layout since PLAN G667c: MirBorrowsTest.Puns' AScalarOverAStatedLayersHolderRestsOnItsLayout). A null A5 cannot prove at the
+    // store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183):
     // here a null whose address is taken after the call, or whose Copy was taken before a pun of the original (the FalseError rows).
     // Binding's row keeps target's own value through q (BU-24 C4, BU-52 rule A), so a read of spare after the call errs
     // until PLAN G339's row (readBad, constructorReadBad; the owner's O-55 (c)). Guards: a store through q where spare is read (unrelatedReadBad); q
@@ -572,7 +574,6 @@ public sealed partial class MirBorrowsTest
     [InlineData("loopHeapBad", "loopHeapBad: kk = 2; loopHeapBad: spare@uniq; loopHeapBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tupleHeapBad", "tupleHeapBad: kk = 2; tupleHeapBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("copiedPunBad", "copiedPunBad: kk = 2; copiedPunBad: var spare: raw/u8 = r@follow@raw")]
-    [InlineData("fieldPunBad", "fieldPunBad: kk = 2; fieldPunBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("calledBad", "calledBad: kk = 2; calledBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("allocatedBad", "allocatedBad: kk = 2; allocatedBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("readBad", "readBad: usep(spare)")]
@@ -626,9 +627,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("tupleUnstatedHeapBad", "tupleUnstatedHeapBad: kk = 2; tupleUnstatedHeapBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tuplePartHeapBad", "tuplePartHeapBad: kk = 2; tuplePartHeapBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tupleJoinedHeapBad", "tupleJoinedHeapBad: kk = 2; tupleJoinedHeapBad: var spare: raw/u8 = r@follow@raw")]
-    [InlineData("tuplePunnedBad", "tuplePunnedBad: kk = 2; tuplePunnedBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tupleLoopHeapBad", "tupleLoopHeapBad: kk = 2; tupleLoopHeapBad: spare@uniq; tupleLoopHeapBad: var spare: raw/u8 = r@follow@raw")]
-    [InlineData("tupleCopiedPunBad", "tupleCopiedPunBad: kk = 2; tupleCopiedPunBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tupleCalledBad", "tupleCalledBad: kk = 2; tupleCalledBad: var spare: raw/u8 = r@follow@raw")]
     public void AStoreThroughAStatedLayerWritesWhatItsOriginCovers(string form, string expected)
     {

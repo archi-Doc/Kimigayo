@@ -145,8 +145,11 @@ internal sealed partial class MirBorrows
             var (target, root) = (this.targets[t], this.targetRoots[t]);
             var arrived = this.Arrive(target, receiving, false, through, value);
             arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
+            arrived = target == Escaped ? this.Rested(arrived, pointer) : arrived; // An undecided write's E (MirBorrows.Puns).
             this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
+
+        this.Punning(pointer, place); // The pun rule (MirBorrows.Puns).
     }
 
     // A Move of a whole root empties it.

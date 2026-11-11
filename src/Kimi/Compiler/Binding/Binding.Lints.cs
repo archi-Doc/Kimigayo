@@ -475,7 +475,7 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.OverlappingLabel, null));
         }
-        else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.CompilerFunction: CompilerFunctionKind.WriterWrite } write)
+        else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {

@@ -277,9 +277,9 @@ public class ConditionalConformanceBindingTest
     }
 
     [Fact]
-    public void ConditionalRefinementRetainsIntrinsicCopyDerivation()
+    public void ConditionalCopyOptInSatisfiesAConditionalRefinementOfCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(use.Parameters[0].Type.TypeOf()!, use));
