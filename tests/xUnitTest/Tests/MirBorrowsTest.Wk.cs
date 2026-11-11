@@ -461,12 +461,15 @@ public sealed partial class MirBorrowsTest
     // R7, SPEC 15.8.2: a Closure call retains by its environment's Types as a call by its parameters' (D6, G4; G3: a `var` binding holds
     // `y`, the `ref/i32` past it nothing formed through `y`); a capture's referent holding `y` keeps it (G1, G2). Their records at the
     // capture (`slot@follow`, `var slot = other@move` and the cell's) are R4-M148's self-store class, PLAN G148 (2), not compared here.
+    // G1 and G2 store `y` (the binder's `o`) into a `var` pair local, whose slot is a region (PLAN G758): A5 reads it at the shorter end
+    // of `o outlives r`, PLAN G572's recorded limit (DECISIONS BU-127), at each Closure's `y@move` in the uniq view, which also loses the
+    // `v@follow = x` conflict, as the concrete twin does (the owner's O-174 (a)). Fails on 947b2de43: `v@follow = x 2` instead.
     [Theory]
     [InlineData("D6/G4", "closureEBad: v@follow = x 1", "")]
-    [InlineData("G1", "a3ClosureBad: v@follow = x 2", "a3ClosureBad: slot@follow|a3ClosureBad: var slot = other@move|a3ClosureFirst: slot@follow|a3ClosureFirst: var slot = other@move")]
+    [InlineData("G1", ": y@move UnprovenOriginRelation_Kd 2|: y@move UnprovenOriginRelation_Kd 2", "a3ClosureBad: slot@follow|a3ClosureBad: var slot = other@move|a3ClosureFirst: slot@follow|a3ClosureFirst: var slot = other@move")]
     [InlineData(
         "G2",
-        "pairCellBad: v@follow = x 2",
+        ": y@move UnprovenOriginRelation_Kd 2|: y@move UnprovenOriginRelation_Kd 2",
         "pairCellBad: cell.item@follow|pairCellBad: var cell = Cell2c3.init(item: other@move)|pairCellFirst: cell.item@follow|pairCellFirst: var cell = Cell2c3.init(item: other@move)")]
     [InlineData("G3", "closureVarBad: v@follow = x 1", "")] // Fails on dev by design: closureVarOk `v@follow = x` 1.
     public void AClosureCallKeepsTheArgumentByItsEnvironmentsTypes(string row, string expected, string apart)
