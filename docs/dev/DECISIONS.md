@@ -16415,8 +16415,8 @@ structure is recorded here by the unit that first implements it.
   - Tables: `UnicodeIdentifierData.Properties` and `Decompositions` (were `uint`; every value is below 2^31) and
     `UnicodeNameData.SimpleCaseFolding`, `CombiningClasses` and `MarkdownUnicodeData.Punctuation` are read as `IntegerTable<int>`;
     `UnicodeIdentifierData.Compositions` as `IntegerTable<ulong>`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit the
-    byte form (decimal bytes, 24 a line); `UnicodeIdentifierData`, which has no generator, was converted once with every value shown
-    equal.
+    byte form (decimal bytes, 24 a line); `UnicodeIdentifierData`, which had no generator, was converted once with every value shown
+    equal; since PLAN G738 (2026-11-11) `GenerateIdentifierUnicode.ps1` writes it.
   - Departures from the planning session's design, which it took on figures: the read is a `MemoryMarshal.Cast` element, because
     `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read; and each reader wraps its bytes, because a typed
     getter (`Int32Table X => new([..])`) is not inlined without PGO.
