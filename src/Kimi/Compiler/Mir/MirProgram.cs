@@ -52,9 +52,10 @@ internal sealed class MirProgram
     /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
     internal MirDropTable Drops { get; } = new();
 
-    /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): a step of a walk and an agreement test of
-    /// a targeted walk one each, a premising the premised Type's height and one more, the parts of its layer spine it rewrites; the walks'
-    /// scaling rows read it, and <see cref="Clear"/> resets it.</summary>
+    /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): one per iteration of a walk (a layer's
+    /// step and a targeted walk's agreement test together), and a premising as the premised Type's height plus one, the parts premising
+    /// visits on a layer spine and fewer than it visits on a wide Type; the walks' scaling rows read it, and <see cref="Clear"/> resets
+    /// it.</summary>
     internal long LayerWalkWork { get; set; }
 
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
