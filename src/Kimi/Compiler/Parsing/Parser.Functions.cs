@@ -87,7 +87,7 @@ public static partial class Parser
         }
         else
         {
-            reader.Document(functionKoto, functionKoto.Span, context.AttributeKoto);
+            reader.Document(functionKoto, functionKoto.Span.End, context.AttributeKoto);
             reader.Hover(functionKoto, methodToken.Span);
         }
 
