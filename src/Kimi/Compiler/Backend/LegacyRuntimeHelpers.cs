@@ -13,7 +13,7 @@
 // (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
 // formatting runtime calls none; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
 // and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is FormattingTypes.Bound's,
-// which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormattingTypes.StackLimit; R3-10).
+// which an owning interpolation's estimate sums for its buffer and hints (FormatEstimate; R3-10).
 // The one map from a compiler
 // function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4 X39; DECISIONS R5-M116):
 // writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).

@@ -1,8 +1,5 @@
 ; UTF-8 formatting uses one erased adapter and one checked reservation per nonempty builtin.
 ; Adapter offsets: destination 0, dispatch 8, kind 16, hint 24, pending 32/40, logical length 48, failed 56.
-@__kimi_utf8_true = private unnamed_addr constant [4 x i8] c"true", align 1
-@__kimi_utf8_false = private unnamed_addr constant [5 x i8] c"false", align 1
-@__kimi_utf8_unit = private unnamed_addr constant [2 x i8] c"()", align 1
 
 ; Fresh formatting buffers contain only validated output. Transfer without a validation pass or copy.
 define internal void @__kimi_format_take_string(ptr %ret, ptr %buffer) #0 {
@@ -15,16 +12,6 @@ entry:
   store i8 %kind, ptr %kindp, align 1
   ; The private owner remains in the original temporary cleanup order, now empty.
   call void @llvm.memset.p0.i64(ptr %buffer, i8 0, i64 32, i1 false)
-  ret void
-}
-
-; The compiler proves this temporary is consumed only by the immediately enclosing
-; Console call. Its stack bytes stay live through that call and never have a free.
-define internal void @__kimi_format_stack_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length) #0 {
-entry:
-  call void @__kimi_format_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length)
-  %kindp = getelementptr i8, ptr %ret, i64 16
-  store i8 {{static_release_kind}}, ptr %kindp, align 1
   ret void
 }
 
@@ -328,94 +315,6 @@ failure:
   ret void
 }
 
-define internal void @__kimi_format_character(ptr %ret, ptr %self, i32 %character, ptr %location, i64 %location_length) #0 {
-entry:
-  %reservation = alloca [40 x i8], align 8
-  %one = icmp ult i32 %character, 128
-  %two = icmp ult i32 %character, 2048
-  %three = icmp ult i32 %character, 65536
-  %large = select i1 %three, i64 3, i64 4
-  %medium = select i1 %two, i64 2, i64 %large
-  %length = select i1 %one, i64 1, i64 %medium
-  call void @__kimi_writer_reserve(ptr %reservation, ptr %self, i64 %length, ptr %location, i64 %location_length)
-  %tag = load i32, ptr %reservation, align 4
-  %ok = icmp eq i32 %tag, 0
-  br i1 %ok, label %prepare, label %failure
-prepare:
-  %window = getelementptr i8, ptr %reservation, i64 8
-  %data = call ptr @__kimi_window_address(ptr %window)
-  switch i64 %length, label %encode4 [
-    i64 1, label %encode1
-    i64 2, label %encode2
-    i64 3, label %encode3
-  ]
-encode1:
-  %t1_0 = trunc i32 %character to i8
-  store i8 %t1_0, ptr %data, align 1
-  br label %commit
-encode2:
-  %s2_0 = lshr i32 %character, 6
-  %t2_0 = trunc i32 %s2_0 to i8
-  %m2_0 = and i8 %t2_0, 31
-  %b2_0 = or i8 %m2_0, 192
-  store i8 %b2_0, ptr %data, align 1
-  %t2_1 = trunc i32 %character to i8
-  %m2_1 = and i8 %t2_1, 63
-  %b2_1 = or i8 %m2_1, 128
-  %p2_1 = getelementptr i8, ptr %data, i64 1
-  store i8 %b2_1, ptr %p2_1, align 1
-  br label %commit
-encode3:
-  %s3_0 = lshr i32 %character, 12
-  %t3_0 = trunc i32 %s3_0 to i8
-  %m3_0 = and i8 %t3_0, 15
-  %b3_0 = or i8 %m3_0, 224
-  store i8 %b3_0, ptr %data, align 1
-  %s3_1 = lshr i32 %character, 6
-  %t3_1 = trunc i32 %s3_1 to i8
-  %m3_1 = and i8 %t3_1, 63
-  %b3_1 = or i8 %m3_1, 128
-  %p3_1 = getelementptr i8, ptr %data, i64 1
-  store i8 %b3_1, ptr %p3_1, align 1
-  %t3_2 = trunc i32 %character to i8
-  %m3_2 = and i8 %t3_2, 63
-  %b3_2 = or i8 %m3_2, 128
-  %p3_2 = getelementptr i8, ptr %data, i64 2
-  store i8 %b3_2, ptr %p3_2, align 1
-  br label %commit
-encode4:
-  %s4_0 = lshr i32 %character, 18
-  %t4_0 = trunc i32 %s4_0 to i8
-  %m4_0 = and i8 %t4_0, 7
-  %b4_0 = or i8 %m4_0, 240
-  store i8 %b4_0, ptr %data, align 1
-  %s4_1 = lshr i32 %character, 12
-  %t4_1 = trunc i32 %s4_1 to i8
-  %m4_1 = and i8 %t4_1, 63
-  %b4_1 = or i8 %m4_1, 128
-  %p4_1 = getelementptr i8, ptr %data, i64 1
-  store i8 %b4_1, ptr %p4_1, align 1
-  %s4_2 = lshr i32 %character, 6
-  %t4_2 = trunc i32 %s4_2 to i8
-  %m4_2 = and i8 %t4_2, 63
-  %b4_2 = or i8 %m4_2, 128
-  %p4_2 = getelementptr i8, ptr %data, i64 2
-  store i8 %b4_2, ptr %p4_2, align 1
-  %t4_3 = trunc i32 %character to i8
-  %m4_3 = and i8 %t4_3, 63
-  %b4_3 = or i8 %m4_3, 128
-  %p4_3 = getelementptr i8, ptr %data, i64 3
-  store i8 %b4_3, ptr %p4_3, align 1
-  br label %commit
-commit:
-  call void @__kimi_utf8_commit(ptr %window, i64 %length)
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
 {{__kimi_writer_write_builtin}}
 entry:
   %failedp = getelementptr i8, ptr %self, i64 56
@@ -452,9 +351,6 @@ entry:
     i32 10, label %integer10
     i32 11, label %floating
     i32 12, label %floating
-    i32 13, label %character
-    i32 14, label %boolean
-    i32 15, label %unit
     i32 16, label %bytes
     i32 17, label %bytes
   ]
@@ -509,20 +405,6 @@ integer10:
 floating:
   %narrow = icmp eq i32 %kind, 11
   call void @__kimi_format_float(ptr %ret, ptr %value, ptr %self, i1 %narrow, ptr %location, i64 %location_length)
-  ret void
-character:
-  %c = load i32, ptr %value, align 4
-  call void @__kimi_format_character(ptr %ret, ptr %self, i32 %c, ptr %location, i64 %location_length)
-  ret void
-boolean:
-  %b = load i8, ptr %value, align 1
-  %yes = icmp ne i8 %b, 0
-  %text = select i1 %yes, ptr @__kimi_utf8_true, ptr @__kimi_utf8_false
-  %size = select i1 %yes, i64 4, i64 5
-  call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %text, i64 %size, ptr %location, i64 %location_length)
-  ret void
-unit:
-  call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr @__kimi_utf8_unit, i64 2, ptr %location, i64 %location_length)
   ret void
 bytes:
   %data = load ptr, ptr %value, align 8

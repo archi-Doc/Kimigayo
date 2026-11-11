@@ -189,11 +189,11 @@ internal static class MirDescriptors
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment, 0),
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
-        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation, 3), // The literal bytes, the values' Types' token, the direct mark.
+        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation, 2), // The literal bytes and the values' Types' token.
         // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
         // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
         IntrinsicId.FormatSegment => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4),
-        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
+        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // The adapter.
         _ => default,
     };
 

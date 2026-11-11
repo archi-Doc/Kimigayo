@@ -232,7 +232,8 @@ internal ref partial struct DocumentationMarkdownParser
             this.nodes[this.fence].End = end;
             // Only a line starting with whitespace or the fence character can close the fence.
             var closes = false;
-            if (cursor.VirtualSpaces > 0 || (cursor.Position < end && (this.text[cursor.Position] == this.fenceCharacter || this.text[cursor.Position] is ' ' or '\t')))
+            if (cursor.VirtualSpaces > 0 ||
+                (cursor.Position < end && (this.text[cursor.Position] == this.fenceCharacter || this.text[cursor.Position] is ' ' or '\t')))
             {
                 var closing = cursor;
                 var indent = closing.SkipWhitespace(this.text);
@@ -261,7 +262,8 @@ internal ref partial struct DocumentationMarkdownParser
         {
             this.paragraph = 0;
             var top = this.containers.Count - 1;
-            this.previousListBlank = this.nodes[this.containers[top].Node].Kind is DocumentationMarkdownKind.ListItem or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList;
+            this.previousListBlank = this.nodes[this.containers[top].Node].Kind
+                is DocumentationMarkdownKind.ListItem or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList;
             if (this.nodes[this.containers[top].Node].Kind == DocumentationMarkdownKind.ListItem)
             {
                 if (this.nodes[this.containers[top].Node].First == 0)
@@ -292,7 +294,9 @@ internal ref partial struct DocumentationMarkdownParser
             var content = cursor;
             var indent = content.SkipWhitespace(this.text);
             var position = content.Position;
-            var marker = indent <= 3 && position < end && this.text[position] is '-' or '+' or '*' or (>= '0' and <= '9') ? this.ReadListMarker(content) : default;
+            var marker = indent <= 3 && position < end && this.text[position] is '-' or '+' or '*' or (>= '0' and <= '9')
+                ? this.ReadListMarker(content)
+                : default;
             var top = this.containers.Count - 1;
             var parent = this.containers[top].Node;
             var parentKind = this.nodes[parent].Kind;
@@ -325,7 +329,8 @@ internal ref partial struct DocumentationMarkdownParser
             }
 
             var startsQuote = indent <= 3 && character == '>';
-            if (this.paragraph != 0 && !startsQuote && headingLevel == 0 && openingFenceLength == 0 && (marker.Width == 0 || marker.Empty || (marker.Ordered && marker.Number != 1)))
+            if (this.paragraph != 0 && !startsQuote && headingLevel == 0 && openingFenceLength == 0 &&
+                (marker.Width == 0 || marker.Empty || (marker.Ordered && marker.Number != 1)))
             {
                 this.AddContentLine(this.paragraph, content.Position, end);
                 this.UpdateEnds(end);
@@ -606,7 +611,8 @@ internal ref partial struct DocumentationMarkdownParser
                 var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
                 this.SetValue(node, this.CreateText(content, normalizeCode: false));
             }
-            else if (last != 0 && this.nodes[last].Kind == DocumentationMarkdownKind.Text && this.nodes[last].TextStart >= 0 && this.nodes[last].End == cursor.Position)
+            else if (last != 0 && this.nodes[last].Kind == DocumentationMarkdownKind.Text && this.nodes[last].TextStart >= 0 &&
+                this.nodes[last].End == cursor.Position)
             {
                 this.nodes[last].TextLength += content.Length;
                 this.nodes[last].End = lineEnd;
@@ -721,7 +727,15 @@ internal ref partial struct DocumentationMarkdownParser
     }
 
     // Initial storage supplied by the caller's frame; growth rents from the pool.
-    internal readonly ref struct Scratch(Span<MarkdownNodeData> nodes, Span<NodeLinks> links, Span<MarkdownValue> values, Span<Container> containers, Span<ContentLine> lines, Span<Delimiter> delimiters, Span<Bracket> brackets, Span<CodeRun> codeRuns)
+    internal readonly ref struct Scratch(
+        Span<MarkdownNodeData> nodes,
+        Span<NodeLinks> links,
+        Span<MarkdownValue> values,
+        Span<Container> containers,
+        Span<ContentLine> lines,
+        Span<Delimiter> delimiters,
+        Span<Bracket> brackets,
+        Span<CodeRun> codeRuns)
     {
         internal readonly Span<MarkdownNodeData> Nodes = nodes;
 

@@ -90,7 +90,7 @@ public sealed partial class Binding
         {
             var fact = environment.DerivedFacts[i].Fact;
             if (fact is not { Kind: ConstraintKind.Contract, Contract: { Contract: { } supplied } contract, Subject: { } subject } ||
-                !OfSearchSelf(subject, self) || !this.AvailableConstraintFact(environment, fact))
+                !OfSearchSelf(subject, self) || !this.AvailableConstraintFact(environment, fact, out _))
             {
                 continue;
             }
