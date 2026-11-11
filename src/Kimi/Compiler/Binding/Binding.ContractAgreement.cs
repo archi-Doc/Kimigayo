@@ -97,7 +97,7 @@ public sealed partial class Binding
         this.associatedOverlapChecks.Clear();
         foreach (var fact in environment.Facts)
         {
-            if (fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: not null } && this.AvailableConstraintFact(environment, fact))
+            if (fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: not null } && this.AvailableConstraintFact(environment, fact, out _))
             {
                 this.associatedOverlapChecks.Add(fact);
             }

@@ -29,7 +29,7 @@ public sealed partial class Binding
                 {
                     foreach (var q in y.Facts)
                     {
-                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p) || !this.AvailableConstraintFact(y, q))
+                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p, out _) || !this.AvailableConstraintFact(y, q, out _))
                         {
                             continue;
                         }

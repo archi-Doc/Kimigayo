@@ -54,7 +54,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     admitted &= SemanticsSet(fact);
                 }

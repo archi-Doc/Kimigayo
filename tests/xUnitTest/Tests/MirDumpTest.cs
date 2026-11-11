@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -31,15 +32,17 @@ public sealed class MirDumpTest
             Programs.SelectMany(program => TestDiagnostics.Of(Compile(program.Data))
                 .Where(static x => x.Severity == DiagnosticSeverity.Error).Select(x => $"{program.Data}: {x.Code}")));
 
-    // The spellings of every form: Deref, Field, Base, Index, ConstIndex, Downcast and PairLayer projections, the borrows (a two-phase and a
-    // raw one added to the validator's body), the operands, constants, rvalues, terminators, scopes, binders, statics and Opaque sites.
+    // The spellings of every form: Deref, Field, Base, Index, ConstIndex, Downcast and PairLayer projections, the borrows (a two-phase one at a
+    // library location and a raw one at another module's, added to the validator's body), the operands, constants, rvalues, terminators,
+    // scopes, binders, statics and Opaque sites.
     [Fact]
     public void BodyDumpsEveryForm()
     {
         var body = MirValidatorTest.Build(null);
         var (index, reference) = (new MirPlace(4), new MirPlace(7));
         var check = body.Blocks.Length - 1;
-        body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.TwoPhaseUniq, index, body.TypeOf(reference)!), default));
+        var library = new SourceInfo(new(SyntaxTable.LibraryModule, 6), 0, false);
+        body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.TwoPhaseUniq, index, body.TypeOf(reference)!), library));
         body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Raw, index, body.TypeOf(reference)!), new(new(1, 5), 1, true)));
         var text = new StringBuilder();
         MirDump.Write(body, text, new MirDropTable(), 0);

@@ -1824,6 +1824,10 @@ public sealed partial class FunctionCodegenTest
         })];
     }
 
+    // The functions of a definition's body items, one per instance (ItemTexts).
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
+        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+
     // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
     internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
     {

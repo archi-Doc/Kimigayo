@@ -193,7 +193,7 @@ internal sealed partial class MirValidator
         private readonly bool WritesNever(in MirRvalue rvalue) => rvalue.Kind == MirRvalueKind.Opaque ||
             (rvalue is { Kind: MirRvalueKind.Use, Op: 0, Count: 1 } &&
                 body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move } operand &&
-                this.IsValid(operand.Place) && ReferenceEquals(body.TypeOf(operand.Place), BoundType.Never));
+                this.IsValid(operand.Place) && MirTypes.IsNever(body, body.TypeOf(operand.Place)));
 
         // False when MirUses cannot walk it.
         private bool Statement(MirLocation location, in MirStatement statement)

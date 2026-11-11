@@ -13,8 +13,8 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The deterministic text of MIR (R3: the dump goldens and the MIR snapshot). A body is its header, one line per local, scope,
 /// pair binder, static, Opaque site and failure body that must not complete (<c>must not complete bb4 from bb2</c>: its end from its
-/// entry), then each block's statements and terminator. Every line that comes from syntax ends with it,
-/// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
+/// entry), then each block's statements and terminator. Every line that comes from syntax ends with it, <c>@id</c> (<c>@module:id</c>
+/// outside module 0, <c>@Kimi:id</c> in the library), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
 /// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; a view's start <c>storage(_1)</c>, keyed
@@ -161,8 +161,12 @@ internal static partial class MirDump
         }
     }
 
-    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source.Module == 0 ? " @" : $" @{source.Module}:")
-        .Append(source.Id);
+    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source switch
+    {
+        { IsLibrary: true } => " @Kimi:",
+        { Module: 0 } => " @",
+        _ => $" @{source.Module}:",
+    }).Append(source.Id);
 
     private static void Info(StringBuilder text, SourceInfo info) => Source(text, info.Syntax).Append(
         info.Scope == 0 ? string.Empty

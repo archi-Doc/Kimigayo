@@ -93,10 +93,12 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
     private static int Identity(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 }
 
-// A scope's Constraint facts. An Invalid environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer
-// fails that node in the same step and names it here; the first one is kept. As an ICheckCause it is what a proof that reads the
-// environment rests on (Binding.InvalidEnvironment, the one proof read), so a use derives from a Resource record or a recovery
-// (RestsOnRecoveryOrLimit) and keeps an independent record otherwise.
+// A scope's premises. Its state (the three fact sets, the two flags they set and Failed) is written only by its own members (Add, Fail,
+// Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf). An Invalid
+// environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
+// it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
+// the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
+// otherwise.
 internal sealed class ConstraintEnvironment : ICheckCause
 {
     public Koto Use => this.Failed!;
@@ -116,22 +118,60 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal bool Invalid => this.Failed is not null;
 
-    internal bool HasAssociatedProjection { get; set; }
+    internal bool HasAssociatedProjection { get; private set; }
 
-    /// <summary>Gets or sets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that
-    /// expressions bound in its scope substitute one for the other.</summary>
-    internal bool HasParameterIdentity { get; set; }
+    /// <summary>Gets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that expressions bound in
+    /// its scope substitute one for the other.</summary>
+    internal bool HasParameterIdentity { get; private set; }
+
+    // The number of changes of this environment's state.
+    internal int Version { get; private set; }
 
     public void Rest()
     {
     }
 
+    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact's writer names the failed node
+    // (Fail).
+    internal void Add(BoundConstraint fact, BindingSymbol? source)
+    {
+        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFacts.Contains((fact, source));
+        if (source is not null && availability)
+        {
+            this.DerivedFacts.Add((fact, source));
+        }
+
+        var added = this.Facts.Add(fact);
+        if (added)
+        {
+            this.HasAssociatedProjection |= fact.HasAssociatedProjection;
+            this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
+        }
+
+        if (added || availability)
+        {
+            this.Version++;
+        }
+    }
+
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
-    internal void Fail(Koto node) => this.Failed ??= node;
+    internal void Fail(Koto node)
+    {
+        if (this.Failed is null)
+        {
+            this.Failed = node;
+            this.Version++;
+        }
+    }
 
     internal void Reset()
     {
+        if (this.Facts.Count != 0 || this.Invalid)
+        {
+            this.Version++;
+        }
+
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
