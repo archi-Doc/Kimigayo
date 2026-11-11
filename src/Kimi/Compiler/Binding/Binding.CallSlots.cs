@@ -48,20 +48,21 @@ public sealed partial class Binding
     // its candidate's frame is seeded (ConstructorType).
     private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType, bool inferred)
     {
+        var owner = (DeclarationContainerKoto)CallSlotOwner(constructor);
         var ownFixed = true;
-        for (var i = 0; i < CallOwnSlots(constructor).Count; i++)
+        for (var i = 0; i < owner.GenericParameterNodes.Count; i++)
         {
-            ownFixed &= !OpenConstructionSlot(constructor, declaringType, inferred, i);
+            ownFixed &= !OpenConstructionSlot(owner, declaringType, inferred, i);
         }
 
-        return new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default, ownFixed);
+        return new(owner, (BoundType[])declaringType.Components, default, ownFixed);
     }
 
-    // An inferred construction leaves open each own slot that its declaring Type gives as its own parameter; an outer slot is always a fixed
-    // binding, even when it is itself a parameter.
-    private static bool OpenConstructionSlot(FunctionKoto constructor, BoundType declaringType, bool inferred, int slot)
-        => inferred && slot < CallOwnSlots(constructor).Count && declaringType.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
-            ReferenceEquals(open.Symbol?.Scope.Owner, CallSlotOwner(constructor));
+    // An inferred construction (a structure's or an enum Case's, SPEC 9.7) leaves open each own slot that its constructed Type gives as its
+    // own parameter; an outer slot is always a fixed binding, even when it is itself a parameter.
+    private static bool OpenConstructionSlot(DeclarationContainerKoto owner, BoundType constructed, bool inferred, int slot)
+        => inferred && slot < owner.GenericParameterNodes.Count && constructed.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
+            ReferenceEquals(open.Symbol?.Scope.Owner, owner);
 
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
@@ -122,9 +123,10 @@ public sealed partial class Binding
         }
 
         var inferred = !fixedConstruction && this.InfersConstruction(call);
+        var owner = (DeclarationContainerKoto)CallSlotOwner(function);
         for (var i = 0; i < count; i++)
         {
-            if (!OpenConstructionSlot(function, declaringType, inferred, i))
+            if (!OpenConstructionSlot(owner, declaringType, inferred, i))
             {
                 slots.SetType(i, declaringType.Components[i]);
             }
@@ -135,7 +137,7 @@ public sealed partial class Binding
 
     // Whether a constructor call infers its construction's Type (SPEC 10.8.1): its qualifier names the Type without its arguments.
     private bool InfersConstruction(InvocationKoto call)
-        => call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left);
+        => call.Method is MemberAccessKoto member && this.inferredConstructionTargets.Contains(member.Left);
 
     // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
     // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
