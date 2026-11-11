@@ -390,7 +390,9 @@ public static class DocumentationLinks
         }
     }
 
-    private static string Serialize(Parts parts)
+    // By reference: a 32-byte by-value copy of Parts goes through a ymm register, and the framework code this member calls then
+    // pays an AVX-SSE transition (about 100 ns per link on the measured host; the T-133 diagnosis, R9-M1 part 2 design review 3).
+    private static string Serialize(in Parts parts)
         => EncodePath(parts.Path)
         + (parts.Query is null ? string.Empty : "?" + Encode(parts.Query, KeptInQueryOrFragment))
         + (parts.Fragment is null ? string.Empty : "#" + Encode(parts.Fragment, KeptInQueryOrFragment));
@@ -436,8 +438,8 @@ public static class DocumentationLinks
         return output?.ToString() ?? value;
     }
 
-    // A reference split into its components. SchemeLength, computed once, is the length of Path's scheme (0 for a relative
-    // reference), so a reader tests for a scheme without allocating it.
+    // A reference split into its components. SchemeLength, computed when the Parts is built, is the length of Path's scheme (0
+    // for a relative reference), so a reader tests for a scheme without allocating it. 32 bytes: Serialize takes it by reference.
     private readonly record struct Parts(string Path, string? Query, string? Fragment)
     {
         public int SchemeLength { get; } = DocumentationLinks.SchemeLength(Path);
