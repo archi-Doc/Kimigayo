@@ -261,7 +261,8 @@ public partial class KimiLibraryShapeTest
         {
             if (program == Renumbering)
             {
-                Assert.NotEqual(Lines(EmptyProgram.Value.Library.Kotonoha.Syntax).Values, Lines(c.Library.Kotonoha.Syntax).Values);
+                var equal = Lines(EmptyProgram.Value.Library.Kotonoha.Syntax).Values.SequenceEqual(Lines(c.Library.Kotonoha.Syntax).Values);
+                Assert.False(equal, "Milestone27 no longer renumbers: after U2 delete SynthesizedNodes; before U2 retarget to Milestone30");
             }
         }
 
