@@ -248,7 +248,8 @@ public sealed partial class Binding
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
         several = false;
-        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        // SPEC 7.3, 3.4.3: a callee is called through one layer: a concrete one, or an object layer in every case (ObjectCases).
+        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : type;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
             signature = this.ContractType(itemSignature, scope);
@@ -325,8 +326,10 @@ public sealed partial class Binding
     {
         operation = default;
         var handleType = this.ContractType(handle.BoundType!, scope);
-        var shared = handleType.HandleMode is { PayloadAuthority: LoanRequirement.Ref } || handleType.Semantics == SemanticsKind.ObjRef || ReachedThroughShared(handle);
-        var view = handleType.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
+        // The handle's or view's cases (ObjectCases; a pair layer's too) and the authority of its own layer and path (PlaceAuthority).
+        var objects = this.ObjectCases(handleType, scope, out var payload);
+        var shared = SharesOwnLayer(handle) || ReachedThroughShared(handle);
+        var view = (objects & ~SemanticsMask.ObjectBorrow) == 0;
         if (receiver != SemanticsKind.Ref && shared)
         {
             this.FailObjectAuthority(call, call.Method);
@@ -340,7 +343,6 @@ public sealed partial class Binding
         }
 
         var unsupported = IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
-        var payload = handleType.Components[0];
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
@@ -371,7 +373,7 @@ public sealed partial class Binding
     {
         var receiverType = call.Method.BoundType!;
         receiverOperation = default;
-        var handle = receiverType.Kind == BoundTypeKind.Semantics && IsObjectSemantics(receiverType.Semantics) ? call.Method
+        var handle = this.ObjectCases(receiverType, scope, out _) != SemanticsMask.None ? call.Method
             : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
         if (handle is not null)
         {
