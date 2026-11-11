@@ -349,6 +349,7 @@ public sealed partial class Binding
         member.Right.BindingState = BindingState.Resolved;
         member.Right.BoundSymbol = constructor;
         member.BoundSymbol = constructor;
+        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
         return constructor;
     }
 

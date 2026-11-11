@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,6 +10,10 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(
         KimiLibrarySize.Stated.MemberSelections, ReferenceEqualityComparer.Instance);
+
+    // The side of each member access whose member was selected (PLAN G724, B4): published by the former that selected it (SelectMember,
+    // BaseMember, ConstructorMember), its own fact beside the lookup's selection, since a constructor access has a side and no selection.
+    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(KimiLibrarySize.Stated.MemberSides, ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
@@ -320,6 +325,7 @@ public sealed partial class Binding
         }
 
         this.memberSelections[member] = typeMember is not null ? typeSelection : valueSide.Selection;
+        this.memberSides[member] = typeMember is not null ? MemberSide.Type : MemberSide.Value;
         if (typeMember is not null)
         {
             PublishQualifier(member.Left, qualifier!);
@@ -448,6 +454,17 @@ public sealed partial class Binding
     // One path of a member access (SPEC 9.6): the member it found (a requirement member or a nested declaration when its lookup found
     // none), its member lookup, and whether the path was formed (the qualifier bound as a Type or a group, or read as a value).
     private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, bool Formed);
+
+    // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
+    private enum MemberSide : byte
+    {
+        Type,
+        Value,
+    }
+
+    // The published side of a member access whose member was selected; a reader of one without it breaks the formers' contract.
+    private MemberSide MemberSideOf(MemberAccessKoto member)
+        => this.memberSides.TryGetValue(member, out var side) ? side : throw new UnreachableException("A member access without a published side.");
 
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {

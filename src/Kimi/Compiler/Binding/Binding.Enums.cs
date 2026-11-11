@@ -172,7 +172,7 @@ public sealed partial class Binding
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;
         if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid ||
-            (reference is MemberAccessKoto member && member.Left.BoundSymbol?.Kind != BindingSymbolKind.Type))
+            (reference is MemberAccessKoto member && this.MemberSideOf(member) != MemberSide.Type))
         {
             return this.Fail(use, BindingFailure.TypeMismatch);
         }

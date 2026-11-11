@@ -29,7 +29,6 @@ public sealed partial class Binding
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
-        group.TypeAccess = typeAccess;
         group.PropertyRequirement = false;
         group.Properties.Clear();
         group.PropertyContracts.Clear();
@@ -239,8 +238,6 @@ public sealed partial class Binding
         internal BoundType Self { get; set; } = null!;
 
         internal bool Active { get; set; }
-
-        internal bool TypeAccess { get; set; }
 
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }
