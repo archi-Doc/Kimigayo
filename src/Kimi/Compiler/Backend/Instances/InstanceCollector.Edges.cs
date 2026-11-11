@@ -50,7 +50,7 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var body = program.Body(set.Items[item].BodyOrdinal);
         this.LayOutLocals(item, body);
         this.LayOutNeeds(item, body);
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
@@ -193,7 +193,7 @@ internal sealed partial class InstanceCollector
         }
 
         var borrows = operand.Kind == BoundTypeKind.Function || (operand.Kind == BoundTypeKind.Closure && target >= 0 &&
-            this.TypeOf(target, program.Bodies[this.Set.Items[target].BodyOrdinal].Locals[1].Type) is { } environment &&
+            this.TypeOf(target, program.Body(this.Set.Items[target].BodyOrdinal).Locals[1].Type) is { } environment &&
             TyCtxt.Layer(environment, out _, out _) != HirPlaceKind.Value);
         return borrows ? this.GlueOf(item, this.Subject(item, body, call.Source), operand) : -1;
     }

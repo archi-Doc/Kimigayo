@@ -11615,6 +11615,30 @@ resumed by R4-M86 (2026-10-20).
     `associate W<i32> is W<i32>` in a Contract (t72). Records on invalid programs only otherwise (Q13).
   - Rejected: a Contract's specification on the Constraint path (two readers of one item; the redesign's design review, B2); the
     effect target in this unit (PLAN G740).
+- **BU-170 A declaration's header start is recorded once, by the item prefix: `TokenReader.HeaderPosition` (PLAN G751)**
+  (2026-11-11; Front, Parsing; Major, behavior-preserving except one field of unattached comments; design review 1 ACCEPT, the
+  Middle's consent C-247, implementation review 1 ACCEPT) SPEC 2.3, Appendix F.3.3, F.6.
+  - **Rule.** Where a declaration's header starts after its prelude (SPEC 2.3: the Attributes, blank lines and comments before it)
+    is the item prefix's fact: `Parser.ConsumeAttributeAndModifier` records, at each line of the prefix and after each `#` form, the
+    token position of that line's first word (`TokenReader.HeaderPosition`); the item's is the last, the first word of its line
+    after the Attributes and directives: its first modifier or else its introducer. `TokenContext` carries it, so an item list
+    nested in a header (a function value's body in an initializer or a default) restores the outer item's, and taking the context
+    keeps it. `TokenReader.Document(declaration, headerEnd, attributes)` passes it to the association
+    (`DocumentationSource.Associate(declaration, headerPosition, headerEnd, ...)`: a token position and a source offset), whose
+    header runs from that token to `headerEnd`.
+  - **Removed.** `DocumentationSource.IsHeaderPrefix` (a second header-word set: it omitted `static` and `abstract`, added `func`,
+    took `specialize` without the `func` look-ahead and `unsafe` before any declaration), the association's token search and
+    walk-back, and the `Math.Max` guards that could only hide a stale start (a violation now fails `SourceSpan.FromBounds`).
+  - **Invalid headers.** The header starts at the first word of the item's line after its last `#` form, valid or not (a `static`, a
+    misplaced `open`, a rejected access word; in `public #Test func f()` at `func`, as before). Each such word is a syntax Error, so
+    `DocumentationSource.Finish` drops every association of that source and no published documentation changes; only
+    `DeclarationSpan` of a comment left without a Declaration now covers a `static` header too, as it already did for the other
+    invalid words.
+  - **Cost.** One int store per prefix line; `TokenContext` stays 48 bytes, `TokenReader` grows from 200 to 208 bytes (copied by
+    each lookahead); the association loses a binary search and a walk-back per documented declaration. No allocation.
+  - **Rejected:** keeping a word set in the association aligned with the parser's (two copies of one rule); passing the header start
+    from each `Document` caller (eight sites would each pass the same fact, and an enum Case and `associate` take no context);
+    recording only the first modifier word with the introducer as each caller's default (a fallback at eight sites).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18612,6 +18636,85 @@ R8-M* and R9-M* by the stage of the recording unit.
     - after U0, module 65,535's ordinal is `LibraryModule`.
     U0 does not move this boundary.
   - Rejected: a `SyntaxId` type holding the constant (a wrapper without semantics).
+- **R8-M32 The library's program independence is a test, with two temporary expectations** (Back, 2026-11-11; R8-L1 U1; the design
+  `back\l1-design\design.md` §2 C9, §5 (a), M-B3, M-N4/R2-N5, §8 U1; implementation reviews 1 REVISE and 2 ACCEPT (B's reviewer),
+  the Front's ACCEPT (C-249); extends R8-M31). Tests only; no compiler change.
+  - **Adopted.** Each row of `KimiLibraryShapeTest` checks a fresh compilation with `Compilation.Check`: the Final Bind, the startup
+    check, then Analyze (the MIR's construction, validation, A1-A5 and the collector). The collector's id writes are therefore
+    inside the comparison. The row is compared with the empty program's check on:
+    - the library table's parsed count;
+    - every parsed node's facts and HIR row, as the semantic snapshot's printer gives them;
+    - every library declaration's own symbol state: Type, WholeType, ContractSelf, ReceiverIndex, Next, SelfOf, Pair,
+      ObjectPayloadOptOut, Scope, the Contract, Property, Schema and Adt presence, the enum Case's ordinal, SourceState, Resolving,
+      Slot and AggregateInputOrigins;
+    - the library's scopes: members, Origins, Constraints, ImplementationPremises and ConformancePath. A program pass that added to
+      a library scope would show here. None does today.
+    - the catalog's map from a `KimiDeclarationId` to its declaration;
+    - the library imports;
+    - the library's MIR dump.
+  - **Rows.**
+    - Programs: the empty one, Hello, Milestones 26, 27, 30, 31, 32 and 35, Ranges and Utf8Formatting.
+    - Inputs, on Milestone31: C9's test build and a 32-bit target (i686-linux); C11's parse-time inputs, the compile-time variables
+      (Debug) and the documentation and hover collection, set together as the LSP sets them.
+    - C9's module inputs (`DefaultAliases`, `Configuration(module)`, `References`): these are keyed by module, and the library's is
+      never a key (`Compilation.Modules.cs`, `PrepareModules`). So the library reads the required aliases, no configuration and no
+      references, whatever the root declares. One test (`TheLibraryHasNoModuleInputs`) pins this on a compilation whose root
+      declares an alias, a native requirement and a module reference, and compares its library too.
+    - Any difference is a hidden program dependence (design §9), not a recorded exception.
+  - **Not compared, and the guard where there is one.**
+    - The Type interners (`TyCtxt`) hold the program's instantiations by design (C7). F-B3's identity test (U3+U4) guards them.
+    - Binding's private tables (C4), among them `ImplTable`'s library rows (`InheritedConformances`' output). U3+U4 guard them (the
+      semantic snapshot's library rows; `ImplTable` gets a `Frozen` base).
+    - The declaration query states are valid only under Binding's private pass stamp. U2's `Frozen` stamp (F-B2) and its tests pin
+      them.
+    - The library bodies' A4 summaries and Field numbers, and the checked set, are program-ordered by design (C8 rev. 1). U5b and
+      U5c own them.
+    - The contents of the objects compared by presence only (Contract, Property, Schema and Adt; the scope's Constraints and
+      ConformancePath): Adt's DirectBase, VTable and layout flags, accessor contents and contract requirements.
+    - The unprinted symbol slots (ConditionalDeclaration, SourceCause, SourceFact, MutableCapture, BindsReference,
+      CaptureAcquisition) and the scope's Function and OriginSets.
+  - **Temporary 1: synthesized ids** (`KimiLibraryShapeTest.SynthesizedNodes`; R5-M168's recorded exception).
+    - Nodes past the parsed count are compared by what they synthesize, not by id. Each compared line holds the node's facts, its
+      HIR row and its own symbol's state, and the lines form a sorted multiset.
+    - A MIR location or HIR jump at such a node is spelled by the node's printer line.
+    - It assumes that no MIR body is keyed by a synthesized node today, so the dump is compared in order.
+    - A program's uses order the ids: on e40d3a99e, Milestone27 renumbers 94 of 96 and Milestone30 renumbers 72.
+    - The Milestone27 row asserts that its ids differ, so U2's freeze, which numbers every library node, fails it. Removal: U2
+      deletes the class, and the nodes compare by id.
+  - **Temporary 2: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4, R2-N5).
+    - The test checks three places, for functions and `init`: the declarations, `Hir.Defaults` after the Final Bind, and default
+      templates in the library MIR.
+    - Removal: U5b or a later unit freezes the templates' omission facts (`Recursive`, `Failed`, `Reads`).
+  - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause.
+- **R8-M33 One MIR ordinal space with a library prefix, owned by `MirProgram`** (Back, 2026-11-11; R8-L1 U5a-1; the design
+  `back\l1-design\design.md` M-B1, R2-N1, R3-N6, §8 U5a as B split it on 2026-11-11; the Middle's consent with conditions, C-248;
+  implementation review 1 ACCEPT (B's reviewer); extends R8-M31).
+  - **Adopted.** `MirProgram` owns the ordinal space and numbers every body (`Begin`). The library's bodies hold ordinals 0 to
+    `MirProgram.LibraryCount` - 1, and the program's follow. `MirBuilder.Build` builds the library's module first (its default
+    templates, then its bodies), calls `EndLibrary`, then builds the source modules (templates, then bodies). Templates still
+    precede their copiers, because a library body omits library defaults only.
+  - Two forms:
+    - `MirProgram.Body(ordinal)` reads either segment. It is the one read by ordinal.
+    - `MirProgram.Bodies` is the compilation's own bodies, which walkers iterate. While a compilation builds its library's bodies,
+      it includes the prefix.
+  - No reader offsets an ordinal or computes one from `LibraryCount`.
+  - Walkers of `Bodies`: `MirAnalysis.Run`, `MirValidator`'s program pass, `MirOrigins.Findings`, `MirDump.Write`, and
+    `InstanceCollector`'s roots and templates; the Benchmark's counts (`CompilerPipelineBenchmark`, `CollectionCostMeasurements`,
+    `PairCaseMeasurements`, `StaticKeyMeasurements`) also read it. U5b changes `Bodies` to the program's suffix, in one edit, and
+    the Middle's A/B states the Benchmark counts' new meaning.
+  - `MirDump.Write(body, ...)` reads `body.Ordinal` for A2's table, instead of taking the ordinal as a parameter (R3-N6).
+  - Rule: `MirProgram`'s contract. `MirBuildTest.TheLibrarysBodiesAreTheOrdinalsPrefix` checks it; `MirValidator` does not.
+  - Staging:
+    - U5b: the prefix comes from the frozen library. `MirDropTable` and the collector's site templates (`sites`/`starts`,
+      `needs`/`needStarts`) split at L there, folded into U5b (B, 2026-11-11), so no temporary writer path is added in U5a.
+    - U5c: A4's `bases` and node and Field segments, with its frozen base.
+  - Behavior-preserving: no output moves (evidence in the commit). A4's node ids now put the library first (its worklist is seeded
+    in node order), which U5c builds on. `MirEffects.Evaluations` (a measured count, not output) may change with that order, so
+    `StaticKeyMeasurements` and the Middle's A/B attribute it to U5a-1.
+  - Rejected:
+    - a physical two-segment layout of every table now, with both segments built per compilation: a temporary writer path that U5b
+      would remove;
+    - a `MirValidator` check of the prefix: the owner assigns the ordinals, so the rule holds by construction.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
