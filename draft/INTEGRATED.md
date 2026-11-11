@@ -1350,6 +1350,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 54 (2026-11-11, plan §14; the Front's D-317): C2's parts and order after the owner's O-148 (b) (part e first, e1 then a1). Nothing frozen.
 - Revision 55 (2026-11-11, plan §14; the Front's D-319): C2's part b keeps its own part after c2; §4.4 names C2e1. Nothing frozen.
 - Revision 56 (2026-11-11, plan §14; the Middle's D-323): M1's row after R9-M1 part 1 landed (DECISIONS R9-M7), with parts 2 and 3, the splits of Documentation's members over a structure limit, as new §5.3 rows. Nothing frozen.
+- Revision 57 (2026-11-11, plan §14; the Middle's D-371): M1 part 2's row after R9-M1 part 2 landed (no DECISIONS entry); M1 part 3's row corrected (`ParseInlines` nesting 6, `IndexParentheses` dropped) and given `SetInlineText`'s and `TryEntity`'s nested conditionals. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

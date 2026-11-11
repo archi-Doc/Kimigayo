@@ -103,11 +103,13 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.HeapBuffer, "HeapBuffer", KimiLibraryContainer.Text),
         new(KimiDeclarationId.Utf8Slice, "Utf8Slice", KimiLibraryContainer.Text),
         new(KimiDeclarationId.InvalidUtf8, "InvalidUtf8", KimiLibraryContainer.Text),
+        new(KimiDeclarationId.TextFixed, "fixed", KimiLibraryContainer.Text, SourceFunction: true), // A direct line's region (R8-W2).
         new(KimiDeclarationId.TextHeap, "heap", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.TextWriter, "writer", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextWriter),
         new(KimiDeclarationId.TextToString, "toString", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true, Row: Formats),
         new(KimiDeclarationId.TextTryFormat, "tryFormat", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true, Row: Formats),
         new(KimiDeclarationId.FixedBufferReserve, "reserve", KimiLibraryContainer.FixedBuffer, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.FixedBufferText, "text", KimiLibraryContainer.FixedBuffer, SourceFunction: true), // A direct line's view (R8-W2).
         new(KimiDeclarationId.HeapBufferReserve, "reserve", KimiLibraryContainer.HeapBuffer, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.HeapBufferIntoString, "intoString", KimiLibraryContainer.HeapBuffer, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.WindowLimit, "limit", SourceFunction: true, CallerLocation: true, Owner: "WriteWindow"),
