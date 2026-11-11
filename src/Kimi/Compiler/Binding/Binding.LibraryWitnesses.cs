@@ -30,6 +30,8 @@ internal enum WitnessMembers : byte
     BoolFormat,
     CharFormat,
     UnitFormat,
+    F32Format,
+    F64Format,
 }
 
 public sealed partial class Binding
@@ -40,8 +42,8 @@ public sealed partial class Binding
 
     // SPEC 22.1, 4.6.1, 8.7, 13.4.1: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's
     // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position, string's two
-    // comparison Contracts and bool's, char's and Unit's Utf8Format (SPEC 22.10.2), whose bodies are not generic, so their rows have no
-    // parameter.
+    // comparison Contracts and bool's, char's, Unit's, f32's and f64's Utf8Format (SPEC 22.10.2), whose bodies are not generic, so their
+    // rows have no parameter (no Contract holds exactly f32 and f64, and SPEC 13.5.4's bit conversion needs a closed Type).
     internal static LibraryWitnessGroup? WitnessGroup(BoundType? self, KimiDeclarationId? contract) => self switch
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
@@ -54,6 +56,8 @@ public sealed partial class Binding
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Boolean) => new(WitnessMembers.BoolFormat, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Char) => new(WitnessMembers.CharFormat, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Unit) => new(WitnessMembers.UnitFormat, null, null, null),
+        _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.F32) => new(WitnessMembers.F32Format, null, null, null),
+        _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.F64) => new(WitnessMembers.F64Format, null, null, null),
         _ => null,
     };
 
@@ -94,8 +98,9 @@ public sealed partial class Binding
 
     // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an integer
     // or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at most one
-    // layer, so a bare string passes too, though nothing else reaches this; bool, char and Unit, which the formatting bodies write as
-    // `ref/bool`, `ref/char` and `ref/()` (SPEC 22.10.2), likewise. A new group states its own; none is another's by default.
+    // layer, so a bare string passes too, though nothing else reaches this; bool, char, Unit, f32 and f64, which the formatting bodies
+    // write as `ref/bool`, `ref/char`, `ref/()`, `ref/f32` and `ref/f64` (SPEC 22.10.2), likewise. A new group states its own; none is
+    // another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
@@ -105,6 +110,8 @@ public sealed partial class Binding
         WitnessMembers.BoolFormat => ReferenceEquals(EffectiveCore(type), BoundType.Boolean),
         WitnessMembers.CharFormat => ReferenceEquals(EffectiveCore(type), BoundType.Char),
         WitnessMembers.UnitFormat => ReferenceEquals(EffectiveCore(type), BoundType.Unit),
+        WitnessMembers.F32Format => ReferenceEquals(EffectiveCore(type), BoundType.F32),
+        WitnessMembers.F64Format => ReferenceEquals(EffectiveCore(type), BoundType.F64),
         _ => throw new InvalidOperationException($"The group {members} states no receiver."),
     };
 

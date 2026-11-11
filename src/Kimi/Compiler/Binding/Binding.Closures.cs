@@ -344,10 +344,10 @@ public sealed partial class Binding
         // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
         // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
         // fails on its own is reported beside the repeats (SPEC 23.1.2).
-        var repeats = RepeatedCaptures(function, captures);
+        var repeats = this.RepeatedCaptures(function, captures);
         foreach (var capture in captures)
         {
-            if (repeats is not null && RepeatsEarlierEntry(repeats, capture))
+            if (this.RepeatsEarlierEntry(repeats, capture))
             {
                 continue;
             }
@@ -370,7 +370,7 @@ public sealed partial class Binding
             if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
             {
                 // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                failed = source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
+                failed = source is { Type: null } ? repeats.Count == 0 ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
                     : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
                 return true;
             }
@@ -383,7 +383,7 @@ public sealed partial class Binding
             }
         }
 
-        if (repeats is not null)
+        if (repeats.Count != 0)
         {
             failed = this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
             return true;
