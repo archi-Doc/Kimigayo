@@ -576,7 +576,8 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var fact = parameterIdentity ? this.Reading(available, work.Scope) : available;
+                int? serial = null; // The loop's judgments may write the chain: a serial per fact.
+                var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
                 if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
                 {
