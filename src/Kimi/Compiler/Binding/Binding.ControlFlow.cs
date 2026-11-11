@@ -72,17 +72,18 @@ public sealed partial class Binding
             return scalar;
         }
 
-        // Borrow results with the same referent retain every incoming dependency; results that differ in raw Origins alone join unstated.
-        // This does not search common bases or change referent variance.
-        var borrowed = types.Count > 0 ? types[0] : null;
-        for (var i = 1; i < types.Count && borrowed is not null; i++)
+        // SPEC 14.9.2 step 2 (PLAN G758, G443's part for sources that differ in Origins alone): their common Type meets the Origins at
+        // covariant positions, a pair layer's slot included, and joins differing raw Origins unstated (CommonOriginType). This does not
+        // search common bases or change variance.
+        var common = types.Count > 0 ? types[0] : null;
+        for (var i = 1; i < types.Count && common is not null; i++)
         {
-            borrowed = this.CommonBorrowResult(borrowed, types[i]);
+            common = ReferenceEquals(common, BoundType.Never) ? types[i] : ReferenceEquals(types[i], BoundType.Never) ? common : this.CommonOriginType(common, types[i], out _);
         }
 
-        if (borrowed is not null)
+        if (common is not null)
         {
-            return borrowed;
+            return common;
         }
 
         // No common base is searched; unrelated sources require an annotation.
@@ -117,36 +118,6 @@ public sealed partial class Binding
         }
 
         return expected;
-    }
-
-    private BoundType? CommonBorrowResult(BoundType left, BoundType right)
-    {
-        if (ReferenceEquals(left, BoundType.Never))
-        {
-            return right;
-        }
-
-        if (ReferenceEquals(right, BoundType.Never) || ReferenceEquals(left, right))
-        {
-            return left;
-        }
-
-        if ((left.CarriesRawOrigin || right.CarriesRawOrigin) && SameExceptRawOrigins(left, right))
-        {
-            return this.CommonOriginType(left, right, out _); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
-        }
-
-        if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||
-            !IsBorrow(left.Semantics) || left.Semantics != right.Semantics ||
-            left.Origin is not { } a || right.Origin is not { } b ||
-            left.Components.Count != 1 || right.Components.Count != 1 ||
-            !ReferenceEquals(left.Components[0], right.Components[0]) ||
-            left.OriginArguments.Count != 0 || right.OriginArguments.Count != 0)
-        {
-            return null;
-        }
-
-        return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
