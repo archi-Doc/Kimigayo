@@ -205,8 +205,8 @@ public class ConstraintBindingTest
     [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<i32>\n        c.put(w@move)\n", "clean")]
     [InlineData(Put, "<C, V>(c: uniq/C)\n        C is Put<V>\n        V is i32\n        c.put(5)\n", "clean")]
     [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<i32>\n        C is Put<bool>\n        let x: i32 = 5\n        c.put(x)\n", "clean")]
-    // P1i asserts dev's record kind, which is PLAN G680's open question, not a SPEC reading; it moves under DECISIONS Q13 when G680 lands.
-    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<bool>\n        c.put(5)\n", "NoApplicableOverload_Kd@c.put(5) [candidates=1]")]
+    // P1i (PLAN G680, SPEC 10.2.1): U is bound only by the Literal's default, after selection, so the refuted clause is the call's record.
+    [InlineData(Put, "<C>(c: uniq/C)\n        C is Put<bool>\n        c.put(5)\n", "UnsatisfiedConstraint_Kd@c.put(5) [subject=i32; member=put; constraint=U is T]")]
     [InlineData(Put, "<C, V>(c: uniq/C, v: V)\n        C is Put<V>\n        c.put(5)\n", "UnprovenConstraint_Kd@c.put(5) [subject=i32; member=put; constraint=U is T]")]
     [InlineData(PutShown, "<C, W>(c: uniq/C, w: W)\n        C is Put<i32>\n        W is Show<bool>\n        c.put(w@move)\n", "UnprovenConstraint_Kd@c.put(w@move) [subject=W; member=put; constraint=U is Show<T>]")]
     [InlineData(Put, "<C, D, V, W>(c: uniq/C, d: uniq/D, v: V, w: W)\n        C is Put<V>\n        D is Put<W>\n        c.put(w@move)\n", "UnprovenConstraint_Kd@c.put(w@move) [subject=W; member=put; constraint=U is T]")]
@@ -302,7 +302,8 @@ public class ConstraintBindingTest
         Assert.Equal(success, c.Bind().IsComplete);
         if (!success)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
+            // SPEC 10.2.1 (PLAN G680): the Literal binds T only by its default, after selection; the refuted clause is the call's record.
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         }
     }
 
@@ -363,7 +364,7 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is ::Kimi.Never\n    ()\nfunc k<T>(a: T) -> ()\n    T is Option<::Kimi.Never>\n    ()", "clean")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Kimi.Never\n    ()", "clean")]
     [InlineData("group G\n    contract Never\n        func g(self: ref/Self) -> ()\n    func f<T>(a: T) -> ()\n        T is Never\n        ()", "clean")]
-    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()\nfunc use() -> () => f(1)", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    ()\nfunc use() -> () => f(1)", "1*UnsatisfiedConstraint_Kd")]
     [InlineData("func f<T>(a: ref/T) -> i32\n    T is Never\n    return a.v", "1*UnresolvedBinding_Kd")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never<i32>\n    ()", "1*InvalidConstraint_Kd 1*InvalidTypeFormation_Kd")]
     [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<string, i32>(1, \"s\")", "1*NoApplicableOverload_Kd")]
@@ -565,11 +566,12 @@ public class ConstraintBindingTest
     }
 
     // SPEC 8.3, 8.7.1: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
-    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload. SPEC 3.1.3: Never
+    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload, or, when only a Literal's
+    // default binds the subject, the Constraint's record (SPEC 10.2.1). SPEC 3.1.3: Never
     // conforms to no Contract other than its intrinsic capabilities.
     [Theory]
     [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(1)", true, null)]
-    [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use() => present(1)", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use() => present(1)", false, DiagnosticCode.UnsatisfiedConstraint_Kd)] // SPEC 10.2.1: refuted after the default (G680).
     [InlineData("func present<T>(x: T)\n    T is Iterable\n    ()\nfunc use() => present(\"text\")", false, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("func absent<T>(x: T)\n    T is not LendingIterator\n    ()\nfunc use() => absent(true)", true, null)]
     [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use(n: Never) => absent<Never>(n)", true, null)]
