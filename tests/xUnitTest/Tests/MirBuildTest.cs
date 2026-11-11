@@ -217,6 +217,26 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Contains("opaque", first, StringComparison.Ordinal);
     }
 
+    // R8-L1 M-B1: the library's bodies hold the ordinals 0 to LibraryCount - 1 and the program's follow, a default template and a Closure
+    // included, each the body its ordinal reads, in the first build and after a rebind.
+    [Fact]
+    public void TheLibrarysBodiesAreTheOrdinalsPrefix()
+    {
+        var c = Compile("func scale(x: i32, by: i32 = 2) -> i32 => x * by\nfunc main()\n    let g = func [] (y: i32) -> i32 => y\n" +
+            "    _ = scale(g(1))\n");
+        for (var build = 0; build < 2; build++)
+        {
+            var program = c.BuildMir();
+            var bodies = program.Bodies.ToArray();
+            Assert.InRange(program.LibraryCount, 1, bodies.Length - 4);
+            Assert.All(bodies, x => Assert.Equal(x.Ordinal < program.LibraryCount, x.Source.IsLibrary));
+            Assert.All(bodies, x => Assert.Same(x, program.Body(x.Ordinal)));
+            Assert.Contains(bodies[program.LibraryCount..], static x => x.Key.Kind == MirBodyKind.DefaultTemplate);
+            Assert.Contains(bodies[program.LibraryCount..], static x => x.Key.Kind == MirBodyKind.Closure);
+            c.Binding.Bind(BindingMode.Final);
+        }
+    }
+
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
     // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]
@@ -395,8 +415,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // A function's view statements as its dump spells them (a Storage; an Add), without their sites, scopes and local numbers.
     private static string Views(MirProgram program, string name)
     {
-        var ordinal = Array.FindIndex(program.Bodies.ToArray(), x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
-        return string.Join("|", MirDumpTest.Unsited(program, ordinal).Split('\n')
+        var body = Array.Find(program.Bodies.ToArray(), x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name && x.Source.Module == 0)!;
+        return string.Join("|", MirDumpTest.Unsited(program, body).Split('\n')
             .Where(static x => x.Contains("storage(", StringComparison.Ordinal) || x.Contains("= Add(", StringComparison.Ordinal))
             .Select(static x => Regex.Replace(Regex.Replace(x, @"^[ *]+| s\d+$", string.Empty), @"_\d+", "_")));
     }

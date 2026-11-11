@@ -1031,5 +1031,15 @@
   { "Name": "access-word-q7-ceff", "Source": "func apply<F>(transform: ref/F, value: i32) -> i32\n    F is Callable<(i32) -> i32>\n        public effect confined\n    return transform(value)\npublic func main() => ()\n", "Intended": "an access word on an effect clause under a Constraint clause is no item prefix: the record is unchanged (PLAN G689)",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "At": "public e", "Length": 6 } ] },
   { "Name": "access-word-q-porig", "Source": "struct R {first, second}\n    var x: i32\n        public origin first outlives second\npublic func main() => ()\n", "Intended": "an access word under a Property declaration is no item prefix: the record is unchanged (PLAN G689)",
-    "Records": [ { "Code": "ExpectedSyntax_Kd", "At": "origin" } ] }
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "At": "origin" } ] },
+  { "Name": "associate-grouped-selector", "Source": "contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C).Item is i32\nlet wrong: i32 = true\n", "Intended": "`associate` before a grouped ContractSelector introduces the specification (F.6.2 AssociatedTypeName; G683): its selector is one node before its `. Name`",
+    "Records": [ { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "associate-rooted-selector", "Source": "contract C\n    associate Item\nstruct S\n    Self is C\n    associate ::C.Item is i32\nlet wrong: i32 = true\n", "Intended": "`associate` before a root-qualified ContractSelector introduces the specification (F.6.2 AssociatedTypeName); no Constraint subject starts with it",
+    "Records": [ { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "associate-self-path-selector", "Source": "struct S\n    contract Inner\n        associate Item\n    Self is Inner\n    associate Self.Inner.Item is i32\nlet wrong: i32 = true\n", "Intended": "`associate` before a ContractSelector path that starts with Self introduces the specification of the nested Contract's associated Type",
+    "Records": [ { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "associate-head-group-without-name", "Source": "contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C) is i32\nlet wrong: i32 = true\n", "Intended": "a grouped ContractSelector without its `. Name` is no AssociatedTypeName: rejected at the head where it is read (F.6.2; G683)",
+    "Records": [ { "Code": "AssociatedTypeInferenceFailed_Kd", "At": "Self is C" }, { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "(C) is i32", "Length": 3, "Found": "(C)" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "associate-contract-head-rooted-type", "Source": "struct S\n    let v: i32 = 0\ncontract D\n    associate ::S is S\nlet wrong: i32 = true\n", "Intended": "in a Contract, a rooted Type without `. Name` is no AssociatedTypeName: rejected at the head, never a closed Constraint (F.6.2; G683)",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "::S is S", "Length": 3, "Found": "::S" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] }
 ]

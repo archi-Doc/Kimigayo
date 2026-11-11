@@ -1033,6 +1033,57 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
     }
 
+    // SPEC F.6.2: AssociatedTypeName := Name | ContractSelector "." Name, so `associate` before any start of a ContractSelector introduces
+    // the item, whose selector is one node (a group, a rooted first segment or a path) before its `. Name` (G683). A specification is a
+    // member of its owner, a Contract's included; a Contract's `associate Name is R` declares, among its Constraints (8.5.1).
+    [Theory]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C).Item is i32\n", "(C).Item")]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i32>).Item is i32\n", "(C<i32>).Item")]
+    [InlineData("contract L\n    associate View(a)\nstruct S\n    Self is L\n    associate (L).View(a) is ref/i32 during a\n", "(L).View(a)")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ::C.Item is i32\n", "::C.Item")]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate ::C<i32>.Item is i32\n", "::C<i32>.Item")]
+    [InlineData("struct S\n    contract Inner\n        associate Item\n    Self is Inner\n    associate Self.Inner.Item is i32\n", "Self.Inner.Item")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Item is i32\n", "(C).Item")]
+    public void AssociateIntroducesEveryAssociatedTypeName(string source, string name)
+    {
+        var (root, diagnostics) = Parse(source);
+        Assert.Empty(diagnostics);
+        var specification = Assert.Single(KotoTree.Walk(root).OfType<IsKoto>(), static x => x.IsAssociatedConstraint);
+        Assert.Equal(name, specification.Left.ToString());
+        var owner = Assert.IsAssignableFrom<DeclarationContainerKoto>(specification.Parent);
+        Assert.Contains(specification, owner.Members);
+        Assert.DoesNotContain(specification, owner.ConstraintNodes);
+    }
+
+    // SPEC F.6.2: a head that is no AssociatedTypeName is rejected where it is read, in every owner, with one record at the head (G683).
+    [Theory]
+    [InlineData("struct S\n    let v: i32 = 0\ncontract D\n    associate ::S is S\n", "::S")]
+    [InlineData("struct S\n    let v: i32 = 0\ncontract D\n    associate (S) is S\n", "(S)")]
+    [InlineData("struct W<T>\n    let v: i32 = 0\ncontract D\n    associate W<i32> is W<i32>\n", "W<i32>")]
+    [InlineData("contract D\n    associate i32 is i32\n", "i32")]
+    [InlineData("contract D\n    associate [2 of i32] is [2 of i32]\n", "[2 of i32]")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate Self is i32\n", "Self")]
+    [InlineData("contract D\n    associate ::Item is i32\n", "::Item")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Item<i32> is i32\n", "(C).Item<i32>")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ::C is C\n", "::C")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ref/C.Item is i32\n", "ref/C.Item")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate Self(a) is ref/i32 during a\n", "Self(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate i32(a) is ref/i32 during a\n", "i32(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate ::View(a) is ref/i32 during a\n", "::View(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate View<i32>(a) is ref/i32 during a\n", "View<i32>(a)")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C) is i32\n", "(C)")]
+    [InlineData("contract L\n    associate View(a)\nstruct S\n    Self is L\n    associate Self(a) is ref/i32 during a\n", "Self(a)")]
+    [InlineData("struct W<T>\n    let v: i32 = 0\nenum E\n    A\n    associate W<i32> is W<i32>\n", "W<i32>")]
+    [InlineData("enum E\n    A\n    associate i32 is i32\n", "i32")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    let v: i32 = 0\nstruct W<T>\n    Self is C when T is Copy\n        associate ::S is S\n", "::S")]
+    public void AnAssociateHeadThatIsNoAssociatedTypeNameIsRejectedAtTheHead(string source, string head)
+    {
+        var (_, diagnostics) = Parse(source);
+        var record = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains($"found '{head}'", record.Message);
+    }
+
     // A repeated modifier is named as written, whether it is an access modifier or a flag such as open.
     [Theory]
     [InlineData("open open struct S\n    let x: i32\n", "open")]
