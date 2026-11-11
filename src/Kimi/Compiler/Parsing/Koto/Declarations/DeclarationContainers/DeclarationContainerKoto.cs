@@ -650,7 +650,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
-        reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
+        reader.Document(container, reader.PreviousSyntaxEnd, state.AttributeKoto);
         reader.Hover(container, nameSpan);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
@@ -761,7 +761,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 IsDestructor = true,
             };
-            reader.Document(destructor, token.Span);
+            reader.Document(destructor, token.Span.End);
             reader.Hover(destructor, token.Span);
             destructor.Parse(ref reader);
             this.AddLast(destructor);

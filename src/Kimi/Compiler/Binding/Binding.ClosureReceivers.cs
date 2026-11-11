@@ -176,8 +176,11 @@ public sealed partial class Binding
 
                     if (this.plan.CaseFreeReceiver != SemanticsKind.Owner && this.plan.ExclusiveUse is null)
                     {
+                        // The Reborrow cause holds in every case only for a take that is no by-case one: a pair layer's Reborrow is its
+                        // exclusive cases' (PLAN G254), which the general cause covers without naming a case.
                         this.plan.ExclusiveUse = node;
-                        this.plan.ExclusiveReborrow = binding.adaptations.TryGetValue(use, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow;
+                        this.plan.ExclusiveReborrow = need.Use == PlaceUse.Exclusive && binding.adaptations.TryGetValue(use, out var adaptation) &&
+                            adaptation.Kind == ExpectedAdaptationKind.Reborrow;
                     }
                 }
                 else if (need.Use == PlaceUse.Consuming)

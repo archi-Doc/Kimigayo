@@ -174,4 +174,25 @@ public class LengthCallBindingTest
             }
         }));
     }
+
+    // SPEC 4.4.2's normalization: a commutative length's operands in CompareLength's order (a constant before a slot, in either spelling),
+    // interned without allocating on a warm rebind (PLAN G712: comparing the operations boxed both, 48 B a comparison).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("func reordered<length N>(value: [(N + 4) of u8]) -> [(4 + N) of u8] => value\n\nfunc f<length N>(a: [(N + 1) of u8])\n    let k: isize = N + 1\n    let b: [k of u8] = a")]
+    [InlineData("func f<length N>(a: [(N + 1) of u8]) => ()")]
+    public void WarmRebindingInternsCommutativeLengthsWithoutAllocation(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>(), x => Assert.True(x.TypeOf()!.LengthExpression is { Operation: LengthOperation.Add, Left.IsConstant: true, Right.Operation: LengthOperation.Parameter }));
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Length normalization Binding failed.");
+            }
+        }));
+    }
 }

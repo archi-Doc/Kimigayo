@@ -5,8 +5,14 @@
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
+// Owns the ordinal space, one with a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow,
+// each numbered here (Begin) and nowhere else. Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
+// iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis.Run, MirValidator's program pass,
+// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
+// CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements).
 // One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
-// Must not re-bind definitions or maintain a second body map in a consumer.
+// Must not re-bind definitions or maintain a second body map in a consumer; a reader by ordinal reads through Body, never offsets an
+// ordinal or computes one from LibraryCount.
 
 using System.Collections;
 using Kimi.Diagnostics;
@@ -22,8 +28,13 @@ internal sealed class MirProgram
     private MirBody[] pool = [];
     private int count;
 
-    /// <summary>Gets the bodies in the order they were begun.</summary>
+    /// <summary>Gets the bodies a walker visits, in ordinal order: the compilation's own, the library's prefix included while the
+    /// compilation builds it.</summary>
     internal ReadOnlySpan<MirBody> Bodies => this.pool.AsSpan(0, this.count);
+
+    /// <summary>Gets the number of the library's bodies, which hold ordinals 0 to the count less one in every compilation; the program's
+    /// bodies follow (R8-L1 M-B1).</summary>
+    internal int LibraryCount { get; private set; }
 
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
@@ -42,6 +53,11 @@ internal sealed class MirProgram
     internal MirDropTable Drops { get; } = new();
 
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
+
+    /// <summary>Gets the body of an ordinal, the library's or the program's, the one read by ordinal.</summary>
+    /// <param name="ordinal">The body's ordinal (<see cref="MirBody.Ordinal"/>).</param>
+    /// <returns>The body.</returns>
+    internal MirBody Body(int ordinal) => this.Bodies[ordinal];
 
     /// <summary>Gets the body a Fn callee runs: a default template's (its Arg, the index plus 1), else its function's, getter's or setter's.</summary>
     /// <param name="callee">The callee.</param>
@@ -70,8 +86,11 @@ internal sealed class MirProgram
         this.bodies.Clear();
         this.Problems.Clear();
         this.Findings.Clear();
-        this.count = 0;
+        this.count = this.LibraryCount = 0;
     }
+
+    /// <summary>Ends the library's prefix: the bodies begun so far are the library's (<see cref="LibraryCount"/>).</summary>
+    internal void EndLibrary() => this.LibraryCount = this.count;
 
     /// <summary>Records a construction or collection record at its location, a ControlFlow problem of every view, once per class, code and
     /// location however many bodies or items meet it (MirReport's key).</summary>

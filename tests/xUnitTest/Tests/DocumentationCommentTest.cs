@@ -88,6 +88,22 @@ public class DocumentationCommentTest
         Assert.NotEqual(comments[0].DeclarationSpan, comments[1].DeclarationSpan);
     }
 
+    // The header starts after the prelude (SPEC 2.3) at its first modifier or its introducer, also after a nested body in the header.
+    [Theory]
+    [InlineData("/// d\npublic open struct S\n    public virtual func area(self) -> f64 => 0.0", "public open struct S")]
+    [InlineData("group G\n    /// d\n    public unsafe func f() => ()", "public unsafe func f()")]
+    [InlineData("group G\n    /// d\n    #Test public func f() => ()", "public func f()")]
+    [InlineData("open struct B\n    public virtual func s(self: objref/Self) -> i32 => 1\nstruct D : B\n    /// d\n    override func s(self: objref/Self) -> i32 => 2", "override func s(self: objref/Self) -> i32")]
+    [InlineData("struct S\n    var x: i32\n    /// d\n    public init(x: i32)\n        self.x = x", "public init(x: i32)")]
+    [InlineData("func g<T>(x: T) => ()\n/// d\nspecialize func g<i32>(x: i32) => ()", "specialize func g<i32>(x: i32)")]
+    [InlineData("public struct S\n    /// d\n    public var f: (i32) -> i32 = func(x: i32) -> i32\n        /// inner\n        let y = x\n        y", "public var f")]
+    public void DeclarationSpanStartsAtTheWrittenHeader(string source, string header)
+    {
+        var comment = Assert.Single(Assert.Single(Parse(source).DocumentationSources).Comments, x => x.GetText().Text == "d");
+        Assert.NotNull(comment.Declaration);
+        Assert.Equal(header, source[comment.DeclarationSpan.Start..comment.DeclarationSpan.End]);
+    }
+
     [Fact]
     public void CommentsInLiteralsAndBlockCommentsAreNotDocumentation()
     {

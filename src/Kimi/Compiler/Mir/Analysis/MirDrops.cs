@@ -64,8 +64,8 @@ internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdic
 /// <param name="Views">The views, bit i for view i.</param>
 internal readonly record struct MirFlagPoint(MirLocation At, int First, int Count, bool Set, ulong Views);
 
-/// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (its index in
-/// <see cref="MirProgram.Bodies"/>): the body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
+/// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (<see cref="MirProgram.Body"/>): the
+/// body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
 /// points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
 /// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none. A group
 /// says what its Drop destroys, the statement every walk of it cites: a Keep or Flag row its Type whole (its drop, then every part); an
