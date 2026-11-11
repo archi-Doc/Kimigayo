@@ -109,6 +109,10 @@ internal sealed class ConstraintEnvironment
     /// expressions bound in its scope substitute one for the other.</summary>
     internal bool HasParameterIdentity { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
+    /// of the identity relation; G721's interim reads it until G170's identity query answers which Types it makes identical.</summary>
+    internal bool HasTypeIdentity { get; set; }
+
     internal void Reset()
     {
         this.Facts.Clear();
@@ -117,5 +121,6 @@ internal sealed class ConstraintEnvironment
         this.Invalid = false;
         this.HasAssociatedProjection = false;
         this.HasParameterIdentity = false;
+        this.HasTypeIdentity = false;
     }
 }

@@ -462,7 +462,7 @@ public sealed record BoundType
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
-        var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var closure = kind == BoundTypeKind.Closure;
@@ -642,8 +642,15 @@ public sealed record BoundType
     internal int Height => this.height;
 
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
-    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
+    /// annotated occurrence of it, an application <c>s/U</c> or an adaptation family (<see cref="IsPairLayer"/>); a Semantics case
+    /// substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    /// <summary>Gets a value indicating whether this Type is itself a pair layer (SPEC 13.5.5: its outer Semantics is a pair binder),
+    /// in each of its representations: the original <c>s/T</c> (a Parameter whose symbol is the pair's SemanticsTarget), an
+    /// application <c>s/U</c> and an adaptation family <c>p@s</c> (SemanticsAdaptation).</summary>
+    internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+        (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
     // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
     internal bool ContainsClosure => this.containsClosure;

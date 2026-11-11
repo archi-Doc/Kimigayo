@@ -608,6 +608,7 @@ public sealed partial class Binding
 
         environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
         environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
+        environment.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
         if (fact.Kind == ConstraintKind.Error)
         {
             environment.Invalid = true;
