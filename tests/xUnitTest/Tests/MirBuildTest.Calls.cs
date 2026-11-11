@@ -193,6 +193,19 @@ public sealed partial class MirBuildTest
             body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
     }
 
+    // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2): a value read through a qualifying pair layer at an annotated let, an
+    // argument and a result is a Copy of the layer's projection in the one body every Semantics case shares, and forms no reference.
+    [Theory]
+    [InlineData("    let v: i32 = x\n    return v\n")]
+    [InlineData("    return h(x)\n")]
+    [InlineData("    return x\n")]
+    public void AValueReadThroughAPairLayerCopiesItsProjection(string read)
+    {
+        var body = Body("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or valueborrow\n" + read, "f");
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref });
+        Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && body.Projections[x.Place.Projection].Kind == MirProjectionKind.PairLayer);
+    }
+
     // A3 E13 (4): a pair-layer acquisition is always the whole rvalue of its own Assign to a local, marked with the Reborrow its exclusive
     // case makes: TwoPhaseUniq where it produces an invocation's input, else Uniq (a local's initializer, a tuple's element, a capture);
     // an Adapt that produces an input has its input bit, so its exclusive case is a two-phase borrow there (MirCases.Adapt).

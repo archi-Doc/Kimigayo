@@ -601,7 +601,83 @@ public class PairFollowTest
     [InlineData("arith", 33)]
     [InlineData("match", 17)]
     [InlineData("match", 33)]
+    [InlineData("let", 17)]
+    [InlineData("let", 18)]
+    [InlineData("let", 33)]
+    [InlineData("argval", 17)]
+    [InlineData("argval", 18)]
+    [InlineData("arith", 18)]
+    [InlineData("lt", 17)]
+    [InlineData("lt", 18)]
     public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
+
+    // PLAN G703 (SPEC 8.7.4, 8.1.1; 3.4.3, 3.5.3, 10.2; 13.5.2): a pair target standing alone has the capabilities its Constraints
+    // prove, as a Type slot has; a value read follows qualifying pair layers at every read position (an annotated let, an argument,
+    // a result, an assignment, a condition, an operand, a conversion's operand), in any order with ref and uniq layers, and ends
+    // only in a read Type; a pair of one admitted Semantics is its head (SPEC 8.2.3).
+    [Theory]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return (a % b) << b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> bool\n    s is owner or ref\n    T is PrimitiveInteger\n    return a < b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 1\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: ref/T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = a\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let w = a@Wrapping<T>\n    return (-w)@T")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is value or valueborrow\n    T is PrimitiveInteger\n    return a % b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b + 1")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> bool\n    s is owner or ref\n    T is PrimitiveInteger\n    return a < b and a == b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    let v: i32 = x\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    return h(x)")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return x")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    var v: i32 = 0\n    v = x\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(c: s/bool, m: s/T) -> i32\n    s is owner or ref\n    if c\n        return 1\n    return 0")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = a\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: ref/(s/i32 during a), m: s/T) -> i32\n    s is owner or ref\n    let v: i32 = x\n    return v + x")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is owner or ref\n    return x@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> i64\n    s is owner or ref\n    T is PrimitiveInteger\n    return a@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    let w = x@Wrapping<i32>\n    return w@i32 + x@i32")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> s/T\n    s is owner\n    T is PrimitiveInteger\n    let v: s/T = 1\n    return 1")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    let v: i32 = x\n    return v + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    return h(x) + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    return x@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v: i32 = x\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = h(x)\n    let z = x@move\n    return v")]
+    public void PairTargetsAndValueReadsVerify(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // The invalid counterparts: no capability without its proof, no read through a pair layer that does not qualify, no conversion
+    // by a read, no read of a Type that is no read Type, a read through a live exclusive Loan or of a Moved Place, and a pair target
+    // as a runtime test's target (SPEC 13.6.4; `v is s/T` does not name the pair).
+    [Theory]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return -a", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 128\n    return v", DiagnosticCode.InvalidNumericLiteral_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    let v: i32 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or object\n    return h(x)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is owner or ref\n    let v: i64 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> T\n    s is owner or ref\n    T is Copy\n    let v: T = a\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    return x@i64", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> i32\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: s/T = 1\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v: i32 = x\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v: i32 = x\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = h(x)\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = h(x)\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = x + 0\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = x + 0\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = x@i32\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = x@i32\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is T", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is s/T", DiagnosticCode.UnresolvedBinding_Kd)]
+    public void PairTargetsAndValueReadsReject(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Contains(code, Codes(c));
+    }
 
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)
         => c.Binding.Issues.Select(x => x.Code).Concat(c.Problems.Select(x => x.Code));
