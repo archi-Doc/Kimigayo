@@ -202,6 +202,14 @@ public sealed partial class KimiLibrary
     /// table's UnitFormat row selects; Unit gains no members from it.</summary>
     internal DeclarationContainerKoto? UnitFormatMembers { get; private set; }
 
+    /// <summary>Gets the internal Kimi group whose receiver function is f32's built-in formatting body (SPEC 22.10.2), which the witness
+    /// table's F32Format row selects; f32 gains no members from it.</summary>
+    internal DeclarationContainerKoto? F32FormatMembers { get; private set; }
+
+    /// <summary>Gets the internal Kimi group whose receiver function is f64's built-in formatting body (SPEC 22.10.2), which the witness
+    /// table's F64Format row selects; f64 gains no members from it.</summary>
+    internal DeclarationContainerKoto? F64FormatMembers { get; private set; }
+
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
@@ -219,6 +227,8 @@ public sealed partial class KimiLibrary
         WitnessMembers.BoolFormat => this.BoolFormatMembers,
         WitnessMembers.CharFormat => this.CharFormatMembers,
         WitnessMembers.UnitFormat => this.UnitFormatMembers,
+        WitnessMembers.F32Format => this.F32FormatMembers,
+        WitnessMembers.F64Format => this.F64FormatMembers,
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
@@ -427,6 +437,8 @@ public sealed partial class KimiLibrary
         this.BoolFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "BoolFormat", false) as DeclarationContainerKoto;
         this.CharFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "CharFormat", false) as DeclarationContainerKoto;
         this.UnitFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "UnitFormat", false) as DeclarationContainerKoto;
+        this.F32FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F32Format", false) as DeclarationContainerKoto;
+        this.F64FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F64Format", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
     }
 

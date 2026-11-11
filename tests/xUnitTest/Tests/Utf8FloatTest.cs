@@ -47,7 +47,8 @@ public class Utf8FloatTest
     public void DecimalCoreMatchesAnIndependentOracleAcrossBinaryIntervals()
     {
         // IEEE bit patterns exercise every exponent, mantissa interval edges and deterministic random inputs.
-        // An exact rational interval search is independent of the native table-based converter.
+        // An exact rational interval search is independent of the native table-based converter. The harness calls the FormatFloat
+        // routine directly (R8-S2c): its returned count is the text's length, and no byte before, after or past 24 is written.
         var cases = new List<(ulong Bits, int Kind, string Text)>();
         for (var exponent = 0; exponent <= 2047; exponent++)
         {
@@ -98,9 +99,7 @@ public class Utf8FloatTest
             entry:
               %bytes = alloca [26 x i8], align 8
               %destination = getelementptr i8, ptr %bytes, i64 1
-              %result = alloca [24 x i8], align 8
-              %buffer = alloca [32 x i8], align 8
-              %writer = alloca [64 x i8], align 8
+              %lastp = getelementptr i8, ptr %bytes, i64 25
               br label %loop
             loop:
               %index = phi i64 [0, %entry], [%next, %passed]
@@ -108,28 +107,25 @@ public class Utf8FloatTest
               %kindp = getelementptr i8, ptr %item, i64 8
               %lengthp = getelementptr i8, ptr %item, i64 12
               %expected = getelementptr i8, ptr %item, i64 16
+              %bits = load i64, ptr %item
               %kind = load i32, ptr %kindp
+              %narrow = icmp eq i32 %kind, 11
               %length32 = load i32, ptr %lengthp
               %length = zext i32 %length32 to i64
               call void @llvm.memset.p0.i64(ptr %bytes, i8 42, i64 26, i1 false)
-              call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %length)
-              call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 0, ptr null)
-              call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %item, i32 %kind, ptr null, i64 0)
-              %tag = load i32, ptr %result
-              %ok = icmp eq i32 %tag, 0
-              br i1 %ok, label %compare, label %failed
-            compare:
-              %actualp = getelementptr i8, ptr %buffer, i64 16
-              %actual = load i64, ptr %actualp
-              %same_length = icmp eq i64 %actual, %length
+              %count = call i64 @__kimi_format_float(i64 %bits, i1 %narrow, ptr %destination)
+              %same_length = icmp eq i64 %count, %length
               %equal = call i32 @memcmp(ptr %destination, ptr %expected, i64 %length)
               %same_bytes = icmp eq i32 %equal, 0
               %start = load i8, ptr %bytes
               %endp = getelementptr i8, ptr %destination, i64 %length
               %end = load i8, ptr %endp
+              %last = load i8, ptr %lastp
               %start_ok = icmp eq i8 %start, 42
               %end_ok = icmp eq i8 %end, 42
-              %canaries = and i1 %start_ok, %end_ok
+              %last_ok = icmp eq i8 %last, 42
+              %edges = and i1 %start_ok, %end_ok
+              %canaries = and i1 %edges, %last_ok
               %same = and i1 %same_length, %same_bytes
               %all = and i1 %same, %canaries
               br i1 %all, label %passed, label %failed
@@ -139,12 +135,9 @@ public class Utf8FloatTest
             """).Append(' ').Append(cases.Count).Append("\n").Append("""
               br i1 %done, label %return, label %loop
             failed:
-              call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 24)
-              call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 0, ptr null)
-              call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %item, i32 %kind, ptr null, i64 0)
-              %failure_lengthp = getelementptr i8, ptr %buffer, i64 16
-              %failure_length = load i64, ptr %failure_lengthp
-              call void @__kimi_stdout(ptr %destination, i64 %failure_length, ptr null, i64 0)
+              %within = icmp ule i64 %count, 24
+              %shown = select i1 %within, i64 %count, i64 24
+              call void @__kimi_stdout(ptr %destination, i64 %shown, ptr null, i64 0)
               call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr null, i64 0)
               call void @__kimi_stdout(ptr %expected, i64 %length, ptr null, i64 0)
               call void @__kimi_exit(i32 91)
@@ -161,8 +154,9 @@ public class Utf8FloatTest
         var complete = NativeAllocationAudit.Instrument(ir.ToString(), Entry, Entry + "  call void @float_audit()\n");
         ScalarEmissionTest.WriteFixture("Utf8FloatOracle", complete, "oracle passed\n");
 
+        // The high word of a binary32 case's operand is noise: the routine reads only the low 32 bits.
         void Add32(uint bits)
-            => cases.Add((bits, 11, ExactDecimal(bits, 23, 8, 127)));
+            => cases.Add((0xA5A5A5A5_00000000UL | bits, 11, ExactDecimal(bits, 23, 8, 127)));
 
         void Add64(ulong bits)
             => cases.Add((bits, 12, ExactDecimal(bits, 52, 11, 1023)));

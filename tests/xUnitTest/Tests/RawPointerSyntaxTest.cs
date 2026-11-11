@@ -399,6 +399,21 @@ public class RawPointerSyntaxTest
     public void AClaimNeedsAnUnsafeContextOnlyWhenItIsNoFit(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], Records(declarations));
 
+    // PLAN G765: a Phantom slot's failing cases are rows reused between passes, so a warm rebind of the rejected declaration allocates
+    // nothing, for an unconditional slot and for one Phantom in the case its instance selects (SPEC 5.7, 15.3.5, 23.1.2).
+    [Theory]
+    [Trait("Purpose", "Allocation")]
+    [InlineData(PhantomW + "func h<o>(a: ref/i32 during o, w: ref/(W during o), p: raw/i32 during w.s) => ()")]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "func f(h: ref/Holder<i32>, p: raw/i32 during h.a) => ()")]
+    public void AWarmPhantomRawOriginReusesItsCaseFacts(string declarations)
+    {
+        var c = MinimalEmissionTest.Analyze(declarations + "\npublic func main() => ()\n");
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal([nameof(DiagnosticCode.InvalidOriginBinding_Kd)], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
     // The check's records of declarations completed by an empty main, each as `code: primary span text` (SPEC 23.1).
     internal static string[] Records(string declarations)
     {
