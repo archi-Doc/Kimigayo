@@ -823,7 +823,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             ["Anchor sc@ref", "Use State.g() + r.count", "Reservation Root.counter()@uniq", "Evaluated State.poke(Root.counter()@uniq)"],
             FactsOf(c, program, "f2"));
-        Assert.Equal(0b11UL, program.Problems.All.ToArray().Single(x => program.Bodies[x.Body].Key.Decl?.Name == "gen").Views);
+        Assert.Equal(0b11UL, program.Problems.All.ToArray().Single(x => program.Body(x.Body).Key.Decl?.Name == "gen").Views);
     }
 
     // V16 (R4-M97) on a rooted body: the caller's record of a copy's failure, in a loop (ACopysEntriesWarmRunAllocatesNothing's G171 form),

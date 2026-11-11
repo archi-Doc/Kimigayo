@@ -24,6 +24,8 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
     internal SourceSpan AccessModifierSpan { get; init; }
 
     internal int DocumentationExcludedStart { get; init; }
+
+    internal int HeaderPosition { get; init; }
 }
 
 /// <summary>
@@ -123,6 +125,12 @@ public ref partial struct TokenReader
 
     /// <summary>Gets or sets the first access word of the pending item prefix, when one is written (Appendix F.6 Access).</summary>
     internal SourceSpan AccessModifierSpan { get; set; }
+
+    /// <summary>Gets or sets the token position where the pending item's header starts, after its prelude (SPEC 2.3): the first word of
+    /// its line after the Attributes and directives, a modifier or else the introducer. The item prefix sets it
+    /// (Parser.ConsumeAttributeAndModifier); a detached context carries it, and taking the context keeps it for the item's documentation
+    /// (<see cref="Document"/>).</summary>
+    internal int HeaderPosition { get; set; }
 
     /// <summary>Gets a value indicating whether the position lies in an expression body after <c>=&gt;</c>, where a nested arrow body is misplaced.</summary>
     internal readonly bool SingleBodyRegion => this.region.SingleBody;
@@ -244,12 +252,18 @@ public ref partial struct TokenReader
         }
     }
 
-    internal readonly void Document(Koto declaration, SourceSpan header, AttributeKoto? attributes = null)
+    /// <summary>Associates documentation with a declaration whose header runs from its written start (<see cref="HeaderPosition"/>) to
+    /// <paramref name="headerEnd"/>. Only the item production of the innermost item prefix calls it; an item list nested in its header
+    /// restores that prefix's position (<see cref="RestoreContext"/>).</summary>
+    /// <param name="declaration">The declaration.</param>
+    /// <param name="headerEnd">The end of the header.</param>
+    /// <param name="attributes">The declaration's attributes.</param>
+    internal readonly void Document(Koto declaration, int headerEnd, AttributeKoto? attributes = null)
     {
         // Excluded syntax receives no documentation association (SPEC 2.3).
         if (!this.InExcludedSyntax)
         {
-            this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
+            this.CodeContext.Documentation?.Associate(declaration, this.HeaderPosition, headerEnd, attributes, this.tokens);
         }
     }
 
@@ -329,6 +343,7 @@ public ref partial struct TokenReader
             PendingExclusionStart = this.PendingExclusionStart,
             AccessModifierSpan = this.AccessModifierSpan,
             DocumentationExcludedStart = this.DocumentationExcludedStart,
+            HeaderPosition = this.HeaderPosition,
         };
         this.ResetContext();
         return context;
@@ -349,6 +364,7 @@ public ref partial struct TokenReader
         this.PendingExclusion = context.PendingExclusion;
         this.PendingExclusionStart = context.PendingExclusionStart;
         this.DocumentationExcludedStart = context.DocumentationExcludedStart;
+        this.HeaderPosition = context.HeaderPosition;
     }
 
     /// <summary>

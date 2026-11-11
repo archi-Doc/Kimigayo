@@ -253,7 +253,7 @@ internal sealed partial class InstanceCollector
     private MirDefKey Declaration(int item)
     {
         var items = this.Set.Items;
-        var bodies = this.program!.Bodies;
+        var program = this.program!;
         if (this.declaring.Length < items.Length)
         {
             Array.Resize(ref this.declaring, Math.Max(64, 2 * items.Length));
@@ -262,7 +262,7 @@ internal sealed partial class InstanceCollector
         var found = item;
         for (; this.declaring[found] == 0; found = items[found].Parent, this.Work++)
         {
-            if (items[found].BodyOrdinal >= 0 && bodies[items[found].BodyOrdinal].Source.Module < this.rootModules)
+            if (items[found].BodyOrdinal >= 0 && program.Body(items[found].BodyOrdinal).Source.Module < this.rootModules)
             {
                 this.declaring[found] = found + 1;
                 break;
@@ -275,7 +275,7 @@ internal sealed partial class InstanceCollector
             this.declaring[i] = declaring;
         }
 
-        return bodies[items[declaring - 1].BodyOrdinal].Key;
+        return program.Body(items[declaring - 1].BodyOrdinal).Key;
     }
 
     // K 4.9: a site of a body, moved out of the inline defaults of templates outside the root modules to the outermost omitting call; in a
