@@ -220,29 +220,39 @@ public sealed partial class Binding
         => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
             ? this.BoundContractReference(substituted) : contract;
 
-    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope)
+    // W4 (ContractSolver's Completion): SubstituteContractReference's.
+    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope, out Completion completion)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.ConformancePath?.Contract is { Type: { } reference } contract && !ReferenceEquals(reference.Symbol, contract))
             {
-                return this.SubstituteContractReference(type, contract);
+                return this.SubstituteContractReference(type, contract, out completion);
             }
         }
 
+        completion = Completion.Complete;
         return type;
     }
 
     // The caller supplies the requirement's exact declaring reference. Substituting every ancestor would give an
-    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement.
-    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
+    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement. W4: Provisional where StoredType's null
+    // (a height refusal, or no image) is absorbed.
+    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract, out Completion completion)
     {
+        completion = Completion.Complete;
         if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
         {
             return type;
         }
 
-        return this.StoredType(type, reference) ?? type;
+        if (this.StoredType(type, reference) is { } stored)
+        {
+            return stored;
+        }
+
+        completion = Completion.Provisional;
+        return type;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)

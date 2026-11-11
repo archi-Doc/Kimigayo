@@ -140,7 +140,7 @@ internal sealed partial class MirBuilder
             callee,
             start,
             node,
-            ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
+            MirTypes.IsNever(this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }
