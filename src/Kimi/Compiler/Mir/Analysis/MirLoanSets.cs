@@ -8,11 +8,12 @@
 // ids, Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
 // elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
-// equal exactly when their ids are; a node never changes once made. Each operation but a run's Add and the n-ary Union is memoized by its
-// operands, so repeating it costs one lookup; a run's Add makes no node of the run itself, and the n-ary Union reads each element once and
-// sorts the marker words it sets, never the range between its least and greatest element (their callers memoize them). Storage is
-// pooled: Clear empties it per body view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a
-// warm run of a sized workload allocates nothing.
+// equal exactly when their ids are; a node never changes once made. Each operation but a run's Add, the n-ary Union and a Remove of two
+// sets that lie apart is memoized by its operands, so repeating it costs one lookup; a Remove of sets that lie apart (one's greatest element
+// below the other's least) is the set, read from the two runs' ends with no memo entry (PLAN G768); a run's Add makes no node of the run
+// itself, and the n-ary Union reads each element once and sorts the marker words it sets, never the range between its least and greatest
+// element (their callers memoize them). Storage is pooled: Clear empties it per body view in proportion to the view's entries (MirTable,
+// DECISIONS R4-M146) and keeps its capacity, so a warm run of a sized workload allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
 using System.Numerics;
@@ -47,7 +48,7 @@ internal sealed class MirLoanSets
     internal long Bytes { get; private set; }
 
     /// <summary>Gets the elements the operations since the last <see cref="Clear"/> scanned: both runs of a Union or an Add, a Remove's
-    /// smaller operand and the run it copies, and a Range's run.</summary>
+    /// smaller operand and the run it copies (none for two sets that lie apart), and a Range's run.</summary>
     internal long Scanned { get; private set; }
 
     /// <summary>Removes every set but the empty one, keeping the storage, in proportion to the view's entries (MirTable).</summary>
@@ -191,8 +192,9 @@ internal sealed class MirLoanSets
         return this.Intern(length);
     }
 
-    /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set. It scans the
-    /// smaller operand and searches the larger, and copies the set's elements only when it removes one.</summary>
+    /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set. Two sets that
+    /// lie apart (one's greatest element below the other's least) give the set from their runs' ends, with no scan or memo entry;
+    /// otherwise it scans the smaller operand and searches the larger, and copies the set's elements only when it removes one.</summary>
     /// <param name="set">The set.</param>
     /// <param name="removed">The elements to remove.</param>
     /// <returns>The elements of the set not in the removed set.</returns>

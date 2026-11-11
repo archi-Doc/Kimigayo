@@ -117,6 +117,23 @@ public sealed class MirLoanSetsTest
         Assert.Equal(35, sets.Scanned);
     }
 
+    // PLAN G768: a Remove of two sets that lie apart is the set and reads no element, whichever lies below, adjacent runs included (one's
+    // greatest element just below the other's least); sets that share an end element do not lie apart, and their Remove scans and removes it.
+    [Fact]
+    public void ARemoveOfSetsThatLieApartIsTheSet()
+    {
+        var sets = new MirLoanSets();
+        var (low, high, adjacent, shared) = (sets.Range(0, 6), sets.Range(10, 2), sets.Range(6, 2), Of(sets, 5, 9));
+        var scanned = sets.Scanned;
+        Assert.Equal(
+            [high, low, low, adjacent],
+            new[] { sets.Remove(high, low), sets.Remove(low, high), sets.Remove(low, adjacent), sets.Remove(adjacent, low) });
+        Assert.Equal(scanned, sets.Scanned);
+        Assert.Equal([0, 1, 2, 3, 4], sets.Elements(sets.Remove(low, shared)).ToArray());
+        Assert.Equal([9], sets.Elements(sets.Remove(shared, low)).ToArray());
+        Assert.True(sets.Scanned > scanned);
+    }
+
     // R4-M138: the union of any number of sets is the fold of their binary Unions: none or only empty sets give the empty set, one distinct
     // set (with empty sets and repeats) is itself, and duplicates, disjoint sets, element 0 (A5's Φ_E) beside a high element and parts that
     // cross marker words give the fold's node; consecutive unions over random parts in universes of 64 to 5,000 elements agree with the fold,
