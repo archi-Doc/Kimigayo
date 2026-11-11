@@ -15,6 +15,10 @@ public sealed partial class MirBorrowsTest
     private const string PayloadType = "struct PR\n    public var p: raw/u8\n    public var q: u8\n    public init()\n        self.p = null\n" +
         "        self.q = 0\n";
 
+    // A payload Field holding a stated (`during self`) and an unstated raw layer, written whole (SPEC 5.7: element by element).
+    private const string MixedType = "struct NS3\n    public var pair: (raw/u8 during self, raw/u8)\n    public var q: u8\n    public init()\n" +
+        "        self.pair = (null, null)\n        self.q = 0\nfunc st(t: uniq/(obj/NS3))\n";
+
     private static readonly Dictionary<string, string> StoringForms = new()
     {
         // Invalid (SPEC 5.2.1, 15.6.4 rule A): an input's own part certainly stored past it, in another of its layers' storage, or in
@@ -96,6 +100,7 @@ public sealed partial class MirBorrowsTest
             "func st(p: SS during a)\n    p.c@follow = p.d@follow@raw@raw/u8",
         ["statedPayload"] = "struct NS\n    public var p: raw/u8 during self\n    public var x: raw/u8\n    public var q: u8\n    public init()\n" +
             "        self.p = null\n        self.x = null\n        self.q = 0\nfunc st(t: uniq/(obj/NS))\n    t@follow.p = t@follow.q@raw@raw/u8",
+        ["mixedStated"] = MixedType + "    t@follow.pair = (t@follow@raw@raw/u8, null)",
         ["selfLinkField"] = "func st(p: (uniq/((raw/u8, u8)) during a, i32))\n    p.0@follow.0 = p.0@follow.1@raw@raw/u8",
         ["callStore"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = u@follow@raw@raw/u8\n" +
             "    let old = Kimi.Intrinsics.exchange(v@uniq, with: t@follow@raw@raw/u8)\n    t@follow@follow = v",
@@ -106,6 +111,10 @@ public sealed partial class MirBorrowsTest
         ["aggregatePart"] = "func st(p: (uniq/((raw/u8, i32)) during a, (raw/u8, i32)))\n    p.0@follow = p.1",
         ["dropReceiver"] = "struct DR {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
             "    drop\n        self.r@follow = self@raw@raw/u8",
+
+        // Invalid and silent, the owner's O-188 (a): a destination with any stated layer is not judged, so i's own value stored into the
+        // unstated layer of a mixed one is accepted (the whole value's fact cannot tell which layer receives it).
+        ["mixedUnstated"] = MixedType + "    t@follow.pair = (null, t@follow@raw@raw/u8)",
     };
 
     [Theory]
@@ -158,12 +167,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("statedSibling", "")]
     [InlineData("statedOwnByValue", "")]
     [InlineData("statedPayload", "")]
+    [InlineData("mixedStated", "")]
     [InlineData("selfLinkField", "")]
     [InlineData("callStore", "")]
     [InlineData("partStore", "")]
     [InlineData("closureBody", "")]
     [InlineData("aggregatePart", "")]
     [InlineData("dropReceiver", "")]
+    [InlineData("mixedUnstated", "")]
     public void ABodyStoresAnInputsOwnPartOnlyWhereItsContractRetainsIt(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StoringForms[form]);
