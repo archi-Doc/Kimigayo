@@ -9,19 +9,24 @@
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names);
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) an available direct Contract fact of the view stating
-//   the subject, as written and, under a parameter identity, as the view normalizes it; (2) a Self-dependent clause of a row of a
+//   the subject, as written and, under a parameter identity, as the view reads it (Reading); (2) a Self-dependent clause of a row of a
 //   proper prefix of the subject's projection chain, Self being that prefix, whose stated subject is the subject as written; (3) a
 //   Contract's own Self; (4) a row's ancestors.
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers itself to Supply; availability
 //   is asked per fact, lazily, in the caller's order. Enumerate is a leaf of the judgment graph: its walk compares interned Types
 //   (FactStates, AssociatedIdentityMatches) and calls no judgment, so a request demands only while it prepares its view
 //   (IndexNormalized), and a demand made there reads the written facts alone; PremiseRefines entered from a walk is InternalInvariant.
+//   Enumerate's tables live for one outermost request and are keyed by the view (ViewOf's value: a scope and its serial), so a scope
+//   re-parented within a request is another view; a preparation that moves its own view is InternalInvariant. The walk reads the
+//   requirement Contract (ContractSupply's rewrites substitute activeRequirementContract), which is constant over a request (its
+//   writers bind calls, reached from no normalization and no walk): the keys need no call context, and an index kept across requests
+//   would have to key it.
 //   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3). Enumerate is complete modulo
 //   identity of supplied subjects (facts and clause instances): a derivation that must rewrite a supplied subject by an identity
 //   premise or a binding yields no row (beside `T is CopyTree`, `U is T` supplies nothing to U's projections while `T is U` does);
 //   R7-C2c2's identity key map adds those rows, and a missing row only rejects.
-// - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's NormalizeProofConstraint of a
-//   fact (Reading, IndexNormalized; temporary until R7-C2c2 keys Types by identity class); Enumerate's walk and what it calls never
+// - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
+//   only Reading calls (temporary until R7-C2c2 keys Types by identity class); Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading (below); no second
 //   scheduler; no read sets. From C3 (C1 §5), broken until then by the eager derivation moved here: no Binding writes,
@@ -60,7 +65,8 @@ public sealed partial class Binding
 
     // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
     // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
-    private readonly record struct EvidenceView(BindingScope Premises);
+    // The view is a value (DECISIONS R7-M20): the scope and the serial naming its chain's state when the request took it.
+    private readonly record struct EvidenceView(BindingScope Premises, int Serial);
 
     // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
     // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain's Invalid environment,
@@ -115,7 +121,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private EvidenceView ViewOf(BindingScope scope) => new(scope);
+    private EvidenceView ViewOf(BindingScope scope) => new(scope, SerialOf(scope));
 
     // The reading of `fact` in the view `scope` denotes (the class header's closure).
     private BoundConstraint Reading(BoundConstraint fact, BindingScope scope)
@@ -181,15 +187,15 @@ public sealed partial class Binding
         return new() { Positive = positive, Negative = negative };
     }
 
-    // Enumerate's tables, owned by one outermost request (emptied, capacity kept, when it returns): the rows of a link of the subject's
-    // chain in a view (null while the link is open), the view's Contract facts by subject key (IndexWritten, IndexNormalized), the views
-    // indexed, a Contract's head depth, and the pooled lists.
-    private readonly Dictionary<(BoundType, BindingScope), List<BindingSymbol>?> enumerateMemo = new();
+    // Enumerate's tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value: the rows
+    // of a link of the subject's chain in a view (null while the link is open), the view's Contract facts by subject key (IndexWritten,
+    // IndexNormalized), the views indexed, a Contract's head depth, and the pooled lists.
+    private readonly Dictionary<(BoundType, EvidenceView), List<BindingSymbol>?> enumerateMemo = new();
 
-    private readonly Dictionary<(BindingScope, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>>
+    private readonly Dictionary<(EvidenceView, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>>
         enumerateIndex = new();
 
-    private readonly HashSet<BindingScope> enumeratePrepared = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<EvidenceView> enumeratePrepared = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
     private readonly List<List<BindingSymbol>> enumeratePool = new();
@@ -213,23 +219,29 @@ public sealed partial class Binding
         this.enumerateDepth++;
         try
         {
-            if (this.enumeratePrepared.Add(scope))
+            var view = this.ViewOf(scope);
+            if (this.enumeratePrepared.Add(view))
             {
-                this.IndexWritten(scope);
+                this.IndexWritten(view);
             }
 
             // The walk demands nothing, so a nested demand comes from the outermost request's preparation: it reads the written facts
-            // alone, and the rows it left are dropped before the outermost walk reads the whole index.
+            // alone, and the rows it left are dropped before the outermost walk reads the whole index. The request's premises are the
+            // view it took: a demand of its preparation that moved them is a builder's broken contract.
             if (this.enumerateDepth == 1)
             {
-                this.IndexNormalized(scope);
+                this.IndexNormalized(view);
                 this.enumerateMemo.Clear();
+                if (this.ViewOf(scope) != view)
+                {
+                    throw new InvalidOperationException($"The preparation of the request for `{subject}` moved its own view (InternalInvariant; R7-C2a).");
+                }
             }
 
             this.enumerateWalking++;
             try
             {
-                return RowsRefine(this.Enumerate(subject, this.ViewOf(scope)), contract);
+                return RowsRefine(this.Enumerate(subject, view), contract);
             }
             finally
             {
@@ -251,9 +263,9 @@ public sealed partial class Binding
     }
 
     // The view's Contract facts by subject key, as written.
-    private void IndexWritten(BindingScope view)
+    private void IndexWritten(EvidenceView view)
     {
-        for (var scope = view; scope is not null; scope = scope.Parent)
+        for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { Invalid: false } environment)
             {
@@ -270,15 +282,15 @@ public sealed partial class Binding
         }
     }
 
-    // The outermost request's view, under a parameter identity: each fact as the view normalizes it (the request boundary's identity
-    // step, SymbolicCapability's reading for every reader), added after all are computed. A normalization's own demands are nested, so
-    // they read written facts alone: the index does not depend on the order of the facts.
-    private void IndexNormalized(BindingScope view)
+    // The outermost request's view, under a parameter identity: each fact as the view reads it (Reading, every reader's), added after
+    // all are read. A reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the
+    // facts.
+    private void IndexNormalized(EvidenceView view)
     {
-        if (HasParameterIdentity(view))
+        if (HasParameterIdentity(view.Premises))
         {
             var start = this.enumerateNormalized.Count;
-            for (var scope = view; scope is not null; scope = scope.Parent)
+            for (var scope = view.Premises; scope is not null; scope = scope.Parent)
             {
                 if (scope.Constraints is not { Invalid: false } environment)
                 {
@@ -288,7 +300,7 @@ public sealed partial class Binding
                 foreach (var fact in environment.Facts)
                 {
                     if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } &&
-                        this.NormalizeProofConstraint(fact, view, out _) is { Subject: not null } normalized && !ReferenceEquals(normalized, fact))
+                        this.Reading(fact, view.Premises) is { Subject: not null } normalized && !ReferenceEquals(normalized, fact))
                     {
                         this.enumerateNormalized.Add((scope, fact, normalized));
                     }
@@ -336,9 +348,9 @@ public sealed partial class Binding
 
                 if (!this.enumerateMemo.TryGetValue((link, view.Premises), out var rows))
                 {
-                    this.enumerateMemo[(link, view.Premises)] = null; // Open: a re-entry supplies nothing.
+                    this.enumerateMemo[(link, view)] = null; // Open: a re-entry supplies nothing.
                     rows = this.EnumerateLink(link, view, activeStart);
-                    this.enumerateMemo[(link, view.Premises)] = rows;
+                    this.enumerateMemo[(link, view)] = rows;
                 }
 
                 if (rows is { Count: > 0 })
@@ -359,7 +371,7 @@ public sealed partial class Binding
             this.enumerateActive.RemoveRange(activeStart, this.enumerateActive.Count - activeStart);
         }
 
-        return this.enumerateMemo[(subject, view.Premises)];
+        return this.enumerateMemo[(subject, view)];
     }
 
     private List<BindingSymbol> EnumerateLink(BoundType subject, EvidenceView view, int activeStart)
@@ -390,7 +402,7 @@ public sealed partial class Binding
             }
 
             // A fact is indexed by subject key, as written and as normalized in the view: FactStates confirms a match.
-            if (this.enumerateIndex.GetValueOrDefault((view.Premises, current, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
+            if (this.enumerateIndex.GetValueOrDefault((view, current, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
             {
                 continue;
             }
@@ -409,7 +421,7 @@ public sealed partial class Binding
         for (var a = activeStart; a < this.enumerateActive.Count; a++)
         {
             var root = this.enumerateActive[a].Prefix;
-            if (this.enumerateMemo.GetValueOrDefault((root, view.Premises)) is not { } prefix)
+            if (this.enumerateMemo.GetValueOrDefault((root, view)) is not { } prefix)
             {
                 continue;
             }
@@ -462,7 +474,7 @@ public sealed partial class Binding
 
     // One fact of an environment of the view under its subject key (a projection's declaration and receiver, else the Type): `raw` as
     // the environment holds it (its availability), `fact` as the index reads it.
-    private void IndexFact(BindingScope view, BindingScope scope, BoundConstraint raw, BoundConstraint fact)
+    private void IndexFact(EvidenceView view, BindingScope scope, BoundConstraint raw, BoundConstraint fact)
     {
         var key = (view, scope, SubjectKey(fact.Subject!).Symbol, SubjectKey(fact.Subject!).Type);
         if (!this.enumerateIndex.TryGetValue(key, out var list))
