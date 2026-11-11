@@ -202,8 +202,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Kind == MirCalleeKind.Value)
         {
-            var operand = terminator.Operand;
-            var type = cases.Type(operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!);
+            var type = cases.TypeOf(terminator.Operand);
             _ = TyCtxt.Layer(type, out var callable, out _);
             this.Item(callable, (byte)(1 + (int)(type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq ? type.Semantics : SemanticsKind.Owner)));
             if (callable is { IsAbstract: true })
@@ -332,7 +331,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             if (operand.Kind == MirOperandKind.Move)
             {
-                this.Item(cases.Type(body.TypeOf(operand.Place)!), Drop);
+                this.Item(cases.TypeOf(operand), Drop);
             }
         }
     }

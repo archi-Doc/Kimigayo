@@ -14749,6 +14749,13 @@ structure is recorded here by the unit that first implements it.
     FormatBuffer writes lends; one pass over a body with a FormatFinish links each whole local to the Call writing it and the local a Ref
     into it lends (kept scratch). Code generation reads the constants unchecked (`StepConstant` and its record deleted). Rejected: pairing
     by block order or nesting (the builder's numbering, not a MIR fact); a check in code generation (consumers trust validated IR).
+  - Amended by R8-M24 (R8-W2 a2, 2026-11-10): a direct line's region is MIR's (`MirBuilder.Line`). Superseded: the stack buffer
+    bullet (the frame's `Home.Region`, `OwnsStorage`'s exception, FormatFinish's application of `Stack(direct)`), the direct mark of
+    the Estimate (its `Stack`), the Region home's routines in the Rows bullet (FormatBuffer's `__kimi_text_fixed` over the region,
+    `__kimi_format_stack_finish`), the region case of the Writer kind premise, and G157 (37)'s pairing rule (`Finishes`;
+    FormatFinish has no estimate operands) with the direct mark's Bool constant. Standing until R8-W2 c: the Estimate (Capacity,
+    Hint), the heap rows (FormatBuffer's `__kimi_text_heap`, the hint, FormatFinish's `__kimi_format_finish`), G157 (35)'s `Tested`,
+    G157 (37)'s step constants and the R5-M133 links.
 - **R5-M132 The owner confirms C9c's departure and decides its O2 finding** (owner, 2026-10-27)
   - **The departure** (after C9c's design; verbatim 「C9c の逸脱（リテラル高速経路を独立した Full ユニット C9d に分け、C9c では該当する補間を Unsupported_Kd とし、Milestone 44
     などの該当分を C9d に移すこと）を承認します。」). The departure R5-M131 records is confirmed. Plan row C9c's literal fast path needs a MIR fact that
@@ -16416,7 +16423,8 @@ structure is recorded here by the unit that first implements it.
     `UnicodeNameData.SimpleCaseFolding`, `CombiningClasses` and `MarkdownUnicodeData.Punctuation` are read as `IntegerTable<int>`;
     `UnicodeIdentifierData.Compositions` as `IntegerTable<ulong>`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit the
     byte form (decimal bytes, 24 a line); `UnicodeIdentifierData`, which had no generator, was converted once with every value shown
-    equal; since PLAN G738 (2026-11-11) `GenerateIdentifierUnicode.ps1` writes it.
+    equal; since PLAN G738 (2026-11-11) `GenerateIdentifierUnicode.ps1` writes it. Since PLAN G742 (2026-11-11) the three
+    generators write the form through one writer, `Add-IntegerTable` in `Helper/IntegerTable.ps1`, which each dot-sources.
   - Departures from the planning session's design, which it took on figures: the read is a `MemoryMarshal.Cast` element, because
     `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read; and each reader wraps its bytes, because a typed
     getter (`Int32Table X => new([..])`) is not inlined without PGO.
@@ -17744,6 +17752,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Moves: none (no producer forms a term until R8-W2 a2; T-86's RP8: no stop, warm 0 B).
   - Rejected: a `KotoKind` row for the term; forming it in `BindInterpolation` (Binding does not know a line is direct); a reference
     order in `CompareLength`; three term arms at the substitution sites instead of one in `SubstituteLength`.
+  - Amended by R8-M24 (R8-W2 a2): `FormatEstimate.Stack` is deleted; `FormattingTypes.StackLimit` is read by the interpolation-bound
+    term alone (rule L).
 - **R8-M18 The write window, the writer's leaf and its reservation are Kimigayo bodies; the erased writer's routines are a kept
   runtime** (Back, 2026-11-09; R8-W1b-2, W1b-1 and W1b-3, plan §5.2 W1 b; Major each; the W1 family reviewer: W1b design reviews 1
   REVISE, 2 ACCEPT, W1b-3's design reviews 1-3, implementation reviews ACCEPT; the owner's O-108 (a); the Middle's C-188; on R8-M1,
@@ -18004,6 +18014,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Counts at landing (the chain over dev b1066023b, counted on 2a9edb2e3): `CompilerFunctionKind` 36 → 28, `KimiDeclarationId` 181
     → 178, `KimiLibraryContainer` 14 → 12, `LegacyWriter` 2 → 0, `IntrinsicId` unchanged; `Utf8BufferRuntime.ll.in` 246 → 138 and
     `Utf8FormatRuntime.ll.in` 599 → 535 lines. The units' counts above are each unit's on its own base.
+  - Amended by R8-M24 (R8-W2 a2): the stack-Region caller of `FormatFixed` (`FunctionCodegen.Interpolation.cs`, FormatBuffer's
+    buffer over an owning interpolation's stack Region) is deleted; its one caller is `__kimi_text_heap` (and Utf8FloatTest's hand
+    IR) until R8-W2 c.
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
@@ -18084,6 +18097,45 @@ R8-M* and R9-M* by the stage of the recording unit.
     Mir so A4 shares the walk (a larger unit)": the one walk is Mir's, `MirDropTable.Destroyed` and `MirDropTable.Level` over SPEC
     16.3.2's level order (`MirTypes.LevelCount`, `MirTypes.LevelPart`), whose steps `DropGlue.Destroyed` and `DropGlue.Level` map to
     glue parts.
+- **R8-M24 A direct line's region is MIR's: one expansion over one erased writer** (Middle and Back, 2026-11-10; R8-W2 a2; Major;
+  design `back\w2\design.md` §4, §4b, §8 with revisions 1-2, design reviews ACCEPT; C-180's five consents; implementation reviews:
+  the Middle's MIR review ACCEPT, G:R8-format REVISE then revision 1 (its repeated review ACCEPT), the Front's C-204; amends
+  R5-M131)
+  - The expansion. A direct line (`ExpansionPlan.Direct`) is `MirBuilder.Line`'s one expansion over one erased writer local of
+    Binding's plan writer Type: the interpolation-bound term L (`TyCtxt.InterpolationBound`, R8-M21) of the literal bytes and the
+    values' Types sizes a zero-filled region `[L of u8]` (the Fill aggregate), whose FixedBuffer (`Text.fixed`) the writer adapts
+    where L > 0, else the owning buffer (FormatBuffer). A constant term builds one form; a term an instance decides branches on
+    `Len(region) > 0` before the first write and again after the last, the writes built once between (SPEC 22.10.3). Fixed end: the
+    writer is dead, `text()`, its Ok view to `writeLine(Utf8Slice)` (a body call by `KimiDeclarationId.WriteLineUtf8` since
+    R8-W1c-3, R8-M22, not a served compiler function; that id's compiler reader for R8-G1's census), its Err to the `KIMI_E_FORMAT`
+    block (no run reaches it: every byte is a literal or a built-in formatter's committed encoding); owning end: FormatFinish,
+    `writeLine(ref/string)`. Each arm's temporaries end in it; the buffers and the writer are held before the first branch, so an
+    owning buffer made on one path has a flagged drop (MirDrops) and an owning instance's region is `Text.fixed<0>`'s, of no bytes.
+    No new MIR form. The constant-0 form is today's owning form in effect (the same effects in the same order: FormatBuffer, the
+    adapter, the writes, FormatFinish, writeLine, the string's drop, the buffer's drop), not identical MIR (the string is a temp of
+    an inner scope after the writes; the buffer is held, then made).
+  - Residual contract, held by construction (no validator rule). `FunctionCodegen.FormatFinish` still reads the adapter's
+    destination (Utf8Writer's Field 0) as FormatBuffer's HeapBuffer, and A1 accepts the fixed end's `&fixedBuffer` (initialized only
+    on the first branch's fixed arm) through its temp own-bit rule (a temp holding nothing is the Never value), not by proving the
+    correlation. Both hold because `MirBuilder.Line`'s two branches read one test temp that nothing writes between. Removed at R8-W2
+    c (FormatFinish deleted). Rejected: a path-sensitive validator check of this one form (a symptom fix).
+  - Code generation. FormatBuffer's arity 3 → 2 (no direct mark), FormatFinish's 4 → 1; `FormatEstimate.Stack`, `Home.Region`,
+    `OwnsStorage`'s exception, `FunctionCodegen.Region`, `LegacyRuntimeHelpers.FormatStackFinish` and `__kimi_format_stack_finish`
+    deleted; the region is laid out as any fixed array local. The validator's pairing rule (`Finishes`) and the direct mark's Bool
+    constant are deleted.
+  - Vocabulary. `KimiDeclarationId.TextFixed` (R8-W1c-1 had deleted it, then without a compiler reader; R8-M22) and
+    `FixedBufferText`, the synthesized callees (+2: `KimiDeclarationId` 178 → 180, two catalog rows): compiler readers' ids until
+    R8-G1's lang items (B on C-180; B adds both to R8-G1's census). `TyCtxt.Synthesized(target, declaring, types, lengths)` takes
+    the length arguments by slot as a required parameter (empty: no length argument at any slot, Intern's rule; the Front on C-204),
+    the form R4-M197 (G663) landed first; every caller passes them, `Text.fixed`'s call its L.
+  - Temporary. `LegacyRuntimeHelpers.FormatFixed` (`__kimi_text_fixed`) stays: after W1c-2 and a2 its one caller is FormatHeap's
+    routine `__kimi_text_heap` (and Utf8FloatTest's hand IR); both go at R8-W2 c (R8-M22's Temporary bullet).
+  - W1b-3 §7's kind-1-only premise of pending and the hint: W1b-3 landed with the shared-tail text (R8-M18: "Pending may sit on an
+    adapter of any kind"), so no superseding line is needed (design §4b).
+  - Rejected (design §4): (I) a narrowed `FormatRegion` intrinsic (keeps the codegen home, no MIR local for the FixedBuffer's
+    Origin); (C) the builder deciding only on closed Types (the Generic row 0 → 1, an owner question); two complete expansions (a
+    copying expansion outside IMPL 21.3.2's limit, doubling per nested line); a per-write branch between two writers (two calls per
+    position; the erased writer makes it unnecessary).
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
