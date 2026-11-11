@@ -346,7 +346,7 @@ public sealed partial class Binding
                     }
                 }
 
-                if (!this.enumerateMemo.TryGetValue((link, view.Premises), out var rows))
+                if (!this.enumerateMemo.TryGetValue((link, view), out var rows))
                 {
                     this.enumerateMemo[(link, view)] = null; // Open: a re-entry supplies nothing.
                     rows = this.EnumerateLink(link, view, activeStart);
