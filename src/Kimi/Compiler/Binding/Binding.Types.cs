@@ -13,6 +13,32 @@ public sealed partial class Binding
         => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&
         ReferenceEquals(application.Type, syntax);
 
+    // Whether a walk's failing use is a qualifier of the path `syntax` names (a left of its member steps; `::A.B` and `A<T>.B` name the
+    // path of their operand and their identifier), so its record belongs there and not at the path (SPEC 23.1.2).
+    private static bool StoppedAtQualifier(Koto use, Koto syntax)
+    {
+        var path = UnwrapTypeSyntax(syntax);
+        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            path = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        if (path is GenericsKoto generic)
+        {
+            path = UnwrapTypeSyntax(generic.Identifier!);
+        }
+
+        for (var left = (UseNode(path) as MemberAccessKoto)?.Left; left is not null; left = (UseNode(left) as MemberAccessKoto)?.Left)
+        {
+            if (ReferenceEquals(UseNode(left), use))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
@@ -320,13 +346,9 @@ public sealed partial class Binding
         }
 
         var symbol = head.Symbol;
-        if (syntax is MemberAccessKoto projection && symbol is null)
+        if (syntax is MemberAccessKoto projection && head.End == PathEnd.Projection)
         {
-            var associated = this.BindAssociatedProjection(projection, scope);
-            if (associated is not null)
-            {
-                return associated;
-            }
+            return this.BindAssociatedProjection(projection, scope) ?? this.FailMissing(syntax, scope, BindingFailure.MissingType);
         }
 
         if (symbol is null && this.EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
@@ -337,7 +359,9 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return this.FailMissing(syntax, scope, BindingFailure.MissingType);
+            // SPEC 23.1.2: an unresolved walk failed at its failing step (its use), as `S.Missing` of `S.Missing.X`, when that step is a
+            // qualifier of the path; an ambiguity or a qualification stop keeps its own record at the path.
+            return this.FailMissing(head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax, scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;

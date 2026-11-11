@@ -22,6 +22,9 @@ public class UseLookupTest
     private const string Inherited = HasItem + "open struct Base\n    public struct N\n        Self is HasItem\n        associate HasItem.Item is i32\n";
     private const string Opened = "alias A\nalias B\ncontract HasItem\n    associate Item\ngroup A\n    public group X\n        public func z() -> i32 => 0\n";
 
+    private const string ProjectedP = "contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
+        "    associate C<i32>.Item is P\n";
+
     [Theory]
     // A qualifier is looked up once (SPEC 9.6): an opened group and an opened struct `X` make the receiver ambiguous, which dev's second
     // (NoContainer) lookup hid (t01); the same receiver behind one opened struct is a projection.
@@ -100,9 +103,32 @@ public class UseLookupTest
     [InlineData("group G\n    public struct S\n        public let n: i32 = 0\nfunc f(v: (G).S) -> i32 => 0", "UnresolvedBinding_Kd G")]
     [InlineData("contract C\n    associate Item\nfunc f(v: (C).Item) -> i32 => 0", "UnresolvedBinding_Kd C")]
     [InlineData(Projected + "func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd P")]
-    [InlineData("contract C\n    associate Item\ncontract P\n    associate Item\ngroup G\n    struct P\n        Self is C\n        associate C.Item is i32\n    func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd (P).(C).Item")]
+    [InlineData("contract C\n    associate Item\ncontract P\n    associate Item\ngroup G\n    struct P\n        Self is C\n        associate C.Item is i32\n    func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd (P).(C)")]
     [InlineData(Projected + "func f(v: P.(C).Item) -> i32 => v", "")]
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // PLAN G724 (SPEC 8.5.2, 6.3.2, 9.6): a path's projection is its walk's end, formed by BindAssociatedProjection. Construction through a
+    // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is a located
+    // Unsupported_Kd at the member (b2, a Type function; r16, Cases); a `.(C)` whose reference fails forms nothing, so its record is the
+    // reference's alone (k25); a Name after a projection that names a member Type of the normal form is a located Unsupported_Kd (x08);
+    // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head).
+    [Theory]
+    [InlineData(ProjectedP + "func g() -> P\n    return S.(C<i32>).Item.init()", "")]
+    [InlineData(ProjectedP + "func g() -> P\n    return S.Item.init()", "")]
+    [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "Unsupported_Kd S.(C<i32>).Item.make")]
+    [InlineData(
+        "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> M\n    return S.(C<i32>).Item.B(1)\n" +
+            "func h() -> M\n    return S.Item.A",
+        "Unsupported_Kd S.(C<i32>).Item.B|Unsupported_Kd S.Item.A")]
+    [InlineData(ProjectedP + "func g() -> P\n    return S.(C).Item.init()", "TypeMismatch_Kd C")]
+    [InlineData(
+        "contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
+            "func g(x: S.(C<i32>).Item.Inner) -> i32 => 0",
+        "Unsupported_Kd S.(C<i32>).Item.Inner")]
+    [InlineData(
+        "struct S\n    public struct In\n        public init() => ()\nfunc f(v: Missing.X) -> i32 => 0\nfunc g(v: S.Missing.X) -> i32 => 0\nfunc h(v: (Missing).X) -> i32 => 0",
+        "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd S.Missing")]
+    public void AProjectionIsItsPathsEnd(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
     // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a

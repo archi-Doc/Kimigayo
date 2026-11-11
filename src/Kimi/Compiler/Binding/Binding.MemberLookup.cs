@@ -173,7 +173,18 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope);
+        var qualifierPath = this.NamePath(member.Left, scope);
+        if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
+        {
+            // SPEC 8.5.2, 9.6: a projection qualifier is a Type whose members are its normal form's and its Constraints' requirements.
+            // Selecting one (a Case, a Type function, a requirement member) is not implemented yet (PLAN G724): a located Unsupported_Kd
+            // at the member; construction (`.init`) is ConstructorMember's.
+            Complete(member.Left, projected);
+            this.Fail(member, BindingFailure.Unsupported);
+            return null;
+        }
+
+        var qualifier = qualifierPath.Symbol;
         return this.TypeSideMember(member, qualifier, right.IdentifierName, scope, expected) is { } typeSide
             ? this.SelectMember(member, qualifier, typeSide, this.ValueSideMember(member, right.IdentifierName, scope), scope)
             : null;

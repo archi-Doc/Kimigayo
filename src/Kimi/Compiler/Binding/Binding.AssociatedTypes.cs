@@ -90,7 +90,23 @@ public sealed partial class Binding
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
         => this.FindAssociated(type, scope, name, qualifier, use, out _);
 
+    // The associated Type `name` of `type`, its declaring reference out; an ambiguity is recorded at `use` (SPEC 8.5.2).
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use, out BindingSymbol? reference)
+    {
+        var search = this.SearchAssociated(type, scope, name, qualifier);
+        reference = search.Reference;
+        if (search.Alternative is { } second)
+        {
+            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            return null;
+        }
+
+        return search.Found;
+    }
+
+    // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
+    // Type's own Contract, the scope's Contract facts on it and its conformances.
+    private AssociatedSearch SearchAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
         BindingSymbol? found = null;
         BindingSymbol? foundReference = null;
@@ -132,14 +148,7 @@ public sealed partial class Binding
             }
         }
 
-        reference = foundReference;
-        if (alternative is { } second)
-        {
-            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(found!, foundReference!), second, this.ambiguousAssociatedMatches!.Count));
-            return null;
-        }
-
-        return found;
+        return new(found, foundReference, alternative);
 
         void Search(BoundContract shape)
         {
@@ -175,8 +184,15 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope) is { } contract)
+        if (receiver is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified)
         {
+            // F2 (SPEC 23.1.2): a `.(C)` whose Contract reference failed recorded that failure, and the projection rests on it, forming
+            // nothing; one naming no Contract is the path's failing step, missing there.
+            if (this.ProjectionQualifier(qualified, scope) is not { } contract)
+            {
+                return this.TypeName(qualified.Right, scope) is { IsContract: true } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType);
+            }
+
             qualifier = contract;
             receiver = qualified.Left;
         }
@@ -217,7 +233,10 @@ public sealed partial class Binding
                 this.earlyProjections.Add((syntax, type, scope, name, qualifier));
             }
 
-            return null;
+            // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
+            // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
+            return receiverPath.End == PathEnd.Projection && this.LookupTypeMember(type, name, scope, typeRole: true).Member is not null
+                ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
         }
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
@@ -279,6 +298,9 @@ public sealed partial class Binding
     // Origin arguments that the caller applies.
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
+
+    // One associated search (SearchAssociated): the match, its declaring reference and a second distinct match.
+    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative);
 
     // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
     // path (9.6, 9.7.3), never read as `T.(C).X`.

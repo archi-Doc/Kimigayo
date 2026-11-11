@@ -331,17 +331,25 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, arity: -1);
-        if (qualifier is null)
+        var path = this.NamePath(member.Left, scope, arity: -1);
+        var projected = path.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection ? this.BindAssociatedProjection(projection, scope) : null;
+        if (path.Symbol is null && projected is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
             return null;
         }
 
-        var type = this.ConstructorQualifierType(member.Left, qualifier, scope);
+        // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
+        var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
+            // DECISIONS BU-61 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's use.
+            if (projected is not null && this.ProjectionUseOf(projected, this.ConstraintScope(member)) is { } use)
+            {
+                this.AddPendingPrerequisite(member, use);
+            }
+
             this.FailConstructorAbsence(member, type);
             return null;
         }
