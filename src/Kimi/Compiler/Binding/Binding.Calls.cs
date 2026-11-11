@@ -498,6 +498,19 @@ public sealed partial class Binding
                 }
             }
 
+            Koto? borrowedElement = null;
+            for (var i = 0; i < argumentCount; i++)
+            {
+                var element = this.FailBorrowedElements(call.ArgumentNodes[i], selectedOperations[i].SourceType);
+                borrowedElement ??= element;
+            }
+
+            if (borrowedElement is not null)
+            {
+                this.AddPrerequisite(call, borrowedElement); // Interim until PLAN G585: the call rests on its borrowed element.
+                return this.Fail(call, BindingFailure.Unsupported);
+            }
+
             var completed = this.CompleteArguments(call, scope, selectedOperations);
             var formed = this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), selectedOperations, out defaults);
             if (!completed)
