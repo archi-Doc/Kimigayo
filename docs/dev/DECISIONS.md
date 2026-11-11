@@ -11837,6 +11837,22 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+- **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
+  design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
+  - Cause: a rejected call's candidates, a Phantom or static slot's failing Semantics cases and a capture list's repeats were arrays
+    formed at the failing check on every pass (32-720 B a warm Bind of a rejected program), although their dictionaries were reused.
+  - Decision: each is now a `(Start, Count)` range of one row list per row type (`rejectedRows`, `pairCaseRows`,
+    `captureRepeatRows`), appended by the check and cleared by ResetPrerequisites with its capacity kept (a bounded warm reuse: each
+    list keeps its high-water capacity across passes, as the prerequisite store does; unmeasured); the adapter reads the span. The
+    form is the existing one: six dictionary-and-rows pairs now (the prerequisites, the parameter shapes, the callable selection and
+    the three new ones).
+  - Invariant: a range is contiguous because a check appends its rows with no other append to the same list between its first row
+    and its record (stated at each rows field).
+  - Rejected: forming the facts at reporting (re-runs selection over released scratch); facts cached per node across passes (a
+    second lifetime, stale after an edit); a generic row-store type (a wrapper without semantics over a List and a tuple).
+  - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
+  - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
+    takes this form.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
