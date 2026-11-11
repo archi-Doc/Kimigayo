@@ -26,6 +26,10 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string ElementRanks = "func fq(p: (i32, i32)) -> bool => true\nfunc fq(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fg(p: (i32, i32)) -> bool => true\nfunc fg<T>(p: (T, i32)) -> i32 => 0\nfunc fb(p: (i32, i32)) -> i32 => 0\nfunc fb(p: (i32, i64)) -> i32 => 1\nfunc fo(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fo(p: (i32, ref/i32 during a)) -> bool => true\nfunc fn2(p: ((i32, i32), i32)) -> bool => true\nfunc fn2(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc fa(x: Array<i32>) -> bool => true\nfunc fa(x: Array<ref/i32 during a>) -> i32 => 0\nfunc ff(x: [2 of i32]) -> bool => true\nfunc ff(x: [2 of ref/i32 during a]) -> i32 => 0\nfunc cc(x: Array<i32>) -> i32 => 0\nfunc cc<length N>(x: [N of i32]) -> i32 => 1\nfunc fk(! p: (i32, i32), x: i32) -> bool => true\nfunc fk(! p: (ref/i32 during a, i32), x: i32) -> i32 => 0\nfunc fe(p: (i32, i32)) -> bool => true\nfunc fe(p: (ref/i32 during a, i32), w: i32 = 0) -> i32 => 0\nfunc cd(x: Array<i32>) -> bool => true\nfunc cd<length N>(x: [N of ref/i32 during a]) -> i32 => 0\nfunc sel(p: (i32, i32)) -> i32 => 0\nfunc sel(p: (ref/i32 during a, i32)) -> i32 => 1\nfunc fg2<T>(p: (T, i32)) -> i32 => 0\nfunc fg2<T>(p: (ref/T during a, i32)) -> bool => true\nfunc inc(x: i32) -> i32 => x\nfunc fy(p: (ref/i32 during a, (i32) -> i32)) -> i32 => 0\nfunc fy<F>(p: (i32, F)) -> bool => true\nstruct S\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: (i32, i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/i32 during a, i32)) -> i32 => 0\nstruct P\n    public var k: i32\n    public init(p: (i32, i32)) => self.k = 0\n    public init(p: (ref/i32 during a, i32)) => self.k = 1\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
 
+    private const string NestedRanks = "func fn3(p: ((i32, i32), i32)) -> bool => true\nfunc fn3(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nfunc fn4(p: ((i32, i32), i32)) -> bool => true\nfunc fn4(p: (ref/(i32, i32) during a, i32)) -> i32 => 0\nfunc fn5(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nfunc fa1(p: (ref/(i32, i32) during a, i32)) -> i32 => 0\nfunc fg1<T>(p: (ref/(T, i32) during a, i32)) -> i32 => 0\nfunc fc1(p: (ref/[2 of i32] during a, i32)) -> i32 => 0\nfunc fg(p: ([2 of ref/i32 during a], i32)) -> bool => true\nfunc fg(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fh(p: ([2 of i32], i32)) -> bool => true\nfunc fh(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fk(p: (((i32, i32), i32), i32)) -> bool => true\nfunc fk(p: ((ref/(ref/i32 during a, i32) during a, i32), i32)) -> i32 => 0\nfunc fl(p: (ref/[2 of i32] during a, i32)) -> bool => true\nfunc fl(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fu1(p: (uniq/(i32, i32) during a, i32)) -> i32 => 0\nfunc fu2(p: ((i32, i32), i32)) -> bool => true\nfunc fu2(p: (uniq/(i32, i32) during a, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
+
+    private const string NestedTwins = "func fv(p: (ref/(i32, i32) during a, i32)) -> i32 => p.1\nfunc fw(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => p.1\nfunc fw2(p: (ref/(ref/i32 during a, i32) during a, i32), w: i32) -> i32 => p.1\nstruct S2\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: ((i32, i32), i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nstruct P3\n    public var k: i32\n    public init(p: ((i32, i32), i32)) => self.k = 0\n    public init(p: (ref/(ref/i32 during a, i32) during a, i32)) => self.k = 1\nfunc fgy<T>(p: (ref/(T, i32) during a, i32)) -> i32 => 0\nfunc fgy(p: ((i32, i32), i32)) -> bool => true\nfunc fa4(x: Array<ref/[2 of ref/i32 during a] during a>) -> i32 => 0\nfunc fa4(x: Array<[2 of i32]>) -> bool => true\nfunc fgx<T>(p: (ref/T during a, i32)) -> i32 => 0\nfunc fgx(p: ((i32, i32), i32)) -> bool => true\nfunc fa3(x: Array<ref/[2 of i32] during a>) -> i32 => 0\nfunc fa3(x: Array<[2 of i32]>) -> bool => true\nfunc fl3(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fl3(p: ([2 of i32], i32)) -> bool => true\nfunc fgu<T>(p: (uniq/T during a, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -287,5 +291,39 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "e10n", ElementRanks + "    let q = fy((n, inc))\n    return 0\n", "AmbiguousBinding_Kd: let q = fy((n, inc))")]
     [InlineData("guard", "e11n", ElementRanks + "    let q = fg2((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fg2((n, 1))")]
     public void ALiteralArgumentRanksElementByElement(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.1, 10.4 step 1, 10.2 (PLAN G746): a literal nested in a Tuple or array literal argument fits its element position as an
+    // argument there: at ref/(...) a borrowed temporary, ranked Cross-Semantics against a by-value fit's Literal (n1n-n4n oppose or tie
+    // where the other candidate was inapplicable; m1n-m4n in a method, an init, a generic and an array of arrays), never an exclusive
+    // borrow (n5n, m5n); its own positions follow. After a direct call's selection a borrowed element is a located Unsupported_Kd until
+    // PLAN G585 (n5-n8: each is valid and becomes accepted there; the base gives NoApplicableOverload_Kd); a function value's call binds
+    // it at its parameter Type as before (m1-m3). The m1-m6 guards keep their base verdict.
+    [Theory]
+    [InlineData("guard", "n1", NestedRanks + "    let q = fn4(((1, 2), 3))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "n2", NestedRanks + "    let q = fn4(((v, 1), 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "n3", NestedRanks + "    let q = fg(([n, m], 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "n4", NestedRanks + "    let q = fu2(((1, 2), 3))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("G746", "n5", NestedRanks + "    let q = fn5(((n, 1), 2))\n    return q\n", "Unsupported_Kd: let q = fn5(((n, 1), 2))")]
+    [InlineData("G746", "n6", NestedRanks + "    let q = fa1(((1, 2), 3))\n    return q\n", "Unsupported_Kd: let q = fa1(((1, 2), 3))")]
+    [InlineData("G746", "n7", NestedRanks + "    let q = fg1(((v, 1), 2))\n    return q\n", "Unsupported_Kd: let q = fg1(((v, 1), 2))")]
+    [InlineData("G746", "n8", NestedRanks + "    let q = fc1(([2 of 7], 3))\n    return q\n", "Unsupported_Kd: let q = fc1(([2 of 7], 3))")]
+    [InlineData("G746", "n1n", NestedRanks + "    let q = fn3(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fn3(((n, 1), 2))")]
+    [InlineData("G746", "n2n", NestedRanks + "    let q = fh(([n, m], 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fh(([n, m], 1))")]
+    [InlineData("G746", "n3n", NestedRanks + "    let q = fk((((n, 1), 2), 3))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk((((n, 1), 2), 3))")]
+    [InlineData("G746", "n4n", NestedRanks + "    let q = fl(([2 of n], 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fl(([2 of n], 1))")]
+    [InlineData("guard", "n5n", NestedRanks + "    let q = fu1(((1, 2), 3))\n    return q\n", "NoApplicableOverload_Kd: let q = fu1(((1, 2), 3))")]
+    [InlineData("guard", "m1", NestedTwins + "    let g = fv\n    return g(((1, 2), 3))\n", "")]
+    [InlineData("guard", "m2", NestedTwins + "    let g = fw\n    return g(((n, 1), 2))\n", "")]
+    [InlineData("guard", "m3", NestedTwins + "    let g = fw2\n    return g(((n, 1), 2), 3)\n", "")]
+    [InlineData("guard", "m4", NestedTwins + "    let q = fgx(((v, v), 3))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "m5", NestedTwins + "    let q = fa3([[1, 2], [3, 4]])\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "m6", NestedTwins + "    let q = fl3(([2 of n], 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("G746", "m1n", NestedTwins + "    let s = S2.init(1)\n    let q = s.m(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = s.m(((n, 1), 2))")]
+    [InlineData("G746", "m2n", NestedTwins + "    let s = P3.init(((n, 1), 2))\n    return s.k\n", "AmbiguousBinding_Kd: let s = P3.init(((n, 1), 2))")]
+    [InlineData("G746", "m3n", NestedTwins + "    let q = fgy(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fgy(((n, 1), 2))")]
+    [InlineData("G746", "m4n", NestedTwins + "    let q = fa4([[n, m], [n, m]])\n    return 0\n", "AmbiguousBinding_Kd: let q = fa4([[n, m], [n, m]])")]
+    [InlineData("guard", "m5n", NestedTwins + "    let q = fgu(((1, 2), 3))\n    return q\n", "UnboundTypeArgument_Kd: let q = fgu(((1, 2), 3))")]
+    public void ANestedLiteralFitsItsPositionAsAnArgument(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }
