@@ -35,8 +35,7 @@ internal enum MirViolation : byte
     Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
-    Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no
-    // FormatBuffer's buffer, or whose estimate is not that FormatBuffer's (DECISIONS R5-M131).
+    Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
     Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic;
     // over the program, a default template's call or a created Closure without its body (G191).
     Discriminant, // A Discriminant of a Place that is not an enum.
@@ -77,7 +76,7 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
-/// a FormatFinish's estimate its FormatBuffer's (DECISIONS R5-M131), a Value callee's against its Type's signature where
+/// a Value callee's against its Type's signature where
 /// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
 /// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). A write, an in-place destruction or an exclusive acquisition
 /// passes no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
@@ -137,7 +136,6 @@ internal sealed partial class MirValidator(TyCtxt types)
             this.Diverged(body, findings);
             this.Reach(body, findings);
             this.Unensured(body, findings);
-            this.Finishes(body, findings);
         }
 
         if (walked && !checker.Unscoped)

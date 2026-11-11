@@ -79,11 +79,9 @@ public sealed partial class Binding
         return this.Fail(conversion, BindingFailure.TypeMismatch);
     }
 
-    // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
-    // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
-    // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor. SPEC 5.7:
-    // through a pointer that states an Origin the borrow lies within it (the anchor meets it, and a declared result is outlived by
-    // it). An exclusive borrow is denied only by a safe shared layer inside the pointee: no raw Origin denies an access (SPEC 5.7).
+    // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its Origin is RawAnchor's, which fits every destination, a
+    // result included, while its Loan is checked under the anchor. An exclusive borrow is denied only by a safe shared layer inside
+    // the pointee: no raw Origin denies an access (SPEC 5.7).
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
         if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
@@ -91,24 +89,17 @@ public sealed partial class Binding
             return this.Fail(conversion, AccessFailure(conversion.Left, out _));
         }
 
-        var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? path.Origin : null;
-        var declared = ResultFunction(conversion)?.BoundSymbol?.Type is
-            { Kind: BoundTypeKind.Semantics, Components: [var target], Origin: { } result } declaredResult &&
-            declaredResult.Semantics == semantics && ReferenceEquals(target, referent) ? result : null;
-        var origin = declared ?? this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
-        if (declared is null && within is not null)
-        {
-            origin = this.Meet(origin, within);
-        }
-
-        var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
-        if (declared is not null && within is not null && !OriginOutlives(within, declared))
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, conversion, BindingDeadline.BodyOrigins, borrowed, within, declared));
-        }
-
+        var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left));
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);
+    }
+
+    // SPEC 5.2.2, 5.7: the Origin of a borrow, written at `at` or implicit (PlaceOrigin), of `place`, a Place rooted at a raw Place: a
+    // fresh anchor, which fits every destination, within the Origin a pointer it is reached through states.
+    private BoundOrigin RawAnchor(Koto at, Koto place)
+    {
+        var anchor = this.OriginAtom(at, OriginKind.Anchor, 0, "anchor");
+        return this.PathOrigin(place) is { Dereferences: true, Origin: { } within } ? this.Meet(anchor, within) : anchor;
     }
 }
