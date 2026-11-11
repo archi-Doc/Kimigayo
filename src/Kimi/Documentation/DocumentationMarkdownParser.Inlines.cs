@@ -20,7 +20,8 @@ internal ref partial struct DocumentationMarkdownParser
     private static readonly SearchValues<char> ParenthesisCharacters = SearchValues.Create("()\\");
 
     // NUL is logically U+FFFD, not a destination-ending control character.
-    private static readonly SearchValues<char> DestinationStops = SearchValues.Create("\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n\u000B\u000C\r\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F \u007F");
+    private static readonly SearchValues<char> DestinationStops = SearchValues.Create(
+        "\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0B\x0C\r\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F \x7F");
 
     private void ParseInlines(int parent)
     {
@@ -156,7 +157,11 @@ internal ref partial struct DocumentationMarkdownParser
                 }
 
                 var hard = position - spaces >= 2;
-                this.AddNode(hard ? DocumentationMarkdownKind.HardBreak : DocumentationMarkdownKind.SoftBreak, parent, this.MapStart(hard ? spaces : position), this.MapEnd(position + 1));
+                this.AddNode(
+                    hard ? DocumentationMarkdownKind.HardBreak : DocumentationMarkdownKind.SoftBreak,
+                    parent,
+                    this.MapStart(hard ? spaces : position),
+                    this.MapEnd(position + 1));
                 position++;
             }
             else if (character == '\0')
@@ -164,7 +169,8 @@ internal ref partial struct DocumentationMarkdownParser
                 this.AddDecoded(parent, position, position + 1, 0xFFFD);
                 position++;
             }
-            else if (character == '\\' && position + 1 < input.Length && (MarkdownUnicode.IsAsciiPunctuation(input[position + 1]) || input[position + 1] == '\n'))
+            else if (character == '\\' && position + 1 < input.Length &&
+                (MarkdownUnicode.IsAsciiPunctuation(input[position + 1]) || input[position + 1] == '\n'))
             {
                 if (input[position + 1] == '\n')
                 {
@@ -238,7 +244,16 @@ internal ref partial struct DocumentationMarkdownParser
                 var left = !afterSpace && (!afterPunctuation || beforeSpace || beforePunctuation);
                 var right = !beforeSpace && (!beforePunctuation || afterSpace || afterPunctuation);
                 var node = this.AddInlineText(parent, input, position, runEnd);
-                var delimiter = this.delimiters.Add(new() { Node = node, Previous = this.lastDelimiter, Character = (byte)character, Count = runEnd - position, OriginalRemainder = (byte)((runEnd - position) % 3), CanOpen = left && (character == '*' || !right || beforePunctuation), CanClose = right && (character == '*' || !left || afterPunctuation), });
+                var delimiter = this.delimiters.Add(new()
+                {
+                    Node = node,
+                    Previous = this.lastDelimiter,
+                    Character = (byte)character,
+                    Count = runEnd - position,
+                    OriginalRemainder = (byte)((runEnd - position) % 3),
+                    CanOpen = left && (character == '*' || !right || beforePunctuation),
+                    CanClose = right && (character == '*' || !left || afterPunctuation),
+                });
                 this.delimiters[this.lastDelimiter].Next = delimiter;
                 this.lastDelimiter = delimiter;
                 position = runEnd;
@@ -255,7 +270,15 @@ internal ref partial struct DocumentationMarkdownParser
                 this.lastBracket = bracket.Previous;
                 if (bracket.Position >= lastLinkStart && position + 1 < input.Length && input[position + 1] == '(')
                 {
-                    if (this.TryLink(input, position + 2, ref failedDoubleTitle, ref failedSingleTitle, ref failedParenTitle, out var destination, out var title, out var end))
+                    if (this.TryLink(
+                        input,
+                        position + 2,
+                        ref failedDoubleTitle,
+                        ref failedSingleTitle,
+                        ref failedParenTitle,
+                        out var destination,
+                        out var title,
+                        out var end))
                     {
                         this.ProcessEmphasis(bracket.Delimiter);
                         var node = bracket.Node;
@@ -313,7 +336,8 @@ internal ref partial struct DocumentationMarkdownParser
                 }
                 else
                 {
-                    this.nodes[node].Argument = this.values.Add(email ? new(string.Concat("mailto:", target)) : this.SliceValue(input, position + 1, autoEnd - 1));
+                    this.nodes[node].Argument = this.values.Add(
+                        email ? new(string.Concat("mailto:", target)) : this.SliceValue(input, position + 1, autoEnd - 1));
                     this.SetInlineText(node, input, position + 1, autoEnd - 1, this.MapStart(position + 1), this.MapEnd(autoEnd - 1), normalizeCode: false);
                 }
                 lastLinkStart = position;
@@ -352,7 +376,9 @@ internal ref partial struct DocumentationMarkdownParser
             while (opener > openersBottom[bucket])
             {
                 var open = this.delimiters[opener];
-                if (open.CanOpen && open.Character == close.Character && (!(open.CanClose || close.CanOpen) || (open.OriginalRemainder + close.OriginalRemainder) % 3 != 0 || (open.OriginalRemainder == 0 && close.OriginalRemainder == 0)))
+                if (open.CanOpen && open.Character == close.Character &&
+                    (!(open.CanClose || close.CanOpen) || (open.OriginalRemainder + close.OriginalRemainder) % 3 != 0 ||
+                    (open.OriginalRemainder == 0 && close.OriginalRemainder == 0)))
                 {
                     break;
                 }
@@ -381,7 +407,15 @@ internal ref partial struct DocumentationMarkdownParser
             var last = this.links[closeNode].Previous;
             var parent = this.nodes[openNode].Parent;
             // Allocate without linking at the tail: the wrapper replaces the enclosed sibling range.
-            var wrapper = this.nodes.Add(new() { Kind = use == 2 ? DocumentationMarkdownKind.Strong : DocumentationMarkdownKind.Emphasis, Parent = parent, Next = closeNode, First = first, Start = this.nodes[openNode].End - use, End = this.nodes[closeNode].Start + use, });
+            var wrapper = this.nodes.Add(new()
+            {
+                Kind = use == 2 ? DocumentationMarkdownKind.Strong : DocumentationMarkdownKind.Emphasis,
+                Parent = parent,
+                Next = closeNode,
+                First = first,
+                Start = this.nodes[openNode].End - use,
+                End = this.nodes[closeNode].Start + use,
+            });
             this.links.Add(new() { Previous = openNode, Last = last });
             this.nodes[openNode].Next = wrapper;
             this.links[closeNode].Previous = wrapper;
@@ -502,7 +536,9 @@ internal ref partial struct DocumentationMarkdownParser
     {
         // NUL-containing autolinks are handled above; other non-code runs stop
         // at NULs and line endings. Only code needs normalization here.
-        var special = !normalizeCode ? -1 : this.inlineHasNul ? input[start..end].IndexOfAny('\n', '\0') : this.inlineMultiline ? input[start..end].IndexOf('\n') : -1;
+        var special = !normalizeCode ? -1
+            : this.inlineHasNul ? input[start..end].IndexOfAny('\n', '\0')
+            : this.inlineMultiline ? input[start..end].IndexOf('\n') : -1;
         if (special < 0 && sourceEnd - sourceStart == end - start)
         {
             this.nodes[id].TextStart = sourceStart;
@@ -682,7 +718,15 @@ internal ref partial struct DocumentationMarkdownParser
         return this.stopFound;
     }
 
-    private bool TryLink(ReadOnlySpan<char> input, int start, ref int failedDouble, ref int failedSingle, ref int failedParen, out MarkdownValue destination, out MarkdownValue? title, out int end)
+    private bool TryLink(
+        ReadOnlySpan<char> input,
+        int start,
+        ref int failedDouble,
+        ref int failedSingle,
+        ref int failedParen,
+        out MarkdownValue destination,
+        out MarkdownValue? title,
+        out int end)
     {
         destination = default;
         title = null;
@@ -996,7 +1040,8 @@ internal ref partial struct DocumentationMarkdownParser
         var maximum = hex ? 6 : 7;
         while (position < input.Length && position - first < maximum)
         {
-            var digit = input[position] is >= '0' and <= '9' ? input[position] - '0' : hex && (uint)((input[position] | 0x20) - 'a') < 6 ? (input[position] | 0x20) - 'a' + 10 : -1;
+            var digit = input[position] is >= '0' and <= '9' ? input[position] - '0'
+                : hex && (uint)((input[position] | 0x20) - 'a') < 6 ? (input[position] | 0x20) - 'a' + 10 : -1;
             if (digit < 0)
             {
                 break;

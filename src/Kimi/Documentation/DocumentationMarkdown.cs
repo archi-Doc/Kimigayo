@@ -106,7 +106,10 @@ public sealed class DocumentationMarkdown
             hasSafety |= item.Kind == DocumentationMarkdownItemKind.Standard && item.Name == "safety";
             if (item.Kind is DocumentationMarkdownItemKind.Unknown or DocumentationMarkdownItemKind.Ambiguous)
             {
-                yield return new(this.Comment.Source, item.Node.SourceSpan, item.Kind == DocumentationMarkdownItemKind.Unknown ? "UnknownDocumentationParameter" : "AmbiguousDocumentationParameter");
+                yield return new(
+                    this.Comment.Source,
+                    item.Node.SourceSpan,
+                    item.Kind == DocumentationMarkdownItemKind.Unknown ? "UnknownDocumentationParameter" : "AmbiguousDocumentationParameter");
             }
         }
 
@@ -125,7 +128,8 @@ public sealed class DocumentationMarkdown
 
     private static void AddParameters(Koto declaration, List<DocumentationMarkdownParameter> parameters, CancellationToken cancellationToken)
     {
-        var generics = declaration is FunctionKoto function ? function.GenericArguments : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
+        var generics = declaration is FunctionKoto function ? function.GenericArguments
+            : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
         foreach (var generic in generics)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -136,7 +140,9 @@ public sealed class DocumentationMarkdown
             }
         }
 
-        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
+        var origins = declaration is FunctionKoto callable ? callable.Origins
+            : declaration is DeclarationContainerKoto type ? type.OriginNames
+            : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
         foreach (var origin in origins)
         {
             parameters.Add(new(origin));

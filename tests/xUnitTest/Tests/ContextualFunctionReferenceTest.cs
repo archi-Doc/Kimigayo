@@ -70,7 +70,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsafeFunctionValue_Kd", error.Code);
+        Assert.Equal("DirectCallFunctionValue_Kd", error.Code);
         Assert.Equal("choose", error.Text);
     }
 

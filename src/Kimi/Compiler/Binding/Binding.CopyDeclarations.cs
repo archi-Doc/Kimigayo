@@ -13,8 +13,9 @@ public sealed partial class Binding
     private static bool PositiveRequirement(BoundConstraint constraint)
         => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable or ConstraintKind.Unresolved;
 
+    // SPEC 3.5.2, 8.7.1: only the Type's own `Self is Copy` opts in; a Contract that requires Copy, as a parent or a clause, never does.
     private bool DeclaresCopy(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Library.Copy);
+        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && ReferenceEquals(constraint.Contract, this.Library.Copy);
 
     private void BindCopyDeclarations()
     {

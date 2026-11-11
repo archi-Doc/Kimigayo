@@ -140,7 +140,7 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, conforming) && fact.Contract?.Contract is { } shape &&
-                    this.AvailableConstraintFact(environment, fact))
+                    this.AvailableConstraintFact(environment, fact, out _))
                 {
                     Add(shape, current.Owner, fact);
                 }
@@ -423,23 +423,19 @@ public sealed partial class Binding
             };
         }
 
-        if (this.TypeName(syntax, scope) is not { Declaration: ContractKoto declaration } named)
+        if (this.TypeName(syntax, scope) is not { IsContract: true, Declaration: ContractKoto declaration } named)
         {
             this.RejectEffectBound(effect, new(EffectRejection.NotContract));
             return null;
         }
 
-        BoundType? reference = null;
-        if (GenericParentApplication(syntax) is { } generic)
+        // SPEC 8.4.3, 8.11.1: the ancestor is a bound Contract reference, formed by the one former (its arity, its own and outer Type
+        // arguments). One that forms none is this item's one record: the selector's nodes are not indexed (only the item is), so the
+        // former's failure on them is never counted or reported (CountStates), and their failures are the effect item's (BindEffectBound).
+        if (this.QualifierReference(syntax, named, scope) is not { } reference)
         {
-            var arguments = this.BindTypeList(generic.TypeArguments, scope, this.TypeContext(generic, scope).Nested, BoundTypeKind.Constructed, named);
-            if (arguments is null)
-            {
-                this.RejectEffectBound(effect, new(EffectRejection.NotReference, Symbol: named));
-                return null;
-            }
-
-            reference = this.types.Intern(BoundTypeKind.Constructed, named, SemanticsKind.Owner, (BoundType[])arguments.Components);
+            this.RejectEffectBound(effect, new(EffectRejection.NotReference, Symbol: named));
+            return null;
         }
 
         BindingSymbol? ancestor = null;
@@ -447,7 +443,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             var candidate = shape.Ancestors[i];
-            if (ReferenceEquals(candidate.Declaration, declaration) && (reference is null || this.SameConformanceType(candidate.Type, reference, scope)))
+            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope)))
             {
                 ancestor = candidate;
                 matches++;
@@ -539,7 +535,7 @@ public sealed partial class Binding
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
-            EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"The Type arguments of {selector} do not form a reference to {rejection.Symbol!.Name}"),
+            EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"This does not form a reference to {rejection.Symbol!.Name}: every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)"),
             EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region"),
             EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {rejection.Symbol!.Name}", "An effect specification bounds a requirement that the Contract inherits"),
             EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}"),

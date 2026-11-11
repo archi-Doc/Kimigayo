@@ -93,6 +93,8 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
     private static int Identity(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 }
 
+// A scope's premises. Its state (the three fact sets, Invalid and the two flags they set) is written only by its own members (Add,
+// Invalidate, Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class ConstraintEnvironment
 {
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
@@ -101,16 +103,56 @@ internal sealed class ConstraintEnvironment
 
     internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
 
-    internal bool Invalid { get; set; }
+    internal bool Invalid { get; private set; }
 
-    internal bool HasAssociatedProjection { get; set; }
+    internal bool HasAssociatedProjection { get; private set; }
 
-    /// <summary>Gets or sets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that
-    /// expressions bound in its scope substitute one for the other.</summary>
-    internal bool HasParameterIdentity { get; set; }
+    /// <summary>Gets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that expressions bound in
+    /// its scope substitute one for the other.</summary>
+    internal bool HasParameterIdentity { get; private set; }
+
+    // The number of changes of this environment's state.
+    internal int Version { get; private set; }
+
+    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact makes the environment Invalid.
+    internal void Add(BoundConstraint fact, BindingSymbol? source)
+    {
+        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFacts.Contains((fact, source));
+        if (source is not null && availability)
+        {
+            this.DerivedFacts.Add((fact, source));
+        }
+
+        var added = this.Facts.Add(fact);
+        if (added)
+        {
+            this.HasAssociatedProjection |= fact.HasAssociatedProjection;
+            this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
+            this.Invalid |= fact.Kind == ConstraintKind.Error;
+        }
+
+        if (added || availability)
+        {
+            this.Version++;
+        }
+    }
+
+    internal void Invalidate()
+    {
+        if (!this.Invalid)
+        {
+            this.Invalid = true;
+            this.Version++;
+        }
+    }
 
     internal void Reset()
     {
+        if (this.Facts.Count != 0 || this.Invalid)
+        {
+            this.Version++;
+        }
+
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();

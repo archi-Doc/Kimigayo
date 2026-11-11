@@ -122,7 +122,11 @@ public sealed partial class Binding
             return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
 
-        return self is not null && FormattingTypes.IsBuiltin(self) && selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
+        // The witness table (WitnessGroup) is the one statement of which built-in Types format through a library body (bool, char and Unit,
+        // R8-S2a); the integers, the floats, string and Utf8Slice still take builtinFormat. Temporary until S2b, S2c and S2d move the rest
+        // (S2d2 removes this narrowing).
+        return self is not null && FormattingTypes.IsBuiltin(self) && WitnessGroup(self, KimiDeclarationId.Utf8Format) is null &&
+            selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
             ? Prepared(this.builtinFormat) : selected;
 
         // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.

@@ -18,7 +18,13 @@ public sealed partial class Binding
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
-    // SPEC 7: an unsafe function supports direct calls only, so every appearance of its name
+    // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
+    // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
+    // its witness.
+    private static bool DirectCallOnly(FunctionKoto function)
+        => (function.Modifier & ModifierKind.Unsafe) != 0 || function.FindAttribute(AttributeKind.LibraryImport) is not null;
+
+    // SPEC 7.6, 22.6: such a function supports direct calls only, so every appearance of its name
     // that is not the callee of a direct call acquires it as a value. This is the complement of
     // the callee position, not a list of acquisition positions, so no position stays unchecked.
     private static bool IsValueUse(Koto node)
