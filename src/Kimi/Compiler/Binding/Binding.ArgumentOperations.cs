@@ -248,6 +248,39 @@ public sealed partial class Binding
             return fixedExpectation || this.AcquiresBare(source, source.BoundType ?? erased, erased, pattern, deferAcquisition);
         }
 
+        if (pattern.IsObjectBorrow && TryPairLayer(actual, out var whole, out _) && this.ObjectCases(actual, scope, out _) is var layerCases && layerCases != SemanticsMask.None)
+        {
+            // SPEC 10.2, 8.14, 8.15.2: an object pair layer is adapted to a fixed object borrow by this rule in each of its cases, on the
+            // case's complete Type: a case that does not adapt fails the layer, and a case that needs a spelling records it
+            // (RequireAcquisition), as its concrete twin does. Where every case adapts, the adaptation differs by case (objref Copies,
+            // objuniq Reborrows, a handle lends), which no plan forms yet (PLAN G762): the located limit, the call's one obstacle as an
+            // acquisition's; a case's spelling, then an earlier input's record, take precedence. Its Type is a case's, for the fit.
+            var before = this.acquisitionFailure;
+            this.acquisitionFailure = null;
+            foreach (var mode in SemanticsOrder)
+            {
+                if (layerCases.Contains(mode))
+                {
+                    ReadOnlySpan<PairCase> selected = [new(whole.Symbol!, mode)];
+                    if (!this.AdaptInput(source, fixedPattern, this.CaseType(actual, selected), scope, path, declaringType, out adapted, out _, out _, explicitBorrow, receiver, fixedExpectation, false, deferAcquisition) ||
+                        !this.FitsStructuralPartAt(adapted, pattern, source))
+                    {
+                        this.acquisitionFailure ??= before;
+                        return false;
+                    }
+                }
+            }
+
+            if (fixedExpectation)
+            {
+                this.acquisitionFailure ??= before;
+                return false;
+            }
+
+            this.acquisitionFailure ??= before ?? new(source, BindingFailure.Unsupported, true);
+            return deferAcquisition;
+        }
+
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
             ((pattern.Kind == BoundTypeKind.Semantics && !ReferenceTypes.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
         {

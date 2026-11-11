@@ -566,6 +566,11 @@ public class PairFollowTest
     // rows 12-19 are invalid: a write or an exclusive receiver through a shared case (objref, rc) or a `let` over an owning case, or a
     // member Node lacks. Row 20 is invalid as its concrete twin: a setter needs an exclusive receiver (11.3.1). Row 21 calls each view's
     // callable payload (7.3, 7.7.3), valid.
+    // Rows 22-27 adapt to a fixed object borrow, each case by the whole input rule (SPEC 10.2, 8.14): where every case adapts (an
+    // `objref/Self` receiver, an `objref/Node` argument, an `objuniq/Self` receiver over a `var`) the per-case adaptation is the located
+    // limit until PLAN G762; the others are invalid in one case with that case's record: the objref case lends no `objuniq/Node`, the obj
+    // case lends its handle exclusively outside a Receiver Expression only when written `@objuniq` (SPEC 15.1.5), and a transferred
+    // objuniq reference reaches only its own Type (10.2).
     [Theory]
     [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.n\n", "")]
     [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.n\n", "")]
@@ -588,6 +593,12 @@ public class PairFollowTest
     [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.q\n", nameof(DiagnosticCode.UnresolvedBinding_Kd))]
     [InlineData("y: s/Gauge", "s is objref or objuniq", "    y.level = 3\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData("h: s/((i32) -> i32)", "s is objref or objuniq", "    let v = h(1)\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.peek()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = take(y)\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    let v = y.claim()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = takeU(y)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    let v = takeU(y)\n", nameof(DiagnosticCode.ExclusiveBorrowRequired_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = take(y@move)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
     public void AnObjectPairLayerHasItsViewTargetsMembers(string parameter, string premise, string body, string code)
     {
         var check = DiagnosticCorpus.Check(
