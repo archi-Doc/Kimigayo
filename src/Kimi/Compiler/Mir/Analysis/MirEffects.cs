@@ -169,7 +169,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         var callee = terminator.Callee;
         if (terminator.Kind == MirTerminatorKind.Drop)
         {
-            this.Dropped(program, body, block, view, cases.Type(body.TypeOf(terminator.Place)!));
+            this.Dropped(program, body, block, view, cases.TypeOf(terminator.Place));
         }
         else if (terminator.Kind != MirTerminatorKind.Call)
         {
