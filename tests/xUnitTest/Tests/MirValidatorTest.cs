@@ -394,11 +394,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
     // (MirCases). In a body with two binders, naming the other one is a finding: Binder for the operand, Projection for the step, whose Type
-    // ProjectedType does not give.
+    // ProjectedType does not give. An adaptation family `p@r` (SPEC 13.5.5; PLAN G755) names its binder too (TyCtxt.PairBinder).
     [Fact]
     public void PairFormsNameTheirLayersBinder()
     {
-        var c = MirBuildTest.Compile("func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
+        var c = MirBuildTest.Compile(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "func both<s/T, t/U, r/V>(a: s/T, b: t/U, c: r/V, o: obj/Node) -> ()\n    s is owner or uniq\n    t is owner or ref\n    r is objref or objuniq\n" +
+            "    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n    var p = o@move\n    let y = p@r\n    _ = y\n");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
         var body = new MirBody();
         body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
@@ -406,6 +409,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (pa, pb) = (function.Parameters[0].Type.TypeOf()!, function.Parameters[1].Type.TypeOf()!);
         var (a, b) = (MirModelTest.Local(body, pa, MirLocalKind.Arg), MirModelTest.Local(body, pb, MirLocalKind.Arg));
         _ = (TyCtxt.Layer(pa, out var t, out _), TyCtxt.Layer(pb, out var u, out _));
+        var py = KotoTree.Walk(function).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y").SymbolOf()!.Type!;
+        Assert.Equal(BoundTypeKind.SemanticsAdaptation, py.Kind);
+        var y = MirModelTest.Local(body, py);
         PairBinder.Collect(function, body.Binders);
         var block = body.AddBlock();
         void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(
@@ -414,14 +420,20 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             source));
         Read(MirOperand.PairAcquire(0, a), pa, At);
         Read(MirOperand.PairAcquire(1, b), pb, At);
+        Read(MirOperand.PairAcquire(2, y), py, At);
         Read(MirOperand.Copy(body.Project(a, MirProjectionKind.PairLayer, 0)), t!, At);
         Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 1)), u!, At);
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Empty(Validate(body, c.Types));
 
+        // A family is never followed as one layer (it has no single target), so a PairLayer step of it is a finding as well.
         Read(MirOperand.PairAcquire(1, a), pa, Broken);
         Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 0)), u!, Broken);
-        Assert.Equal([(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+        Read(MirOperand.PairAcquire(0, y), py, Broken);
+        Read(MirOperand.Copy(body.Project(y, MirProjectionKind.PairLayer, 2)), py, Broken);
+        Assert.Equal(
+            [(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax), (MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)],
+            Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // A3 E13 (4): a PairAcquire is always the whole rvalue of an Assign to a local's whole Place, its Use marked with the Reborrow its
