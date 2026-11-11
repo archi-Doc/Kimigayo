@@ -99,6 +99,8 @@ public class Utf8FloatTest
               %bytes = alloca [26 x i8], align 8
               %destination = getelementptr i8, ptr %bytes, i64 1
               %result = alloca [24 x i8], align 8
+              %buffer = alloca [32 x i8], align 8
+              %writer = alloca [64 x i8], align 8
               br label %loop
             loop:
               %index = phi i64 [0, %entry], [%next, %passed]
@@ -110,12 +112,14 @@ public class Utf8FloatTest
               %length32 = load i32, ptr %lengthp
               %length = zext i32 %length32 to i64
               call void @llvm.memset.p0.i64(ptr %bytes, i8 42, i64 26, i1 false)
-              call void @__kimi_text_try_format(ptr %result, ptr %item, ptr %destination, i64 %length, i32 %kind, ptr null, i64 0)
+              call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %length)
+              call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 0, ptr null)
+              call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %item, i32 %kind, ptr null, i64 0)
               %tag = load i32, ptr %result
               %ok = icmp eq i32 %tag, 0
               br i1 %ok, label %compare, label %failed
             compare:
-              %actualp = getelementptr i8, ptr %result, i64 16
+              %actualp = getelementptr i8, ptr %buffer, i64 16
               %actual = load i64, ptr %actualp
               %same_length = icmp eq i64 %actual, %length
               %equal = call i32 @memcmp(ptr %destination, ptr %expected, i64 %length)
@@ -135,8 +139,10 @@ public class Utf8FloatTest
             """).Append(' ').Append(cases.Count).Append("\n").Append("""
               br i1 %done, label %return, label %loop
             failed:
-              call void @__kimi_text_try_format(ptr %result, ptr %item, ptr %destination, i64 24, i32 %kind, ptr null, i64 0)
-              %failure_lengthp = getelementptr i8, ptr %result, i64 16
+              call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 24)
+              call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 0, ptr null)
+              call void @__kimi_writer_write_builtin(ptr %result, ptr %writer, ptr %item, i32 %kind, ptr null, i64 0)
+              %failure_lengthp = getelementptr i8, ptr %buffer, i64 16
               %failure_length = load i64, ptr %failure_lengthp
               call void @__kimi_stdout(ptr %destination, i64 %failure_length, ptr null, i64 0)
               call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr null, i64 0)

@@ -180,6 +180,13 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
+    /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's or its Place's Type as a case Type
+    /// (<see cref="Type"/>), the one form every case reader of an operand takes.</summary>
+    /// <param name="operand">An operand of the selected body.</param>
+    /// <returns>The case Type.</returns>
+    internal BoundType TypeOf(in MirOperand operand)
+        => this.Type(operand.Kind == MirOperandKind.Const ? this.Body.Consts[operand.Arg].Type : this.Body.TypeOf(operand.Place)!);
+
     /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
     /// case Type of the step's Type either way.</summary>
@@ -196,7 +203,7 @@ internal sealed class MirCases(TyCtxt types)
     /// exclusively in that Semantics; in any other case it Copies its Place, a reference or a value Binding proved Copy.</summary>
     /// <param name="acquire">A PairAcquire operand.</param>
     /// <returns>Whether it Reborrows.</returns>
-    internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.Type(this.Body.TypeOf(acquire.Place)!));
+    internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.TypeOf(acquire));
 
     /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.14, 13.5.3): the operation Binding selects
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's

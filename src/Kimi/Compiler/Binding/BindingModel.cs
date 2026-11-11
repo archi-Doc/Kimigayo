@@ -187,7 +187,7 @@ internal enum BindingFailure : byte
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,
-    UnsafeFunctionValue,
+    DirectCallFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidInlineLayout,
@@ -337,6 +337,15 @@ public sealed class BindingSymbol
 
     // The stored shape of a struct or enum declaration, refilled by each pass.
     internal AdtDef? Adt { get; set; }
+
+    // SPEC 8.4, 9.2: whether this symbol names a Contract: a Contract declaration or a bound reference to one, never a Contract's Self Type
+    // parameter, which the Contract declares too.
+    internal bool IsContract => this.Declaration is ContractKoto && this.SelfOf is null;
+
+    // SPEC 8.1.1, 8.2.3, 9.1: whether this symbol is a generic input of its declaration: a Type parameter, a pair target or a Semantics
+    // parameter. A Contract's Self Type parameter is none: it stands for the conforming Type, so a condition on it is an implementation
+    // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
+    internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
     // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
@@ -711,7 +720,6 @@ public sealed record BoundType
         var result = new Dictionary<string, BoundType>(StringComparer.Ordinal)
         {
             ["()"] = Unit,
-            ["Never"] = Never,
             ["bool"] = Boolean,
         };
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })

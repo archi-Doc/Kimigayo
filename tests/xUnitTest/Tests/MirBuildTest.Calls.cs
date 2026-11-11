@@ -266,6 +266,58 @@ public sealed partial class MirBuildTest
     [InlineData("func f() -> i32\n    return true\n")]
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
 
+    // SPEC 8.2.3, 3.8, 3.1.3, 14.10.3 (PLAN G704, G355; the owner's O-147 (c)): a Place whose Type the body's identity premises make Never
+    // (a: T under `T is Never`, through `owner/`, the root path or a chain) is a Place of Type Never (MirTypes.IsNever): a Never form
+    // acquires it into the Never value and a call whose result the premises make Never diverges, so each body validates and gets the
+    // records of its non-generic twin (a: Never), the first form; `let b: i32 = a` leaves b uninitialized (fail-before: the Place's Copy
+    // at T where another Type is expected, MirValidator's Type or Operation finding, InternalInvariant_Kd). A call of `k: () -> T` diverges
+    // (fail-before: a returning Call wrote the Never value, MirValidator's NeverWrite; the Middle's f37), and a local it or the value
+    // initializes stays uninitialized (f33, f38: accepted on dev under `owner/Never`). The assumed path after the value is still checked
+    // (14.10.3; the last rows, design review 2's adversarial twins L1-L4, M1, M2): a Loan conflict across a `let`, an argument, a
+    // comparison or a `return`, and a read after a Move, stay rejected. `{A}` in a row is the value's Type.
+    [Theory]
+    [InlineData("return a", "i32", "clean")]
+    [InlineData("return a + 1", "i32", "clean")]
+    [InlineData("return 1 + a", "i32", "clean")]
+    [InlineData("return a == 1", "bool", "clean")]
+    [InlineData("return not a", "bool", "clean")]
+    [InlineData("let b: i32 = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: i32 = a@move\n    return 0", "i32", "clean")]
+    [InlineData("return if c => a else => 1", "i32", "clean")]
+    [InlineData("return g(a)", "i32", "clean")]
+    [InlineData("let t: (i32, i32) = (a, 2)\n    return 0", "i32", "clean")]
+    [InlineData("while a\n        ()\n    return 0", "i32", "clean")]
+    [InlineData("return id(a)", "i32", "clean")]
+    [InlineData("return k()", "i32", "clean")]
+    [InlineData("let b = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: {A} = k()\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let b: i32 = a\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = g(a@move)\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = a == 1\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    return a\n    x = 2\n    use(r)\n    return 0", "i32", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("pass(a@move, a)", "()", "1*MovedPlace_Kd")]
+    [InlineData("let b = a@move\n    return a", "i32", "1*MovedPlace_Kd")]
+    public void APlaceThePremisesMakeNeverIsAcquiredAsTheNeverValue(string statements, string result, string records)
+    {
+        const string helpers = "func g(x: i32) -> i32 => x\nfunc id<U>(x: U) -> U => x@move\nfunc use(r: uniq/i32) -> () => ()\nfunc pass(x: i32, y: i32) -> () => ()\n";
+        (string Generics, string Type, string Premises)[] forms =
+        [
+            (string.Empty, "Never", string.Empty), ("<T>", "T", "    T is Never\n"), ("<T>", "T", "    T is owner/Never\n"),
+            ("<T>", "T", "    T is ::Kimi.Never\n"), ("<T, U>", "T", "    T is U\n    U is Never\n"),
+        ];
+        foreach (var (generics, type, premises) in forms)
+        {
+            var source = $"{helpers}func f{generics}(a: {type}, c: bool, k: () -> {type}) -> {result}\n{premises}    {statements.Replace("{A}", type)}\n";
+            Assert.Empty(Compile(source).BuildMir().Findings);
+            Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        }
+    }
+
+    // SPEC 8.2.3, 3.8 (PLAN G704): a Field a conditional member's premise makes Never is such a Place too (fail-before: a Type finding).
+    [Fact]
+    public void AFieldAMembersPremiseMakesNeverIsAcquiredAsTheNeverValue()
+        => _ = Body("struct Box<E>\n    var v: E\n    public func f(self: ref/Self) -> i32\n        E is Never\n        return self.v\n", "f");
+
     // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
     // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
     // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
@@ -505,6 +557,40 @@ public sealed partial class MirBuildTest
     public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
+    // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
+    // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
+    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), FormatBuffer,
+    // its writer, the writes, FormatFinish and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
+    // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
+    // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
+        "[13 of u8]",
+        new[] { "fixed", "ErasedWriter", "FormatSegment \"n=\" 0 1", "FormatSegment \"\" 0 0", "write", "text", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine" })]
+    [InlineData(
+        "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
+        null,
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"s=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "write", "writeLine" })]
+    [InlineData(
+        "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
+        "[(2 + bound(T)) of u8]",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"v=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine", "writeLine" })]
+    public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
+    {
+        var body = Body(source, "f");
+        Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
+        Assert.Equal(calls, body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(x => Step(body, x.Terminator).Split(' ')[0])
+            .Where(static x => x != "Fail").Order(StringComparer.Ordinal));
+        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type)
+            .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
+        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        Assert.Single(writers); // One writer local, both arms' (consent 1).
+    }
+
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
     // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
     [Fact]
@@ -540,19 +626,21 @@ public sealed partial class MirBuildTest
         }
 
         return path;
+    }
 
-        static string Step(MirBody body, in MirTerminator call)
+    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its text, later bytes and later values' count; another call
+    // by its function's name.
+    private static string Step(MirBody body, in MirTerminator call)
+    {
+        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
-            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
-            {
-                return call.Callee.Symbol!.Name;
-            }
-
-            var id = (IntrinsicId)call.Callee.Arg;
-            var operands = body.Operands.Slice(call.Start, call.Count);
-            return id != IntrinsicId.FormatSegment ? id.ToString()
-                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+            return call.Callee.Symbol!.Name;
         }
+
+        var id = (IntrinsicId)call.Callee.Arg;
+        var operands = body.Operands.Slice(call.Start, call.Count);
+        return id != IntrinsicId.FormatSegment ? id.ToString()
+            : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
     }
 
     // A function f of the temporaries' program that runs a statement, built without validator findings.

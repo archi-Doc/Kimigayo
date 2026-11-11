@@ -342,7 +342,7 @@ public sealed partial class Binding
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
-        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.IsContract)
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
@@ -379,9 +379,15 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
+        if (symbol.Kind == BindingSymbolKind.TypeParameter)
+        {
+            // A Type parameter is its own Type, a Contract's Self among them (SPEC 9.1).
+            return symbol.Type;
+        }
+
         if (isSelf)
         {
-            return this.DeclarationSelf(symbol);
+            return this.SelfType(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto

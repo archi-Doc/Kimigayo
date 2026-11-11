@@ -168,7 +168,7 @@ func read(x: i64, from: ref/i32) -> i32 => 0
 
 Pairwise comparison yields better, worse, equivalent or incomparable; only equivalent pairs proceed to the next step. A candidate is selected only if it is better than every other applicable candidate:
 
-1. For each explicit source argument, compare the adaptation classes ([§10.2.2](#1022-inference-and-adaptation-classes)); the receiver is excluded ([§7.3](07-functions-and-callable-values.md#73-receivers)). A dominates B when it is no worse everywhere and better somewhere; opposing advantages are incomparable. Named arguments are matched by source expression. Defaults are excluded, and costs are never summed.
+1. For each explicit source argument, and for each element of a Tuple or array literal argument or each position of a control-flow argument formed part by part, recursively, as an argument at that position ([§10.5.1](#1051-argument-kinds)), compare the adaptation classes ([§10.2.2](#1022-inference-and-adaptation-classes)); the receiver is excluded ([§7.3](07-functions-and-callable-values.md#73-receivers)). A dominates B when it is no worse everywhere and better somewhere; opposing advantages are incomparable. Named arguments are matched by source expression. Defaults are excluded, and costs are never summed.
 2. For each source argument, compare the substituted parameter Types that step 1 matched to it by their structural part (Origins ignored); parameters filled by defaults are not compared. If all are identical, go to the next step; otherwise the candidates are incomparable.
 3. Prefer a function with no generic parameters of its own, including length parameters; a generic enclosing Type does not count.
 4. Prefer fewer defaults used.

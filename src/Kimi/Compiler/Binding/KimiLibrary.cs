@@ -42,11 +42,11 @@ public sealed partial class KimiLibrary
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
-        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
         {
             if (this.FormattingContainer(kind) is { } container)
             {
-                this.formattingScopes.Add(kind, new(container) { Parent = kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer ? this.TextScope : this.Scope });
+                this.formattingScopes.Add(kind, new(container) { Parent = this.TextScope });
             }
         }
 
@@ -114,6 +114,11 @@ public sealed partial class KimiLibrary
                 CompilerFunction = entry.Function,
                 LibraryDeclaration = entry.Id,
             };
+            if (IntrinsicContract.Of(entry.Intrinsic).Judged)
+            {
+                symbol.Contract = new(symbol) { State = 2 }; // SPEC 8.4.3, 8.7.1: a refinement parent without members.
+            }
+
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;
             this.symbols[i] = symbol;

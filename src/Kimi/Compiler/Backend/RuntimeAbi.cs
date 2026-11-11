@@ -58,6 +58,13 @@ internal static class RuntimeAbi
     internal static readonly AbiParameter[] OwnedStringParameters =
         [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), Location, LocationLength];
 
+    // SPEC 22.7, 22.5.1: Console.writeStdout, the WriteStdout intrinsic's routine: the bytes to standard output, KIMI_E_STDOUT at the
+    // call's location (a caller-location body's received one).
+    internal static readonly FunctionAbi Stdout = new(
+        "__kimi_stdout",
+        Unit.ComputationType,
+        [new("ptr", "data", LogicalIndex: 0), new("i64", "length", LogicalIndex: 1), Location, LocationLength]);
+
     // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
     internal static readonly FunctionAbi WriteLine = new(
         "__kimi_write_line",
