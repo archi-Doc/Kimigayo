@@ -207,7 +207,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (ConstantOf(this.program.Bodies[entry.BodyOrdinal]) >= 0)
+        if (ConstantOf(this.program.Body(entry.BodyOrdinal)) >= 0)
         {
             this.Finish(call, null);
             return;
