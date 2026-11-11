@@ -54,6 +54,10 @@ public class IndexableContractTest
     private const string FirstUniq =
         "func firstUniq<S>(items: uniq/S) -> uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]@uniq\n";
 
+    // SPEC 3.4.3, 4.7.1 (PLAN G179): an Array through two reference layers is a concrete sequence, indexed by position, which Binding does
+    // not reach yet: the located limit for every key, never Array's Indexable conformance (G715's review B1).
+    private const string ThroughTwoLayers = "var values: Array<i32> = [1, 2]\nlet r = values@ref\nlet rr = r@ref\n";
+
     // A Point whose part an element storing a reference to it reaches (SPEC 3.4.3, 10.2; PLAN G147 (2b)).
     private const string Stored = "struct Inner\n    public var x: i32 = 0\n    public init() => ()\nstruct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\n";
 
@@ -92,6 +96,9 @@ public class IndexableContractTest
     [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("struct Two\n    Self is UniqIndexable<isize>\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i64 during self => $abort(\"two\")", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet n: i32 = 7\npair.indexUniq(0) = n", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(ThroughTwoLayers + "let x: i32 = rr[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData(ThroughTwoLayers + "let k: i32 = 1\nlet x: i32 = rr[k]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData(ThroughTwoLayers + "let x: i32 = rr[^1]", DiagnosticCode.Unsupported_Kd)]
     [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1]@follow.inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData(Stored + "func f(entries: uniq/Dictionary<i32, uniq/Point during a>) -> uniq/Inner during a\n    return entries[1].inner@uniq", DiagnosticCode.UnprovenOriginRelation_Kd)]
