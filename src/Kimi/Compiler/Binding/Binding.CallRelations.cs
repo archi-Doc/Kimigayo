@@ -321,9 +321,18 @@ public sealed partial class Binding
         {
             // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,
             // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
-            var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
+            var fixing = clause is not null || context.Operations.Length == 0 ? null
                 : variable is not null ? this.EqualitySource(context, variable, shorter)
                 : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
+            if (fixing is not null && this.NotedLocal(fixing, shorter))
+            {
+                // Interim (PLAN G758; Binding.LocalRegions.Types.cs): the shorter end is a noted `var` local's unopened pair slot that the
+                // local's own input fixed at this call, so the relation is the analysis limit, a located Unsupported_Kd at `at`.
+                this.Fail(at, BindingFailure.Unsupported);
+                return;
+            }
+
+            var fixedBy = equality ? fixing : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
             var destination = declared ? null : context.Parameter;
             var supplier = this.SuppliedAtUse(longer, at);

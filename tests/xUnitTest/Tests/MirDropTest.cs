@@ -499,10 +499,9 @@ public sealed partial class MirDropTest
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var bodies = program.Bodies.ToArray();
-        var ordinal = Array.FindIndex(bodies, x => x.Key.Decl?.Name == name && x.Key.Kind == MirBodyKind.Fn);
+        var body = Array.Find(program.Bodies.ToArray(), x => x.Key.Decl?.Name == name && x.Key.Kind == MirBodyKind.Fn && x.Source.Module == 0)!;
         var text = new StringBuilder();
-        MirDump.Write(bodies[ordinal], text, program.Drops, ordinal);
+        MirDump.Write(body, text, program.Drops);
         return [.. text.ToString().Split('\n').Select(static x => Suffix().Replace(x.TrimStart(' ', '*'), string.Empty))
             .Where(x => x.StartsWith("flags", StringComparison.Ordinal) || Annotation().IsMatch(x) || (all && x.StartsWith("drop", StringComparison.Ordinal)))];
     }
@@ -531,7 +530,7 @@ public sealed partial class MirDropTest
 
     // A body's mark (MirDropTable.Incomplete): its code, its subject located in the body and its problem's index; null for an exact body.
     private static (Kimi.DiagnosticCode Code, SourceRef Subject, int Problem)? Mark(MirProgram program, int body)
-        => program.Drops.Incomplete(body) is { } mark ? (mark.Code, program.Bodies[body].Subject(mark.Source), mark.Problem) : null;
+        => program.Drops.Incomplete(body) is { } mark ? (mark.Code, program.Body(body).Subject(mark.Source), mark.Problem) : null;
 
     // A mark's index: "own" where it names the report's problem of the mark's code, subject and body, else the index.
     private static string Index(MirProgram program, (Kimi.DiagnosticCode Code, SourceRef Subject, int Body) mark, int problem)
