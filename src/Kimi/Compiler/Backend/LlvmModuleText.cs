@@ -3,7 +3,8 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedWriter and ErasedReserve intrinsics' routines, a module part on request), the float formatting
-// part (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the runtime routines a module
+// part (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the
+// 128-bit integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine, the same), the runtime routines a module
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
 // every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
@@ -246,6 +247,10 @@ internal static partial class LlvmModuleText
     /// with Ryu, expanded once, on first use.</summary>
     internal static string FormatFloatRuntime => FormatFloat.Text;
 
+    /// <summary>Gets the 128-bit integer formatting part (FormatInteger128Runtime.ll.in), the FormatInteger128 intrinsic's routine with
+    /// its division by ten, expanded once, on first use.</summary>
+    internal static string FormatInteger128Runtime => FormatInteger128.Text;
+
     private static string ReadRuntime()
     {
         using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.WindowsRuntime.ll.in")!;
@@ -318,6 +323,20 @@ internal static partial class LlvmModuleText
             using var ryu = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.Utf8FloatRyu.ll.in")!;
             using var ryuReader = new StreamReader(ryu);
             return ExpandRuntime(routineReader.ReadToEnd() + "\n" + ryuReader.ReadToEnd(), [RuntimeAbi.FormatFloat]);
+        }
+    }
+
+    // The 128-bit integer formatting part, initialized on first use (a module without an i128 or u128 write never reads it): the
+    // FormatInteger128 routine's template with its definition spliced from RuntimeAbi.FormatInteger128.
+    private static class FormatInteger128
+    {
+        internal static readonly string Text = Read();
+
+        private static string Read()
+        {
+            using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.FormatInteger128Runtime.ll.in")!;
+            using var reader = new StreamReader(stream);
+            return ExpandRuntime(reader.ReadToEnd(), [RuntimeAbi.FormatInteger128]);
         }
     }
 }

@@ -66,6 +66,10 @@ internal sealed partial class ModuleCodegen
         /// <summary>The 128-bit overflow intrinsics' declarations (LlvmModuleText.WideOverflowDeclarations), for a checked 128-bit operation
         /// (DECISIONS R5-M143).</summary>
         WideOverflow = 128,
+
+        /// <summary>The 128-bit integer formatting part (LlvmModuleText.FormatInteger128Runtime: the FormatInteger128 routine and its
+        /// division by ten), for a FormatInteger128 call (its row's Requests; R8-S2b2).</summary>
+        FormatInteger128 = 256,
     }
 
     /// <summary>Requests a module part for the module being written.</summary>
@@ -120,6 +124,11 @@ internal sealed partial class ModuleCodegen
         if ((this.needs & Needs.FormatFloat) != 0)
         {
             output.Write(LlvmModuleText.FormatFloatRuntime);
+        }
+
+        if ((this.needs & Needs.FormatInteger128) != 0)
+        {
+            output.Write(LlvmModuleText.FormatInteger128Runtime);
         }
 
         output.Write(this.helperText.GetStringBuilder());

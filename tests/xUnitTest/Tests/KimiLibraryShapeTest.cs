@@ -66,6 +66,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageErasedReserve,
             "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
         (KimiDeclarationId.StorageFormatFloat, "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
+        (KimiDeclarationId.StorageFormatInteger128, "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
@@ -109,8 +110,8 @@ public partial class KimiLibraryShapeTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
-        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1).
-        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
+        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2).
+        Assert.Equal(192, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {

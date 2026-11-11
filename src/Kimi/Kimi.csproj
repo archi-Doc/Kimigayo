@@ -42,6 +42,7 @@
     <EmbeddedResource Include="Compiler\Backend\Utf8FormatRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRyu.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\FormatInteger128Runtime.ll.in" />
     <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
     <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />
