@@ -305,11 +305,19 @@ public sealed partial class Binding
 
         this.BindConditionalAssociatedSpecifications();
 
+        // SPEC 8.5.1, 8.5.3: every owner's specifications are its members (Parser.ParseAssociatedTypeItem), a Contract's included.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { IsAssociatedConstraint: true, Parent: StructKoto or EnumKoto } clause)
+            if (this.nodes[i] is StructKoto or EnumKoto or ContractKoto)
             {
-                this.BindAssociatedSpecification(clause, this.scopes[clause.Parent!]);
+                var owner = (DeclarationContainerKoto)this.nodes[i];
+                for (var j = 0; j < owner.Members.Count; j++)
+                {
+                    if (owner.Members[j] is IsKoto { IsAssociatedConstraint: true } clause)
+                    {
+                        this.BindAssociatedSpecification(clause, this.scopes[owner]);
+                    }
+                }
             }
         }
 
@@ -368,7 +376,7 @@ public sealed partial class Binding
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
-    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
@@ -380,24 +388,31 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Invalidate();
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
 
             foreach (var fact in environment.Facts)
             {
-                if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
                 {
-                    var previous = scope.Owner.BindingState;
-                    changed |= !environment.Invalid;
-                    environment.Invalidate();
-                    // Other input facts can have independent contradictions. Record a
-                    // sole missing-name cause only when this is the entire environment.
-                    this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                    changed |= previous != scope.Owner.BindingState;
-                    break;
+                    this.DropConsultation(frame);
+                    continue;
                 }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
             }
         }
 
@@ -429,10 +444,7 @@ public sealed partial class Binding
         var bindingScope = this.NodeScope(clause, scope);
         var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var head = AssociatedHead(clause);
-        var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
-            ? this.BindAssociatedRefinement(clause, associatedMember, scope)
-            : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
+        var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
@@ -478,7 +490,7 @@ public sealed partial class Binding
         // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
         // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
         var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
-        if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
+        if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
             this.Fail(clause, BindingFailure.InvalidConstraint);
@@ -489,7 +501,11 @@ public sealed partial class Binding
         if (input || requirement.Kind == ConstraintKind.Error)
         {
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            if (this.AddConstraintFact(environment, requirement))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
@@ -584,28 +600,33 @@ public sealed partial class Binding
         return result;
     }
 
-    private void AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    // Adds a fact and its conjuncts; true when one of them is an Error. BindConstraints and BindAssociatedSpecification name their clause
+    // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
+    // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
+    // environment stays valid (PLAN G651's open item).
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
     {
         if (fact.HasUnresolved)
         {
-            return;
+            return false;
         }
 
         environment.Add(fact, source);
         if (fact.Kind == ConstraintKind.And)
         {
-            this.AddConstraintFact(environment, fact.Left!, source);
-            this.AddConstraintFact(environment, fact.Right!, source);
+            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
         }
+
+        return fact.Kind == ConstraintKind.Error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid)
+        if (evidence.Invalid is { } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         var positive = evidence.Positive;

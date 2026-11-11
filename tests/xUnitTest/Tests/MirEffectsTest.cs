@@ -670,8 +670,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // to 64 bits (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is
     // the same at every instance; pins, which pass through builtinFormat before it), for bool, char and Unit (R8-S2a), for f32 and f64
     // (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's Allocation and Abort are permitted under confined, SPEC 8.11.2,
-    // so no record) and for string and Wrapping<i32> (R8-S2d1), the view's declared one (R8-S2d1), Shown's printing one, also in an
-    // interpolation (fail-before: each, a limit).
+    // so no record) and for string and Wrapping<i32> (R8-S2d1), the view's declared one (R8-S2d1; the view of a local string, since a
+    // temporary's ends with its statement, SPEC 3.6), Shown's printing one, also in an interpolation (fail-before: the earlier rows, a
+    // limit; R8-S2d1's and R8-S2b1's rows pass before too, through builtinFormat).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
     [InlineData("        _ = Text.toString(7@u8)\n", "")]
@@ -688,7 +689,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        _ = Text.toString(1.5@f32)\n        let narrow = value@f32\n        _ = \"\\(narrow)\"\n", "")]
     [InlineData("        _ = Text.toString(1.5)\n        let wide = value@f64\n        _ = \"\\(wide)\"\n", "")]
     [InlineData("        _ = Text.toString(\"abc\")\n        let text = \"x\"\n        _ = \"\\(text)\"\n", "")]
-    [InlineData("        _ = Text.toString(Text.utf8(\"abc\"))\n        let view = Text.utf8(\"x\")\n        _ = \"\\(view)\"\n", "")]
+    [InlineData("        _ = Text.toString(Text.utf8(\"abc\"))\n        let text = \"x\"\n        let view = Text.utf8(text)\n        _ = \"\\(view)\"\n", "")]
     [InlineData("        _ = Text.toString((7@u8)@Wrapping<u8>)\n        let wrapped = value@Wrapping<i32>\n        _ = \"\\(wrapped)\"\n", "")]
     [InlineData("        _ = Text.toString(Shown.init())\n", Failed)]
     [InlineData("        let shown = Shown.init()\n        _ = \"\\(shown)\"\n", Failed)]
