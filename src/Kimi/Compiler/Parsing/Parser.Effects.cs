@@ -149,26 +149,25 @@ public static partial class Parser
         return null;
     }
 
-    // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The last
-    // segment of the path is the requirement Name.
+    // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The group holds
+    // one reference, so its Type and closer are read in every position (an empty group or a list is a syntax Error there), and it is
+    // the node of every grouped Contract reference; Binding reads the reference in it (WrittenReference). The last segment of the
+    // path is the requirement Name.
     private static void ParseEffectTarget(ref TokenReader reader, out Koto selector, out Koto name)
     {
-        Koto path;
+        Koto? group = null;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
             var open = reader.Read().Span.Start;
-            var reference = ParseType(ref reader, TypeContext.Type);
+            var reference = ParseType(ref reader, TypeContext.Element);
             reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            path = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
-        }
-        else
-        {
-            path = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
+            group = new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
         }
 
+        var path = group ?? (reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader));
         while (true)
         {
-            if (reader.CurrentTokenKind == TokenKind.LessThan && path is not ParenthesizedKoto)
+            if (reader.CurrentTokenKind == TokenKind.LessThan && !ReferenceEquals(path, group))
             {
                 path = ParseGenericsPostfix(ref reader, path);
             }
