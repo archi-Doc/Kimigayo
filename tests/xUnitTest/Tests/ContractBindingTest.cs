@@ -36,6 +36,7 @@ public class ContractBindingTest
     private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
     private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
     private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
+    private const string ViewIsL = "struct View {source}\n    Self is L\n    let data: ref/i32 during source\n";
 
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
@@ -775,6 +776,21 @@ public class ContractBindingTest
     [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T>(a: ref/T, b: T) -> i32\n    T is Put\n    return a.put(b@move)", "")]
     [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
     public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.6.3, 15.3.7, 15.6.1: implementation matching is a whole-contract comparison, so its proofs assume the own well-formedness of
+    // the requirement as substituted: under `Self` = `View{source}`, `self: ref/Self` gives `source outlives self`, so a result or getter
+    // during `source` gives at least the required guarantee, as Slice's `index` does (SPEC 4.7.1). The premise relates `source` to `self`
+    // alone: never to `static`, to another input or to a requirement without a receiver, and never the reverse.
+    [Theory]
+    [InlineData("contract L\n    func lend(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public func lend(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
+    [InlineData("struct W<T> {source}\n    Self is Indexable<isize>\n    associate Element is T\n    let data: ref/T during source\n    public func index(self: ref/Self, key: ref/isize) -> ref/T during source => self.data", "")]
+    [InlineData("contract L\n    property item: ref/i32\n        get(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
+    [InlineData("contract L\n    func lend(self: ref/Self) -> ref/i32 during static\n" + ViewIsL + "    public func lend(self: ref/Self) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func lend(self: ref/Self, other: ref/i32) -> ref/i32 during other\n" + ViewIsL + "    public func lend(self: ref/Self, other: ref/i32) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func make(x: ref/i32) -> ref/i32 during x\n" + ViewIsL + "    public func make(x: ref/i32) -> ref/i32 during source => $abort(\"none\")", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func take(self: ref/Self, x: ref/i32 during self) -> ()\n" + ViewIsL + "    public func take(self: ref/Self, x: ref/i32 during self.source) -> () => ()", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    property item: ref/i32 during static\n        get(self: ref/Self) -> ref/i32 during static\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    public void ResultOriginsAssumeTheSubstitutedRequirementWellFormed(string source, string codes) => AssertBindingCodes(source, codes);
 
     // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
     // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).
