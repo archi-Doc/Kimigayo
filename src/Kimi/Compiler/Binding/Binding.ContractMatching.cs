@@ -116,6 +116,10 @@ public sealed partial class Binding
             {
                 this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
+            else if (conformance.Scope.Parent?.Constraints is { Invalid: true } invalid)
+            {
+                return this.InvalidEnvironment(invalid);
+            }
 
             return ConstraintProof.Error;
         }

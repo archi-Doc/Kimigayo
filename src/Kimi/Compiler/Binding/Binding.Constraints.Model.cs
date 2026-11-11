@@ -93,17 +93,30 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
     private static int Identity(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 }
 
-// A scope's premises. Its state (the three fact sets, Invalid and the two flags they set) is written only by its own members (Add,
-// Invalidate, Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf).
-internal sealed class ConstraintEnvironment
+// A scope's premises. Its state (the three fact sets, the two flags they set and Failed) is written only by its own members (Add, Fail,
+// Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf). An Invalid
+// environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
+// it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
+// the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
+// otherwise.
+internal sealed class ConstraintEnvironment : ICheckCause
 {
+    public Koto Use => this.Failed!;
+
+    public ICheckCause? Next => null;
+
+    public ICheckCause? ReentrySite => null;
+
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
 
-    internal bool Invalid { get; private set; }
+    /// <summary>Gets the node whose failure made the environment Invalid; null while it is valid.</summary>
+    internal Koto? Failed { get; private set; }
+
+    internal bool Invalid => this.Failed is not null;
 
     internal bool HasAssociatedProjection { get; private set; }
 
@@ -114,7 +127,12 @@ internal sealed class ConstraintEnvironment
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
 
-    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact makes the environment Invalid.
+    public void Rest()
+    {
+    }
+
+    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact's writer names the failed node
+    // (Fail).
     internal void Add(BoundConstraint fact, BindingSymbol? source)
     {
         var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFacts.Contains((fact, source));
@@ -128,7 +146,6 @@ internal sealed class ConstraintEnvironment
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
             this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
-            this.Invalid |= fact.Kind == ConstraintKind.Error;
         }
 
         if (added || availability)
@@ -137,11 +154,13 @@ internal sealed class ConstraintEnvironment
         }
     }
 
-    internal void Invalidate()
+    /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
+    /// <param name="node">The failed node.</param>
+    internal void Fail(Koto node)
     {
-        if (!this.Invalid)
+        if (this.Failed is null)
         {
-            this.Invalid = true;
+            this.Failed = node;
             this.Version++;
         }
     }
@@ -156,7 +175,7 @@ internal sealed class ConstraintEnvironment
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
-        this.Invalid = false;
+        this.Failed = null;
         this.HasAssociatedProjection = false;
         this.HasParameterIdentity = false;
     }

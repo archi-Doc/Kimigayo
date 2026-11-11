@@ -42,13 +42,13 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The views, bit i for view i.</returns>
     internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
 
-    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
+    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.PairBinder).</summary>
     /// <param name="body">The body.</param>
     /// <param name="type">The Type.</param>
     /// <returns>The binder's index; -1 for another Type.</returns>
     internal static int Binder(MirBody body, BoundType? type)
     {
-        _ = TyCtxt.Layer(type, out _, out var target);
+        var target = TyCtxt.PairBinder(type);
         var binder = body.Binders.Count - 1;
         while (binder >= 0 && !ReferenceEquals(body.Binders[binder].Target, target))
         {
