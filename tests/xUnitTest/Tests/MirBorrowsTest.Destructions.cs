@@ -576,7 +576,8 @@ public sealed partial class MirBorrowsTest
     //   all the same by the whole-holder text (as Raw's viaOk); quietOk has no drop, nullQOk's drop stores null; statedBad and
     //   statedSlotBad: WriterS's stated raw layers reach only the slot its Loan names, so the drop's store into that holder decides `y = 5`
     //   (their difference); the store retains as the borrow `slot@uniq` would (5.7 Calls), with its own Loan by the per-argument rule, so
-    //   `usep(slot)` errs in both.
+    //   `usep(slot)` errs in both: the argument is the `uniq/Self` receiver, whose referent holds the keeper, so a read through it carries
+    //   the keeper's Loan (a keeper an argument holds by value is that argument's own value: AByValueKeeperIsItsArgumentsOwnValue).
     // - A temporary's Drop: tempOnlyBad (no slot: only that storage).
     // - Scope end: scopeBad; endReachBad, y's storage end after x's drop; escapeBad adds a raw layer that comes from a parameter (SPEC
     //   15.6; escapeOk stores null); endParamOk is SPEC 15.6.4's valid shape (a parameter referent's Loan there, no later access).

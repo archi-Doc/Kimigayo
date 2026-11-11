@@ -148,25 +148,22 @@ public sealed partial class Binding
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
                         return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
-                            : structure && contract.Kind == ComparisonFailureKind.None && this.FailedOriginClause(function) is { } clause
-                            ? this.CompleteDependent(use, clause)
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
                 }
 
-                var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
-                var next = 0;
+                var start = this.rejectedRows.Count;
                 for (var i = 0; i < count; i++)
                 {
                     if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
                     {
                         var candidate = evaluated[i].Symbol!;
                         var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-                        rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure);
+                        this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure));
                     }
                 }
 
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+                this.RecordRejected(use, start);
                 return this.Fail(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
 

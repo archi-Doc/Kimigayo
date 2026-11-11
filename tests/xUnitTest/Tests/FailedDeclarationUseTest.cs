@@ -92,6 +92,46 @@ public sealed class FailedDeclarationUseTest
     public void AFieldsRecoveryLeavesItsStructsHeaderDuplicate()
         => Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd), nameof(DiagnosticCode.ExpectedSyntax_Kd)], Codes("struct Holder {h, h}\n    let v: [2 i32]\n"));
 
+    // SPEC 15.3.3, 23.1.2 (H11b-0 B1): a failed Origin clause fails itself, not its owner or the declaration's other clauses, so a
+    // program's records are its twin's (the clause repaired or removed) beside the clause's own: each check of the owner, its members and
+    // its uses that rested on the owner's failure is reported (PLAN G611, G612, G613), and a slot only the clause names rests on it.
+    [Theory]
+    // G613's form: a struct's redeclared inherited Field (ml2 / ml2n).
+    [InlineData("open struct Base\n    public var n: i32 = 1\n    public init() => ()\nstruct Leaf {s, t}: Base\n    origin s = t\n    public var n: i32 = 2\n    public init() => ()\n", "    origin s = t\n", "")]
+    // G612's form: an override's result mismatch (vo1 / vo1n).
+    [InlineData("open struct Base\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32 => 1\nstruct Leaf {s, t}: Base\n    origin s = t\n    public init() => ()\n    override func score(self: objref/Self) -> bool => true\n", "    origin s = t\n", "")]
+    // G612's form through a derived struct (vo2b / vo2bn).
+    [InlineData("open struct Base {a}\n    origin a = a\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32 => 1\nstruct Leaf {b}: Base during b\n    public init() => ()\n    override func score(self: objref/Self) -> bool => true\n", "    origin a = a\n", "")]
+    // a member's unsatisfied constraint (q7 / q7r).
+    [InlineData("contract Marked\nstruct V<T> {source}\n    T is Marked\n    public let item: ref/T during source\nstruct S {a}\n    public let item: V<i32>{v}\n        origin v.source = a\n\npublic func main() => ()\n", "        origin v.source = a\n", "        origin v.source == a\n")]
+    // a callee's effect bound (e1_caller_clause / e1n_caller_noclause).
+    [InlineData("group State\n    public var count: i32 = 0\nfunc apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\nfunc touch(x: ref/i32 during a, y: ref/i32 during b) -> i32\n    origin a = b\n    State.count = 3\n    return 0\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32\n        let one = 1\n        return touch(one@ref, one@ref)\n    return apply(f@ref)\n", "    origin a = b\n", "")]
+    // a call's Type constraint (cc1 / cc1n).
+    [InlineData("contract Marker\nfunc f<T>(x: ref/T during a, y: ref/T during b) -> i32\n    T is Marker\n    origin a = b\n    return 0\nfunc use() -> i32\n    let one = 1\n    return f(one@ref, one@ref)\nlet wrong: i32 = true\n", "    origin a = b\n", "")]
+    // a result slot named only by the failed clause, borrowed, returned and stored (m1 / m1r).
+    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n    public init(value: ref/T during source) => self.value = value\nfunc identity(x: V<i32>) -> V<i32>{r}\n    origin r.source = x.source\n    return x@move\nfunc user(y: V<i32>) -> i32\n    let z = identity(y@move)\n    let k: i32 = z.value@follow\n    return k\nfunc pass(y: V<i32>) -> V<i32>{q}\n    origin q.source == y.source\n    return identity(y@move)\nfunc store(y: V<i32>, sink: uniq/Array<V<i32>>) => sink@follow.append(identity(y@move))\npublic func main() => ()\n", "    origin r.source = x.source\n", "    origin r.source == x.source\n")]
+    // an enum's payload in its slot, constructed and matched (e1 / e1n).
+    [InlineData("enum Box {s, t}\n    origin s = t\n    Value(ref/i32 during s)\n    Empty\nfunc f(x: ref/i32) -> i32\n    let b: Box = .Value(x)\n    match b\n        .Value(let n) => return n@follow\n        .Empty => return 0\npublic func main() => ()\n", "    origin s = t\n", "")]
+    // a C-layout struct held by value and in a fixed array (b1 / b1n).
+    [InlineData("#Layout(\"C\")\nstruct S\n    origin static = static\n    public let v: i32\n    public init(v: i32) => self.v = v\n#Layout(\"C\")\nstruct Outer\n    public let inner: S\n    public init(inner: S) => self.inner = inner@move\nfunc make() -> Outer => Outer.init(inner: S.init(v: 1))\nfunc arr() -> i32\n    let a: [2 of S] = [S.init(v: 1), S.init(v: 2)]\n    return a[0].v\nlet wrong: i32 = true\n", "    origin static = static\n", "")]
+    // A5's record on a newly published body: a local's borrow returned `during static` (c01 / its `==` twin).
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during static\n    origin a = b\n    let local = 1\n    return local@ref\nlet wrong: i32 = true\n", "    origin a = b\n", "    origin a == b\n")]
+    public void AFailedOriginClauseFailsOnlyItself(string source, string written, string repair)
+    {
+        // A record whose span holds the clause shows the twin's text in its place.
+        var start = source.IndexOf(written, StringComparison.Ordinal);
+        var records = Records(source, start, written.Length).Select(x => x.Replace(written, repair, StringComparison.Ordinal)
+            .Replace(written.TrimEnd('\n'), repair.TrimEnd('\n'), StringComparison.Ordinal)).Order(StringComparer.Ordinal);
+        Assert.Equal(Records(source.Replace(written, repair, StringComparison.Ordinal), start, repair.Length), records);
+    }
+
     private static string[] Codes(string declarations)
         => [.. DiagnosticCorpus.Check(declarations + "public func main()\n    let x: i32 = 1\n").Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)];
+
+    // A program's records as code and shown text, in order, but those located in its clause's line (`start`, `length`).
+    private static string[] Records(string source, int start, int length)
+        => [.. DiagnosticCorpus.Check(source).Diagnostics
+            .Where(x => x.Span is not { } span || span.Start < start || span.Start >= start + length)
+            .Select(x => x.Code + " " + (x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty))
+            .Order(StringComparer.Ordinal)];
 }

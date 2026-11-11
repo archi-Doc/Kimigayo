@@ -90,6 +90,30 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(new[] { IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.TestRequireAbort }, Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x).Diverges));
     }
 
+    // SPEC 22.5.1, 22.5.2 (G730): an intrinsic's row states its lowering's effects (IntrinsicRows): Abort where it may Abort with a SPEC
+    // 22.5.2 code, an allocation's included (as the Array aggregate's, DECISIONS R5-M129), and Allocation where it allocates;
+    // TryAllocateBytes gives null instead (fail-before: WriteStdout, the Raw pair, the creations, Clone and FormatBuffer without Abort,
+    // TestTempDirectory without Allocation).
+    [Fact]
+    public void AnIntrinsicsRowStatesItsLoweringsEffects()
+    {
+        Assert.Equal(
+            new[]
+            {
+                IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.WriteStdout, IntrinsicId.MakeObj,
+                IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone, IntrinsicId.TestRequireAbort, IntrinsicId.StaticEnsure,
+                IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+            },
+            Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Abort) != 0));
+        Assert.Equal(
+            new[]
+            {
+                IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.TryAllocateBytes, IntrinsicId.MakeObj, IntrinsicId.MakeRc,
+                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory, IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+            },
+            Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Allocation) != 0));
+    }
+
     // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
     // row says the result retains is one the builder adds beyond them (RawSlice's backing).
     [Fact]
@@ -161,8 +185,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(["-1 Borrows Uniq", "StaticWrite 0", "5 Writes, Defines"], Uses(body, entry, 5));
         Assert.Equal(["Copy", "4 Reads", "IntToPointer -1", "6 Writes, Defines"], Uses(body, entry, 6));
         Assert.Equal(["Unknown 0", "3 Reads, Writes, Borrows Shared", "0 Writes, Defines"], Uses(body, entry, 7));
-        Assert.Equal(["Copy", "7 Reads, CaseDependent", "Const", "7 CaseDependent", "Allocation -1", "2 Writes, Defines"], Uses(body, entry, 8));
-        Assert.Equal(["Copy", "0 Reads", "Allocation -1", "0 Writes, Defines"], Uses(body, entry, 9));
+        Assert.Equal(["Copy", "7 Reads, CaseDependent", "Const", "7 CaseDependent", "Abort, Allocation -1", "2 Writes, Defines"], Uses(body, entry, 8));
+        Assert.Equal(["Copy", "0 Reads", "Abort, Allocation -1", "0 Writes, Defines"], Uses(body, entry, 9));
         Assert.Equal(["Const", "Abort -1"], Uses(body, abort, 0));
         Assert.Equal(["3 DropUse"], Uses(body, drop, 0));
         Assert.Equal(["0 Moves"], Uses(body, exit, 0));
@@ -390,6 +414,32 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var drop = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator.Kind == MirTerminatorKind.Drop);
         body.Terminate(drop, body.Blocks[drop].Terminator with { Place = stopped });
         Assert.Empty(Validate(body));
+    }
+
+    // G749's review N1: a diverging Call's destination, which MirUses does not report (the Call writes none, G131), is still a Place of the
+    // body that A5 and code generation read, so the validator checks it as it checks every reported Place: a root or a chain out of range is
+    // a Place finding, and a first step its root's Type does not admit (a Field of an isize) a Projection finding, at the Call; a projected
+    // destination whose step is admitted is valid (fail-before: no rule checked the destination, so each broken one had no finding).
+    [Theory]
+    [InlineData("root", "Place")]
+    [InlineData("chain", "Place")]
+    [InlineData("step", "Projection")]
+    [InlineData("field", null)]
+    public void ADivergingCallsDestinationIsCheckedAsAPlace(string form, string? rule)
+    {
+        var body = Build(null);
+        var abort = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Target: -1 });
+        var locals = Enumerable.Range(0, body.Locals.Length);
+        var destination = form switch
+        {
+            "root" => new MirPlace(99),
+            "chain" => body.Blocks[abort].Terminator.Place with { Projection = 99 },
+            "step" => body.Project(new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
+            _ => body.Project(new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
+        };
+        body.Terminate(abort, body.Blocks[abort].Terminator with { Place = destination, Source = Broken });
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
