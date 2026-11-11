@@ -11470,6 +11470,40 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a raw case in each consumer (one form per site); routing implicit borrows to `BorrowRawPlace` (it decides a written
     conversion's result); the fact in `TyCtxt.RawPart` (it answers which parts a Take moves, not what is a Place); keeping the
     declared-result fit beside the anchor (two Origin rules for one borrow).
+- **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
+  Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
+  implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
+  - Rule: `BindContractReference` (`Binding.BoundContracts.cs`) forms every Contract reference written in source. Its callers are
+    the written positions: a Contract's parents (`BuildContract`), an associate selector (`BindAssociatedRefinement`,
+    `BindAssociatedSpecification`), a projection qualifier in every Type position (`ProjectionQualifier`), an effect target
+    (`EffectTarget`) and a requirement's Contract (`BindRequirement`); `QualifierReference` is its entry for a qualifier whose
+    selection may be no Contract. It owns every check of the written reference: the arity of its own list, read below transparent
+    wrappers and a root-name form (`ContractApplication`; `C<>` is parsed as one error argument, so it is never an application), its
+    own Type arguments in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins and the
+    completion of its syntax levels. So a Contract with Type parameters named without its arguments, or a Contract in a generic
+    Container named without the Container's, names no reference in any position.
+  - Interning: `BoundContractReference` interns the symbol of a reference Type already formed and reads no syntax (the path,
+    internal Type substitution, compiler-made references of library Contracts, readers of a formed reference).
+  - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax; the path reads no subject,
+    substitutes nothing and answers no declaration query; queries by declaration (`SatisfiesDeclaration`,
+    `ConformanceByDeclaration`, `IsRefinement` over a library Contract) take symbols the compiler holds, never a written Contract.
+  - Effect targets: an effect target that forms no reference is the effect item's one record (`EffectRejection.NotReference`): the
+    selector's nodes are not indexed, so the former's own failure there is never counted or reported (`CountStates`), and the item
+    holds its selector's failures (SPEC 8.11.1).
+  - Census (O-151 condition 2): the compiler's enumeration (each of `QualifierReference`, `BindContractReference`,
+    `BoundContractReference` marked `[Obsolete(error)]`) with a grep of the symbol-less formations
+    (`BindTypeList(..., Constructed, ...)` only in the former and in `BindConstructedType`, which rejects a Contract head first;
+    `Intern(BoundTypeKind.Constructed, ...)`, none from a written Contract), and a route check from every written position of SPEC
+    Appendix F with probe pairs. The one position without a route, an associated-Type projection as an expression's qualifier, forms
+    no reference and is PLAN G724.
+  - Reason: four formers each read part of a written reference: a qualifier formed one only when its own list was written (G55,
+    3ba663941, a bare generic Contract meaning "the one available bound reference"), an effect target and a parent formed theirs
+    with their own `BindTypeList` + `Intern`, reading neither the arity nor outer arguments. Invalid programs were accepted (bare
+    selectors, projections and effect targets; `contract D: Outer.C`) and valid ones rejected (`contract D: Outer<i32>.C`,
+    `associate Outer<i32>.C.Item`, `effect Outer<i32>.C.f`, `U.(::C<i32>).Item`).
+  - Rejected: the contextual reading in SPEC (option D; 9.7, Principles 1 and 2); filtering by arity in the lookup (option B: the
+    lookup keeps a mismatching declaration for the former's record, and it would need a `PathEnd` entry); a distinct "unapplied
+    declaration" representation (option C: no path produces one any more); a further `BuildContract` patch (the owner's O-151).
 - **BU-157 `Never` is the Kimi declaration; `TyCtxt.Intern` gives its symbol the intrinsic Type (PLAN G704)** (2026-11-11; Front,
   Binding; Major; F's rulings 1 and 3; the Back's consent C-217; the owner's O-141 (a), verbatim "(a) Land, name them", and O-147
   (c), verbatim 「O-147はcにします。内部エラーを残さないでください。作業が収束しなかったら、連絡してください。」) SPEC 3.1.3, 22.1.
