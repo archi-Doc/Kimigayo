@@ -364,7 +364,14 @@ public static partial class Parser
     }
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)
+        => TryParseStatementItem(ref reader, out var item) ? item : ParseExpression(ref reader);
+
+    // SPEC F.10.1: an executable item that is no expression statement (a declaration, a statement, a discard, a test verification,
+    // a skipped modifier line): true with the item, or null for a line skipped as one; false where the item is an expression, which
+    // the caller parses.
+    private static bool TryParseStatementItem(ref TokenReader reader, out Koto? item)
     {
+        item = null;
         if (reader.ModifierKind != ModifierKind.NoModifier && !IntroducesDeclaration(ref reader))
         {
             // Modifiers introduce a declaration; the line and the body it would have introduced are skipped as one.
@@ -376,7 +383,7 @@ public static partial class Parser
             }
 
             SkipDeclarationLine(ref reader);
-            return null;
+            return true;
         }
 
         if (reader.AttributeKoto is { } attribute && !IsFunctionDefinitionStart(ref reader))
@@ -392,7 +399,8 @@ public static partial class Parser
             var discardToken = reader.Read();
             reader.Advance();
             var value = ParseRequiredExpression(ref reader);
-            return new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, Math.Max(discardToken.Span.End, value.Span.End)), value);
+            item = new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, Math.Max(discardToken.Span.End, value.Span.End)), value);
+            return true;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Dollar && reader.PeekKind(1) is TokenKind.Identifier or TokenKind.Require)
@@ -407,7 +415,8 @@ public static partial class Parser
                 if (!reader.TryConsume(TokenKind.OpenParenthesis))
                 {
                     reader.Expect(SyntaxForm.OpenParenthesis);
-                    return reader.NewErrorKoto();
+                    item = reader.NewErrorKoto();
+                    return true;
                 }
 
                 var arguments = ParseArgumentList(ref reader, out var labels);
@@ -429,23 +438,27 @@ public static partial class Parser
 
                 // A malformed list keeps its condition; a second argument stands as a recovery, so no message check repeats the Error.
                 var message = arguments.Length > 1 ? (malformed is { } cause ? new ErrorKoto(ref reader, arguments[1].Span) { Cause = cause } : arguments[1]) : null;
-                return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
+                item = new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
+                return true;
             }
         }
 
         if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
         {
-            return ParseSpecialization(ref reader);
+            item = ParseSpecialization(ref reader);
+            return true;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Require)
         {
-            return ParseRequire(ref reader);
+            item = ParseRequire(ref reader);
+            return true;
         }
 
         if (IsBlockStatementStart(ref reader))
         {
-            return ParseBlockStatement(ref reader);
+            item = ParseBlockStatement(ref reader);
+            return true;
         }
 
         var token = reader.CurrentToken;
@@ -453,7 +466,7 @@ public static partial class Parser
         {
             // No Container nests in an executable block (SPEC 6.1.1); the declaration is skipped with its body.
             OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
-            return null;
+            return true;
         }
 
         switch (token.Kind)
@@ -461,20 +474,22 @@ public static partial class Parser
             case TokenKind.Let:
             case TokenKind.Var:
                 reader.Advance();
-                return ParseField(ref reader, token);
+                item = ParseField(ref reader, token);
+                return true;
 
             case TokenKind.Func:
                 if (!IsFunctionDefinitionStart(ref reader))
                 {
-                    return ParseExpression(ref reader);
+                    return false;
                 }
 
                 // A local function takes no access word (SPEC 9.3, F.10 LocalFunction).
                 RejectAccessWord(ref reader);
-                return ParseFunctionItem(ref reader);
+                item = ParseFunctionItem(ref reader);
+                return true;
 
             default:
-                return ParseExpression(ref reader);
+                return false;
         }
     }
 

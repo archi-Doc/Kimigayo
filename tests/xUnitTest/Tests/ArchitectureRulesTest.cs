@@ -47,7 +47,8 @@ public class ArchitectureRulesTest
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
     private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedOrigins.cs=1;Binding.AssociatedTypes.cs=3;" +
-        "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
+        "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
+        "Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
 
