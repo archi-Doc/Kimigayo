@@ -180,7 +180,8 @@ internal static class MirDescriptors
         IntrinsicId.Clone => Intrinsic(MirEffect.Abort, 1), // A count at its maximum (KIMI_E_REF_COUNT).
         IntrinsicId.TypeTest => Intrinsic(MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Intrinsic(MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
-        IntrinsicId.FormatFloat => Intrinsic(MirEffect.None, arity: -1),
+        // The bits, the width flag and the destination, the one operand written, through its `uniq` borrow (R8-S2c).
+        IntrinsicId.FormatFloat => Intrinsic(MirEffect.None, 3),
         IntrinsicId.ErasedReserve => Intrinsic(MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
         IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, arity: -1),
         IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },

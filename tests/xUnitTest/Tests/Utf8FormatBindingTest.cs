@@ -39,6 +39,7 @@ public class Utf8FormatBindingTest
     [InlineData("(42).format(writer@uniq)")]
     [InlineData("\"text\".format(writer@uniq)")]
     [InlineData("true.format(writer@uniq)")]
+    [InlineData("1.5.format(writer@uniq)")]
     public void DirectBuiltinRequirementSelection(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = " + expression);
@@ -55,16 +56,18 @@ public class Utf8FormatBindingTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    // SPEC 22.10.2, 8.6.1 (R8-S2a): Utf8Format's requirement on bool, char and Unit selects the witness table's group function, a body, where
-    // i32 still takes the built-in target (fail-before: Builtin for each).
+    // SPEC 22.10.2, 8.6.1 (R8-S2a, R8-S2c): Utf8Format's requirement on bool, char, Unit, f32 and f64 selects the witness table's group
+    // function, a body, where i32 still takes the built-in target (fail-before: Builtin for each).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
     [InlineData("()", "UnitFormat")]
+    [InlineData("f32", "F32Format")]
+    [InlineData("f64", "F64Format")]
     public void ATableTypesFormatRequirementSelectsItsGroupsFunction(string type, string group)
     {
         var c = MinimalEmissionTest.Analyze("let x = 1\n");
-        var self = type switch { "bool" => BoundType.Boolean, "char" => BoundType.Char, _ => BoundType.Unit };
+        var self = type switch { "bool" => BoundType.Boolean, "char" => BoundType.Char, "f32" => BoundType.F32, "f64" => BoundType.F64, _ => BoundType.Unit };
         var contract = c.Library.GetSymbol(KimiDeclarationId.Utf8Format)!;
         var requirement = contract.Contract!.OwnRequirement()!;
         var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!));
