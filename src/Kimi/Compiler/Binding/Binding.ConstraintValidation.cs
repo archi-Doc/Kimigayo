@@ -258,7 +258,8 @@ public sealed partial class Binding
                 }
 
                 this.RequireConstraintInFrame(pending, pendingProof, mode, pendingFrame);
-                this.RequireConstraintInFrame(owner, pendingProof, mode, this.BeginConsultation(owner), pending); // The owner's outcome is its clause's.
+                var ownerFrame = this.BeginConsultation(owner); // The owner's outcome is its clause's.
+                this.RequireConstraintInFrame(owner, pendingProof, mode, ownerFrame, pending);
                 changed |= previous != owner.BindingState;
             }
 
@@ -312,7 +313,8 @@ public sealed partial class Binding
             var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope), true);
             var state = container.BindingState;
             this.RequireConstraintInFrame(clause, proof, mode, frame);
-            this.RequireConstraintInFrame(container, proof, mode, this.BeginConsultation(container), clause); // The owner's outcome is its clause's.
+            var containerFrame = this.BeginConsultation(container); // The owner's outcome is its clause's.
+            this.RequireConstraintInFrame(container, proof, mode, containerFrame, clause);
             changed |= state != container.BindingState;
         }
 

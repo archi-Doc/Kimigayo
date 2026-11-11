@@ -354,11 +354,11 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
-    // The call signature of a Function Item, closure or Function value.
     // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
 
+    // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
     {
         BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),

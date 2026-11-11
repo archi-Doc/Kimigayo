@@ -595,8 +595,10 @@ public sealed partial class Binding
         return result;
     }
 
-    // Adds a fact and its conjuncts; true when one of them is an Error (a failed clause, which the caller names as the environment's
-    // failed node). Only a clause's own requirement can be an Error.
+    // Adds a fact and its conjuncts; true when one of them is an Error. BindConstraints names its clause as the environment's failed
+    // node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
+    // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
+    // environment stays valid (PLAN G651's open item).
     private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
     {
         if (fact.HasUnresolved)
