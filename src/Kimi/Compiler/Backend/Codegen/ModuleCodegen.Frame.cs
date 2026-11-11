@@ -33,7 +33,7 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
     [Flags]
-    internal enum Needs : byte
+    internal enum Needs : ushort
     {
         /// <summary>None.</summary>
         None = 0,
@@ -52,7 +52,7 @@ internal sealed partial class ModuleCodegen
         Objects = 8,
 
         /// <summary>The float formatting part (LlvmModuleText.FormatFloatRuntime: the FormatFloat routine and Ryu), for a FormatFloat call
-        /// (its row's Requests; R8-S2c). With it every bit of the byte is taken, so the next part widens the enum.</summary>
+        /// (its row's Requests; R8-S2c).</summary>
         FormatFloat = 16,
 
         /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: Text.writer's adapter and the reserve through

@@ -699,7 +699,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // The same-named functions of a container, including those of its conditional conformance blocks, or its same-named
-    // nested declarations, in source order (the order of catalog overload positions).
+    // nested declarations, in source order (the order of catalog overload positions); an explicit specialization has no name
+    // (SPEC 8.13.3), so it is none of them, as in KimiLibrary.FindDeclaration.
     private static List<Koto> Declarations(DeclarationContainerKoto container, string name, bool function)
     {
         var found = new List<Koto>();
@@ -718,7 +719,7 @@ public partial class KimiLibraryShapeTest
 
         void Visit(Koto node)
         {
-            if (node is FunctionKoto member && member.Name == name)
+            if (node is FunctionKoto { IsSpecialization: false } member && member.Name == name)
             {
                 found.Add(member);
             }

@@ -4,6 +4,9 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// Explicit full specializations (SPEC 8.13): each is verified against its original (PrepareSpecializations); a call's closed key selects
+// one (Implementation); a verified specialization names its original (SpecializationOriginal; GetSpecializationOriginal by syntax), whose
+// call contract and ABI it keeps (SPEC 8.13.2).
 public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
@@ -16,6 +19,12 @@ public sealed partial class Binding
 
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
+
+    // SPEC 8.13.2, 8.13.3: the original a verified explicit specialization implements, whose call contract it keeps; null for any other
+    // symbol, a specialization Binding failed included. GetSpecializationOriginal is the syntax-keyed form of the same entry (SemanticQuery).
+    internal BindingSymbol? SpecializationOriginal(BindingSymbol? function)
+        => function?.Declaration is FunctionKoto declaration && this.specializations.TryGetValue(declaration, out var specialization)
+            ? specialization.Original : null;
 
     /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): through the stored
     /// Origins of the Type declaring the callee, then the call's Origins and inputs and the pair Origins its Type arguments bind.</summary>

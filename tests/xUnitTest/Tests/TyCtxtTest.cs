@@ -1558,7 +1558,8 @@ public sealed partial class TyCtxtTest
 
     // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
     // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
-    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target).
+    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target);
+    // each one's Original is the target, whose call contract and ABI it keeps (R8-S2b2; fail-before: no Original).
     [Theory]
     [InlineData("i32", true)]
     [InlineData("isize", true)]
@@ -1576,6 +1577,7 @@ public sealed partial class TyCtxtTest
         var selected = c.Types.Implementation(target, instance, 0)!;
         Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
         Assert.Equal(specialized, !ReferenceEquals(selected, target));
+        Assert.Same(target, c.Types.Original(selected)); // SPEC 8.13.2: the call contract and ABI a specialization's body keeps (R8-S2b2).
         Assert.Null(c.Types.Implementation(target, instance, 1));
     }
 
