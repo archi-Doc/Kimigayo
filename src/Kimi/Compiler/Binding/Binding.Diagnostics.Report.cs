@@ -126,8 +126,7 @@ public sealed partial class Binding
             this.ReportQualification(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
-            cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
+            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
         {
             // The recorded missing Name of the Constraint is its prerequisite.
             issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);

@@ -52,7 +52,7 @@ internal sealed partial class MirValidator
             }
             else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
                 operand.Arg,
-                PairBinderOf(body.TypeOf(operand.Place))))
+                TyCtxt.PairBinder(body.TypeOf(operand.Place))))
             {
                 this.Report(MirViolation.Binder);
             }
@@ -73,12 +73,6 @@ internal sealed partial class MirValidator
             : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
                 ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
                 : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)));
-
-        private static BindingSymbol? PairBinderOf(BoundType? type)
-        {
-            _ = TyCtxt.Layer(type, out _, out var binder);
-            return binder;
-        }
 
         private static bool IsSequence(BoundType type)
             => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||

@@ -164,6 +164,54 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         AssertHeightRecord(Assert.Single(records, x => x.Span.Start >= call), source, "useU(v)");
     }
 
+    // PLAN G651 U1 (SPEC 23.1.2, 8.3.3 Limits): a validation pass forms its Types in a frame at the node its record names: a judgment's use
+    // (a constructed Type node's Constraints, a Constraint environment's owner, a closed clause and its owner, an agreement's first path)
+    // or a pass element that publishes facts (a source state's declaration, an override's premises). A Type past the limit formed there
+    // is TypeHeightLimit_Kd at that node, never InternalInvariant_Kd or a Language record (an agreement's first path is `Self is Named`);
+    // `{0}` one layer less is accepted, or keeps the form's own record (`Derived`'s Unsupported_Kd, from a later phase that this harness
+    // runs only after Binding accepts; the CLI keeps it beside the height record). Fail-before: dev gives InternalInvariant_Kd.
+    [Theory]
+    [InlineData("struct G<T>\n    D12<T>.Item is Sealed\n    var v: i32\nfunc p(x: ref/G<{0}>) => ()\n", "G<(", null)]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n", "struct E", null)]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n    public func get(self: ref/Self) -> i32\n        return self.v\n", "struct E", null)]
+    [InlineData("func f<T>(x: i32) -> i32\n    T is D12<{0}>\n    T is HasItem\n    T.Item is Sealed\n    return x\n", "func f", null)]
+    [InlineData("struct G<T>\n    D12<T>.Item is Sealed\n    Self is HasItem\n    associate HasItem.Item is i32\nstruct S\n    G<{0}>.Item is Sealed\n    var v: i32\n", "struct S", null)]
+    [InlineData("contract Named\ncontract Tagged: Named\nstruct Tag<T>\n    var value: i32\n    Self is Named when T is HasItem, T.Item is Sealed\n    Self is Tagged when T is D12<{0}>\n", "Self is Named", null)]
+    [InlineData("open struct Base<T>\n    public virtual func f(self: objref/Self) -> i32\n        T is HasItem\n        T.Item is Sealed\n        return 1\nstruct Derived : Base<D12<{0}>>\n    override func f(self: objref/Self) -> i32 => 2\n", "override func f", nameof(DiagnosticCode.Unsupported_Kd))]
+    public void AValidationPassPastTheLimitIsRecordedAtItsFrame(string form, string at, string? control)
+    {
+        string[] own = control is null ? [] : [control];
+        Assert.Equal(own, this.Compile(Doubling(12) + form.Replace("{0}", "D12<i32>.Item", StringComparison.Ordinal) + Main).Records.Select(static x => x.Code));
+
+        var source = Doubling(12) + form.Replace("{0}", "(D12<i32>.Item, i32)", StringComparison.Ordinal) + Main;
+        var records = this.Compile(source).Records;
+        Assert.All(records, AssertHeightCode);
+        var start = source.IndexOf(at, StringComparison.Ordinal);
+        Assert.Contains(records, x => x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd) && x.Span.Start >= start && x.Span.Start < start + at.Length);
+    }
+
+    // SPEC 23.1.2: an environment past the limit keeps an independent record beside its height record (r2's `envs-13-twin`).
+    [Fact]
+    public void AnEnvironmentPastTheLimitKeepsAnIndependentRecord()
+    {
+        var source = Doubling(12) + "struct E<T>\n    T is (D12<i32>.Item, i32)\n    D12<T>.Item is Sealed\n    var v: i32\nfunc bad() -> i32\n    return true\n" + Main;
+        var records = this.Compile(source).Records;
+        Assert.Equal([nameof(DiagnosticCode.TypeHeightLimit_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], records.Select(static x => x.Code));
+        AssertHeightRecord(records[0], source, "struct E");
+    }
+
+    // SPEC 8.8 (review 2's `ovcond`): an override condition over an associated Type within the limit is accepted (its pass is framed by
+    // PLAN G651 a1, so no form past the limit is a row here).
+    [Fact]
+    public void AnOverrideConditionWithinTheLimitIsAccepted()
+    {
+        var (records, accepted) = this.Compile("contract HasItem\n    associate Item\nstruct Box<T>\n    Self is HasItem\n    associate HasItem.Item is (T, i32)\n" +
+            "contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived<U> : Base<U>\n    U is Box<i32>\n" +
+            "    U is HasItem\n    Self is Marker when U is HasItem, U.Item is Copy\n        override func read(self: objref/Self) -> i32 => 2\n" + Main);
+        Assert.Empty(records);
+        Assert.True(accepted);
+    }
+
     // DECISIONS BU-153: a Type's display does not recurse on the Type, so a record naming a Type under H, or a closure whose
     // display nests a chain of closure signatures (an edge the height does not count, BU-71), is reported on the caller's stack. The
     // CLI runs the display in tier-0 code: dev's recursion overflowed its 1.5 MB stack from about 820 layers (1,856 B a frame). This

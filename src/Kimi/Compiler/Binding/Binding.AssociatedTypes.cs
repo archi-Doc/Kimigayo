@@ -337,7 +337,12 @@ public sealed partial class Binding
         if (owner.Declaration is ContractKoto)
         {
             clause.BoundConstraint ??= this.InternConstraint(new(ConstraintKind.Error));
-            this.AddConstraintFact(scope.Constraints ??= new(), clause.BoundConstraint);
+            var environment = scope.Constraints ??= new();
+            if (this.AddConstraintFact(environment, clause.BoundConstraint))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement is null)
             {
                 this.AddPrerequisite(scope.Owner, clause);
