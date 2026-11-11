@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 5.7: the Phantom slot a raw layer states and the cases it is Phantom in (FailingCase), recorded only when the check fails.
-    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? phantomRawOrigins;
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases)>? phantomRawOrigins;
 
     // SPEC 5.7 Origins (D17, D18; design-final §5; DECISIONS BU-24): the Origin a raw layer's `during` writes, one atom (never a meet or
     // Origin arguments), the atom its name binds whatever position it is written in: `self` names the holding value (Holder) on a layer
