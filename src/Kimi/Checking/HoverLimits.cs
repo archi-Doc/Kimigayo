@@ -2,7 +2,7 @@
 
 namespace Kimi.Checking;
 
-#pragma warning disable SA1402, SA1600, SA1649 // Internal policy and its allocation-free recursive guard.
+#pragma warning disable SA1402, SA1600, SA1649 // Internal policy and its allocation-free guard of a nested walk.
 
 internal static class HoverLimits
 {
@@ -31,6 +31,9 @@ internal sealed class HoverBudget(int maximumWork = HoverLimits.Work, int maximu
 
         this.remaining -= cost;
     }
+
+    // A walk from an explicit stack (Binding.DisplayTypeName) states the nesting of the part it shows next.
+    internal void At(int depth) => this.depth = depth;
 
     internal Scope Enter()
     {

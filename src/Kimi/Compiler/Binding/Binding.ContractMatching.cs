@@ -172,9 +172,10 @@ public sealed partial class Binding
                 }
             }
 
-            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).ConformanceJudged)
+            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).Judged)
             {
-                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
+                // SPEC 8.7.1: the judgment of `Self is K`, as a Contract clause is proven; a declared Copy is validated where it opts in.
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }

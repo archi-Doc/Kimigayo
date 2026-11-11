@@ -30,6 +30,8 @@ internal sealed partial class MirBorrows
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
         this.escapedSet = this.sets.Add(this.writableSet, Escaped);
         this.unformedSet = this.sets.Add(0, Unformed);
+        this.offgridSet = this.sets.Add(0, Offgrid);
+        (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
         this.Loans();
         this.Addresses();
         this.Receivers();

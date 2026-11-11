@@ -7,7 +7,7 @@ using Xunit;
 namespace XunitTest;
 
 // C-189: the Binding facts A5's pun rule reads (the Middle's G667b), for the Middle's named programs and the design reviews' forms
-// (Q1-Q7). Fail-before: PlaceKey, Select, SameStructure and NoStore do not exist.
+// (Q1-Q7), and C-211's leading step (the Middle's G667c). Fail-before: PlaceKey, Select, SameStructure, NoStore and Leading do not exist.
 public sealed partial class TyCtxtTest
 {
     // pStatedOk (G338's qPunOver, V) and pOver (I): the pun target's own layers with their stated step and pointee.
@@ -45,6 +45,11 @@ public sealed partial class TyCtxtTest
         "    ha: raw/Array<Packet>, fa: (raw/u8 during static) -> (), fb: (raw/u8) -> (), wa: Wrap<raw/u8 during static>, wb: Wrap<raw/u8>,\n" +
         "    ta: [2 of raw/u8 during static], tb: [2 of raw/u8], ce: Ce, rr: ref/(raw/Packet), hr: raw/(ref/Packet during a), he: raw/Ev,\n" +
         "    hes: raw/Ev during static, hc: raw/Cell, hx: HA<SrcS>, hy: HA<Src>, hp: raw/HA<SrcS>) -> ()\n    return ()\n" +
+        "#Layout(\"C\")\nstruct CNode\n    public var tag: u32\n    public var next: raw/u8\n" +
+        "#Layout(\"C\")\nstruct CArr\n    public var items: [2 of CNode]\n    public var n: u32\n" +
+        "struct KNode\n    public var tag: u32\n    public var next: raw/u8\n" +
+        "func lead<length N>(la: [2 of u16], lz: [0 of u16], ln: [N of u16], lnn: [2 of [N of raw/u8]], lc: CNode, lca: CArr,\n" +
+        "    lk: KNode, lr: raw/CNode) -> ()\n    return ()\n" +
         "public func main() => ()\n";
 
     // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189 B1, B2): a raw layer's step at a Place, by the Place's path from its root.
@@ -97,6 +102,75 @@ public sealed partial class TyCtxtTest
         var into = new List<OwnLayer>();
         Assert.True(c.Types.OwnLayers(key, into));
         Assert.Equal(expected, Describe(into));
+    }
+
+    // C-211 (PLAN G667c): the one step of a Place's leading chain, the part the specification places at the Place's own address: a fixed
+    // array's element at any length (SPEC 4.1: element i at offset i * stride; the step reads no length), a `#Layout("C")` struct's first
+    // Field (IMPL 21.1.2: offset 0); no other Type promises one. Labels from SPEC before output: each step's kind (E: an element, F: a
+    // first Field) and Type, to the chain's end. The first written Field is MIR's Field 0, and they cannot differ: C layout has no base
+    // and one storage fragment (SPEC 6.7.1), a struct has no static Field, and stored Fields keep declaration order (AdtDef.Fields;
+    // a computed property is no stored Field): no row can tell them apart.
+    [Theory]
+    [InlineData("la", "", "E u16")] // A constant length.
+    [InlineData("lz", "", "E u16")] // Length 0.
+    [InlineData("ln", "", "E u16")] // A generic length.
+    [InlineData("lnn", "", "E [N of raw/u8]; E raw/u8")] // A nest of arrays.
+    [InlineData("lc", "", "F u32")]
+    [InlineData("lca", "", "F [2 of CNode]; E CNode; F u32")] // A C struct whose first Field is a fixed array of C structs.
+    [InlineData("lr", "*", "F u32")] // Past a dereference, which the step keeps.
+    [InlineData("lk", "", "")] // A Kimigayo-layout struct.
+    [InlineData("tuple", "", "")] // A Tuple.
+    [InlineData("cell", "", "")] // An enum,
+    [InlineData("cell", "0", "")] // and its Case key.
+    [InlineData("h", "", "")] // A raw pointer.
+    public void C211TheLeadingStepIsThePartAtAPlacesOwnAddress(string root, string path, string expected)
+    {
+        var (c, _, p) = PunForms();
+        var key = PlaceKey.Root(p[root]);
+        foreach (var step in path.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            key = c.Types.Select(key, step == "*" ? 0 : int.Parse(step));
+        }
+
+        var rows = new List<string>();
+        var part = c.Types.Leading(key, out var element);
+        for (; part.Type is not null; part = c.Types.Leading(part, out element))
+        {
+            Assert.Same(key.Through, part.Through);
+            rows.Add($"{(element ? "E" : "F")} {Binding.DiagnosticTypeName(part.Type)}");
+        }
+
+        Assert.False(element); // `element` true always comes with a part: the chain's end, a null Type, is no element step.
+        Assert.Equal(expected, string.Join("; ", rows));
+    }
+
+    // C-211: total: an unbound key has no part.
+    [Fact]
+    public void C211AnUnboundKeyLeadsNowhere()
+    {
+        var (c, _, _) = PunForms();
+        Assert.Null(c.Types.Leading(new PlaceKey(null, null, null, -1, null), out var element).Type);
+        Assert.False(element);
+    }
+
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void C211AWarmLeadingStepAllocatesNothing()
+    {
+        var (c, _, p) = PunForms();
+        var (t, forms) = (c.Types, p.Values.ToArray());
+        void Read()
+        {
+            foreach (var form in forms)
+            {
+                for (var part = t.Leading(PlaceKey.Root(form), out _); part.Type is not null; part = t.Leading(part, out _))
+                {
+                }
+            }
+        }
+
+        Read();
+        Assert.Equal(0, AllocationMeasurement.Measure(Read));
     }
 
     // A call input's Type-level walk past a layer (the Middle's first step and past it): OwnLayers' Past key carries the dereference.
@@ -229,7 +303,7 @@ public sealed partial class TyCtxtTest
         var c = MinimalEmissionTest.Analyze(StatedSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var locals = new Dictionary<(string, string), BoundType>();
-        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "probe" or "pp")
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "probe" or "pp" or "lead")
             .SelectMany(static x => x.Parameters).ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!);
         foreach (var body in c.BuildMir().Bodies)
         {

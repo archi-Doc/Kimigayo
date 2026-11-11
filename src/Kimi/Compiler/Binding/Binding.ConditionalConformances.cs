@@ -214,7 +214,7 @@ public sealed partial class Binding
                 else
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
-                    if (IsRefinement(contract, this.Library.Copy))
+                    if (ReferenceEquals(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }
