@@ -651,6 +651,37 @@ public class ConstraintBindingTest
         Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Text is { } text && !text.Contains('\n') ? x.Code + "@" + text : x.Code)));
     }
 
+    // SPEC 7.5, 8.4.2, 23.1.2 (G507): a body's leading Constraint Clause is a Constraint whatever its subject names, and one invalid subject
+    // is one record: never one on a later premise, on the clause over a failed subject or on a valid requirement. Each valid twin has none.
+    [Theory]
+    [InlineData("func f<T, U>(value: ref/U)\n    Box<U>.(C).X is Copy\n    T is D\n    ()\n", "InvalidConstraint_Kd@Box<U>.(C).X is Copy")]
+    [InlineData("func f<T, U>(value: ref/U)\n    U.(C).X is Copy\n    U is C\n    T is D\n    ()\n", "")]
+    [InlineData("func f<T, U>(value: ref/U)\n    S.(C).X is Copy\n    T is D\n    ()\n", "InvalidConstraint_Kd@S.(C).X is Copy")]
+    [InlineData("struct W<E>\n    public var item: i32\n    public func m(self)\n        Box<E>.(C).X is Copy\n        E is D\n        ()\n", "InvalidConstraint_Kd@Box<E>.(C).X is Copy")]
+    [InlineData("struct W<E>\n    public var item: i32\n    public func m(self)\n        E is D\n        ()\n", "")]
+    [InlineData("func f<U>(value: U)\n    value is D\n    U is Copy\n    ()\n", "UnresolvedBinding_Kd@value")]
+    [InlineData("func f<U>(value: U)\n    U is D\n    U is Copy\n    ()\n", "")]
+    [InlineData("func f<U>(value: U)\n    value is Nope\n    ()\n", "UnresolvedBinding_Kd@value UnresolvedBinding_Kd@Nope")]
+    [InlineData("contract K\n    func g<U>()\n        Q is D\n", "UnresolvedBinding_Kd@Q")]
+    [InlineData("contract K\n    func g<U>(v: U)\n        Box<U>.(C).X is Copy\n", "InvalidConstraint_Kd@Box<U>.(C).X is Copy")]
+    [InlineData("contract K\n    func g<U>(v: U)\n        U.(C).X is Copy\n        U is C\n", "")]
+    [InlineData("func f<U>()\n    U.Nope is D\n    ()\n", "UnresolvedBinding_Kd@U.Nope")]
+    [InlineData("func f<U>(value: U)\n    U is C\n    U.(C).Nope is Copy\n    ()\n", "UnresolvedBinding_Kd@U.(C).Nope")]
+    [InlineData("func f<U>(value: U)\n    U is C\n    U.(C).X is Copy\n    ()\n", "")]
+    [InlineData("func f<U>(value: U)\n    Box<Nope>.(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@Nope")]
+    [InlineData("struct W<U>\n    Box<Nope>.(C).X is Copy\n    U is D\n    public var item: i32\n", "UnresolvedBinding_Kd@Nope")]
+    [InlineData("struct W<U>\n    Box<U>.(C).X is Copy\n    U is D\n    public var item: i32\n", "")]
+    [InlineData("func f<U>(value: U)\n    S.(C).X is U.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is U.(C).X InvalidConstraint_Kd@U.(C).X")]
+    [InlineData("func f<U>(value: U)\n    S.(C).X is Box<U>.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is Box<U>.(C).X InvalidConstraint_Kd@Box<U>.(C).X")]
+    [InlineData("func f<U>(value: U)\n    (U, i32).(C).X is Copy\n    U is D\n    ()\n", "ExpectedSyntax_Kd@i32")] // G507: the expression parser's record (Q13)
+    [InlineData("func f<U>(value: U)\n    ().(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@()")] // G507: Binding forms no Unit-head Type (Q13)
+    public void OneInvalidSubjectIsOneRecord(string declaration, string expected)
+    {
+        const string Prelude = "contract D: Copy\ncontract C\n    associate X\nstruct Box<A>\n    Self is C when A is Copy\n    associate X is i32\nstruct S\n    Self is C\n    associate X is i32\n";
+        var records = ContextualCaptureTest.PublishedRecords(Prelude + declaration + "public func main() => ()\n");
+        Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Text is { } text && !text.Contains('\n') ? x.Code + "@" + text : x.Code)));
+    }
+
     // G621: the limit's early reads belong to one pass (Binding.ResetPass clears them, as it clears the other early reads), so every Bind
     // of k9, a Provisional one between, reports what a fresh Compilation reports.
     [Fact]

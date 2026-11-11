@@ -22,7 +22,7 @@ public static partial class Parser
         ReportPendingAttributes(ref reader);
         RejectAccessWord(ref reader);
         reader.Advance();
-        if (IsTypeConstraintStart(ref reader, declarationContext: true))
+        if (IsTypeConstraintStart(ref reader))
         {
             var associated = ParseAssociatedConstraint(ref reader);
             if (associated is not null)

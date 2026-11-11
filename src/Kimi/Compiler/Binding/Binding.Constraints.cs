@@ -427,6 +427,7 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
+        var subjectProjections = this.projectionUses.Count; // The projection uses the subject's binding registers: from here to subjectEnd.
         var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var head = AssociatedHead(clause);
@@ -435,7 +436,11 @@ public sealed partial class Binding
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
-        var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
+        var subjectEnd = this.projectionUses.Count; // The requirement's own projection uses come after it and stay its own (SPEC 23.1.2).
+        // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
+        // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
+        var failedSubject = subject is null &&
+            (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
         var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
@@ -481,6 +486,20 @@ public sealed partial class Binding
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
+            if (failedSubject)
+            {
+                // SPEC 23.1.2: the clause's verdict reads its failed subject directly; the subject's record is the one.
+                this.AddPrerequisite(clause, clause.Left);
+            }
+            else
+            {
+                // A projection of the formed subject is proved in the environment this verdict makes invalid: it rests on the clause.
+                for (var i = subjectProjections; i < subjectEnd; i++)
+                {
+                    this.AddPendingPrerequisite(this.projectionUses[i].Use, clause);
+                }
+            }
+
             this.Fail(clause, BindingFailure.InvalidConstraint);
         }
 

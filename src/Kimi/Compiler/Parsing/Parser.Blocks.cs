@@ -254,38 +254,45 @@ public static partial class Parser
             return;
         }
 
-        // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
-        // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
-        if ((function is not null || state.OriginOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
+        // SPEC 7.5: every function, constructor, destructor and accessor body begins with its leading region, whatever the declaration's
+        // generic parameters: an unparenthesized item that derives ConstraintClause is a Constraint there, never an expression statement,
+        // and Binding judges its subject; after the region only one whose subject is rooted in a generic parameter is (a misplaced one).
+        // A subject alone (a Name path, Self or a primitive) is read where it starts; any other is the expression parser's operand,
+        // decided at its `is` by its shape (AsConstraintSubject), so the one parse of the shared prefix serves both readings.
+        var body = function is not null || state.OriginOwner is PropertyAccessorKoto;
+        var rooted = body && IsRootedInGenericParameter(ref reader, function);
+        if (body && (HasSimpleConstraintSubject(ref reader) || (reader.CurrentTokenKind.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is)) &&
+            (!state.SeenExecutableItem || rooted))
         {
-            // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
-            // accessor is never a conditional member, so no subject is permitted in its body.
-            var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
-            var subject = rootQualified ? default : reader.GetSpan(reader.CurrentToken);
-            var isGenericParameter = !rootQualified && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
-            if (!state.SeenExecutableItem || isGenericParameter)
-            {
-                ReportPendingAttributes(ref reader);
-                RejectAccessWord(ref reader);
-                var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
-                var constraint = ParseTypeConstraint(ref reader);
-                if (constraint is not null && function is { IsDestructor: false } && !excluded)
-                {
-                    // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
-                    function.AddTypeConstraint(constraint);
-                    if (misplaced is { } cause)
-                    {
-                        reader.CodeContext.RecordRecovery(constraint, cause);
-                    }
-                }
+            ReportPendingAttributes(ref reader);
+            RejectAccessWord(ref reader);
+            var misplaced = MisplacedConstraint(ref reader, state, function, reader.CurrentTokenRange);
+            AddBodyConstraint(ref reader, function, ParseTypeConstraint(ref reader), misplaced, excluded);
+            return;
+        }
 
+        var oldPosition = reader.Position;
+        Koto? item;
+        if (!body)
+        {
+            item = ParseBlockItem(ref reader);
+        }
+        else if (!TryParseStatementItem(ref reader, out item))
+        {
+            var start = reader.CurrentTokenRange;
+            var lastError = reader.Diagnostic.LastError;
+            var operand = ParseExpression(ref reader, ComparisonBindingPower + 1);
+            if (reader.CurrentTokenKind == TokenKind.Is && (!state.SeenExecutableItem || rooted) && AsConstraintSubject(ref reader, operand) is { } subject)
+            {
+                var misplaced = MisplacedConstraint(ref reader, state, function, start);
+                AddBodyConstraint(ref reader, function, FinishConstraint(ref reader, subject, lastError, finishLine: true), misplaced, excluded);
                 return;
             }
+
+            item = ContinueExpression(ref reader, operand, 0);
         }
 
         state.SeenExecutableItem = true;
-        var oldPosition = reader.Position;
-        var item = ParseBlockItem(ref reader);
         if (item is not null && !excluded)
         {
             items.Add(item);
@@ -308,6 +315,23 @@ public static partial class Parser
         if (reader.Position == oldPosition)
         {
             reader.Advance();
+        }
+    }
+
+    // SPEC 7.5: a Constraint after the leading region, or in a destructor's or an accessor's body, which takes none, is misplaced.
+    private static DiagnosticKey? MisplacedConstraint(ref TokenReader reader, in ExecutableItemState state, FunctionKoto? function, SourceSpan subject)
+        => state.SeenExecutableItem || function is not { IsDestructor: false } ? reader.Unexpected(SyntaxForm.ConstraintPrefix, subject) : null;
+
+    // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
+    private static void AddBodyConstraint(ref TokenReader reader, FunctionKoto? function, IsKoto constraint, DiagnosticKey? misplaced, bool excluded)
+    {
+        if (function is { IsDestructor: false } && !excluded)
+        {
+            function.AddTypeConstraint(constraint);
+            if (misplaced is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(constraint, cause);
+            }
         }
     }
 

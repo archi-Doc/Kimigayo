@@ -967,7 +967,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return;
         }
 
-        if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
+        if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
         {
             Parser.ReportPendingAttributes(ref reader);
             Parser.RejectAccessWord(ref reader);

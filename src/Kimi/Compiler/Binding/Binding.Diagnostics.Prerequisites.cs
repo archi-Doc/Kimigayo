@@ -228,7 +228,8 @@ public sealed partial class Binding
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             this.FailedOriginClause(node) is not null ||
-            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||
+            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
+            (part.BindingState == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (node.BindingFailure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses?.ContainsKey(occurrence) == true) ||
             (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&

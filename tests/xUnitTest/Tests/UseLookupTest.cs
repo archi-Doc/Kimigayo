@@ -116,7 +116,7 @@ public class UseLookupTest
     [InlineData("contract B\n    associate E\ncontract C: B\n    func get(self: ref/Self) -> Self.(B).E", "")]
     [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
     [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(C).E", "")]
-    [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(Self).E is i32", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(Self).E is i32", "UnresolvedBinding_Kd")] // G507: the clause rests on its failed subject (SPEC 23.1.2)
     [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(C).E is i32", "")]
     [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd")]
     [InlineData("contract B\ncontract A\n    func f(self: ref/Self)\n        Self is B", "InvalidConstraint_Kd")]
