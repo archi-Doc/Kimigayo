@@ -121,6 +121,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.BoolFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "BoolFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.CharFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "CharFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.UnitFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "UnitFormat"), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.F32FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F32Format"), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.F64FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F64Format"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: Equality),
         new(
@@ -168,6 +170,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageGrowArray, "growArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageErasedReserve, "erasedReserve", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageErasedReserve),
+        new(KimiDeclarationId.StorageFormatFloat, "formatFloat", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatFloat),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyDictionary, "destroyDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),

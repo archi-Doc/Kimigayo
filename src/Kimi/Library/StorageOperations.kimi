@@ -29,5 +29,11 @@ internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)
 /// (SPEC 22.9.4). It records nothing and reads no writer kind. The caller's obligation, which the signature cannot
 /// state: `writer` is a user Writer's adapter, and its caller commits or drops the window before the next reservation.
 internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>
+/// Writes the shortest round-trip text of a float (the FormatFloat intrinsic; SPEC 22.10.2) at the start of
+/// `destination` and returns its length: fixed notation for `-4 <= e < 16`, else scientific; `NaN`, `Infinity`,
+/// `-Infinity`, `0` and `-0`. `bits` is an f64's IEEE 754 encoding, or with `narrow` an f32's in its low 32 bits, of
+/// which only those are read. It writes exactly the returned 1 to 24 bytes (at most 17 with `narrow`) and no other
+/// byte; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts.
+internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize
 /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
 internal func stride<T>() -> isize
