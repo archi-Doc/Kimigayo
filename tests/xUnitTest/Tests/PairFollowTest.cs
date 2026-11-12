@@ -858,26 +858,6 @@ public class PairFollowTest
             nameof(DiagnosticCode.ExpectedSyntax_Kd),
             ContextualCaptureTest.PublishedRecords("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is (s/T)\npublic func main() => ()\n").Select(static x => x.Code));
 
-    // PLAN G703 (SPEC 3.4.3, 3.5.3, 10.2; the Middle's C-219 condition 1): a let, an argument and an operand read through 17 and 18
-    // nested qualifying pair layers, in an owner instance and in a ref instance of as many `@ref` steps.
-    private static string DeepReads()
-    {
-        var source = new StringBuilder("func h(v: i32) -> i32 => v\n");
-        foreach (var layers in new[] { 17, 18 })
-        {
-            source.Append($"func f{layers}<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n    let v: i32 = x\n    return v + h(x) + x\n");
-        }
-
-        source.Append("public func main()\n    let n: i32 = 7\n    let one: i32 = 1\n    let r1 = n@ref\n");
-        for (var k = 2; k <= 18; k++)
-        {
-            source.Append($"    let r{k} = r{k - 1}@ref\n");
-        }
-
-        return source.Append("    let a = f17(n, one)\n    let b = f17(r17, one@ref)\n    let c = f18(n, one)\n    let d = f18(r18, one@ref)\n")
-            .Append("    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d)\")\n").ToString();
-    }
-
     // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
     // through a qualifying pair layer below ref or uniq layers. Below a met layer the slot of an owner- or uniq-admitting pair is implied
     // by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
@@ -919,6 +899,26 @@ public class PairFollowTest
         var c = MinimalEmissionTest.Analyze(Layered + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Contains(code, Codes(c));
+    }
+
+    // PLAN G703 (SPEC 3.4.3, 3.5.3, 10.2; the Middle's C-219 condition 1): a let, an argument and an operand read through 17 and 18
+    // nested qualifying pair layers, in an owner instance and in a ref instance of as many `@ref` steps.
+    private static string DeepReads()
+    {
+        var source = new StringBuilder("func h(v: i32) -> i32 => v\n");
+        foreach (var layers in new[] { 17, 18 })
+        {
+            source.Append($"func f{layers}<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n    let v: i32 = x\n    return v + h(x) + x\n");
+        }
+
+        source.Append("public func main()\n    let n: i32 = 7\n    let one: i32 = 1\n    let r1 = n@ref\n");
+        for (var k = 2; k <= 18; k++)
+        {
+            source.Append($"    let r{k} = r{k - 1}@ref\n");
+        }
+
+        return source.Append("    let a = f17(n, one)\n    let b = f17(r17, one@ref)\n    let c = f18(n, one)\n    let d = f18(r18, one@ref)\n")
+            .Append("    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d)\")\n").ToString();
     }
 
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)
