@@ -18,6 +18,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string LengthSources = "func zeros<length N>() -> [N of i64] => [N of 0]\nfunc takeN<length M>(x: [M of i64]) -> i32 => 0\nfunc g<T>(x: T) -> i32 => 0\nfunc consume<T>(x: Array<T>) -> i32 => 0\nfunc consume<length N, T>(x: [N of T]) -> i32 => 1\nfunc k(c: bool, x: i64) -> i32\n";
 
+    private const string FixedLengths = "func take2(x: [2 of i64]) -> i32 => 0\nfunc dec<length N>() -> [(N - 1) of i64] => [(N - 1) of 0]\n";
+
     private const string FieldSource = "struct P\n    public var x: i64 = 5\nfunc keep<T>(v: T) -> T => v@move\nfunc k(c: bool, p: P) -> i32\n";
 
     private const string NestedCalls = "func inner(x: i32) -> i32 => x\nfunc inner(x: i64) -> i64 => x\nfunc g<T>(v: T) -> i32 => 0\nfunc h2<T>(a: T, b: T) -> i32 => 0\nfunc k() -> i32\n";
@@ -170,8 +172,16 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 4.4.1, 10.5.1, 10.8: lengths at fixed-array parameters. Revision B's text is not on dev: rows here are the forms both texts judge alike.
     [InlineData("guard", "u1c", LengthSources + "    return takeN(if c => [1, 2] else => [1, 2, 3])\n", "*: return takeN(if c => [1, 2] else => [1, 2, 3]) | ...")]
     [InlineData("guard", "u1t", LengthSources + "    return takeN(if c => [1, 2] else => [3, 4])\n", "")]
-    [InlineData("I2", "u2n", LengthSources + "    return takeN(if c => zeros() else => zeros())\n", "UnboundTypeArgument_Kd: return takeN(if c => zeros() else => zeros())", Explicit = true)]
-    [InlineData("I2", "mjf", LengthSources + "    return takeN(if c => zeros() else => [2 of 0@i64])\n", "", Explicit = true)]
+    [InlineData("guard", "u2n", LengthSources + "    return takeN(if c => zeros() else => zeros())\n", "UnboundTypeArgument_Kd: return takeN(if c => zeros() else => zeros())")]
+    [InlineData("guard", "mjf", LengthSources + "    return takeN(if c => zeros() else => [2 of 0@i64])\n", "")]
+
+    // SPEC 10.8, 10.5.1 (PLAN G587): a length slot that no evidence binds is an unbound slot as a Type slot is: the candidate stays applicable, a
+    // nested call waits for its position, and a selected call's unbound length is UnboundTypeArgument_Kd. SPEC 4.4.1: a length equation is not
+    // solved backward.
+    [InlineData("guard", "g587a", FixedLengths + LengthSources + "    return take2(zeros())\n", "")]
+    [InlineData("guard", "g587b", LengthSources + "    let j = zeros()\n    return 0\n", "UnboundTypeArgument_Kd: let j = zeros()")]
+    [InlineData("guard", "g587c", LengthSources + "    return takeN(zeros())\n", "UnboundTypeArgument_Kd: return takeN(zeros())")]
+    [InlineData("guard", "g587d", FixedLengths + LengthSources + "    return take2(dec())\n", "UnboundTypeArgument_Kd: return take2(dec())")]
     [InlineData("guard", "z8", LengthSources + "    let j = if c => zeros() else => [1@i64, 2@i64]\n    return 0\n", "*: let j = if c => zeros() else => [1@i64, 2@i64] | ...")]
     [InlineData("guard", "u4e", LengthSources + "    return g([])\n", "*: return g([]) | ...")]
     [InlineData("guard", "c2j", LengthSources + "    return consume(if c => [1, 2] else => [3, 4])\n", "AmbiguousBinding_Kd: return consume(if c => [1, 2] else => [3, 4])")]

@@ -90,13 +90,14 @@ public class IterationAdapterTest
     }
 
     [Theory]
-    [InlineData("let a = Kimi.Iteration.owning(7)")]
-    [InlineData("var n: i32 = 1\nlet a = Kimi.Iteration.borrowing(n@uniq)")]
-    public void AdaptersRequireALendingIterator(string program)
+    [InlineData("let a = Kimi.Iteration.owning(7)", DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    [InlineData("var n: i32 = 1\nlet a = Kimi.Iteration.borrowing(n@uniq)", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void AdaptersRequireALendingIterator(string program, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(program);
         Assert.False(c.Binding.Result.IsComplete);
-        // SPEC 8.3: a primitive's conformances are fixed, so the only candidate is inapplicable.
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
+        // SPEC 8.3: a primitive's conformances are fixed, so the only candidate is inapplicable, or, when only a Literal's default
+        // binds I, the selected call's clause is refuted after the default and is its record (SPEC 10.2.1, PLAN G680).
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 }

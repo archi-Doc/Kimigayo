@@ -300,9 +300,10 @@ public class UnresolvedConstraintBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "group G\n    func take<T>()\n        Future is Copy\n        ()"));
-        Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
+        // SPEC 7.5: the leading clause is a Constraint whatever it names; Binding rejects its subject, and does not wait for a source.
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
+        Assert.Equal(["UnresolvedBinding_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
     [Trait("Purpose", "Allocation")]

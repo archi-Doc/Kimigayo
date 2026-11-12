@@ -245,7 +245,7 @@ internal sealed partial class MirBorrows
     // Whether a Place goes through a raw Place, where a pun may write any pointer's bytes (SPEC 5.2), so no input's region is told apart.
     private bool ThroughRaw(MirPlace place)
     {
-        var count = place.Root < 0 ? 0 : this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
+        var count = place.Root < 0 ? 0 : this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
         for (var i = 0; i < count; i++)
         {
             if (this.mustSteps[i].Class == MirStepClass.Raw)
@@ -328,7 +328,7 @@ internal sealed partial class MirBorrows
     // A Place's layer Derefs.
     private int Depth(MirPlace place)
     {
-        var (count, layers) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps), 0);
+        var (count, layers) = (this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps), 0);
         for (var i = 0; i < count; i++)
         {
             layers += Layer(this.mustSteps[i]) ? 1 : 0;
@@ -347,7 +347,7 @@ internal sealed partial class MirBorrows
             return default;
         }
 
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
         var (first, layers, owned) = (-1, 0, false);
         for (var i = 0; i < count; i++)
         {
@@ -388,7 +388,7 @@ internal sealed partial class MirBorrows
 
         // The own step applies only where the destination holds raw layers and none states an Origin; elsewhere a part reads as its
         // layer's (the owner's O-190 (b)).
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
         var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;

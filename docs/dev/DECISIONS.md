@@ -2541,6 +2541,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the walk). Rejected: a static `MirSteps`
     with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and A4 too); `MirBorrows` members made
     internal for `MirOrigins` (couples Origin judgment to Loan state).
+  - Amended by PLAN G774 (Q-338, 2f9209532, 2026-11-12; behaviour-preserving): `MirSteps.Walk` reads its body from `MirCases.Body`
+    (the selected view's body, as its Types already did) and takes no body argument; `Prepared(body, root)` keeps its explicit body
+    (it reads no view and runs outside walks). One `MirSteps.Index` holds the Index-step rule for Walk and `Element`. Reason no
+    longer holding: "the body (per call)" was `MirBorrows.Walk`'s `this.body`, moved verbatim, while every caller's body is the one
+    `MirCases` selects (MirAnalysis.Borrows, MirOrigins.Judge).
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
   part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
   part by BU-102: the view's throw, an atom's part its forming unit's)
@@ -12069,6 +12074,58 @@ resumed by R4-M86 (2026-10-20).
   - Permanent (SPEC 9.7). Cost: one set lookup per qualified Case construction; warm 0 B. Open (design review 2's N1, pre-existing):
     `CompleteEnumOrigins` rewrites a Case construction's use Type (and its plan) when a local's Origin declaration resolves, but not
     its member access or its qualifier, which keep the pre-rewrite Type; no hover or MIR reader of them was found failing.
+
+- **BU-169 A body's leading region is decided by the parsed operand at `is`; Binding alone judges a Constraint subject; one invalid
+  subject is one record (PLAN G507)** (2026-11-11; Front, Parsing and Binding; Major; design revision 5, design review 4 and
+  implementation review ACCEPT; the owner's O-161 (R), O-167, O-169 (a), O-178 (a)) SPEC 7.5, F.6.2, F.8, F.9, 23.1.2.
+  - Owner rulings: O-161 (R): a subject is rooted in a generic parameter when its projection chain's base names it (SPEC 7.5, D-350,
+    D-356). O-167: no speculative parse with rollback, no diagnostics rollback; `validSubject` is the one judge. O-169 (a):
+    left-factoring at `is`.
+  - Parsing. In a body, a leading item that derives `ConstraintSubject "is"` (F.6.2) is a Constraint, whatever its subject names.
+    - A Name-path subject (`"::"? (Name | Self) ("." Name)* is`) is taken by dev's selector `HasSimpleConstraintSubject` and read by
+      `ParseConstraintSubject`. The selector is exact for what it accepts: every such item derives ConstraintClause. A lone
+      primitive before `is` is decided from two tokens, because no lone `Self` or primitive is an expression (F.9).
+    - Otherwise the expression parser parses the item's operand once, stopping before `is`:
+      `ParseExpression(ComparisonBindingPower + 1)`. At `is`, `AsConstraintSubject` reads the operand's shape: a TypeQualifier chain
+      (Names, root Names, `Self`, `. Name` and `.(C)` members, Type arguments; PathQualifier heads Unit, Tuple, FixedArray and
+      BoundContainerQualifier) ending in `. Name`, with one final call of OriginAtoms converted to the OriginApplication. If it
+      reads as a subject, the item is a Constraint and `FinishConstraint` reads `IsRequirement`; otherwise `ContinueExpression`
+      finishes the expression statement.
+    - `TryParseStatementItem` is `ParseBlockItem`'s statement dispatch, shared, not copied.
+    - The declaration regions keep reading any Type before `is` (`IsTypeConstraintStart`, without its former body branch), and
+      `IsConstraintSubject` reports a Type that is no subject (BU-119).
+    - Two shape tests of F.6.2's ConstraintSubject, over two trees. `IsConstraintSubject` judges a Type tree that a declaration
+      region has already parsed as a Type; it reports a Type that is no subject, and only the top node matters because `ParseType`
+      admits only Type syntax below. `AsConstraintSubject` classifies an expression tree in a body: it must check the whole
+      qualifier chain, because the expression grammar admits calls, indexes and groups there, and it converts the final call. Their
+      inputs (Type nodes against expression nodes) and their decisions (report against classify) differ, so they stay a pair, not
+      one test.
+    - Placement stays Parsing's: after the region a Constraint is one only if its subject is rooted in a generic parameter (its base
+      Name: `IsRootedInGenericParameter`), and then it is misplaced; a destructor's or an accessor's body takes none.
+  - Binding. `validSubject` is the one judge. One failed-subject rule: a subject that formed no Type because of a failure in it
+    (`HasFailureCauses`) binds the requirement against no subject in every region, and a rejecting verdict rests on it; when a
+    clause whose subject formed is rejected, `BindConstraint` publishes the clause as the pending prerequisite of exactly the
+    projection uses its subject's binding registered. `IsDerived`'s part rule counts a part that is Invalid or has published failure
+    causes.
+  - Acceptance move (Q17 class 1), named as a class: an unparenthesized leading item whose operand ends in a call whose arguments
+    are all OriginAtoms (`k`, `static`, `a.b`, `(a and b)`) is a Constraint (SPEC 7.5, F.6.2, F.8). Instances c01, a02, a03 and g03,
+    accepted on dev, are rejected; their two records are PLAN G747's (R7-N6).
+  - Record moves (Q13), by F's rulings: `AssociatedIdentityTest.AnAmbiguousSubjectKeepsIndependentRequirementAndExpressionFailures`
+    (G705) loses the clause's `InvalidConstraint_Kd` over its ambiguous subject, a dependent record (O-169 (a) condition 3), and the
+    independent ones stay; a Unit, Tuple or FixedArray head is a Constraint with one record, `UnresolvedBinding_Kd` at the head
+    (Binding forms no Type for it); a Tuple head with a non-expression element (`(U, i32)`) keeps the expression parser's record.
+  - Limit (the owner's O-178 (a), verbatim 「O-178 a」; a later unit designs the node; PLAN G767): a parenthesized function-type head,
+    such as `((U) -> U).(C).X is Copy` (q03), keeps dev's records. The expression grammar builds no node for `(...) -> Type`. Its
+    group fails as an expression (`ExpectedSyntax_Kd` at `->`), and the recovered group has the shape of `((u))`. So no shape test
+    over parsed nodes can take it, and reading the recorded error, a scanner or a mode would break O-167 and O-169 (a). The program
+    is rejected either way: every such subject is invalid in a function by SPEC 7.5 (R). Only its records differ (P1's form: the
+    later premises are misplaced).
+  - Rejected: a predicate over raw tokens (revision 1 was wider than the production, B1; revision 2 was a copy of the ContainerPath
+    scanner, B5; revision 3's shared scanner read any group as an OriginAtom, B7); a speculative parse with rollback (records cannot
+    be undone: O-163, O-167); Binding classifying, since SPEC 7.5 is syntactic; classifying by the root Name (a SPEC change against
+    O-167); a consumer walk to the clause (B3); the projection range through the requirement (B6).
+  - Closes PLAN G507 with the failed-subject records (x01, x02, r01, i04, i12), except P1's parenthesized function-type head (the
+    limit above, PLAN G767).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -19122,6 +19179,61 @@ R8-M* and R9-M* by the stage of the recording unit.
     run-time-length memcpy. No validation and no second reserve on either side; B's IR with only the leaf marked `alwaysinline`
     gives the constant store back. Removal condition: PLAN G779's unit lands with Interpolation within A=A (its mechanism, per the
     owner-reported O-196: `noinline` on the slow path `Utf8Writer.reserve` rather than `alwaysinline` on the leaf).
+  - **Owner, S2b1.** Every concrete integer Type of at most 64 bits (i8 to i64, u8 to u64, isize, usize) has its Utf8Format through
+    a generic table row `IntegerFormat` (`{ IsInteger: true, Semantics: Owner, Width: <= 64 }`, argument the Type itself), body
+    `IntegerFormat.format<I>` in `Formatting.kimi`. The body writes the ASCII decimal digits into a local `[20 of u8]` from the end,
+    the `-` of a negative value before them, then one `writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))`: one exact
+    reservation (SPEC 22.10.1, 22.10.5). It has a `SourceFunction, CallerLocation` catalog row (SPEC 22.5.1, until G1). No producer
+    kind: the digits are Kimigayo, so no runtime routine is called (RP9, PLAN10 §5.8 keep only `formatFloat` and
+    `formatInteger128`).
+  - **The abstract case stays the premise at S2b1.** A bare `I is PrimitiveInteger` has no Type shape a scope-free arm can key on,
+    and its PrimitiveInteger proof depends on the scope, so SPEC 8.7.4's premise (`Binding.Contracts.cs:437`) keeps proving its
+    Utf8Format, as for Position. (Unlike `Wrapping<T>`, whose construction has a shape: R8-S2d1.)
+  - **The constraint on a table body, S2b1.** A witness-table body makes no requirement call on its own abstract parameter that its
+    premises give no `confined` bound. SPEC 15.6.4 computes a summary once per declaration, in terms of its own Type parameters, so
+    such a call's unknown environment effect (SPEC 8.11.3 rule 2) reaches every instance and turns a valid concrete use under
+    `confined` into a conflict (S2d1's e1). A table body writes through a published row (`writer.write`, R4-M28) or uses SPEC
+    8.7.4's built-in operators and conversions. IntegerFormat's comparison on `I` is completed as a built-in operator
+    (`Binding.Comparisons.cs:92-94`), a MIR `Binary` rvalue, and its conversions `value@i64`/`value@u64` are `Cast` rvalues: its
+    summary's only atom, `Drop(I)`, resolves to nothing at every instance (an integer has no destructor), and its MIR reads and
+    writes no static, so the summary is the same at every instance (Abort from its checks; the leaf's Allocation).
+  - **Temporary 7, S2b1 (new).** The IntegerFormat row's width condition (`Width: <= 64`): i128 and u128 still take `builtinFormat`
+    (the narrowing, temporary 1, now holds only them). Removed at R8-S2b2, which adds `specialize format<i128>`/`<u128>` over
+    `formatInteger128` (O-177's producer) and drops the condition. Without it, i128 would reach the body's u64 magnitude (a checked
+    conversion's Abort).
+  - **Temporary 3's note, S2b1.** `format_builtin`'s arms 1 to 8 are deleted; the routine keeps 9 and 10 (i128, u128) and 16
+    (`SegmentText`, temporary 5). `FormatKind` 1 to 8 stay while `FormattingTypes.IsBuiltin` answers them
+    (`FormatKindsAreTheRuntimesNumbering`), until S2d2.
+  - **Vocabulary, S2b1.** `KimiDeclarationId` +1 (`IntegerFormatFormat`) and catalog entries 190 -> 191 (RQ9's counts; not a capped
+    vocabulary); `WitnessMembers` +1 (local, R8-M4). No `CompilerFunctionKind`, `IntrinsicId`, `IntrinsicKind` or diagnostic code.
+  - **Moves, S2b1.** None in acceptance or records (gate: 483 generated programs, 0 record moves base 6d4442652 against the unit; A5
+    oracle 1,764 programs, 0 differences). `.ll`: a module that formats integers up to 64 bits solely through writers it receives no
+    longer writes the formatting runtime (the body ends in the kept erased writer's path); a module that interpolates or calls
+    `Text.writer` or `Text.tryFormat` still writes it, and every formatting module's `.ll` loses `format_builtin`'s eight integer
+    blocks. The census Builtin -> Body for the integer format calls (TyCtxtTest's corpus pin: Builtin 59 -> 3, Body 152 -> 208). The
+    3 left, listed by a throwaway run (implementation review I-N3): Milestone25's tuple `compare` on `(ref/Key, i32)` (Comparable),
+    Milestone31's `format` on u128 (temporary 7) and Milestone31's `equals` on `Wrapping<u8>` (Equatable); only one is a format
+    call. (R8-S2b1's own commit message says "the 3 are i128/u128"; the round-2 commit corrects it.)
+  - **KimiLibrarySize, S2b1 (R8-M28).** A Bind of the empty program counts 15,454 library nodes at e13ab6c7b, past the stated
+    15,360, so `Stated.Nodes` is restated to 16,384, the count rounded up to the 1,024 Granule (R8-M28's rule; the Front's C-253
+    yes).
+  - **RP8, S2b1 (T-153; the owner's O-200 (a)).** A 7e4392941 (S2d1's head), B c49b1eca7
+    (`artifacts/benchmarks/r8-s2b1-o2-20261112-095836`, `r8-s2b1-o0-20261112-101322`, `r8-k1a-20261112-101924`): no O2 kernel
+    slower; Strings 9% faster (aligned 0.906, every matched pair below A=A), Interpolation 3% faster; Array, ErasedCalls and
+    VirtualDispatch code placement (R5-M135); the rest within their A=A. **Iterators** is code placement by the owner's O-200 (a)
+    (verbatim 「決断事項は、すべて (a)」; the owner answered O-198, O-199 and O-200 together in those words, 2026-11-12), as R5-M147 recorded
+    Iterators at X1: plain B/A 0.826, aligned 1.022 against 0.993-1.021, the address-matched sweep 10 of 16 pairs within or below
+    A=A 0.987-1.010 and 6 above (four by at most 0.015, two at 1.101 and 1.138), median 1.008; the kernel formats one integer once
+    after its rounds, and B's O2 `main` equals A's block for block except the entry's buffers, two failure paths and that final
+    formatting (`iterators-ir.txt` in the O2 folder), shrinking from 473 to 306 lines, so the loop sits at other addresses. O0: the
+    corpus did not finish inside the slot. Compile cost: warm Bind B/A' at most 1.018; Generate on Strings 1.19 warm (the integer
+    writes are generated from the library's specializations); warm 0 B; cold bytes +0.9% (Hello) to +1.4% (Strings).
+  - **The p5/p9 programs, S2b1.** A direct `value.format(writer)` on an abstract `I is PrimitiveInteger` inside a generic called
+    from a `confined` put is invalid by SPEC 8.11.3 rule 2 and 8.11.2's last row, as the implementation reports
+    (`IncompatibleContractImplementation_Kd` at `Self is Sink`; probes at S2c's CLI). Only O-182's proposal would make them valid;
+    its note may cite them.
+  - **S2d1's move (a), pinned by S2b1.** A dependent Holder verdict over an ill-formed `Wrapping<T>` is not reported, its formation
+    records are: `Utf8FormatBindingTest.AHolderOverAnIllFormedWrappingReportsOnlyItsFormation` (S2d1's implementation review I-N2).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump

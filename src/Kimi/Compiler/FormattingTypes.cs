@@ -15,8 +15,9 @@ internal static class FormattingTypes
     internal const int StackLimit = 1024;
 
     /// <summary>Gets whether the compiler states a Type's Utf8Format conformance, which no declaration states: the scalars, Unit and
-    /// string. The integers are still formatted by the built-in conformance, without a declared or tabled witness; the others are the
-    /// witness table's rows, which this proof still answers first (DECISIONS R8-M30, temporary 2), until R8-S2d2 deletes this meaning.
+    /// string. i128 and u128 are still formatted by the built-in conformance, without a declared or tabled witness; the others, the
+    /// integers up to 64 bits included (R8-S2b1), are the witness table's rows, which this proof still answers first (DECISIONS R8-M30,
+    /// temporary 2), until R8-S2d2 deletes this meaning.
     /// Utf8Slice declares its conformance, so it is not one (R8-S2d1).</summary>
     /// <param name="type">A Type.</param>
     /// <returns>Whether the built-in conformance answers it.</returns>
