@@ -382,10 +382,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    foreach (var part in recovered.ChildNodes)
-                    {
-                        this.BindNode(part, scope);
-                    }
+                    this.BindUnknownChildren(recovered, scope);
                 }
 
                 return Complete(node, null);

@@ -261,7 +261,7 @@ public class RequirementTypeParsingTest
                 kinds.Add(node.GetType());
             }
 
-            foreach (var child in node.ChildNodes)
+            foreach (var child in node.Children())
             {
                 Visit(child);
             }
@@ -279,7 +279,7 @@ public class RequirementTypeParsingTest
 
     private static void AssertParents(Koto node)
     {
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             Assert.Same(node, child.Parent);
             AssertParents(child);

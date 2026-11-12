@@ -3,6 +3,9 @@
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
 // it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
 // Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
+// Interim (PLAN G721; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until PLAN G254's
+// unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located Unsupported_Kd at
+// a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -70,9 +73,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
-    // unsupported captured Type is reported at the written capture entry when there is one, resting on the projection use that formed
-    // it (BU-61).
+    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. Any
+    // Type is held but those of the interim rows below (PLAN G254, G170).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -108,22 +110,17 @@ public sealed partial class Binding
             return source;
         }
 
-        // Concrete environments preserve complete captured Types and dependencies.
-        // Common-function erasure retains its independent Owned requirement.
-        // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
-        // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
-        if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
+        // Interim rows, as before G721: a located Unsupported_Kd at a written entry, and for an omitted list a function-level Unsupported
+        // that surfaces no record, so the use reports InvalidCaptureBinding_Kd (a pre-existing Language error on a valid program).
+        // (1) Removal condition PLAN G254's unit: a pair layer (SPEC 13.5.5) other than the original `s/T` whose bare acquisition the
+        // one plan (SPEC 8.14) makes a Reborrow in some admitted case, the owner case's own included (BareReborrows): a body's bare use
+        // of it would Reborrow there, and no rule contains that Reborrow in the call receiver (G254). The original (a Parameter) was
+        // captured before G721 and stays: its forms are G254's own.
+        // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
+        // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
+        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareReborrows(type, function)) ||
+            (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
-            // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
-            // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent
-            // failure stays direct.
-            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type, this.ConstraintScope(function)) is { } use)
-            {
-                this.AddPendingPrerequisite(function, use);
-            }
-
             if (entry is { } written)
             {
                 this.FailUnsupportedAt(function, written.Span);
@@ -136,6 +133,8 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 7.7.2, 8.15: an environment binding holds the source's complete Type, whatever it is, as a local would; each instance
+        // lowers it at its case Type (a pair target, a projection, a Type parameter alike).
         var plan = function.ClosureStorage!;
         for (var i = 0; i < plan.Storage.Count; i++)
         {

@@ -266,9 +266,9 @@ public sealed partial class Binding
                 return Get(expression) is null ? expression : null;
             }
 
-            foreach (var operand in expression.Operands)
+            for (var i = 0; i < expression.Operands.Count; i++)
             {
-                if (Unsolved(operand) is { } variable)
+                if (Unsolved(expression.Operands[i]) is { } variable)
                 {
                     return variable;
                 }

@@ -342,8 +342,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "fe2n", FixedItems + "func t() -> ()\n    look<() -> u32>(zero)\n", "NoApplicableOverload_Kd: look<() -> u32>(zero)")]
     [InlineData("guard", "fe3n", FixedItems + "func t() -> ()\n    let f = keep<() -> u32>(raw)\n", "*: let f = keep<() -> u32>(raw)")]
     [InlineData("guard", "fe4n", FixedItems + "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public func value() -> u32\nfunc t() -> ()\n    let f = keep<() -> u32>(Native.value)\n", "*: let f = keep<() -> u32>(Native.value)")]
-    [InlineData("G703", "fp1", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return identity<i32>(x)\n", "", Explicit = true)]
-    [InlineData("G703", "fp2", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return hg<i32>(x)\n", "", Explicit = true)]
+    [InlineData("G703", "fp1", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return identity<i32>(x)\n", "")]
+    [InlineData("G703", "fp2", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return hg<i32>(x)\n", "")]
     [InlineData("guard", "fp1n", FixedSlots + "func k<s/T>(x: s/i32, m: s/T) -> i32\n    return identity<i32>(x)\n", "NoApplicableOverload_Kd: return identity<i32>(x)")]
     public void AnExplicitTypeArgumentFixesItsParameterType(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
