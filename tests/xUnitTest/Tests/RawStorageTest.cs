@@ -280,6 +280,14 @@ public class RawStorageTest
     [InlineData("()", "let s = b.arr.iterateUniq()", "UnsatisfiedOriginRelation_Kd: b.arr")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "MovedPlace_Kd: var b = Block.init() | MovedPlace_Kd: b.data = fresh | UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
+    // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
+    // its own record is reported; another layer's non-null source and an update, which reads no value, keep their records.
+    [InlineData("()", "b.data = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (nope, 1)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.data = 5", "TypeMismatch_Kd: 5")]
+    [InlineData("()", "b.arr = [nope, shared]", "UnsatisfiedOriginRelation_Kd: b.arr = [nope, shared] | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "unsafe => b.data += nope", "UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)
         => Assert.Equal(records.Split(" | "), RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 
