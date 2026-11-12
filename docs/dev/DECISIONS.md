@@ -823,6 +823,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   statement masks (plan §5.6.1); the source taken from the operand Place's MIR Type; a MirBody plan table (a table, adder,
   reset, range rules and folding); analyses querying MirCases per Adapt (every analysis would special-case it); moving
   `Select` into TyCtxt (it edits frozen call sites, D5); a MIR copy of `Select` modulo Origins (a second copy). Not temporary.
+  - Amended by BU-175 (PLAN G647): `Follow(P, 1)` is now `FollowLayers(P, 1)`; the decision is unchanged.
 - **R4-M7a** (2026-10-12; supersedes R4-M7's row shape): A3's fact is `MirBody.MustNotComplete`, rows
   `(Entry, End, Subject)`: a require's failure body, entered at Entry, whose end End (an Unreachable without a check
   target) no runtime path from Entry may reach; Subject the failure body. The builder adds a row where it finishes a
@@ -6859,6 +6860,8 @@ resumed by R4-M86 (2026-10-20).
     (`p@follow.inner@move`, `h@follow@move`) pass the same layers and get the same Note. Why: the old Message named an exclusive
     reference past an owner-only pair layer and `InvalidAssignment_Kd` named only assignment. Rejected: a Message argument (a catalog
     argument) and a Note under the old Message (still a wrong layer). `LayerCases`' walk (PLAN G181 (2)) stays BU's.
+  - Amended by BU-175 (PLAN G647): `ComparisonThroughPairs`, named above, is gone: its walk (with `FollowablePair`) is now inside
+    `Binding.OperandTerminal`, which `TryBindIndexer` reads; the facts stated are unchanged.
 - **BU-17** (2026-10-21; PLAN G163; the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole
   destruction receiver, is never captured. Representation: its Origin is `H = Projection[drop#HelperSlot]` (`HelperSlot = int.MinValue
   + 1`, beside `CallResultSlot` and `ClosureValueSlot`; the binder is always a destructor, never a value or a Closure, so no reader of
@@ -11986,6 +11989,47 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
     would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
     read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
+- **BU-175 A Type walk has no count of its own (PLAN G647)** (2026-11-12; Front, Binding and MIR; Major; the Binding half's design
+  review 1 REVISE, design review 2 ACCEPT, implementation review 1 REJECT and its re-check ACCEPT, F's rulings 1-3; the Middle's
+  consent C-205, REVISE then ACCEPT WITH NOTES) IMPL A.4; SPEC 13.5.3, 22.6.
+  - **Rule.** A walk whose every step goes from a Type to one of its parts (a component, the Type below a `ref`/`uniq` layer by
+    `TyCtxt.Layer`, below a pair layer by `TryPairLayer` under `FollowablePair`) carries no count and no depth parameter: it ends
+    because the Type ends, and BU-134 bounds a Type's height at H where it is formed (the stack rule of BU-134/BU-135 covers the
+    recursion). A walk that crosses a declaration keeps one named bound owned by its component, with a located record where a
+    verdict rests on the part not walked (R4-M153). Binding publishes the exact number of layers it followed (`HirPlace.Layers`,
+    `ushort`). Sites: Binding's `OperandTerminal` (which absorbed `ComparisonThroughPairs`), `PairSubject`, `PairTerminal`,
+    `FormedApplication`, `SharedReferenceThroughLayers`, `ReferenceTypes.EndsInString`, `CollectCallRelations`,
+    `SolveOmittedOrigins`, `InputOrigins`, `SameExceptOmittedOrigins`, `MentionsSlots`, `Unnameable`,
+    `OriginFitSearch.FailedOriginRelation`, `AddTypeClauseObligations`, `Mentions`, the retention fits' `Occurs` (it walks
+    components, not the entries `StorageBound` measures; each part once), `CExchangeable`'s borrow and array steps, HIR's `Layers`,
+    and the MIR builder's two walks (below).
+  - **MIR (the Middle's consent C-205).** `FollowLayers(place, n)` follows exactly the n layers Binding counted (a PlaceShape's
+    `Layers`, a Pattern position's `ImplicitFollows`, an adaptation's one payload layer, SPEC 13.5.3); `FollowTo(place, target)`
+    follows to the first Place whose Type agrees with Binding's target Type (`MirTypes.Agree`, as it is or as the body's premises
+    make both), or, with no target (a key selection's key, a Property's storage, a Closure's environment binding), to the value
+    Place. The target is a `BoundType?` with no default, so a count cannot reach the targeted walk. `FollowTo` premises the target
+    and the first Type that does not agree as it is once; below a layer whose image keeps the layer's head (Kind, Semantics, Symbol)
+    the image is the image's component, as premising rebuilds a Type over its parts' images, and only below a head a premise rewrote
+    is the Type premised afresh (premising the remaining Type at each step was quadratic in the layers).
+  - **Checks.** `ArchitectureRulesTest`'s row "A walk's own count" keeps a depth or count compared with a literal at its listed
+    sites, over the whole compiler (`Mir/` included, no site there). Scaling rows (the owner's RP8 decision, 2026-11-11: G647 books
+    no T slot; these rows are its check): `TypeDagScalingTest.LayerWalksAreLinearInTheLayers` (ref layers 20/40/80, pair layers
+    10/20/40: Binding's `TermWalkWork`, the summed `HirPlace.Layers` and `MirProgram.LayerWalkWork` grow linearly),
+    `TheComponentWalksReachTheHeightLimitWithoutAStackFailure` (the component walks on a Type of height H),
+    `OriginProofScalingTest.NestedLayerRelationsFollowTheOriginPairs` (17/34/68 layers: the walks' steps and the premise graph's
+    size) and `InferenceSlotScalingTest.ASlotIsInferredFromALayeredArgument`. `TermWalkWork` counts Binding's walk steps;
+    `LayerWalkWork` counts one per iteration of a MIR walk (a layer's step and a targeted walk's agreement test together) and a
+    premising as the premised Type's height plus one.
+  - **Reason.** These walks had private counts (8, 16, 32, 64), each a silent cut with a wrong record or `InternalInvariant_Kd` past
+    it, and Binding and MIR could stop at different layers.
+  - **Rejected:** raising the counts (the same open family); one shared walk limit with `Unsupported_Kd` (a limit IMPL A.4 does not
+    have); comparing each depth with H in every walk (a second copy of BU-134's measure); publishing the followed Type per node
+    (four times the column); one `Follow` told apart by its argument's static Type (a literal count still compiled as a silent
+    count; C-205 N2).
+  - **Temporary limit, not this rule's answer.** `CExchangeable`'s Field step crosses a declaration and a C-layout struct may reach
+    itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
+    C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
+    a revisit on the path ends the walk.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18141,6 +18185,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     the builder and the validator judge a Place's Type by one agreement. `Viewed` keeps the structural `Agree` (it tests whether the
     premises change a Type); `Identical` (BU-72's exact test of the published receiver Type against the premise's) and `Dispatched`
     (an Upcast of one Type under a premise, equivalent IR; a Y5 candidate) keep it too.
+  - Amended by BU-175 (PLAN G647): `ComparisonThroughPairs`, named above, is gone: its walk (with `FollowablePair`) is now inside
+    `Binding.OperandTerminal`, which its four readers read; the facts stated are unchanged.
 - **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
   2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
   - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
