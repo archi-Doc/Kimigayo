@@ -65,7 +65,8 @@ internal sealed partial class MirBorrows
     // already tagged; an activation's two holders (ActVia, ActOther) are set once two distinct vias tagged its Loan; Kept, a Loan's mode
     // and the holders a Loan or address names (Reach, under the tier's read key) are the same under every non-special via. A read at
     // Limit and one at the pass's tier tag apart and reach under different keys, so the record is per tier (PLAN G775): a decided read
-    // is never cut by Limit reads, whatever the order the gather reads the holders in.
+    // is never cut by Limit reads, whatever the order the gather reads the holders in. A cut read is scanned at `at`, the tier of σ(h)
+    // the record is keyed by, never at one of its Placed part alone, so a holder's read tags at one tier whichever via it is.
     private ulong Scanned(ulong held, int via, MirOutcome at)
     {
         var shared = Shared(held);

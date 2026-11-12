@@ -282,7 +282,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        this.Scan(State(value, 0), via, this.PassTier);
+        this.Scan(State(value, 0), via, this.ReadTier(State(value, 0), this.PassTier));
         this.Drain(state);
     }
 
@@ -379,7 +379,8 @@ internal sealed partial class MirBorrows
             var key = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
             var slot = this.SlotOf(key);
-            this.Scan(this.Scanned(state[slot], slot, this.ReadTier(state[slot], this.TierOf(key))), slot, this.TierOf(key));
+            var at = this.ReadTier(state[slot], this.TierOf(key)); // Of σ(h): the tier Scanned keys and its cut is read at.
+            this.Scan(this.Scanned(state[slot], slot, at), slot, at);
             this.Work++;
         }
     }
@@ -404,7 +405,7 @@ internal sealed partial class MirBorrows
     {
         if (!entry.Issue && !this.Took(entry.Value, -1, at))
         {
-            this.Scan(State(entry.Value, 0), -1, at);
+            this.Scan(State(entry.Value, 0), -1, this.ReadTier(State(entry.Value, 0), at));
         }
 
         this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own, at);

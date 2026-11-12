@@ -439,6 +439,96 @@ public sealed partial class MirBorrowsTest
             usep(cc)
             usep(aa)
             usep(bb)
+        func cutHolderFirstBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = hh@raw
+            unsafe => *p = vU
+            kk = 2
+            usep(hh)
+            usep(aa)
+            usep(bb)
+        func cutHolderLastBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var hh: raw/u8 = spare
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = hh@raw
+            unsafe => *p = vU
+            kk = 2
+            usep(hh)
+            usep(aa)
+            usep(bb)
+        func cutNoWriteBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = hh@raw
+            unsafe => *p = vU
+            kk = 2
+            usep(hh)
+            usep(aa)
+            usep(bb)
+        func cutTwoViasBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var aa: raw/u8 = null
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 2
+                p = hh@raw
+            unsafe => *p = vU
+            kk = 2
+            usep(hh)
+            usep(aa)
         func zeroArrayOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -749,7 +839,10 @@ public sealed partial class MirBorrowsTest
     // decided whatever the order the gather reads holders in: p may address aa, bb or cc, which then share one stored set, and on the
     // path where it addresses cc, cc holds r's Loan and is used after kk = 2, a route through no undecided write, so kk = 2 conflicts
     // whether aa and bb are read at the Limit tier through a set carrying Φ_U (via*) or by their own states carrying it (ownRested*),
-    // and whether cc is declared before them or after (15.6).
+    // and whether cc is declared before them or after (15.6). A holder that holds r's Loan by its own Place, used after kk = 2, whose
+    // stored set (shared with aa and bb) carries Φ_U, conflicts in every layout, but its state carries Φ_U, so R4-M198's set-level
+    // named limit makes the record the located Unsupported_Kd (PLAN G599 (b)), the same whichever via of that set it is read as
+    // (cutHolderFirstBad, cutHolderLastBad, cutTwoViasBad); without the write it is the conflict (cutNoWriteBad).
     [Theory]
     [InlineData("storePunBad", "storePunBad: kk = 2")]
     [InlineData("readPunBad", "readPunBad: kk = 2")]
@@ -775,6 +868,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("viasDecidedFirstBad", "viasDecidedFirstBad: kk = 2")]
     [InlineData("ownRestedViasBad", "ownRestedViasBad: kk = 2")]
     [InlineData("ownRestedCcLastBad", "ownRestedCcLastBad: kk = 2")]
+    [InlineData("cutHolderFirstBad", "cutHolderFirstBad: kk = 2 Unsupported_Kd")]
+    [InlineData("cutHolderLastBad", "cutHolderLastBad: kk = 2 Unsupported_Kd")]
+    [InlineData("cutNoWriteBad", "cutNoWriteBad: kk = 2")]
+    [InlineData("cutTwoViasBad", "cutTwoViasBad: kk = 2 Unsupported_Kd")]
     [InlineData("cLayoutSecondFieldBad", "cLayoutSecondFieldBad: kk = 2")]
     [InlineData("zeroArrayOk", "")]
     [InlineData("lengthArrayRests", "lengthArrayRests: kk = 2 Unsupported_Kd")]

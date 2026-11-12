@@ -35,16 +35,18 @@ internal sealed partial class MirBorrows
     // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
 
-    // A read's tier, fixed before its scan: Limit where the state read carries Φ_U (R4-M198: what a set carrying it holds is tagged with
-    // it), else its read key's `at` (Limit for a holder reached only through such a set, else the pass's).
-    private MirOutcome ReadTier(ulong found, MirOutcome at)
-        => this.sets.Contains(Placed(found), Undecided) || this.sets.Contains(Shared(found), Undecided) ? MirOutcome.Limit : at;
+    // A read's tier, fixed once per read before its memos and its scan (MirBorrows.CheckSets: a holder's from σ(h), whatever part of it
+    // MirBorrows.States' Scanned lets the read scan; a taken value's, a stored value's and a seed's from that set): Limit where the state
+    // carries Φ_U (R4-M198: what a set carrying it holds is tagged with it), else its read key's `at` (Limit for a holder reached only
+    // through such a set, else the pass's).
+    private MirOutcome ReadTier(ulong state, MirOutcome at)
+        => this.sets.Contains(Placed(state), Undecided) || this.sets.Contains(Shared(state), Undecided) ? MirOutcome.Limit : at;
 
-    // A state found in a holder (-1: a transit value, a state of one part) by the pass at its read key's tier `at` (MirBorrows.CheckSets):
-    // its elements, in ascending order, at the read's tier.
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass at the read's tier `at` (ReadTier, never recomputed
+    // from what is scanned): its elements, in ascending order.
     private void Scan(ulong found, int via, MirOutcome at)
     {
-        this.tier = this.ReadTier(found, at);
+        this.tier = at;
         this.Work += this.Count(found);
         foreach (var element in this.ElementsOf(found))
         {
