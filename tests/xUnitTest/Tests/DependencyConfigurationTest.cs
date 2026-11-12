@@ -173,9 +173,9 @@ public class DependencyConfigurationTest
     }
 
     // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
-    // one Resource record at preparation, which still succeeds and publishes its one outcome, AnalyzesNoModule: the check reads no
-    // source, runs no phase and completes rejected (SPEC 23.2.2; Project.CheckFrontEnd), and its test presence is Unknown, since no
-    // source was parsed (SPEC 23.3).
+    // one Resource record at preparation, which still succeeds and publishes its one outcome, AnalyzesNoModule: the sources, which the
+    // resolver has read, are neither established nor parsed, no phase runs, the check completes rejected (SPEC 23.2.2;
+    // Project.CheckFrontEnd) and its test presence is Unknown, since no source was parsed (SPEC 23.3).
     [Theory]
     [InlineData(65_535, true)]
     [InlineData(65_536, false)]
