@@ -19145,6 +19145,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     formatting (`iterators-ir.txt` in the O2 folder), shrinking from 473 to 306 lines, so the loop sits at other addresses. O0: the
     corpus did not finish inside the slot. Compile cost: warm Bind B/A' at most 1.018; Generate on Strings 1.19 warm (the integer
     writes are generated from the library's specializations); warm 0 B; cold bytes +0.9% (Hello) to +1.4% (Strings).
+  - **The p5/p9 programs, S2b1.** A direct `value.format(writer)` on an abstract `I is PrimitiveInteger` inside a generic called
+    from a `confined` put is invalid by SPEC 8.11.3 rule 2 and 8.11.2's last row, as the implementation reports
+    (`IncompatibleContractImplementation_Kd` at `Self is Sink`; probes at S2c's CLI). Only O-182's proposal would make them valid;
+    its note may cite them.
+  - **S2d1's move (a), pinned by S2b1.** A dependent Holder verdict over an ill-formed `Wrapping<T>` is not reported, its formation
+    records are: `Utf8FormatBindingTest.AHolderOverAnIllFormedWrappingReportsOnlyItsFormation` (S2d1's implementation review I-N2).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
