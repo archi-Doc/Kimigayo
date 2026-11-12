@@ -56,7 +56,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (pattern.Origin is { } p && actual.Origin is { } a)
+        if (pattern.Origin is { } p && actual.Origin is { } a && !InactiveOuterOrigin(pattern, this, null, inference.Comparison))
         {
             Add(p, a, polarity);
         }

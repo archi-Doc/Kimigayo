@@ -400,7 +400,7 @@ internal readonly struct CallableInstance
     internal ComparisonPremises? Outer => this.outer;
 
     // SPEC 8.8.2: the scope the comparison is judged in when no syntax gives it, a conformance scope of D, P and the requirement's
-    // premises; null: the scope of the use it is made at.
+    // premises; null: the scope of the use it is made at (Binding.RelationScope).
     internal BindingScope? Scope { get; init; }
 
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.

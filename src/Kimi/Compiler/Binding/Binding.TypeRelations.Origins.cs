@@ -123,7 +123,7 @@ public sealed partial class Binding
         }
 
         binding ??= selector.Declaration.CodeContext.Compilation.Binding;
-        var scope = use is null ? selector.Scope : binding.ConstraintScope(use);
+        var scope = AdmittedScope(selector, binding.RelationScope(use, comparison));
         // An owner application preserves the target's borrow Origin, not the application's conditional slot.
         var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
             : binding.AdmittedSemantics(whole, scope);

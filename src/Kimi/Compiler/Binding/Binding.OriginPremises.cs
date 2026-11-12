@@ -439,7 +439,7 @@ public sealed partial class Binding
         if (TryPairLayer(type, out var whole, out var target))
         {
             if (target.StoresOrigin && this.OuterOrigin(type) is { } slot &&
-                (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0 &&
+                (this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, environment.Scope ??= this.RelationScope(environment.Use, environment.Comparison))) & SemanticsMask.Borrow) != 0 &&
                 this.PairSlotCondition(type, environment.Use, environment.Comparison) is { } condition)
             {
                 this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false, condition);
