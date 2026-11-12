@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // A5's values on a state (A3 5's val and issued, with E3; SPEC 15.6 Addresses, 5.2.2, 5.7): what an rvalue, an operand or a Place carries,
 // a root's state, and a borrow's parents and Loan, over the one step walk of MirSteps' steps (Prefix), which a store's destination also
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
-// carries what `@raw` of its storage carries (Layered), each formed by the untracked rule (MirBorrows.Addresses). Must not decide which
+// carries what `@raw` of its storage carries (Layered), each formed by the untracked rule (MirBorrows.Addresses); Κ where a raw pointer
+// is converted to another pointee Type (Converts) or read through one carrying Κ (Punned). Must not decide which
 // holders a set reaches or a call's store writes (MirBorrows.Reach).
 internal sealed partial class MirBorrows
 {

@@ -22,6 +22,7 @@ namespace Kimi.Compiler.Mir;
 // Φ_U apart (MirBorrows.Candidates), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject (R4-M153's
 // path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid row, or an
 // address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
+// W's converted route reads the call walk's step, Scan's (holder, key) pairs, as the callee's view (MirBorrows.Reach's ViewSteps).
 // The sites: a seen store writes the stored Place, typed where a raw Place from its last Deref to it is designated; a call, through
 // each input its contract may store through (TyCtxt.NoStore), every raw Place within the Types its input's layers lead to
 // (TyCtxt.OwnLayers at the input's root key), then, past each holder its entries name, within those the parameter's next layers lead

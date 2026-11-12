@@ -35,12 +35,14 @@
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581);
 // - the pun rule, its marker Δ and its undecided writes (Φ_M, Φ_U; a located Unsupported_Kd at the check that rests on one):
-//   MirBorrows.Puns, with its judgement over Types (MirBorrows.PunTypes) and its Place keys (MirBorrows.PunKeys; PLAN G667b, G667c).
+//   MirBorrows.Puns, with its judgement over Types (MirBorrows.PunTypes) and its Place keys (MirBorrows.PunKeys; PLAN G667b, G667c);
+// - the route marker Κ (a pointer converted to another pointee Type, or read through one: MirBorrows.Values) and W's converted route,
+//   the callee's view of what a store reaches (MirBorrows.Reach, over the pun rule's walk, MirBorrows.Puns' Scan; PLAN F2 unit A).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
 // (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
-// indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, Δ, the per-local markers of the role table, Marker, and rule W's indirect markers,
+// indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, Δ, Κ, the per-local markers of the role table, Marker, and rule W's indirect markers,
 // MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170); Φ_N is in
 // every state a store gives an exposed holder (MirBorrows.Loans' Exposed), its own Place's or through a reference or a call's W, and in
 // every call result, so the empty set is a value null on every path, A5's must-null fact (PLAN G598; MirBorrows.Calls' Keep). An

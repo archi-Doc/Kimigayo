@@ -6,7 +6,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147): the holders a set refers to (those its
 // direct Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes
-// (W, whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
+// (W, whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); W's two routes: the declared
+// one, which every holder W reaches takes (its guard, its Place's Type), and the converted one, added where a value carries Κ (the
+// callee's view keys, the pun rule's Scan pairs, records by the view Type; MirBorrows.Calls); its chain (SPEC 15.6.4's "what any
 // chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it, each holder read once per closure.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
@@ -530,6 +532,11 @@ internal sealed partial class MirBorrows
     private void StepViewed(int set, int key, bool scalar)
     {
         var unknown = key < 0 || this.punKeys[key].FirstUnknown;
+        if (!unknown && !this.LeadsOn(key))
+        {
+            return; // The view's None: no layer at `key` leads to a step (IsViewStep), so the callee writes nothing past the holder.
+        }
+
         var escaped = scalar || (this.sets.Contains(set, Escaped) && !this.Untracked(set));
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
@@ -681,6 +688,21 @@ internal sealed partial class MirBorrows
         this.viewNodes.Add((key, type, head >= 0 ? head : -1));
         this.writingView[slot] = this.viewNodes.Count - 1;
         return true;
+    }
+
+    // Whether a view key leads to a step: one of its Past keys is a step of the view (IsViewStep).
+    private bool LeadsOn(int key)
+    {
+        var facts = this.punKeys[key];
+        for (var j = 0; j < facts.FirstCount; j++)
+        {
+            if (this.IsViewStep(this.Key(this.punPastKeys[facts.PastStart + j]), this.punViewTypes[facts.FirstStart + j]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether a Past key is a step of the callee's view: its layers lead on, or its Type holds a Loan, which a store there may keep.
