@@ -56,6 +56,11 @@ internal sealed partial class MirBorrows
     // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (Parts).
     private static bool Whole(in Loan loan) => loan.Count == 0;
 
+    // The root local of the holder a direct Loan names, whose Type guards it (Guard) and whose exposure a store reads (MirBorrows.Flow);
+    // none (-1) for E: a static's direct Loan names E and keeps the static's key, past the locals, as its Root (MirBorrows.Holders).
+    // The one statement of it: Refs, FirstStep and Write record a target's root through it, so E takes no local's guard on any route.
+    private static int GuardRoot(in Loan loan) => loan.Named == Escaped ? -1 : loan.Root;
+
     // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
     // rule W's clause (Parts), a shared Loan's holder and E for a set without Φ_W read-only, each distinct Shared set once, joined by one
     // n-ary union (PartsUnion); memoized at the location.
@@ -240,7 +245,7 @@ internal sealed partial class MirBorrows
                 if (loan.Named >= 0)
                 {
                     this.targets.Add(loan.Named);
-                    this.targetRoots.Add(loan.Named == Escaped ? -1 : loan.Root);
+                    this.targetRoots.Add(GuardRoot(loan));
                 }
             }
         }
@@ -337,7 +342,7 @@ internal sealed partial class MirBorrows
                 direct = true;
                 if (loan is { Named: >= 0, Mode: not MirRefKind.Shared })
                 {
-                    this.Written(loan.Named, loan.Root, ViaRoot, null);
+                    this.Written(loan.Named, GuardRoot(loan), ViaRoot, null);
                 }
             }
         }
@@ -447,7 +452,7 @@ internal sealed partial class MirBorrows
                 this.loans[element - this.loanBase] is { Direct: true, Named: >= 0, Mode: not MirRefKind.Shared } loan)
             {
                 var place = via == ViaPast && loan.Named != Escaped ? this.PlaceType(loan) : null;
-                this.Written(loan.Named, loan.Named == Escaped ? -1 : loan.Root, via, place); // A static's names E.
+                this.Written(loan.Named, GuardRoot(loan), via, place);
             }
         }
     }
