@@ -19,6 +19,7 @@ public sealed partial class Binding
         this.storageVersion++;
         this.signatureWalks = 0;
         this.memberWalks = 0;
+        this.termWalks = 0;
         this.baseSteps = 0;
         this.inheritedSteps = 0;
         this.inheritedPremiseSteps = 0;
