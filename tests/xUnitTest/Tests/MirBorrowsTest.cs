@@ -2675,8 +2675,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         true)]
     [InlineData(
         "    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var cc: raw/u8 = null\n    var p: raw/(raw/u8) = cc@raw\n",
-        "    var w{0}: raw/u8 = null\n    var g{0}: (u64, raw/(raw/u8)) = (0, w{0}@raw)\n    let t{0} = g{0}@raw@raw/u16\n    unsafe => *t{0} = 7\n" +
-        "    let gp{0} = g{0}.1\n    var a{0}: raw/u8 = null\n    unsafe => a{0} = *gp{0}\n    if flag\n        p = a{0}@raw\n    unsafe => *p = spare\n",
+        "    var w{0}: raw/u8 = null\n    var g{0}: (u64, raw/(raw/u8)) = (0, w{0}@raw)\n    let t{0} = g{0}@raw@raw/u16\n    unsafe => *t{0} = 7\n    let gp{0} = g{0}.1\n    var a{0}: raw/u8 = null\n    unsafe => a{0} = *gp{0}\n    if flag\n        p = a{0}@raw\n    unsafe => *p = spare\n",
         "    inspect(a{0}@ref)\n    inspect(cc@ref)\n",
         true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
