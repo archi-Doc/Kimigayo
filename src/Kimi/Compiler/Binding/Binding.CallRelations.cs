@@ -170,24 +170,15 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring
-    // Type's stored slots, then the callee's own Origins and inputs, as many as the call gives.
+    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the callee's
+    // own Origins and inputs, as many as the call gives, and the declaring Type's stored slots, in one pass (Binding.CallSubstitution).
     private BoundOrigin SubstituteClauseOrigin(
         BoundOrigin origin,
         FunctionKoto selected,
         ReadOnlySpan<BoundOrigin> origins,
         ReadOnlySpan<BoundOrigin> inputs,
         BoundType? declaringType)
-    {
-        if (declaringType?.Symbol is { } owner)
-        {
-            origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-        }
-
-        var binder = selected.OriginBinder;
-        var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
-        return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
-    }
+        => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
     // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
