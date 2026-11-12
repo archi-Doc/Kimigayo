@@ -17,6 +17,12 @@ public class FixedArrayEntryTest
         "let none: [0 of string] = []\nfor s in none => count += 10\n" +
         "require total == 6 and count == 3 else => $abort(\"shapes\")\nConsole.writeLine(\"ok\")";
 
+    private const string RefRef = "group H\n    public func sum(rr: ref/(ref/[3 of i32] during c)) -> i32\n        var total = 0\n        for v in rr => total += v\n        return total\nlet a: [3 of i32] = [1, 2, 3]\nlet r = a@ref\nrequire H.sum(r@ref) == 6 else => $abort(\"sum\")\nConsole.writeLine(\"ok\")";
+    private const string RefUniq = "group H\n    public func sum(ru: ref/(uniq/[3 of i32] during c)) -> i32\n        var total = 0\n        for v in ru => total += v\n        return total\nvar a: [3 of i32] = [1, 2, 3]\nlet u = a@uniq\nrequire H.sum(u@ref) == 6 else => $abort(\"sum\")\nConsole.writeLine(\"ok\")";
+    private const string RefRefWrite = "var a: [3 of i32] = [1, 2, 3]\nlet r = a@ref\nlet rr = r@ref\nvar total = 0\nfor v in rr\n    a[0] = 9\n    total += v\nConsole.writeLine(\"ok\")";
+    private const string RefUniqFollow = "group H\n    public func bump(ru: ref/(uniq/[3 of i32] during c))\n        for v in ru => v@follow += 1\nvar a: [3 of i32] = [1, 2, 3]\nlet u = a@uniq\nH.bump(u@ref)\nConsole.writeLine(\"ok\")";
+    private const string UniqUniq = "group H\n    public func bump(uu: uniq/(uniq/[3 of i32] during c))\n        for v in uu => v@follow += 1\nvar a: [3 of i32] = [1, 2, 3]\nvar u = a@uniq\nH.bump(u@uniq)\nrequire a[0] == 2 else => $abort(\"bump\")\nConsole.writeLine(\"ok\")";
+
     [Fact]
     public void ExplicitSharedEntryLendsEachElement()
         => ScalarEmissionTest.EmitFixture(
@@ -30,6 +36,32 @@ public class FixedArrayEntryTest
             "FixedArrayEntryLoops",
             "var values: [3 of i32] = [1, 2, 3]\nvar total = 0\nfor v in values => total += v\nfor v in values@uniq => v@follow *= 2\nlet view = values@ref\nfor v in view => total += v\nrequire total == 18 and values[1] == 4 else => $abort(\"loops\")\nConsole.writeLine(\"ok\")",
             "ok\n");
+
+    // SPEC 14.6.2, 3.4.3 (PLAN G776-b commit 1): a Subject reaching a fixed array through two safe-reference layers takes the built-in
+    // entry, as an Array's does; while the entry was a member call by name it was NoApplicableOverload_Kd at the loop.
+    [Theory]
+    [InlineData("ref", RefRef)]
+    [InlineData("uniq", RefUniq)]
+    public void ASubjectThroughTwoReferenceLayersTakesTheBuiltInEntry(string name, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Accepts, $"{name}: {MinimalEmissionTest.Describe(c)}");
+    }
+
+    // The invalid twins keep their own records (SPEC 14.6.2's Loans, 3.4.3's shared path): a write while the Subject is lent, a write
+    // through a shared item.
+    [Theory]
+    [InlineData(RefRefWrite, DiagnosticCode.ComparisonLoanConflict_Kd, "a[0] = 9")]
+    [InlineData(RefUniqFollow, DiagnosticCode.SharedPathAccess_Kd, "v@follow += 1")]
+    public void ATwoLayerSubjectKeepsItsTwinsRecords(string source, DiagnosticCode code, string at)
+        => MirTargetSide.Check(MinimalEmissionTest.Analyze(source), (code, new SyntaxLocation(at)));
+
+    // A defect pin, not a rule: an exclusive Subject through `uniq/(uniq/...)` is valid (SPEC 14.6.2, 3.4.3) but stays
+    // NoApplicableOverload_Kd at the loop, for fixed arrays and Arrays alike. Removal condition: PLAN G179 (selection through reference
+    // layers) accepts the form and re-points this row to its run.
+    [Fact]
+    public void AnExclusiveSubjectThroughTwoExclusiveLayersIsStillRejected()
+        => MirTargetSide.Check(MinimalEmissionTest.Analyze(UniqUniq), (DiagnosticCode.NoApplicableOverload_Kd, new SyntaxLocation("for v in uu => v@follow += 1")));
 
     // Dispatch through `C.IteratorType` reaches the iterator's `next` only through the entry's result Type, for a fixed
     // array and for a declared collection alike.
