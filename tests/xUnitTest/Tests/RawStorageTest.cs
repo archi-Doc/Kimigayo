@@ -277,7 +277,7 @@ public class RawStorageTest
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (null, 1))", "UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "let w = b.arr@(uniq/[2 of raw/u8])", "UnsatisfiedOriginRelation_Kd: b.arr@(uniq/[2 of raw/u8])")]
     [InlineData("()", "var s = b.arr.sliceUniq()\n    s[0] = fresh", "UnsatisfiedOriginRelation_Kd: b.arr")]
-    [InlineData("()", "let s = b.arr.iterateUniq()", "UnsatisfiedOriginRelation_Kd: b.arr")]
+    [InlineData("()", "for _ in b.arr@uniq => _ = 0", "UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "MovedPlace_Kd: var b = Block.init() | MovedPlace_Kd: b.data = fresh | UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)

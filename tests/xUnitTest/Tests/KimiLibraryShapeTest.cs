@@ -20,14 +20,18 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
+    // PLAN G776-b (the owner's O-194 (a): a built-in conformance adds no member): the receiver groups no witness-table row names, the
+    // fixed array's member group (SPEC 22.1).
+    private static readonly WitnessMembers[] ReceiverOnlyGroups = [WitnessMembers.FixedArray];
+
     // R8-S1 C1: what a witness group declares for each Contract it serves: the Contract's own requirement by name, with the group's `self`.
     private static readonly (WitnessMembers Group, KimiDeclarationId Contract, string Header)[] WitnessRequirements =
     [
-        (WitnessMembers.FixedArray, KimiDeclarationId.Iterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.Iterable,
             "public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source"),
-        (WitnessMembers.FixedArray, KimiDeclarationId.UniqIterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.UniqIterable,
             "public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source"),
-        (WitnessMembers.FixedArray, KimiDeclarationId.IntoIterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.IntoIterable,
             "public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>"),
         (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
         (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
@@ -373,7 +377,8 @@ public partial class KimiLibraryShapeTest
 
     // SPEC 4.9.6, 4.8 (DECISIONS BU-42): CallRetention.ReferentStores takes a 4.6 to 4.8 view's referent as its own handle, sound only
     // while no 4.6 to 4.8 operation writes an element through a view. The 4.6 to 4.8 operations the fact covers (a library function with
-    // a referent store, not a member of Array, Dictionary or the fixed array) are exactly these, each lending or advancing its receiver,
+    // a referent store, not a member of Array or Dictionary, nor of the fixed array's two groups) are exactly these, each lending or
+    // advancing its receiver,
     // and none retains another input in its receiver's storage, so an operation that would store a value through a view, or a parameter
     // added to one of these, fails here first.
     [Fact]
@@ -385,7 +390,7 @@ public partial class KimiLibraryShapeTest
         {
             var symbol = function.SymbolOf()!;
             var retention = c.Types.Retains(symbol, null, null);
-            if (retention.ReferentStores.IsEmpty || ReferenceEquals(function.Parent, c.Library.FixedArrayMembers) ||
+            if (retention.ReferentStores.IsEmpty || (function.Parent is { } parent && c.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
                 function.Parent?.SymbolOf()?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
             {
                 continue;
@@ -640,12 +645,19 @@ public partial class KimiLibraryShapeTest
     }
 
     // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows. The signature is the first
-    // line before an expression body's `=>` (STYLE: a short single-item body).
+    // line before an expression body's `=>` (STYLE: a short single-item body). The row groups are every group but the receiver-only
+    // ones, and no row names a receiver-only group (PLAN G776-b).
     [Fact]
     public void EachWitnessGroupDeclaresItsContractsRequirements()
     {
         var library = Library.Value.Library;
-        Assert.Equal(Enum.GetValues<WitnessMembers>(), WitnessRequirements.Select(static x => x.Group).Distinct());
+        Assert.Equal(Enum.GetValues<WitnessMembers>().Except(ReceiverOnlyGroups), WitnessRequirements.Select(static x => x.Group).Distinct());
+        var fixedArray = Library.Value.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], 2);
+        foreach (var self in BoundType.Primitives.Values.Concat([fixedArray, BoundType.String, BoundType.Boolean, BoundType.Unit]))
+        {
+            Assert.All(Enum.GetValues<KimiDeclarationId>(), x => Assert.False(Binding.WitnessGroup(self, x) is { } row && ReceiverOnlyGroups.Contains(row.Members)));
+        }
+
         foreach (var (group, contract, header) in WitnessRequirements)
         {
             var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;

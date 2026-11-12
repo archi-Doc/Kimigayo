@@ -1338,7 +1338,7 @@ public sealed partial class RetentionTest
     [InlineData("var r = (0..2).resolve(5)\nlet it = r.iterateUniq()\n", "iterateUniq", "referent store 0")]
     [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
-        "var f: [2 of raw/u8] = [null, null]\nlet it = f.iterateUniq()\n",
+        "var f: [2 of raw/u8] = [null, null]\nfor _ in f@uniq => _ = 0\n",
         "iterateUniq",
         "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
@@ -1714,9 +1714,9 @@ public sealed partial class RetentionTest
         return null;
     }
 
-    // Each call of a named callee under its substitution, in its definition, in source order.
+    // Each call of a named callee under its substitution, in its definition, in source order; a loop's entry is its call (SPEC 14.6.2).
     private static string[] Calls(Compilation c, string name)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: x.CallOf())).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
             .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray();
 
     // Each Value call over its declared Callable signature, in its definition, in source order.

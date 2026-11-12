@@ -5,14 +5,20 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1, 22.2.1 (PLAN G32): a fixed array has no source declaration; its entry members are the receiver
-/// functions of the internal Kimi fixed-array group, found by member lookup on any `[N of E]`.</summary>
+/// <summary>SPEC 22.1, 22.2.1, 14.6.2 (PLAN G32, G776): a fixed array has no source declaration; its iteration entries are built-in
+/// conformances whose witnesses are no members, reached by `for` and through a Constraint on any `[N of E]`.</summary>
 public class FixedArrayEntryTest
 {
+    // SPEC 8.6.4, 22.1 (PLAN G776-b): a test that holds an explicit iterator value starts it through a Constraint, as generic code does.
+    internal const string Entries =
+        "group E\n    public func entry<C>(c: ref/C during s) -> C.(Iterable).IteratorType(s)\n        C is Iterable\n        return c.iterate()\n" +
+        "    public func entryUniq<C>(c: uniq/C during s) -> C.(UniqIterable).IteratorType(s)\n        C is UniqIterable\n        return c.iterateUniq()\n" +
+        "    public func into<C>(c: C) -> C.(IntoIterable).IteratorType\n        C is IntoIterable\n        return c@move.intoIterator()\n";
+
     private const string Token = "struct Token\n    public let name: string\n    public init(name: string) => self.name = name@move\n    drop => Console.writeLine(self.name)\n";
 
-    private const string Shapes =
-        "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = values.intoIterator()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\n" +
+    private const string Shapes = Entries +
+        "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = E.into(values@move)\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\n" +
         "let units: [3 of ()] = [(), (), ()]\nvar count = 0\nfor unit in units => count += 1\n" +
         "let none: [0 of string] = []\nfor s in none => count += 10\n" +
         "require total == 6 and count == 3 else => $abort(\"shapes\")\nConsole.writeLine(\"ok\")";
@@ -27,7 +33,7 @@ public class FixedArrayEntryTest
     public void ExplicitSharedEntryLendsEachElement()
         => ScalarEmissionTest.EmitFixture(
             "FixedArrayEntryShared",
-            "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = values.iterate()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nrequire total == 6 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")",
+            Entries + "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = E.entry(values)\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nrequire total == 6 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
     [Fact]
@@ -86,11 +92,22 @@ public class FixedArrayEntryTest
     [InlineData("let it = Kimi.Storage.FixedArray.iterate(values)")]
     [InlineData("let it = ::Kimi.Storage.FixedArray.iterate(values)")]
     [InlineData("let n: i32 = 1\nlet it = n.iterate()")]
+    [InlineData("let it = Kimi.Storage.FixedArrayEntries.iterate(values)")]
     public void TheMemberGroupIsReachableOnlyThroughAFixedArray(string use)
     {
         var c = MinimalEmissionTest.Analyze("let values: [2 of i32] = [1, 2]\n" + use);
         Assert.False(c.Binding.Result.IsComplete);
     }
+
+    // SPEC 22.1, 9.6 (PLAN G776-b; the owner's O-194 (a)): a fixed array's entries are built-in conformances, which add no member, so a
+    // written entry call names nothing, as `a.index(k)` does; its 22.1 members and a Slice's declared entry stay.
+    [Theory]
+    [InlineData("    let a: [2 of i32] = [1, 2]\n    var it = a.iterate()\n    _ = it.next()", "UnresolvedBinding_Kd: a.iterate")]
+    [InlineData("    var a: [2 of i32] = [1, 2]\n    var it = a.iterateUniq()\n    _ = it.next()", "UnresolvedBinding_Kd: a.iterateUniq")]
+    [InlineData("    let a: [2 of i32] = [1, 2]\n    var it = a@move.intoIterator()\n    _ = it.next()", "UnresolvedBinding_Kd: a@move.intoIterator")]
+    [InlineData("    let a: [2 of i32] = [1, 2]\n    var it = a[..].iterate()\n    _ = it.next()\n    require a.length == 2 and a.slice().length == 2 else => $abort(\"len\")", "")]
+    public void AnEntryIsNoMemberOfAFixedArray(string body, string records)
+        => Assert.Equal(records, string.Join(" | ", RawPointerSyntaxTest.Records("func f()\n" + body)));
 
     // PLAN G33: an owning loop moves each element out of the remainder's inline storage in order; the loop binding is
     // destroyed at the end of its iteration.
@@ -131,20 +148,20 @@ public class FixedArrayEntryTest
     public void ExplicitExclusiveEntryUpdatesEachElement()
         => ScalarEmissionTest.EmitFixture(
             "FixedArrayEntryExclusive",
-            "var values: [3 of i32] = [1, 2, 3]\nvar it = values.iterateUniq()\nloop\n    match it.next()\n        .Some(let v) => v@follow += 10\n        .None => exit\nrequire values[0] == 11 and values[2] == 13 else => $abort(\"exclusive\")\nConsole.writeLine(\"ok\")",
+            Entries + "var values: [3 of i32] = [1, 2, 3]\nvar it = E.entryUniq(values@uniq)\nloop\n    match it.next()\n        .Some(let v) => v@follow += 10\n        .None => exit\nrequire values[0] == 11 and values[2] == 13 else => $abort(\"exclusive\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
     // SPEC 8.5.2, 8.5.4, 22.1 (PLAN G578): a fixed array's projection in a declaration position names its entry witness's result, as a
     // body's `let` does, and an applied family proves its formation conditions at a fixed-array subject. Each crashed or was rejected.
     [Theory]
-    [InlineData("result", "group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\n        return a.iterate()\nlet a: [2 of i32] = [1, 2]\nvar it = H.f(a)\n_ = it.next()")]
-    [InlineData("exclusive", "group H\n    public func f(a: uniq/[2 of i32] during s) -> [2 of i32].(UniqIterable).IteratorType(s)\n        return a.iterateUniq()\nvar a: [2 of i32] = [1, 2]\nvar it = H.f(a@uniq)\n_ = it.next()")]
-    [InlineData("owning", "group H\n    public func f() -> [2 of i32].(IntoIterable).IteratorType\n        let a: [2 of i32] = [1, 2]\n        return a.intoIterator()\n_ = H.f()")]
-    [InlineData("owningParameter", "group H\n    public func g(x: [2 of i32].(IntoIterable).IteratorType) -> i32\n        _ = x@move\n        return 1\nlet a: [2 of i32] = [1, 2]\n_ = H.g(a.intoIterator())")]
-    [InlineData("parameter", "group H\n    public func g(a: ref/[2 of i32] during s, x: [2 of i32].(Iterable).IteratorType(s)) -> i32\n        _ = x@move\n        return 1\nlet a: [2 of i32] = [1, 2]\n_ = H.g(a, a.iterate())")]
-    [InlineData("generic", "group H\n    public func f<E, length N>(a: ref/[N of E] during s) -> [N of E].(Iterable).IteratorType(s)\n        return a.iterate()\nlet a: [2 of i32] = [1, 2]\nvar it = H.f(a)\n_ = it.next()")]
-    [InlineData("field", "struct W\n    public let it: [2 of i32].(IntoIterable).IteratorType\n    public init(it: [2 of i32].(IntoIterable).IteratorType) => self.it = it@move\nlet a: [2 of i32] = [1, 2]\nlet w = W.init(a.intoIterator())\n_ = w@move")]
-    [InlineData("requirement", "contract K\n    func get(self: ref/Self, a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\nvar a: [2 of i32] = [1, 2]\nvar it = a.iterate()\n_ = it.next()\na[0] = 5")]
+    [InlineData("result", Entries + "group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\n        return E.entry(a)\nlet a: [2 of i32] = [1, 2]\nvar it = H.f(a)\n_ = it.next()")]
+    [InlineData("exclusive", Entries + "group H\n    public func f(a: uniq/[2 of i32] during s) -> [2 of i32].(UniqIterable).IteratorType(s)\n        return E.entryUniq(a)\nvar a: [2 of i32] = [1, 2]\nvar it = H.f(a@uniq)\n_ = it.next()")]
+    [InlineData("owning", Entries + "group H\n    public func f() -> [2 of i32].(IntoIterable).IteratorType\n        let a: [2 of i32] = [1, 2]\n        return E.into(a@move)\n_ = H.f()")]
+    [InlineData("owningParameter", Entries + "group H\n    public func g(x: [2 of i32].(IntoIterable).IteratorType) -> i32\n        _ = x@move\n        return 1\nlet a: [2 of i32] = [1, 2]\n_ = H.g(E.into(a@move))")]
+    [InlineData("parameter", Entries + "group H\n    public func g(a: ref/[2 of i32] during s, x: [2 of i32].(Iterable).IteratorType(s)) -> i32\n        _ = x@move\n        return 1\nlet a: [2 of i32] = [1, 2]\n_ = H.g(a, E.entry(a))")]
+    [InlineData("generic", Entries + "group H\n    public func f<T, length N>(a: ref/[N of T] during s) -> [N of T].(Iterable).IteratorType(s)\n        return E.entry(a)\nlet a: [2 of i32] = [1, 2]\nvar it = H.f(a)\n_ = it.next()")]
+    [InlineData("field", Entries + "struct W\n    public let it: [2 of i32].(IntoIterable).IteratorType\n    public init(it: [2 of i32].(IntoIterable).IteratorType) => self.it = it@move\nlet a: [2 of i32] = [1, 2]\nlet w = W.init(E.into(a@move))\n_ = w@move")]
+    [InlineData("requirement", Entries + "contract K\n    func get(self: ref/Self, a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\nvar a: [2 of i32] = [1, 2]\nvar it = E.entry(a)\n_ = it.next()\na[0] = 5")]
     [InlineData("formation", "group H\n    public func f(x: ref/i32 during a, y: ref/i32 during b) -> [2 of ref/i32 during b].(Iterable).IteratorType(a)\n        origin b outlives a\n        $abort(\"unused\")\nConsole.writeLine(\"ok\")")]
     public void DeclarationPositionsNameTheEntryIteratorType(string name, string source)
     {
@@ -155,7 +172,7 @@ public class FixedArrayEntryTest
     // The invalid counterparts: a header iterator Type of another element rejects the entry's result, and the formation's Origin
     // condition is required at a fixed-array subject (SPEC 8.5.4).
     [Theory]
-    [InlineData(DiagnosticCode.NoApplicableOverload_Kd, "group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i64].(Iterable).IteratorType(s)\n        return a.iterate()\nConsole.writeLine(\"ok\")")]
+    [InlineData(DiagnosticCode.NoApplicableOverload_Kd, Entries + "group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i64].(Iterable).IteratorType(s)\n        return E.entry(a)\nConsole.writeLine(\"ok\")")]
     [InlineData(DiagnosticCode.InvalidOriginBinding_Kd, "group H\n    public func f(x: ref/i32 during a, y: ref/i32 during b) -> [2 of ref/i32 during b].(Iterable).IteratorType(a)\n        $abort(\"unused\")\nConsole.writeLine(\"ok\")")]
     public void DeclarationPositionsRejectWhatTheEntryTypeRejects(DiagnosticCode code, string source)
     {
@@ -167,7 +184,7 @@ public class FixedArrayEntryTest
     [Fact]
     public void AHeaderIteratorKeepsItsSourceLoan()
     {
-        var c = MinimalEmissionTest.Analyze("group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\n        return a.iterate()\nvar a: [2 of i32] = [1, 2]\nvar it = H.f(a)\na[0] = 5\n_ = it.next()");
+        var c = MinimalEmissionTest.Analyze(Entries + "group H\n    public func f(a: ref/[2 of i32] during s) -> [2 of i32].(Iterable).IteratorType(s)\n        return E.entry(a)\nvar a: [2 of i32] = [1, 2]\nvar it = H.f(a)\na[0] = 5\n_ = it.next()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new SyntaxLocation("a[0] = 5")));
     }

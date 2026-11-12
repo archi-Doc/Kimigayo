@@ -338,19 +338,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
 
     // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
-    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not. A fixed array's owning
+    // iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
-    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("i32", "Array<i32> = []", "")]
-    [InlineData("i32", "[1 of i32] = [1]", "")]
-    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "let it = a@move.intoIterator()", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "for _ in a@move => exit", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string entry, string expected)
     {
         _ = element;
         Assert.Equal(
             Expected(expected),
             Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
-                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        {entry}\n        return 0\n"));
     }
 
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
