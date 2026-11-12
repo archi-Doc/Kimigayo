@@ -461,6 +461,18 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
+        // IMPL 21.3.2: a Compilation over the module count has no source module, so no source is read and no phase runs; its check
+        // completes (SPEC 23.2.2), rejected by the Resource Error its preparation recorded.
+        if (compilation.SourceModules.Length == 0)
+        {
+            if (context is not null)
+            {
+                context.Compilation = compilation;
+            }
+
+            return false;
+        }
+
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
 
         // SPEC 23.2.2: every file input is read before parsing, and the reads are consumed in

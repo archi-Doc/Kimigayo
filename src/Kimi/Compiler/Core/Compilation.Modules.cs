@@ -123,6 +123,14 @@ public partial class Compilation
             failed = true;
         }
 
+        // IMPL A.4, 21.3.2: a module's ordinal is below SyntaxTable.LibraryModule, so a graph of more modules is refused here, before
+        // any ordinal is narrowed: one Resource record at the root project file, and the Compilation has no source module to analyze.
+        if (modules.Length > SyntaxTable.LibraryModule)
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ModuleCountLimit_Kd, this.Project.FilePath, (long)modules.Length, (long)SyntaxTable.LibraryModule);
+            modules = [];
+        }
+
         if (failed)
         {
             return false;
