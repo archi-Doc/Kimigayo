@@ -278,13 +278,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(e)
                 """));
 
-    // SPEC 4.8.4, 5.6, 15.6 (PLAN F2's cause 2; DECISIONS R4-M40): `x[r]` is `x.slice(r)`, a Slice during the shared borrow of an array
+    // SPEC 4.8.4, 5.6, 15.6 (DECISIONS R4-M40, R4-M63's amendment): `x[r]` is `x.slice(r)`, a Slice during the shared borrow of an array
     // or during a Slice's source, so a range selection's Slice reaches what its backing reaches and no storage the body does not own of
     // its own; a written `Raw.slice`, whose result Origin is a fresh anchor tied to no argument, reaches it, and so does a Slice of a
     // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
     // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
     // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
-    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120: F2's cause 1).
+    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
     [Fact]
     public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
         => Assert.Equal(
