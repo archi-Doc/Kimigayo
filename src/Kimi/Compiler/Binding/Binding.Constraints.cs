@@ -163,7 +163,7 @@ public sealed partial class Binding
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (this.SameCompleteType(proposition.Subject!, proposition.RequiredType!))
+            if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
             {
                 return ConstraintProof.Proven;
             }

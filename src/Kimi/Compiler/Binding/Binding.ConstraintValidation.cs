@@ -216,6 +216,7 @@ public sealed partial class Binding
                 continue;
             }
 
+            changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
             foreach (var fact in environment.Facts)
             {
                 // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
