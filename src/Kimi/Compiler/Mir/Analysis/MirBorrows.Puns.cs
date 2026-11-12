@@ -81,7 +81,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
+        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
         for (var i = 0; i < count; i++)
         {
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;

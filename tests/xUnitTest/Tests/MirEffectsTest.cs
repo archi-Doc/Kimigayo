@@ -651,24 +651,38 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
     }
 
-    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
+    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64
+    // the IntegerFormat body at i64, whose comparison and conversions on its I are built-in operators, no calls; each leaf write reaches
     // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
-    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
+    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer (pins: the
+    // i64 rows pass through builtinFormat before R8-S2b1).
     [Theory]
     // A growing writer, Text.heap(0): allocation permitted (SPEC 8.11.2), nothing reported.
-    [InlineData("        var buffer = Text.heap(0)\n")]
-    // A fixed buffer of 3 bytes, which the reserve of 4 fails with BufferFull (SPEC 22.9.4): nothing reported.
-    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n")]
-    public void AConfinedLeafWriteReportsNothing(string buffer)
-        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
+    [InlineData("        var buffer = Text.heap(0)\n", "true")]
+    // A fixed buffer of 3 bytes, which the reserve of 4 (6) fails with BufferFull (SPEC 22.9.4): nothing reported.
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "true")]
+    [InlineData("        var buffer = Text.heap(0)\n", "-12345@i64")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "-12345@i64")]
+    public void AConfinedLeafWriteReportsNothing(string buffer, string value)
+        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + $"        var writer = Text.writer(buffer@uniq)\n        _ = writer.write({value})\n        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
-    // for bool, char and Unit (R8-S2a), for f32 and f64 (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's
-    // Allocation and Abort are permitted under confined, SPEC 8.11.2, so no record) and for string and Wrapping<i32> (R8-S2d1), the view's
-    // declared one (R8-S2d1; the view of a local string, since a temporary's ends with its statement, SPEC 3.6), Shown's printing one,
-    // also in an interpolation (fail-before: the earlier rows, a limit; R8-S2d1's rows pass before too, through builtinFormat).
+    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers up
+    // to 64 bits (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is
+    // the same at every instance; pins, which pass through builtinFormat before it), for bool, char and Unit (R8-S2a), for f32 and f64
+    // (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's Allocation and Abort are permitted under confined, SPEC 8.11.2,
+    // so no record) and for string and Wrapping<i32> (R8-S2d1), the view's declared one (R8-S2d1; the view of a local string, since a
+    // temporary's ends with its statement, SPEC 3.6), Shown's printing one, also in an interpolation (fail-before: the earlier rows, a
+    // limit; R8-S2d1's and R8-S2b1's rows pass before too, through builtinFormat).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
+    [InlineData("        _ = Text.toString(7@u8)\n", "")]
+    [InlineData("        let small = 9@u8\n        _ = \"\\(small)\"\n", "")]
+    [InlineData("        _ = Text.toString(-5@i64)\n", "")]
+    [InlineData("        let long = value@i64\n        _ = \"\\(long)\"\n", "")]
+    [InlineData("        _ = Text.toString(-3@isize)\n", "")]
+    [InlineData("        let index = value@isize\n        _ = \"\\(index)\"\n", "")]
+    [InlineData("        _ = Text.toString(9@usize)\n", "")]
+    [InlineData("        let size = 9@usize\n        _ = \"\\(size)\"\n", "")]
     [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
     [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
     [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]
