@@ -344,7 +344,6 @@ public group Text
 
     public struct Utf8Slice {source}
         Self is Copy
-        Self is Utf8Format
         let value: Slice<u8> during source
 
         /// Views `value`, bytes the caller guarantees are valid UTF-8 (SPEC 22.9.3); nothing checks them.
@@ -353,11 +352,6 @@ public group Text
             get() -> isize => self.value.length
         public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value
-
-        /// Writes the view's bytes once through the writer's leaf (SPEC 22.10.2): one exact reservation, none when
-        /// empty. Its catalog row's CallerLocation passes the user's location to the leaf (SPEC 22.5.1, until G1).
-        public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
-            return writer.writeUtf8(self@follow)
 
     /// A buffer over the initialized array: length zero, capacity `N` (SPEC 22.9.2).
     public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
@@ -466,10 +460,9 @@ public group Console
             Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
             Console.writeStdout(feed@raw, 1)
 
-// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's, Wrapping<T>'s and the integers' built-in
-// conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format,
-// WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi), the view's
-// its own member (above).
+// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, the view's, f32's, f64's, Wrapping<T>'s and the integers' built-in
+// conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, Utf8SliceFormat, F32Format,
+// F64Format, WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
 // catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
 internal group BoolFormat
@@ -508,6 +501,11 @@ internal group CharFormat
 
 internal group UnitFormat
     func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.writeUtf8(Text.utf8("()"))
+
+internal group Utf8SliceFormat
+    /// Writes the view's bytes: one exact reservation, none when empty.
+    func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return writer.writeUtf8(self@follow)
 
 internal group F32Format
     /// Writes the shortest round-trip text of the binary32 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)

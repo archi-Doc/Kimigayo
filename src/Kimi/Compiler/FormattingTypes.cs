@@ -17,7 +17,7 @@ internal static class FormattingTypes
     /// <summary>Gets whether the compiler states a Type's Utf8Format conformance, which no declaration states: the scalars, Unit and
     /// string. Each is a witness table row (the integers since R8-S2b1 and R8-S2b2), which this proof still answers first (DECISIONS
     /// R8-M30, temporary 2), until R8-S2d2 deletes this meaning.
-    /// Utf8Slice declares its conformance, so it is not one (R8-S2d1).</summary>
+    /// The view's (Text.Utf8Slice) is a witness table row alone, which this proof does not answer.</summary>
     /// <param name="type">A Type.</param>
     /// <returns>Whether the built-in conformance answers it.</returns>
     internal static bool IsBuiltin(BoundType type) => type.Semantics == SemanticsKind.Owner &&

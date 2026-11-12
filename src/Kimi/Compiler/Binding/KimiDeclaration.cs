@@ -75,7 +75,7 @@ public enum KimiDeclarationId : byte
     F32FormatFormat,
     F64FormatFormat,
     StringWitnessFormat,
-    Utf8SliceFormat,
+    Utf8SliceFormatFormat,
     WrappingFormatFormat,
     IntegerFormatFormat,
     ObjectPayload,

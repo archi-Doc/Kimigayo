@@ -325,9 +325,9 @@ public sealed partial class FunctionCodegenTest
         Assert.EndsWith($", ptr @, i64 {Located(Source, "\"n=")})", call.Shape, StringComparison.Ordinal);
     }
 
-    // SPEC 22.5.1, 22.10.2, 8.13.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's and an
-    // integer's format witnesses are the witness table's bodies, i128's and u128's IntegerFormat's specializations, which keep its
-    // CallerLocation (TyCtxt.Original), and the view's its declared member, each with a CallerLocation row, so the write instance forwards
+    // SPEC 22.5.1, 22.10.2, 8.13.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's, a view's
+    // and an integer's format witnesses are the witness table's bodies, i128's and u128's IntegerFormat's specializations, which keep its
+    // CallerLocation (TyCtxt.Original), each with a CallerLocation row, so the write instance forwards
     // the location it received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose
     // reservation Aborts there (fail-before: no body instance; without the rows, or a specialization's original, no location pair).
     [Theory]
