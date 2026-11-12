@@ -19127,6 +19127,61 @@ R8-M* and R9-M* by the stage of the recording unit.
     run-time-length memcpy. No validation and no second reserve on either side; B's IR with only the leaf marked `alwaysinline`
     gives the constant store back. Removal condition: PLAN G779's unit lands with Interpolation within A=A (its mechanism, per the
     owner-reported O-196: `noinline` on the slow path `Utf8Writer.reserve` rather than `alwaysinline` on the leaf).
+  - **Owner, S2b1.** Every concrete integer Type of at most 64 bits (i8 to i64, u8 to u64, isize, usize) has its Utf8Format through
+    a generic table row `IntegerFormat` (`{ IsInteger: true, Semantics: Owner, Width: <= 64 }`, argument the Type itself), body
+    `IntegerFormat.format<I>` in `Formatting.kimi`. The body writes the ASCII decimal digits into a local `[20 of u8]` from the end,
+    the `-` of a negative value before them, then one `writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))`: one exact
+    reservation (SPEC 22.10.1, 22.10.5). It has a `SourceFunction, CallerLocation` catalog row (SPEC 22.5.1, until G1). No producer
+    kind: the digits are Kimigayo, so no runtime routine is called (RP9, PLAN10 §5.8 keep only `formatFloat` and
+    `formatInteger128`).
+  - **The abstract case stays the premise at S2b1.** A bare `I is PrimitiveInteger` has no Type shape a scope-free arm can key on,
+    and its PrimitiveInteger proof depends on the scope, so SPEC 8.7.4's premise (`Binding.Contracts.cs:437`) keeps proving its
+    Utf8Format, as for Position. (Unlike `Wrapping<T>`, whose construction has a shape: R8-S2d1.)
+  - **The constraint on a table body, S2b1.** A witness-table body makes no requirement call on its own abstract parameter that its
+    premises give no `confined` bound. SPEC 15.6.4 computes a summary once per declaration, in terms of its own Type parameters, so
+    such a call's unknown environment effect (SPEC 8.11.3 rule 2) reaches every instance and turns a valid concrete use under
+    `confined` into a conflict (S2d1's e1). A table body writes through a published row (`writer.write`, R4-M28) or uses SPEC
+    8.7.4's built-in operators and conversions. IntegerFormat's comparison on `I` is completed as a built-in operator
+    (`Binding.Comparisons.cs:92-94`), a MIR `Binary` rvalue, and its conversions `value@i64`/`value@u64` are `Cast` rvalues: its
+    summary's only atom, `Drop(I)`, resolves to nothing at every instance (an integer has no destructor), and its MIR reads and
+    writes no static, so the summary is the same at every instance (Abort from its checks; the leaf's Allocation).
+  - **Temporary 7, S2b1 (new).** The IntegerFormat row's width condition (`Width: <= 64`): i128 and u128 still take `builtinFormat`
+    (the narrowing, temporary 1, now holds only them). Removed at R8-S2b2, which adds `specialize format<i128>`/`<u128>` over
+    `formatInteger128` (O-177's producer) and drops the condition. Without it, i128 would reach the body's u64 magnitude (a checked
+    conversion's Abort).
+  - **Temporary 3's note, S2b1.** `format_builtin`'s arms 1 to 8 are deleted; the routine keeps 9 and 10 (i128, u128) and 16
+    (`SegmentText`, temporary 5). `FormatKind` 1 to 8 stay while `FormattingTypes.IsBuiltin` answers them
+    (`FormatKindsAreTheRuntimesNumbering`), until S2d2.
+  - **Vocabulary, S2b1.** `KimiDeclarationId` +1 (`IntegerFormatFormat`) and catalog entries 190 -> 191 (RQ9's counts; not a capped
+    vocabulary); `WitnessMembers` +1 (local, R8-M4). No `CompilerFunctionKind`, `IntrinsicId`, `IntrinsicKind` or diagnostic code.
+  - **Moves, S2b1.** None in acceptance or records (gate: 483 generated programs, 0 record moves base 6d4442652 against the unit; A5
+    oracle 1,764 programs, 0 differences). `.ll`: a module that formats integers up to 64 bits solely through writers it receives no
+    longer writes the formatting runtime (the body ends in the kept erased writer's path); a module that interpolates or calls
+    `Text.writer` or `Text.tryFormat` still writes it, and every formatting module's `.ll` loses `format_builtin`'s eight integer
+    blocks. The census Builtin -> Body for the integer format calls (TyCtxtTest's corpus pin: Builtin 59 -> 3, Body 152 -> 208). The
+    3 left, listed by a throwaway run (implementation review I-N3): Milestone25's tuple `compare` on `(ref/Key, i32)` (Comparable),
+    Milestone31's `format` on u128 (temporary 7) and Milestone31's `equals` on `Wrapping<u8>` (Equatable); only one is a format
+    call. (R8-S2b1's own commit message says "the 3 are i128/u128"; the round-2 commit corrects it.)
+  - **KimiLibrarySize, S2b1 (R8-M28).** A Bind of the empty program counts 15,454 library nodes at e13ab6c7b, past the stated
+    15,360, so `Stated.Nodes` is restated to 16,384, the count rounded up to the 1,024 Granule (R8-M28's rule; the Front's C-253
+    yes).
+  - **RP8, S2b1 (T-153; the owner's O-200 (a)).** A 7e4392941 (S2d1's head), B c49b1eca7
+    (`artifacts/benchmarks/r8-s2b1-o2-20261112-095836`, `r8-s2b1-o0-20261112-101322`, `r8-k1a-20261112-101924`): no O2 kernel
+    slower; Strings 9% faster (aligned 0.906, every matched pair below A=A), Interpolation 3% faster; Array, ErasedCalls and
+    VirtualDispatch code placement (R5-M135); the rest within their A=A. **Iterators** is code placement by the owner's O-200 (a)
+    (verbatim 「決断事項は、すべて (a)」; the owner answered O-198, O-199 and O-200 together in those words, 2026-11-12), as R5-M147 recorded
+    Iterators at X1: plain B/A 0.826, aligned 1.022 against 0.993-1.021, the address-matched sweep 10 of 16 pairs within or below
+    A=A 0.987-1.010 and 6 above (four by at most 0.015, two at 1.101 and 1.138), median 1.008; the kernel formats one integer once
+    after its rounds, and B's O2 `main` equals A's block for block except the entry's buffers, two failure paths and that final
+    formatting (`iterators-ir.txt` in the O2 folder), shrinking from 473 to 306 lines, so the loop sits at other addresses. O0: the
+    corpus did not finish inside the slot. Compile cost: warm Bind B/A' at most 1.018; Generate on Strings 1.19 warm (the integer
+    writes are generated from the library's specializations); warm 0 B; cold bytes +0.9% (Hello) to +1.4% (Strings).
+  - **The p5/p9 programs, S2b1.** A direct `value.format(writer)` on an abstract `I is PrimitiveInteger` inside a generic called
+    from a `confined` put is invalid by SPEC 8.11.3 rule 2 and 8.11.2's last row, as the implementation reports
+    (`IncompatibleContractImplementation_Kd` at `Self is Sink`; probes at S2c's CLI). Only O-182's proposal would make them valid;
+    its note may cite them.
+  - **S2d1's move (a), pinned by S2b1.** A dependent Holder verdict over an ill-formed `Wrapping<T>` is not reported, its formation
+    records are: `Utf8FormatBindingTest.AHolderOverAnIllFormedWrappingReportsOnlyItsFormation` (S2d1's implementation review I-N2).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
