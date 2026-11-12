@@ -60,6 +60,15 @@ public partial class TypeIdentityTest
             "func f<T, U>(first: ref/U during a, second: ref/i32 during b, c: T.(K1).C, d: T.(K2).D) -> ref/U during a\n" +
             "    T is K1\n    T is K2\n    T.(K1).A is T.(K2).B\n    T.(K1).C is ref/U during a\n    T.(K2).D is ref/i32 during b\n    return c\n"));
 
+    // SPEC 8.8.2: a conditional conformance's conditions are its scope's premises. Their error is the scope's one record; the
+    // conformance's own proof judges the conditions as in a valid view, so its target adds no second record.
+    [Theory]
+    [InlineData("    Self is Flag when A is Option<B>, A is Array<B>\n", "InvalidConstraint_Kd@4")]
+    [InlineData("    Self is Flag when A is Option<B>\n", "")]
+    [InlineData("    Self is Flag when A is Option<B>, A is Array<B>\n    Self is Mark when A is Option<B>\n", "InvalidConstraint_Kd@4")]
+    public void AConditionsPremiseErrorIsOneRecord(string conformances, string records)
+        => Assert.Equal(records, PremiseRecords("contract Flag\ncontract Mark\nstruct Either<A, B>\n" + conformances + "    var value: A\n"));
+
     private static string PremiseRecords(string source)
         => string.Join(' ', DiagnosticCorpus.Check(source, "Library").Diagnostics
             .Select(x => $"{x.Code}@{source[..x.Span!.Value.Start].Count(static c => c == '\n') + 1}").Order(StringComparer.Ordinal));

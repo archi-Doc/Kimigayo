@@ -448,7 +448,9 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (premises.Parent?.BindingState == BindingState.Invalid)
+        // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
+        // conditions are judged and the error is the scope's one record, not the target's again.
+        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
         {
             return ConstraintProof.Error;
         }
