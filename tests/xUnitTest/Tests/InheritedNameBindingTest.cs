@@ -130,7 +130,7 @@ public class InheritedNameBindingTest
     [Theory]
     [InlineData("open struct Base<T>\n    private func f(x: T) => ()\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    public func f() => ()")]
     [InlineData("open struct X\n    protected open struct Y\n        public init() => ()\n    public init() => ()\nstruct D: X\n    public init() => ()\n    struct E: X.Y\n        public init() => ()")] // p2
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        func h<X>(self, x: ref/X) -> i32\n            X is K<Q.N>\n            return 1")] // rx1c
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        func h<X>(self, x: ref/X) -> i32\n            X is K<Q.N>\n            return 1")] // rx1c
     public void WarmInheritedNameChecksAllocateNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
