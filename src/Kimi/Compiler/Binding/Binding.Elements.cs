@@ -73,7 +73,10 @@ public sealed partial class Binding
                 return Complete(source, receiver.Components[0]); // SPEC 4.8.2: the shared element Place.
             }
 
-            if (this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
+            // SPEC 3.4.3, 4.7.1: a concrete sequence, through every layer, is indexed by position and never through an Indexable
+            // conformance (Array states one for generic use); one these arms do not reach yet is the limit below.
+            var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
+            if (!ElementAccess.IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
             {
                 return indexed; // SPEC 4.7.1: a user Indexable conformance.
             }
@@ -88,7 +91,7 @@ public sealed partial class Binding
 
                 // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
                 // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var sequence = this.OperandTerminal(source.Left, receiver).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
+                var sequence = ElementAccess.IsSequence(terminal) || terminal!.Kind == BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 

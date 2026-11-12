@@ -173,9 +173,9 @@ public sealed partial class Binding
             if (evidence is not null)
             {
                 Capture(shape);
-                foreach (var ancestor in shape.Ancestors)
+                for (var i = 0; i < shape.Ancestors.Count; i++)
                 {
-                    if (ancestor.Contract is { } inherited)
+                    if (shape.Ancestors[i].Contract is { } inherited)
                     {
                         Capture(inherited);
                     }
@@ -184,8 +184,9 @@ public sealed partial class Binding
 
             void Capture(BoundContract declaring)
             {
-                foreach (var entry in declaring.EffectBounds)
+                for (var i = 0; i < declaring.EffectBounds.Count; i++)
                 {
+                    var entry = declaring.EffectBounds[i];
                     if (entry.Identity == identity)
                     {
                         evidence!.Add(new(entry.Declaration, context, premise, clause, clause is null ? null : conforming, clause is null ? null : shape.Symbol));

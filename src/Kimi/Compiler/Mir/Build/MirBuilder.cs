@@ -40,7 +40,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.3.5); null in other bodies.
     private int current; // The block being built.
     private int receiver; // The local a Field of the implicit self, an accessor's storage or a capture is reached from (-1: none).
-    private ushort scope;
+    private int scope;
     private bool statementStart; // The next statement or terminator starts a source statement.
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: each body, then the program.</summary>

@@ -218,8 +218,9 @@ public sealed partial class Binding
             return null;
         }
 
-        foreach (var parameter in owner.Parameters)
+        for (var i = 0; i < owner.Parameters.Count; i++)
         {
+            var parameter = owner.Parameters[i];
             if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
             {
                 return parameter.InternalName + "." + slots[slot].Name;
@@ -383,8 +384,9 @@ public sealed partial class Binding
             return false;
         }
 
-        foreach (var parameter in function.Parameters)
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
+            var parameter = function.Parameters[i];
             if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && this.MentionsOrigin(input, actual.Origin))
             {
                 return true;
