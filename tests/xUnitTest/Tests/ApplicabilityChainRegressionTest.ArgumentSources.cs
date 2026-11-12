@@ -302,6 +302,10 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "j19n", JoinPositions + "    return pn(if c => ((n, m), 1) else => ((m, n), 2))\n", "NoApplicableOverload_Kd: return pn(if c => ((n, m), 1) else => ((m, n), 2))")]
     [InlineData("guard", "j20", "func fw(p: ((ref/i32 during a, ref/i32 during a), i32)) -> bool => true\nfunc fw(p: (ref/(ref/i32 during a, ref/i32 during a) during b, i32)) -> i32 => 0\n" + JoinPositions + "    let q2 = (n, m)\n    let q = fw(if c => ((n, m), 1) else => (q2, 2))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "j20n", "func fta(p: (Array<i32>, i32)) -> i32 => p.1\n" + JoinPositions + "    return fta(if c => ([n], 1) else => ([m], 2))\n", "NoApplicableOverload_Kd: return fta(if c => ([n], 1) else => ([m], 2))")]
+    // PLAN G729, SPEC 14.9.2 step 3: a literal beside a typed part takes the selected candidate's Type at the position, at which the
+    // position was fitted (j21: i32, n value-read), not its typed parts' common ref/i32; its twin has no conversion to i64 (j21n).
+    [InlineData("G729", "j21", JoinPositions + "    return pt(if c => (n, 1) else => (1, 2))\n", "")]
+    [InlineData("guard", "j21n", JoinPositions + "    return pt(if c => (r, 1) else => (1, 2))\n", "*: return pt(if c => (r, 1) else => (1, 2))")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
