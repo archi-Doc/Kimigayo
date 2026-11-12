@@ -48,74 +48,49 @@ internal static class AllocationMeasurement
     internal static long Measure(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        long allocated = 0;
-        Exception? failure = null;
-        ThreadStart measure = () =>
+        return OnNewThread(() =>
         {
-            try
+            Pool.RecordCurrentThread();
+            List<string>? causes = null;
+            var run = 0;
+            for (var window = 1; window <= MaximumWindows; window++)
             {
-                Pool.RecordCurrentThread();
-                List<string>? causes = null;
-                var run = 0;
-                for (var window = 1; window <= MaximumWindows; window++)
+                var trims = Pool.Trims;
+                for (var i = 0; i < WarmupOperations; i++)
                 {
-                    var trims = Pool.Trims;
-                    for (var i = 0; i < WarmupOperations; i++)
-                    {
-                        operation();
-                    }
-
-                    // The counter before and after each of the window's b + 8 operations (12, then 28 and 60).
-                    run += WarmupOperations;
-                    var readings = new long[run + 8 + 1];
-                    var events = Pool.OnCurrentThread;
-                    var marker = CompileEvents.Start();
-                    RetireAllocationContext();
-                    var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
-                    readings[0] = GC.GetAllocatedBytesForCurrentThread();
-                    for (var i = 1; i < readings.Length; i++)
-                    {
-                        operation();
-                        readings[i] = GC.GetAllocatedBytesForCurrentThread();
-                    }
-
-                    compiled = JitInfo.GetCompiledMethodCount(currentThread: true) - compiled;
-                    run += readings.Length - 1;
-                    var largest = Largest(readings);
-                    var cause = Pool.FollowTrims(events, trims) ? "High-pressure ArrayPool trims or full pools"
-                        : largest > 0 && compiled > 0 && Compiles.CreatedComparer(marker, MarkerWait) ? $"a default comparer created on the measuring thread, {largest} bytes"
-                        : null;
-                    if (cause is null)
-                    {
-                        allocated = largest;
-                        return;
-                    }
-
-                    (causes ??= []).Add($"window {window}: {cause}");
+                    operation();
                 }
 
-                throw new InvalidOperationException($"All {MaximumWindows} allocation windows were invalid ({string.Join("; ", causes!)}).");
+                // The counter before and after each of the window's b + 8 operations (12, then 28 and 60).
+                run += WarmupOperations;
+                var readings = new long[run + 8 + 1];
+                var events = Pool.OnCurrentThread;
+                var marker = CompileEvents.Start();
+                RetireAllocationContext();
+                var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
+                readings[0] = GC.GetAllocatedBytesForCurrentThread();
+                for (var i = 1; i < readings.Length; i++)
+                {
+                    operation();
+                    readings[i] = GC.GetAllocatedBytesForCurrentThread();
+                }
+
+                compiled = JitInfo.GetCompiledMethodCount(currentThread: true) - compiled;
+                run += readings.Length - 1;
+                var largest = Largest(readings);
+                var cause = Pool.FollowTrims(events, trims) ? "High-pressure ArrayPool trims or full pools"
+                    : largest > 0 && compiled > 0 && Compiles.CreatedComparer(marker, MarkerWait) ? $"a default comparer created on the measuring thread, {largest} bytes"
+                    : null;
+                if (cause is null)
+                {
+                    return largest;
+                }
+
+                (causes ??= []).Add($"window {window}: {cause}");
             }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-        };
-        var thread = CompilerThread.Create(measure);
 
-        // The bound only stops a hung measurement. A parallel Debug run can take several times longer than an isolated one, so
-        // it is generous, for each window; the zero-byte assertions at the call sites are unchanged.
-        if (!thread.Join(MaximumWindows * 300_000))
-        {
-            throw new TimeoutException("Allocation measurement did not complete.");
-        }
-
-        if (failure is not null)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-
-        return allocated;
+            throw new InvalidOperationException($"All {MaximumWindows} allocation windows were invalid ({string.Join("; ", causes!)}).");
+        });
     }
 
     // The allocation of one run of an operation that cannot repeat on its state: a cold first build or analysis, or a designed
@@ -235,6 +210,37 @@ internal static class AllocationMeasurement
                 Thread.Sleep(milliseconds);
             }
         }
+    }
+
+    // Runs a measurement on a new compiler thread (CompilerThread.Create) and returns its result, or rethrows its failure on the
+    // caller with its original stack. The join bound only stops a hung measurement: a parallel Debug run can take several times
+    // longer than an isolated one, so it is generous, for each of Measure's windows; no assertion at a call site depends on it.
+    private static long OnNewThread(Func<long> measure)
+    {
+        long allocated = 0;
+        Exception? failure = null;
+        var thread = CompilerThread.Create(() =>
+        {
+            try
+            {
+                allocated = measure();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        if (!thread.Join(MaximumWindows * 300_000))
+        {
+            throw new TimeoutException("Allocation measurement did not complete.");
+        }
+
+        if (failure is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
+        return allocated;
     }
 
     // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)
