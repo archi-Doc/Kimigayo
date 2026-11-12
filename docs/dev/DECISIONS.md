@@ -9964,6 +9964,11 @@ resumed by R4-M86 (2026-10-20).
     (Infer's known-signature evidence, G56's relate-later branch; SPEC 10.8).
   - Rejected: a bool or mode parameter for the premise-only judgment; deleting A1 for value fits (a Function value's subtyping, SPEC
     3.8, keeps it).
+  - Amended by SLC (2026-11-12; PLAN G777): implementation matching (8.6.3, 11.9's accessor witnesses) is a whole-contract
+    comparison too: every proof of `CompareCallableContracts`, its solve's included, runs in a comparison carrying the requirement's
+    substituted signature, so it assumes that signature's own well-formedness as `ContractFits` does. Its walk keeps
+    `OriginPart.Judged`, not examined in this unit (`OriginPart.Contract`'s identity rule for Origin-carrying parts and the Limit
+    row would change); merging the two comparisons is a candidate, not decided here.
 
 - **BU-94 The position row is what an argument position is to its call** (2026-11-05; G216 (a) U1, the Position Rows proposal
   `draft/Proposals/2026-11-03 G216 (a) Position Rows.md` §4-§6; the planning session's design `artifacts\verify\g216a-oracle\
