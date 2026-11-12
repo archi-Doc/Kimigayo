@@ -919,7 +919,7 @@ public sealed partial class MirBorrowsTest
         var copy = body.AddScope(outer, MirScopeKind.Inlined, new(0, 900));
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, default));
         MirPlace Local(BoundType type, MirLocalKind kind = MirLocalKind.Var) => new(body.AddLocal(new(type, kind, default)));
-        SourceInfo At(int id, int scope) => new(new(0, id), (ushort)scope, true);
+        SourceInfo At(int id, int scope) => new(new(0, id), scope, true);
         int Constant(MirConstKind kind, BoundType type, long value) => body.AddOperand(MirOperand.Const(body.Const(new(kind, type, value))));
         void Assign(int block, MirPlace place, MirRvalue value, int id, int scope) => body.Push(block, MirStatement.Assign(place, value, At(id, scope)));
         void Write(int block, MirPlace place, int id, int scope)
