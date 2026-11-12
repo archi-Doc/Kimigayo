@@ -111,9 +111,10 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
     /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
-    /// integer's by its width and signedness, then f32, f64, char, bool, Unit and string. The one table code generation reads. f32, f64,
-    /// char, bool, Unit, string and the wrapping integers format through the witness table's bodies (R8-S2a, R8-S2c, R8-S2d1), so the
-    /// routine has no arm for 11 to 15, and string's 16 serves only SegmentText's literal text (until R8-W2); their numbers stay while
+    /// integer's by its width and signedness, then f32, f64, char, bool, Unit and string. The one table code generation reads. The
+    /// integers up to 64 bits, f32, f64, char, bool, Unit, string and the wrapping integers format through the witness table's bodies
+    /// (R8-S2a, R8-S2b1, R8-S2c, R8-S2d1), so the routine has no arm for 1 to 8 and 11 to 15, and string's 16 serves only SegmentText's
+    /// literal text (until R8-W2); 9 and 10 (i128, u128) stay until R8-S2b2. The other numbers stay while
     /// FormattingTypes.IsBuiltin answers them, which FormatKindsAreTheRuntimesNumbering ties to this table (until R8-S2d2). A view
     /// declares its conformance (R8-S2d1), so it has none.</summary>
     /// <param name="type">A closed Type.</param>

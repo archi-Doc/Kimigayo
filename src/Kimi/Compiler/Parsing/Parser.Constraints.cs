@@ -263,12 +263,12 @@ public static partial class Parser
     }
 
     /// <summary>
-    /// Determines whether the reader is positioned at the start of a type constraint.
+    /// Determines whether the reader is positioned at a Type followed by <c>is</c>: a Constraint in a dedicated declaration region, where a
+    /// Type that is no subject is reported as such (DECISIONS BU-119).
     /// </summary>
     /// <param name="reader">The token reader to inspect.</param>
-    /// <param name="declarationContext">Whether any Type before <c>is</c> starts a Constraint in this dedicated declaration region, so that one that is no subject is reported as such.</param>
-    /// <returns><see langword="true"/> for Type subject syntax followed by <c>is</c>.</returns>
-    public static bool IsTypeConstraintStart(ref TokenReader reader, bool declarationContext = false)
+    /// <returns><see langword="true"/> for Type syntax followed by <c>is</c>.</returns>
+    public static bool IsTypeConstraintStart(ref TokenReader reader)
     {
         if (HasSimpleConstraintSubject(ref reader))
         {
@@ -276,13 +276,6 @@ public static partial class Parser
         }
 
         var first = reader.CurrentTokenKind;
-        // Preserve executable prefix recognition, including call results and parenthesized
-        // expressions. Only a dedicated declaration region reads a Type before `is`.
-        if (!declarationContext)
-        {
-            return first.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is;
-        }
-
         // An associated declaration or specification owns its following "is": `associate` before a start of its AssociatedTypeName
         // (a Name or a ContractSelector, F.6.2) introduces it, so no Type subject includes it. Other uses, such as associate<T>, are Names.
         if (first == TokenKind.Associate && StartsType(reader.PeekKind(1)))
@@ -369,6 +362,57 @@ public static partial class Parser
         }
     }
 
+    // SPEC 7.5, F.6.2: the ConstraintSubject an expression operand reads as, or null where it reads only as an expression. The operand is
+    // the expression parser's parse of the prefix both readings share: a TypeQualifier (Names, Self and root Names, `. Name` and
+    // `.(C).Name` suffixes, Type arguments, a PathQualifier head) ending in `. Name`, with one final call whose arguments are all OriginAtoms,
+    // which becomes the OriginApplication. A call, an index or a group anywhere else, `Box<U>` or `f(x)` alone are expressions.
+    private static Koto? AsConstraintSubject(ref TokenReader reader, Koto operand)
+    {
+        if (operand is InvocationKoto { Method: MemberAccessKoto method } call && IsAssociatedTypeReference(method))
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (call.GetArgumentLabel(i) is not null || !IsOriginAtom(call.ArgumentNodes[i]))
+                {
+                    return null;
+                }
+            }
+
+            return call.ArgumentNodes.Count == 0 ? null : new OriginApplicationKoto(ref reader, call.Span, method, [.. call.ArgumentNodes]);
+        }
+
+        return operand is MemberAccessKoto reference && IsAssociatedTypeReference(reference) ? operand : null;
+
+        // AssociatedTypeReference := TypeQualifier "." Name | TypeQualifier "." "(" ContractReference ")" "." Name.
+        static bool IsAssociatedTypeReference(MemberAccessKoto reference)
+            => reference.Right is IdentifierNameKoto && IsTypeQualifier(reference.Left);
+
+        // TypeQualifier := ContainerPath | PathQualifier (F.5), as the expression parser builds it.
+        static bool IsTypeQualifier(Koto node) => node switch
+        {
+            IdentifierNameKoto or TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } => true,
+
+            // PathQualifier heads (F.5): Unit, a Tuple, a FixedArray `[N of T]`, and a BoundContainerQualifier the expression parser reads
+            // as a Type. `(FunctionType)` has no expression node: its group fails as an expression and stays one (a named limit).
+            UnitLiteralKoto or TupleLiteralKoto or ArrayLiteralKoto { FillLength: not null } or ParenthesizedTypeKoto or TupleTypeKoto => true,
+            GenericsKoto { Identifier: { } head } => IsTypeQualifier(head),
+            MemberAccessKoto { Right: IdentifierNameKoto or ParenthesizedTypeKoto } member => IsTypeQualifier(member.Left),
+            _ => false,
+        };
+
+        // OriginAtom := Name ("." Name)? | "static" | "(" OriginExpression ")"; OriginExpression := OriginAtom ("and" OriginAtom)*.
+        static bool IsOriginAtom(Koto node) => node switch
+        {
+            IdentifierNameKoto => true,
+            MemberAccessKoto { Left: IdentifierNameKoto, Right: IdentifierNameKoto } => true,
+            ParenthesizedKoto group => IsOriginExpression(group.Operand),
+            _ => false,
+        };
+
+        static bool IsOriginExpression(Koto node)
+            => node is BinaryKoto { Akind: KotoKind.And } both ? IsOriginExpression(both.Left) && IsOriginExpression(both.Right) : IsOriginAtom(node);
+    }
+
     // The tokens that start a Type (F.5); a TypeQualifier, a ContractSelector and an AssociatedTypeName start with the same tokens.
     private static bool StartsType(TokenKind kind)
         => kind.IsIdentifierOrContextualKeyword() || kind.IsPrimitiveType() || kind is TokenKind.Self or TokenKind.ColonColon or TokenKind.OpenParenthesis or TokenKind.OpenBracket;
@@ -390,21 +434,17 @@ public static partial class Parser
         return reader.PeekKind(offset) == TokenKind.Is;
     }
 
-    private static bool IsFunctionConstraintStart(ref TokenReader reader, FunctionKoto? function)
+    // SPEC 7.5: after a body's leading region, a Constraint Clause rooted in a generic parameter of the function or of the declaring Type is
+    // a misplaced Constraint, and any other is an expression: the subject's first Name is one of them (a destructor declares none).
+    private static bool IsRootedInGenericParameter(ref TokenReader reader, FunctionKoto? function)
     {
-        if (IsTypeConstraintStart(ref reader))
-        {
-            return true;
-        }
-
-        // Only a declared Type-parameter root selects the extended Type grammar here. Value calls remain expressions.
-        if (function is null || !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+        if (function is not { IsDestructor: false } || !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
             return false;
         }
 
         // The token's text is compared without interning it: the statement that follows reads and validates the identifier itself.
         var name = reader.GetSpan(reader.CurrentToken);
-        return (function.IsGenericParameter(name) || function.IsDeclaringTypeParameter(name)) && IsTypeConstraintStart(ref reader, declarationContext: true);
+        return function.IsGenericParameter(name) || function.IsDeclaringTypeParameter(name);
     }
 }
