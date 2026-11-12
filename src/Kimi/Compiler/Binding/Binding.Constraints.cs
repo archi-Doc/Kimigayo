@@ -374,51 +374,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
-    // already judged them.
-    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
-    {
-        var changed = false;
-        foreach (var scope in this.scopes.Values)
-        {
-            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
-            {
-                continue;
-            }
-
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
-            {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
-                changed = true;
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
-                this.failedCause = null;
-                var frame = this.BeginConsultation(scope.Owner);
-                var proof = this.ProveConstraint(fact, scope);
-                if (proof != ConstraintProof.Error)
-                {
-                    this.DropConsultation(frame);
-                    continue;
-                }
-
-                var previous = scope.Owner.BindingState;
-                changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
-                // Other input facts can have independent contradictions. Record a
-                // sole missing-name cause only when this is the entire environment.
-                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                changed |= previous != scope.Owner.BindingState;
-                break;
-            }
-        }
-
-        return changed;
-    }
-
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
         if (IsRecovery(clause, out _))
