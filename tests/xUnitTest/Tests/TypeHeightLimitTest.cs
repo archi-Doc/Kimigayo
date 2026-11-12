@@ -255,6 +255,18 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         Assert.EndsWith(" -> i32) -> i32) -> i32", mismatch.Label, StringComparison.Ordinal);
     }
 
+    // D0's Item is (T, i32); each D_i's is D_{i-1}<D_{i-1}<T>.Item>.Item, so D_n<i32>.Item has height 2^n.
+    internal static string Doubling(int n)
+    {
+        var s = "contract HasItem\n    associate Item\nstruct D0<T>\n    Self is HasItem\n    associate HasItem.Item is (T, i32)\n";
+        for (var i = 1; i <= n; i++)
+        {
+            s += $"struct D{i}<T>\n    Self is HasItem\n    associate HasItem.Item is D{i - 1}<D{i - 1}<T>.Item>.Item\n";
+        }
+
+        return s;
+    }
+
     // A Tuple chain of the given height over `bottom`: D_n<T>.Item adds 2^n layers.
     private static string Chain(int height, string bottom)
     {
@@ -282,18 +294,6 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     }
 
     private static string Nest(string wrapper, int k, string inner) => string.Concat(Enumerable.Repeat(wrapper + "<", k)) + inner + new string('>', k);
-
-    // D0's Item is (T, i32); each D_i's is D_{i-1}<D_{i-1}<T>.Item>.Item, so D_n<i32>.Item has height 2^n.
-    private static string Doubling(int n)
-    {
-        var s = "contract HasItem\n    associate Item\nstruct D0<T>\n    Self is HasItem\n    associate HasItem.Item is (T, i32)\n";
-        for (var i = 1; i <= n; i++)
-        {
-            s += $"struct D{i}<T>\n    Self is HasItem\n    associate HasItem.Item is D{i - 1}<D{i - 1}<T>.Item>.Item\n";
-        }
-
-        return s;
-    }
 
     private static void AssertHeightCode(DiagnosticEntryView record) => Assert.Equal(nameof(DiagnosticCode.TypeHeightLimit_Kd), record.Code);
 

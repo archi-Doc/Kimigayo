@@ -97,9 +97,10 @@ public sealed partial class Binding
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
         {
             layers++;
+            this.termWalks++;
             if (ReferenceEquals(type.Components[0], referent))
             {
                 BoundOrigin? origin = null;
@@ -173,32 +174,20 @@ public sealed partial class Binding
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
-        if (ScalarReferent(type) is not { } referent)
+        if (this.ReadTypeReferent(type, node) is not { } read)
         {
-            // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
-            // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
-            var scope = this.ConstraintScope(node);
-            if (this.ReadTypeReferent(type, scope) is { } read)
-            {
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.7.4: a read Type.
-                return read;
-            }
-
-            if (type is not null &&
-                this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
-                this.PairTerminal(target, scope) is { } terminal &&
-                (terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : ScalarReferent(terminal)) is { } scalar)
-            {
-                this.implicitPairFollows[node] = admitted;
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, scalar);
-                return scalar;
-            }
-
             return type;
         }
 
-        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
-        return referent;
+        // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
+        // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
+        if (TryPairLayer(type, out _, out _))
+        {
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+        }
+
+        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);
+        return read;
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
@@ -517,7 +506,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
+            if (!LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&

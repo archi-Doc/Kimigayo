@@ -253,7 +253,7 @@ public static partial class Parser
                 continue;
             }
 
-            if (!IsTypeConstraintStart(ref reader, declarationContext: true))
+            if (!IsTypeConstraintStart(ref reader))
             {
                 reader.Expect(SyntaxForm.Constraint);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);

@@ -175,15 +175,10 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { IsContract: true } contract)
+        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope) is { } contract)
         {
-            if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
-            {
-                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
-            }
-
             qualifier = contract;
-            receiver = baseSyntax!;
+            receiver = qualified.Left;
         }
 
         // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
@@ -241,7 +236,6 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        this.projectionForms.TryAdd((projection, this.ConstraintScope(syntax)), syntax);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
         Complete(syntax.Right, projection);
@@ -253,30 +247,6 @@ public sealed partial class Binding
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
 
-    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged under `scope`'s own premises: the first use
-    // found walking `scope`'s chain inward-out (the scopes whose premises the solver reads, Supply) before a scope that adds premises
-    // without forming it; null otherwise. Each use is keyed by its Type and the scope its conformance check (ValidateConformances, after
-    // the bodies) judges it in, ConstraintScope. Premises only grow inward, so a use found before such a scope is judged as `scope`
-    // would judge it, and one beyond it may be rejected under fewer premises than `scope` has. A check that fails only because its
-    // Type is such a projection rests on that use, which publication judges (AddPendingPrerequisite).
-    private Koto? ProjectionUseOf(BoundType type, BindingScope scope)
-    {
-        for (BindingScope? current = scope; current is not null; current = current.Parent)
-        {
-            if (this.projectionForms.TryGetValue((type, current), out var use))
-            {
-                return use;
-            }
-
-            if (current.Constraints is { } premises && (premises.Invalid || premises.Facts.Count != 0))
-            {
-                return null;
-            }
-        }
-
-        return null;
-    }
-
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
 
@@ -285,19 +255,12 @@ public sealed partial class Binding
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
 
-    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
+    // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
+    // path (9.6, 9.7.3), never read as `T.(C).X`.
+    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope)
     {
-        if (syntax.Left is MemberAccessKoto left && this.ProjectionQualifier(left, scope, out receiver) is { Kind: BindingSymbolKind.Container } prefix && this.scopes.TryGetValue(prefix.Declaration, out var members) && TypeSpelling(syntax.Right) is { } name && MemberTypes(members, name) is { } target && this.Accessible(target, scope))
-        {
-            syntax.Right.BoundSymbol = target;
-            Complete(syntax.Right, BoundType.Unit);
-            Complete(syntax.Left, BoundType.Unit);
-            return target;
-        }
-
-        var selection = this.TypeName(syntax.Right, scope);
-        receiver = syntax.Left;
-        if (selection is null || (selection.Kind != BindingSymbolKind.Container && !selection.IsContract) || WrittenReference(syntax.Right) is not { } referenceSyntax)
+        if (syntax.Right is not ParenthesizedTypeKoto || this.TypeName(syntax.Right, scope) is not { IsContract: true } selection ||
+            WrittenReference(syntax.Right) is not { } referenceSyntax)
         {
             return null;
         }

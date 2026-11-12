@@ -9,7 +9,6 @@ public sealed partial class Binding
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
-    private readonly Dictionary<(BoundType Type, BindingScope Scope), Koto> projectionForms = new(); // ProjectionUseOf
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -148,7 +147,6 @@ public sealed partial class Binding
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
-        this.projectionForms.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();
@@ -436,10 +434,11 @@ public sealed partial class Binding
         var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
         // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
-        // conformances of its argument but is never a Position (SPEC 3.1.1).
+        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison conformances of
+        // its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat row, for an
+        // abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)

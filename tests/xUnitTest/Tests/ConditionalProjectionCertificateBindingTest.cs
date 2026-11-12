@@ -30,7 +30,7 @@ public class ConditionalProjectionCertificateBindingTest
     [InlineData(true)]
     public void ValidNestedPremisesKeepTheirEvidence(bool lateWitness)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix(lateWitness, true) + Consumer.Replace("T is Source.Origin.Item", "T is ([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Prefix(lateWitness, true) + Consumer.Replace("T is Source.(Origin).Item", "T is ([2 of Source.(Origin).Item], i32)", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
@@ -67,7 +67,8 @@ public class ConditionalProjectionCertificateBindingTest
     [InlineData(true)]
     public void ConditionalCopyCannotUseInvalidProjectionPremise(bool valid)
     {
-        var source = Prefix(true, valid) + "struct S<T>\n    Self is Copy when T is Source.Origin.Item\nfunc take<U>()\n    U is Copy\n    ()\ntake<S<i32>>()";
+        var source = Prefix(true, valid) + "struct S<T>\n    Self is Copy when T is Source.(Origin).Item\nfunc take<U>()\n    U is Copy\n" +
+            "    ()\ntake<S<i32>>()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
@@ -97,7 +98,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.False(ConditionalProperty(c).IsVerified);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single();
         var original = function.Parameters[1].Type;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.(Hidden).Item", "x: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
@@ -130,7 +131,7 @@ public class ConditionalProjectionCertificateBindingTest
     [InlineData(true)]
     public void QualifierConstraintsUseTheConditionalEnvironment(bool reverse)
     {
-        var conditions = reverse ? "U is Input<T>.Origin.Item, T is Copy" : "T is Copy, U is Input<T>.Origin.Item";
+        var conditions = reverse ? "U is Input<T>.(Origin).Item, T is Copy" : "T is Copy, U is Input<T>.(Origin).Item";
         var c = MinimalEmissionTest.Analyze("contract Origin\n    associate Item\nstruct Input<T>\n    T is Copy\n    Self is Origin\n    associate Origin.Item is i32\ncontract C\nstruct S<T, U>\n    Self is C when " + conditions);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
@@ -152,7 +153,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, Definition(c).IsVerified);
     }
 
-    private const string Consumer = "contract C\nstruct S<T>\n    Self is C when T is Source.Origin.Item";
+    private const string Consumer = "contract C\nstruct S<T>\n    Self is C when T is Source.(Origin).Item";
 
     private const string PropertyMember = "\n        public computed value: i32\n            get(self: ref/Self) -> i32 => 1";
 
@@ -199,8 +200,8 @@ public class ConditionalProjectionCertificateBindingTest
 
     private static string Prefix(bool lateWitness, bool valid)
         => lateWitness
-            ? (valid ? "public" : "internal") + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n"
-            : "contract Origin\n    associate Item\nstruct Input<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\nstruct Source\n    Self is Origin\n    associate Origin.Item is Input<" + (valid ? "i32" : "string") + ">.Origin.Item\n";
+            ? (valid ? "public" : "internal") + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x\n"
+            : "contract Origin\n    associate Item\nstruct Input<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\nstruct Source\n    Self is Origin\n    associate Origin.Item is Input<" + (valid ? "i32" : "string") + ">.(Origin).Item\n";
 
     private static DeclarationContainerKoto Type(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");

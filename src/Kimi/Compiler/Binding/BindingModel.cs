@@ -462,7 +462,7 @@ public sealed record BoundType
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
-        var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var closure = kind == BoundTypeKind.Closure;
@@ -642,8 +642,15 @@ public sealed record BoundType
     internal int Height => this.height;
 
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
-    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
+    /// annotated occurrence of it, an application <c>s/U</c> or an adaptation family (<see cref="IsPairLayer"/>); a Semantics case
+    /// substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    /// <summary>Gets a value indicating whether this Type is itself a pair layer (SPEC 13.5.5: its outer Semantics is a pair binder),
+    /// in each of its representations: the original <c>s/T</c> (a Parameter whose symbol is the pair's SemanticsTarget), an
+    /// application <c>s/U</c> and an adaptation family <c>p@s</c> (SemanticsAdaptation).</summary>
+    internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+        (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
     // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
     internal bool ContainsClosure => this.containsClosure;
@@ -669,6 +676,16 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this Type stands for any complete Type of an instance: a Type parameter, a
     /// projection or a dependent Semantics term.</summary>
     internal bool IsAbstract => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+
+    /// <summary>Gets a value indicating whether a proof alone decides this Type's built-in conformances and roles (SPEC 8.7.3): an
+    /// abstract Type, by a premise, or a pair's own <c>s/T</c>, by its admitted set (one admitted Semantics gives its head, SPEC
+    /// 8.2.3). The proof judges the admitted set; no reader of this property does.</summary>
+    internal bool IsProofDecided => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection;
+
+    /// <summary>Gets a value indicating whether this is SPEC 8.2.3's abstract Type, whose only evidence is a premise: a Type
+    /// parameter, a pair target, a Contract's Self or an unresolved projection. A pair's own <c>s/T</c> is a pair application, not an
+    /// abstract Type (Binding.TryPairLayer decomposes every Parameter whose symbol is a pair's).</summary>
+    internal bool IsAbstractType => this.IsProofDecided && this is not { Kind: BoundTypeKind.Parameter, Symbol.Kind: BindingSymbolKind.SemanticsTarget };
 
     /// <summary>Gets a value indicating whether this Type is abstract or has an abstract part, whose Loans its Origins do not show.</summary>
     internal bool HasAbstractPart => this.hasAbstractPart;

@@ -10,8 +10,8 @@ public class ConditionalPremiseAccessBindingTest
 {
     [Theory]
     [InlineData("Hidden")]
-    [InlineData("Source.Hidden.Item")]
-    [InlineData("([2 of Source.Hidden.Item], i32)")]
+    [InlineData("Source.(Hidden).Item")]
+    [InlineData("([2 of Source.(Hidden).Item], i32)")]
     public void PublicConformanceCannotExposeRestrictedPremise(string requirement)
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "public", "internal", "public", requirement));
@@ -30,12 +30,12 @@ public class ConditionalPremiseAccessBindingTest
     [InlineData("public", "internal", "internal", "public", "Hidden", true)]
     [InlineData("internal", "public", "internal", "public", "Hidden", true)]
     [InlineData("public", "public", "public", "public", "Hidden", true)]
-    [InlineData("public", "internal", "internal", "public", "Source.Hidden.Item", true)]
-    [InlineData("internal", "public", "internal", "public", "Source.Hidden.Item", true)]
-    [InlineData("public", "public", "public", "public", "Source.Hidden.Item", true)]
-    [InlineData("public", "public", "public", "internal", "Source.Hidden.Item", false)]
-    [InlineData("public", "internal", "public", "internal", "Source.Hidden.Item", true)]
-    [InlineData("internal", "public", "public", "internal", "Source.Hidden.Item", true)]
+    [InlineData("public", "internal", "internal", "public", "Source.(Hidden).Item", true)]
+    [InlineData("internal", "public", "internal", "public", "Source.(Hidden).Item", true)]
+    [InlineData("public", "public", "public", "public", "Source.(Hidden).Item", true)]
+    [InlineData("public", "public", "public", "internal", "Source.(Hidden).Item", false)]
+    [InlineData("public", "internal", "public", "internal", "Source.(Hidden).Item", true)]
+    [InlineData("internal", "public", "public", "internal", "Source.(Hidden).Item", true)]
     public void PremisesUseTheEffectiveIntersection(string typeAccess, string contractAccess, string hiddenAccess, string sourceAccess, string requirement, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source(typeAccess, contractAccess, hiddenAccess, sourceAccess, requirement));
@@ -48,7 +48,7 @@ public class ConditionalPremiseAccessBindingTest
 
     [Theory]
     [InlineData("Hidden")]
-    [InlineData("Source.Hidden.Item")]
+    [InlineData("Source.(Hidden).Item")]
     public void NarrowChildCannotHideAnAncestorsPremise(string requirement)
     {
         var source = Source("public", "internal", "internal", "public", requirement).Replace("internal contract C", "public contract Parent\ninternal contract C: Parent", StringComparison.Ordinal);
@@ -75,7 +75,7 @@ public class ConditionalPremiseAccessBindingTest
     [InlineData(true)]
     public void ConditionalEnumPremisesRetainAccessDomains(bool valid)
     {
-        var source = Source("public", valid ? "internal" : "public", "internal", "public", "Source.Hidden.Item").Replace("struct S<T>", "enum S<T>\n    A", StringComparison.Ordinal);
+        var source = Source("public", valid ? "internal" : "public", "internal", "public", "Source.(Hidden).Item").Replace("struct S<T>", "enum S<T>\n    A", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
@@ -84,7 +84,7 @@ public class ConditionalPremiseAccessBindingTest
 
     [Theory]
     [InlineData("Hidden")]
-    [InlineData("Source.Hidden.Item")]
+    [InlineData("Source.(Hidden).Item")]
     public void IndependentPathRemainsVerified(string requirement)
     {
         var source = Source("public", "public", "internal", "public", requirement).Replace("public contract C", "public contract D\npublic contract C", StringComparison.Ordinal) + "\n    Self is D when T is Copy";
@@ -97,7 +97,7 @@ public class ConditionalPremiseAccessBindingTest
 
     [Theory]
     [InlineData("Hidden")]
-    [InlineData("Source.Hidden.Item")]
+    [InlineData("Source.(Hidden).Item")]
     public void ReplacingTheRequirementRestoresConformance(string requirement)
     {
         var source = Source("public", "public", "internal", "public", requirement);
@@ -119,7 +119,7 @@ public class ConditionalPremiseAccessBindingTest
     [Fact]
     public void WarmConditionalAccessChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source("public", "internal", "internal", "public", "([2 of Source.Hidden.Item], i32)"));
+        var c = MinimalEmissionTest.Analyze(Source("public", "internal", "internal", "public", "([2 of Source.(Hidden).Item], i32)"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

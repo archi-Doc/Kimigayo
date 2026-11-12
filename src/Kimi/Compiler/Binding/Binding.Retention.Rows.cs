@@ -169,6 +169,11 @@ public sealed partial class Binding
         writes.Clear();
         for (var output = 0; output < inputs.Length; output++)
         {
+            if (KimiLibraryCatalog.NoStore(callee?.BoundSymbol, output))
+            {
+                continue; // SPEC 5.2 Placement, 5.6: KimiLibraryCatalog.NoStore, the contract stores no value here, so writes no storage.
+            }
+
             Array.Clear(kept);
             this.BeginStorages();
             this.RootWalk(environment, inputs[output], this.SignatureInput(output));

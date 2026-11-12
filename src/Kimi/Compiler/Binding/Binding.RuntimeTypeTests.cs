@@ -64,7 +64,7 @@ public sealed partial class Binding
         // SPEC 13.6.4: a target that is itself a Type parameter or an associated Type is invalid; a struct Core whose Type
         // arguments depend on them is valid but not implemented.
         var associated = test.Right.BoundSymbol?.Kind == BindingSymbolKind.AssociatedType;
-        if (!associated && target.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) && HasRuntimeTypeDependency(target))
+        if (!associated && !target.IsAbstractType && HasRuntimeTypeDependency(target))
         {
             return this.Fail(test, BindingFailure.Unsupported, true);
         }

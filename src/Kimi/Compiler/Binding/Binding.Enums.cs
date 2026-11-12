@@ -130,9 +130,12 @@ public sealed partial class Binding
         }
         else
         {
+            // SPEC 6.5.2 steps 2-3, 9.7: an omitted own list takes the expected owned Type of the same enum. A top-level enum is that Type
+            // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
+            // environment from the path (ConstructionTargetType).
+            var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
             type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
-                ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
-                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
+                ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
         }
 
         qualifier.BoundSymbol = symbol;
@@ -178,6 +181,7 @@ public sealed partial class Binding
         }
 
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
+        var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
         var frame = this.infer.Rent(slots);
@@ -198,7 +202,10 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < Math.Min(slots, owner.Components.Count); i++)
                 {
-                    frame.SetType(i, owner.Components[i]);
+                    if (!OpenConstructionSlot(declaration, owner, inferred, i))
+                    {
+                        frame.SetType(i, owner.Components[i]);
+                    }
                 }
             }
 
@@ -231,19 +238,21 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 6.5.2 step 2, 10.8: the slots the qualifier and the expected Type fix before any evidence, each payload's adaptation reads
-            // them and a payload they complete is settled. Each supplies every slot (SPEC 8.1.3), so a Case construction fixes all or none
-            // and never holds an open slot beside a fixed one; none fixed is no Types (FixedSlots).
-            frame.Types[..slots].CopyTo(fixedTypes);
+            // SPEC 6.5.2 step 2, 9.7.1, 10.8: the slots the qualifier and the expected Type fix before any evidence; each payload's adaptation
+            // reads them. An inferred qualifier fixes its environment and leaves its own slots open, each as its own parameter (FixedSlots);
+            // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types.
             frame.Lengths[..slots].CopyTo(fixedLengths);
-            var allFixed = true;
+            var anyFixed = false;
+            var ownFixed = true;
             for (var i = 0; i < slots; i++)
             {
-                allFixed &= fixedTypes[i] is not null;
+                fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
+                anyFixed |= frame.Types[i] is not null;
+                ownFixed &= frame.Types[i] is not null || i >= declaration.GenericParameterNodes.Count;
             }
 
             var solution = this.Solution(call, declaration, scope, frame, origins);
-            solution.Fixed = new(declaration, allFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), allFixed);
+            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), ownFixed);
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
@@ -331,7 +340,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, frame.Types[..slots], scope);
+            var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope);
             if (proof != ConstraintProof.Proven)
             {
                 return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)
@@ -354,6 +363,12 @@ public sealed partial class Binding
             if (call is not null)
             {
                 call.CallStorage = null;
+            }
+
+            if (inferred)
+            {
+                // SPEC 9.7, 10.8.1: an inferred qualifier names the constructed Type, as a structure's does (BindCall).
+                Complete(((MemberAccessKoto)reference).Left, result);
             }
 
             use.BoundSymbol = reference.BoundSymbol = symbol;
@@ -393,7 +408,8 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Fixed.Types, solution.Fixed.Lengths) is { } fixedType &&
+            // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
+            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
                 !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
             {
                 settled.Add(i);

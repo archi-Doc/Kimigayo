@@ -530,6 +530,12 @@ public sealed partial class Binding
     private static bool StaticStorageAccess(BindingSymbol symbol, BindingScope scope)
         => symbol.Kind == BindingSymbolKind.Storage && IsStatic(symbol.Declaration.BoundSymbol) && scope.Function != symbol.Scope.Function;
 
+    // SPEC 3.4.2, 13.5.5, 13.5.6: whether an object view lends its object in a mode, as BorrowablePlace says of a slot: a Reborrow's
+    // lending point is the object, not the slot storing the view, so `objuniq/T` lends exclusively also from a `let` slot unless a shared
+    // layer on its path denies (SPEC 15.6.2), and any view lends shared.
+    private static bool LendsView(Koto source, BoundType view, bool exclusive)
+        => !exclusive || (view.Semantics == SemanticsKind.ObjUniq && !ReachedThroughShared(source));
+
     // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
     // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
     // authority (shared for rc/arc) is checked by the caller.

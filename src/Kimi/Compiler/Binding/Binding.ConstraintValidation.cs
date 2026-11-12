@@ -349,12 +349,12 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
                 var frame = this.BeginConsultation(node);
-                var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments);
+                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
                 this.RequireConstraintInFrame(node, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
