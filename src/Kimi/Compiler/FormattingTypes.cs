@@ -4,18 +4,25 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// SPEC 22.10.2's built-in formattable Types, SPEC 22.10.5's bounded ones and rule L's stack limit (STATUS "Text and formatting"; the old
-// utf8-formatting §6.1): the closed tables every phase reads by Type. A bound is the implementation's widest encoding of a bounded Type,
-// which an interpolation's instance sums; a user or library formatter's Type, a string and a view are unbounded (SPEC 22.10.5's list is
-// closed: no declaration adds a row).
+// The Types the compiler's built-in formatting conformance answers (IsBuiltin), SPEC 22.10.5's bounded ones and rule L's stack limit
+// (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables every phase reads by Type. A bound is the
+// implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or library formatter's Type, a
+// string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row).
 internal static class FormattingTypes
 {
     /// <summary>Rule L's windows-x64 limit: a direct bounded interpolation whose literal bytes and value bounds sum to at most this many
     /// bytes is formatted on a stack region of exactly that sum, after substitution as before; any other uses the heap buffer.</summary>
     internal const int StackLimit = 1024;
 
+    /// <summary>Gets whether the compiler states a Type's Utf8Format conformance, which no declaration states: the scalars, Unit and
+    /// string. i128 and u128 are still formatted by the built-in conformance, without a declared or tabled witness; the others, the
+    /// integers up to 64 bits included (R8-S2b1), are the witness table's rows, which this proof still answers first (DECISIONS R8-M30,
+    /// temporary 2), until R8-S2d2 deletes this meaning.
+    /// Utf8Slice declares its conformance, so it is not one (R8-S2d1).</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether the built-in conformance answers it.</returns>
     internal static bool IsBuiltin(BoundType type) => type.Semantics == SemanticsKind.Owner &&
-        (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsUtf8Slice(type));
+        (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String));
 
     internal static bool IsUtf8Slice(BoundType? type) => type?.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice;
 

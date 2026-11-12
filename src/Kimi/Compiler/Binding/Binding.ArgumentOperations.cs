@@ -97,9 +97,10 @@ public sealed partial class Binding
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
         {
             layers++;
+            this.termWalks++;
             if (ReferenceEquals(type.Components[0], referent))
             {
                 BoundOrigin? origin = null;
@@ -410,9 +411,10 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && actual.Kind == BoundTypeKind.SemanticsApplication))
+        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && TryAdaptationSelector(actual, out _)))
         {
-            // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value. A written
+            // SPEC 13.5.6: an explicit borrow of a slot storing a pair layer, an application or an adaptation family (SPEC 13.5.5,
+            // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
             // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
             var exclusive = target == SemanticsKind.Uniq;
             if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : !judged || this.LendsPlace(source, scope, exclusive, out _))

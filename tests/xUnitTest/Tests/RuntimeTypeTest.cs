@@ -287,7 +287,8 @@ public class RuntimeTypeTest
     }
 
     // SPEC 7.5: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
-    // generic parameters; `x` is not a permitted subject. Parentheses make the test executable.
+    // generic parameters; `x` is not a permitted subject, which Binding judges, not the parser (G507). Parentheses make the test
+    // executable.
     [Theory]
     [InlineData("f<T>")]
     [InlineData("f")]
@@ -296,9 +297,12 @@ public class RuntimeTypeTest
         var source = "struct Dog\nfunc " + name + "(x: objref/Dog)\n    x is Dog\n    ()";
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(TestDiagnostics.Of(c));
+        Assert.Empty(TestDiagnostics.Of(c));
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
+        var bound = CompilationTestHelper.Parse(source);
+        Assert.False(bound.Bind().IsComplete);
+        Assert.Equal(["UnresolvedBinding_Kd"], bound.Binding.Issues.Select(static x => x.Code.ToString()));
         var parenthesized = CompilationTestHelper.ParseSuccess(source.Replace("    x is Dog", "    (x is Dog)", StringComparison.Ordinal));
         Assert.True(Test(parenthesized).IsRuntimeTest);
         AssertBound(parenthesized);
