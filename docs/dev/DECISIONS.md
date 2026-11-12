@@ -19741,3 +19741,5 @@ R8-M* and R9-M* by the stage of the recording unit.
     (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
     type, `NativeToolchain.NativeBuild`, is private).
   - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).
+  - Amended by G781 (2026-11-12): Documentation no longer reads `PropertyAccessorKoto`; the arm was unreachable (SPEC 2.3 makes no
+    accessor a documentation target).
