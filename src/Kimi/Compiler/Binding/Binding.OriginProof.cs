@@ -611,4 +611,12 @@ public sealed partial class Binding
         public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
             => binding.FitConjunct(longer, shorter, use, comparison, condition);
     }
+
+    // The proof's leaf of HoldsResting: one conjunct's proof at `use` in `comparison` (ProvesOriginOutlives), for the Origin inference's
+    // bounds (SolveOriginInference) and an implementation's claims (ClaimHolds).
+    private readonly struct ProofLeaf(Binding binding, Koto use, CallableInstance comparison) : IOriginConjunct
+    {
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
+    }
 }

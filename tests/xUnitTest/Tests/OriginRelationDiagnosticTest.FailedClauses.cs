@@ -186,6 +186,37 @@ public partial class OriginRelationDiagnosticTest
         Assert.True(DiagnosticCorpus.Check(twin).Accepted, twin);
     }
 
+    /// <summary>Gets each contract comparison over a slot a failed clause leaves Unbound, the clause as written, its repair and the
+    /// clause's one record.</summary>
+    public static TheoryData<string, string, string, string> ComparisonsOverARestingSlot => new()
+    {
+        // An override's claim over the original's resting slot (the claim, ClaimHolds).
+        {
+            SlotV + "open struct Base\n    public init() => ()\n    public virtual func pick(self: objref/Self, x: V) -> V{r}\n" +
+            "        origin r.source = x.source\n        return x@move\n" +
+            "struct Leaf: Base\n    public init() : base() => ()\n    override func pick(self: objref/Self, x: V) -> V{r}\n" +
+            "        origin r.source == x.source\n        return x@move\n" +
+            "func useBase(b: objref/Base, y: V) -> i32\n    let z = b.pick(y@move)\n    return z.value@follow\n",
+            "r.source = x.source", "r.source == x.source", nameof(DiagnosticCode.OriginRelationOperator_Kd)
+        },
+
+        // A conformance: the implementation's own clause fails (a guessed operator, an unavailable operand), or the requirement's does
+        // (the Origin solve of the comparison, SolveOriginInference).
+        { PickContract("r.source == x.source", "r.source = x.source"), "r.source = x.source", "r.source == x.source", nameof(DiagnosticCode.OriginRelationOperator_Kd) },
+        { PickContract("r.source == x.source", "r.source == x.sourc"), "x.sourc\n", "x.source\n", nameof(DiagnosticCode.InvalidOriginBinding_Kd) },
+        { PickContract("r.source = x.source", "r.source == x.source"), "r.source = x.source", "r.source == x.source", nameof(DiagnosticCode.OriginRelationOperator_Kd) },
+
+        // A generic implementation's failed clause, called generically and directly.
+        {
+            GenericV + "contract Get\n    func get(self: ref/Self, x: V<i32>) -> V<i32>{r}\n        origin r.source == x.source\n" +
+            "struct Impl\n    Self is Get\n    public func get(self: ref/Self, x: V<i32>) -> V<i32>{r}\n        origin r.source = x.source\n" +
+            "        return x@move\n" +
+            "func generic<T>(t: ref/T, x: V<i32>) -> i32\n    T is Get\n    let v = t.get(x@move)\n    return v.value@follow\n" +
+            "func direct(t: ref/Impl, x: V<i32>) -> i32\n    let v = t.get(x@move)\n    return v.value@follow\n",
+            "r.source = x.source", "r.source == x.source", nameof(DiagnosticCode.OriginRelationOperator_Kd)
+        },
+    };
+
     /// <summary>Gets each body with an independent Origin record beside a use of `pick`'s resting result slot.</summary>
     public static TheoryData<string> IndependentBesideARestingSlot => new()
     {
@@ -204,6 +235,19 @@ public partial class OriginRelationDiagnosticTest
         // Another relation of the same function, failing for another reason.
         "func other(y: V, b: ref/i32 during q) -> ref/i32 during y.source\n    let z = pick(y@move)\n    let k = z.value\n    return b\n",
     };
+
+    // SPEC 15.3.7, 23.1.2 (PLAN G739; DECISIONS Q13 rule W): a contract comparison whose relation meets such a slot reads the failed
+    // input directly (an override's claim, an implementation's Origin solve), so it holds: the clause's record is the program's one, and
+    // the repaired twin is valid.
+    [Theory]
+    [MemberData(nameof(ComparisonsOverARestingSlot))]
+    public void AContractComparisonOverASlotAFailedClauseRestsRecordsNothing(string source, string written, string repair, string code)
+    {
+        Assert.Equal([code], DiagnosticCorpus.Check(source + Main).Diagnostics.Select(static x => x.Code));
+        var twin = source.Replace(written, repair, StringComparison.Ordinal) + Main;
+        Assert.NotEqual(source + Main, twin);
+        Assert.True(DiagnosticCorpus.Check(twin).Accepted, twin);
+    }
 
     // SPEC 23.1.2 (DECISIONS Q13 rule W, R4-M118 site (1)): the rule covers only what reads the resting slot, so an independent failure
     // beside it is reported as in the repaired twin.
@@ -225,4 +269,11 @@ public partial class OriginRelationDiagnosticTest
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
+
+    private static string PickContract(string required, string implemented)
+        => SlotV + "contract Pick\n    func pick(self: ref/Self, x: V) -> V{r}\n        origin " + required + "\n" +
+            "struct S\n    Self is Pick\n    public init() => ()\n    public func pick(self: ref/Self, x: V) -> V{r}\n        origin " + implemented +
+            "\n        return x@move\n" +
+            "func viaS(s: ref/S, y: V) -> i32\n    let z = s.pick(y@move)\n    return z.value@follow\n" +
+            "func viaG<T>(t: ref/T, y: V{p}) -> V{q}\n    T is Pick\n    origin q.source == p.source\n    return t.pick(y@move)\n";
 }

@@ -76,7 +76,8 @@ public sealed partial class Binding
     // SPEC 15.3.6, 23.1.2 (DECISIONS Q13 rule W; PLAN G739): whether `longer outlives shorter`, whose ordinary answer is false, holds by
     // an end that rests. A resting shorter end holds whole (`x outlives a` proves `x outlives (a and b)`); a meet at the longer end
     // outlives an Origin exactly when each operand does, so a resting operand's conjunct holds and every other operand's is `leaf`'s.
-    // The one split of its readers, each with its own leaf: the fit (FitOrigin) and its position search (OriginFitSearch).
+    // The one split of its readers, each with its own leaf: the fit (FitOrigin), its position search (OriginFitSearch), and the contract
+    // comparison's decisions, an implementation's claims (ClaimHolds) and the Origin inference's bounds (SolveOriginInference).
     private bool HoldsResting<T>(BoundOrigin longer, BoundOrigin shorter, ulong condition, in T leaf)
         where T : struct, IOriginConjunct
         => this.Rests(shorter) || (this.Rests(longer) && this.OperandsHold(longer, shorter, condition, leaf));
