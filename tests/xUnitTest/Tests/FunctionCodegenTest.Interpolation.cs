@@ -8,9 +8,9 @@ using Xunit;
 namespace XunitTest;
 
 // The owning interpolation's rows of MIR code generation (R5 C9c, C9d; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M133):
-// the private buffer Text.heap(0)'s (R8-W2 c3b), FormatSegment and FormatFinish over each instance's estimate, a literal position's text
-// a library call after its step's hint, deferred when a value follows (R8-W2 c1), and a direct bounded line within the windows-x64 limit
-// on its MIR region (R8-W2 a2: a fixed array, Text.fixed's).
+// the private buffer Text.heap(0)'s (R8-W2 c3b), FormatSegment over each instance's estimate, a literal position's text a library call
+// after its step's hint, deferred when a value follows (R8-W2 c1), the end Utf8Writer.finish and HeapBuffer.intoString (R8-W2 c3a), and a
+// direct bounded line within the windows-x64 limit on its MIR region (R8-W2 a2: a fixed array, Text.fixed's).
 public sealed partial class FunctionCodegenTest
 {
     // A Library of owning interpolations: direct and bounded (the stack), not direct, unbounded without literal text, with an early exit
@@ -45,14 +45,16 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "writeLine").Contains(x.Callee));
         Assert.DoesNotContain(
             CalleesOf(function),
-            x => FunctionsOf(ir, c, "heap").Contains(x) || x == ir.Function("__kimi_format_finish") || x == ir.Function("__kimi_write_line"));
+            x => FunctionsOf(ir, c, "heap").Contains(x) || FunctionsOf(ir, c, "intoString").Contains(x) || x == ir.Function("__kimi_write_line"));
     }
 
     // SPEC 22.10.5 (DECISIONS R8-M24; R8-W2 c3b): a bounded interpolation that is not passed directly to writeLine, and an unbounded one,
     // format on the heap, each buffer the library's Text.heap of capacity 0 with its caller location (SPEC 22.5.1), which allocates
     // nothing: the adapter's first reservation grows it once by its bytes, a deferred literal and its hint. Both end with the heap form,
-    // and no module holds the runtime's second statement of the buffers (fail-before: FormatBuffer's __kimi_text_heap of the instance's
-    // estimate, 33 for ipOwned, over __kimi_text_fixed).
+    // the library's Utf8Writer.finish, then HeapBuffer.intoString (R8-W2 c3a), and no module holds the runtime's second statement of the
+    // buffers or of their end (fail-before: FormatBuffer's __kimi_text_heap of the instance's estimate, 33 for ipOwned, over
+    // __kimi_text_fixed; FormatFinish's __kimi_format_finish, which called __kimi_format_check and __kimi_format_take_string, which called
+    // __kimi_buffer_bytes).
     [Theory]
     [InlineData("ipOwned", new[] { 20L, 0L })]
     [InlineData("ipPlain", new[] { 0L })]
@@ -67,16 +69,19 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             hints.Select(static x => $"call void @(ptr %, i64 {x})"),
             CallsOf(function).Where(x => x.Callee == ir.Function("__kimi_format_hint")).Select(static x => x.Shape));
-        Assert.Single(CallsOf(function), x => x.Callee == ir.Function("__kimi_format_finish"));
+        IrFunction[] end = [Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString"))];
+        Assert.Equal(end, CalleesOf(function).Where(end.Contains));
         Assert.DoesNotContain(CalleesOf(function), x => FunctionsOf(ir, c, "fixed").Contains(x));
         Assert.DoesNotContain(function.Instructions, static x => x.Opcode == "alloca" && x.Shape.StartsWith(RegionShape, StringComparison.Ordinal));
-        Assert.DoesNotContain("__kimi_text_heap", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_text_fixed", text, StringComparison.Ordinal);
+        foreach (var routine in new[] { "__kimi_text_heap", "__kimi_text_fixed", "__kimi_format_finish", "__kimi_format_take_string", "__kimi_format_check", "__kimi_buffer_bytes" })
+        {
+            Assert.DoesNotContain(routine, text, StringComparison.Ordinal);
+        }
     }
 
     // Rule L (STATUS; plan row C9c; R8-W2 a2): the limit holds the literal bytes and the values' maxima, 1,024 bytes on the region and
     // 1,025 on the heap, whose buffer starts empty (Text.heap(0), R8-W2 c3b); a generic body's term decides per instance (i32's 6 + 11,
-    // bool's 6 + 5). Each buffer's end is its own form: a region's text() and writeLine(Utf8Slice), a heap buffer's FormatFinish and
+    // bool's 6 + 5). Each buffer's end is its own form: a region's text() and writeLine(Utf8Slice), a heap buffer's finish, intoString and
     // writeLine(ref/string).
     [Fact]
     public void TheStackLimitAndEachInstanceChooseTheBuffer()
@@ -91,7 +96,7 @@ public sealed partial class FunctionCodegenTest
         var past = Assert.Single(FunctionsOf(ir, c, "pastLimit"));
         var heap = Assert.Single(FunctionsOf(ir, c, "heap"));
         Assert.Matches(@"^call void @\(ptr %, i64 0, ptr @, i64 \d+\)$", Assert.Single(CallsOf(past), x => x.Callee == heap).Shape);
-        Assert.Equal([heap, ir.Function("__kimi_format_finish"), ir.Function("__kimi_write_line")], Ends(ir, c, past));
+        Assert.Equal([heap, Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString")), ir.Function("__kimi_write_line")], Ends(ir, c, past));
         var generic = Analyze(Interpolations, OutputKind.Library);
         var instances = GeneratedIr.Parse(Generate(generic));
         Assert.Equal(
@@ -117,7 +122,7 @@ public sealed partial class FunctionCodegenTest
     // Rule L (R8-W2 a2; consents 3 and 4 of C-180; R8-W2 c3b): a generic direct line's owning instance (T = string) has a region of no
     // bytes, Text.fixed<0>'s, with no alloca for anything to destroy. Both buffers are made once, before the first branch (Text.fixed<0>,
     // then Text.heap(0); MirBuildTest's AGenericLinesBuffersAreMadeBeforeItsFirstBranch), so the owning buffer is initialized on every
-    // path and has no drop flag (fail-before: made on the owning arm only, its drop had one flag).
+    // path; its end, intoString, moves it on the owning path only, so its drop has one flag again (R8-W2 c3a; at c3b none).
     [Fact]
     public void AnOwningInstancesRegionHasNoBytes()
     {
@@ -127,15 +132,15 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(function.Instructions, static x => x.Shape.StartsWith(RegionShape, StringComparison.Ordinal));
         IrFunction[] buffers = [.. FunctionsOf(ir, c, "fixed"), .. FunctionsOf(ir, c, "heap")];
         Assert.Equal(buffers, CalleesOf(function).Where(buffers.Contains));
-        Assert.Single(CallsOf(function), x => x.Callee == ir.Function("__kimi_format_finish"));
-        Assert.Empty(FlagsOf(function));
+        Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "intoString").Contains(x.Callee));
+        Assert.Single(FlagsOf(function));
     }
 
     // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1): each FormatSegment step gives its hint, then the position's write follows: a
     // literal's text is a library body's call, Utf8Writer.deferLiteral where a value follows (kept for the next reservation), string's
     // built-in format at the end, where no value follows; a value's is Utf8Writer.write's instance at the value's Type (R8-W1b-4), the
-    // witness table's. No module holds the formatting runtime's literal routines, and its check is only its end's (fail-before: the
-    // text was the step's, __kimi_format_literal or the built-in write with the string's kind, then __kimi_format_check).
+    // witness table's. No module holds the formatting runtime's literal routines (fail-before: the text was the step's,
+    // __kimi_format_literal or the built-in write with the string's kind, then __kimi_format_check).
     [Theory]
     [InlineData("ipPrefix", new[] { "hint 12", "deferLiteral", "hint 12", "write", "hint 11", "deferLiteral", "hint 0", "write" })]
     [InlineData("ipTail", new[] { "hint 1", "write", "hint 0", "format" })]
@@ -162,21 +167,17 @@ public sealed partial class FunctionCodegenTest
         {
             Assert.DoesNotContain(routine, text, StringComparison.Ordinal);
         }
-
-        Assert.Equal(
-            [ir.Function("__kimi_format_finish")],
-            ir.Functions.Where(x => CalleesOf(x).Contains(ir.Function("__kimi_format_check"))));
     }
 
     // The shape of a direct line's region, a fixed array of bytes, up to its length.
     private const string RegionShape = "alloca { [0 x i8], [";
 
     // A function's interpolation buffer and end routines, in order: Text.fixed's or the heap's buffer, then the region's or the heap's end
-    // and its writeLine.
+    // (finish and intoString) and its writeLine.
     private static IrFunction[] Ends(GeneratedIr ir, Compilation c, IrFunction function)
     {
-        IrFunction[] routines = [.. FunctionsOf(ir, c, "fixed"), .. FunctionsOf(ir, c, "heap"), ir.Function("__kimi_format_finish"),
-            .. FunctionsOf(ir, c, "writeLine"), ir.Function("__kimi_write_line")];
+        IrFunction[] routines = [.. FunctionsOf(ir, c, "fixed"), .. FunctionsOf(ir, c, "heap"), .. FunctionsOf(ir, c, "finish"),
+            .. FunctionsOf(ir, c, "intoString"), .. FunctionsOf(ir, c, "writeLine"), ir.Function("__kimi_write_line")];
         return [.. CalleesOf(function).Where(routines.Contains)];
     }
 

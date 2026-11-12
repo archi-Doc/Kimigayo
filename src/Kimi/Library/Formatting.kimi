@@ -155,6 +155,18 @@ public struct Utf8Writer {target}
             self.pendingLength = (*repr).length
         return .Ok(())
 
+    /// Ends an owning interpolation's writes (SPEC 22.10.3): the recorded failure; else a deferred literal still held,
+    /// which no reservation wrote because the values after it wrote no bytes, written through the shared tail
+    /// (`settled`) and committed. The compiler's owning interpolation is the only caller.
+    ///
+    /// - abort: the deferred literal exceeds the maximum object size or cannot allocate.
+    internal func finish(self: uniq/Self) -> Result<(), BufferFull>
+        if self.failed => return .Err(BufferFull.init())
+        if self.pendingLength == 0 => return .Ok(())
+        let window = try self.reserve(0)
+        (window@move).commitUtf8()
+        return .Ok(())
+
     /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): `BufferFull` when a failure is recorded;
     /// else the destination's window for `amount` and the deferred literal, which it writes first, or a recorded
     /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the kind-1 arm reads

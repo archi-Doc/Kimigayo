@@ -121,8 +121,12 @@ fn owning @14
   _13: isize temp @21
   _14: uniq/Utf8Writer temp @21
   _15: string temp @21
-  _16: ref/string temp @21
-  _17: Never temp @21
+  _16: Result<(), BufferFull> temp @21
+  _17: uniq/Utf8Writer temp @21
+  _18: isize temp @21
+  _19: Result<string, InvalidUtf8> temp @21
+  _20: ref/string temp @21
+  _21: Never temp @21
   bb0:
       StorageLive(_2) @17
       StorageLive(_3) @21
@@ -145,7 +149,7 @@ fn owning @14
       _10 = &uniq two-phase _4: uniq/Utf8Writer @21
       _8 = deferLiteral(move _10, const record "s=") -> bb5 @21
   bb4:
-      _17 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @21
+      _21 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @21
   bb5:
       _9 = discriminant(_8) @21
       switch copy _9 [0: bb6, otherwise: bb4] @21
@@ -164,15 +168,35 @@ fn owning @14
       switch copy _13 [0: bb9, otherwise: bb4] @21
   bb9:
       StorageLive(_15) @21
-      _15 = intrinsic FormatFinish(move _4) -> bb10 @21
-  bb10:
       StorageLive(_16) @21
-      _16 = &_15: ref/string @21
-      _2 = writeLine(move _16) -> bb11 @17
+      StorageLive(_17) @21
+      _17 = &uniq two-phase _4: uniq/Utf8Writer @21
+      _16 = finish(move _17) -> bb10 @21
+  bb10:
+      StorageLive(_18) @21
+      _18 = discriminant(_16) @21
+      switch copy _18 [0: bb11, otherwise: bb4] @21
   bb11:
-      StorageDead(_16) @21
-      drop _15 -> bb12 [keep] @21
+      StorageLive(_19) @21
+      _19 = intoString(move _3) -> bb12 @21
   bb12:
+      _18 = discriminant(_19) @21
+      switch copy _18 [0: bb13, otherwise: bb4] @21
+  bb13:
+      _15 = move (_19 as case 0).0 @21
+      drop _19 -> bb14 [open ((_ as case 0) open (.0 elide))] @21
+  bb14:
+      StorageDead(_19) @21
+      StorageDead(_18) @21
+      StorageDead(_17) @21
+      StorageDead(_16) @21
+      StorageLive(_20) @21
+      _20 = &_15: ref/string @21
+      _2 = writeLine(move _20) -> bb15 @17
+  bb15:
+      StorageDead(_20) @21
+      drop _15 -> bb16 [keep] @21
+  bb16:
       StorageDead(_15) @21
       StorageDead(_14) @21
       StorageDead(_13) @21
@@ -182,8 +206,8 @@ fn owning @14
       StorageDead(_9) @21
       StorageDead(_8) @21
       StorageDead(_7) @21
-      drop _3 -> bb13 [keep] @21
-  bb13:
+      drop _3 -> bb17 [elide] @21
+  bb17:
       StorageDead(_5) @21
       StorageDead(_4) @21
       StorageDead(_3) @21
@@ -216,15 +240,20 @@ fn line @25
   _22: ref/FixedBuffer temp @33 s1
   _23: isize temp @33 s1
   _24: string temp @37 s1
-  _25: ref/string temp @37 s1
-  _26: Never temp @37 s1
+  _25: Result<(), BufferFull> temp @37 s1
+  _26: uniq/Utf8Writer temp @37 s1
+  _27: isize temp @37 s1
+  _28: Result<string, InvalidUtf8> temp @37 s1
+  _29: ref/string temp @37 s1
+  _30: Never temp @37 s1
   s1: lexical in s0 @32
+  flags 1
   bb0:
       StorageLive(_2) @33 s1
       StorageLive(_3) @37 s1
     * _3 = Fill(const 0_u8): [(2 + bound(T)) of u8] @37 s1
       StorageLive(_4) @37 s1
-      StorageLive(_5) @37 s1
+      StorageLive(_5) [clear f0] @37 s1
       StorageLive(_6) @37 s1
       StorageLive(_7) @37 s1
       StorageLive(_8) @37 s1
@@ -236,7 +265,7 @@ fn line @25
       _4 = fixed<_>(move _10) -> bb1 @37 s1
   bb1:
       StorageDead(_10) @37 s1
-      _5 = heap(const 0_isize) -> bb2 @37 s1
+      _5 = heap(const 0_isize) -> bb2 [set f0] @37 s1
   bb2:
       switch copy _9 [0: bb3, otherwise: bb5] @37 s1
   bb3:
@@ -264,7 +293,7 @@ fn line @25
       _16 = &uniq two-phase _6: uniq/Utf8Writer @37 s1
       _14 = deferLiteral(move _16, const record "v=") -> bb10 @37 s1
   bb9:
-      _26 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @37 s1
+      _30 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @37 s1
   bb10:
       _15 = discriminant(_14) @37 s1
       switch copy _15 [0: bb11, otherwise: bb9] @37 s1
@@ -285,7 +314,10 @@ fn line @25
       switch copy _9 [0: bb15, otherwise: bb17] @37 s1
   bb15:
       StorageLive(_24) @37 s1
-      _24 = intrinsic FormatFinish(move _6) -> bb21 @37 s1
+      StorageLive(_25) @37 s1
+      StorageLive(_26) @37 s1
+      _26 = &uniq two-phase _6: uniq/Utf8Writer @37 s1
+      _25 = finish(move _26) -> bb21 @37 s1
   bb16:
       StorageDead(_20) @37 s1
       StorageDead(_19) @37 s1
@@ -295,7 +327,7 @@ fn line @25
       StorageDead(_15) @37 s1
       StorageDead(_14) @37 s1
       StorageDead(_13) @37 s1
-      drop _5 -> bb24 [keep] @37 s1
+      drop _5 -> bb28 [flag f0] [clear f0] @37 s1
   bb17:
       StorageLive(_21) @33 s1
       StorageLive(_22) @33 s1
@@ -313,21 +345,38 @@ fn line @25
       StorageDead(_21) @33 s1
       goto bb16 @37 s1
   bb21:
-      StorageLive(_25) @37 s1
-      _25 = &_24: ref/string @37 s1
-      _2 = writeLine(move _25) -> bb22 @33 s1
+      StorageLive(_27) @37 s1
+      _27 = discriminant(_25) @37 s1
+      switch copy _27 [0: bb22, otherwise: bb9] @37 s1
   bb22:
-      StorageDead(_25) @37 s1
-      drop _24 -> bb23 [keep] @37 s1
+      StorageLive(_28) @37 s1
+      _28 = intoString(move _5) -> bb23 [clear f0] @37 s1
   bb23:
+      _27 = discriminant(_28) @37 s1
+      switch copy _27 [0: bb24, otherwise: bb9] @37 s1
+  bb24:
+      _24 = move (_28 as case 0).0 @37 s1
+      drop _28 -> bb25 [open ((_ as case 0) open (.0 elide))] @37 s1
+  bb25:
+      StorageDead(_28) @37 s1
+      StorageDead(_27) @37 s1
+      StorageDead(_26) @37 s1
+      StorageDead(_25) @37 s1
+      StorageLive(_29) @37 s1
+      _29 = &_24: ref/string @37 s1
+      _2 = writeLine(move _29) -> bb26 @33 s1
+  bb26:
+      StorageDead(_29) @37 s1
+      drop _24 -> bb27 [keep] @37 s1
+  bb27:
       StorageDead(_24) @37 s1
       goto bb16 @37 s1
-  bb24:
+  bb28:
       StorageDead(_9) @37 s1
       StorageDead(_8) @37 s1
       StorageDead(_7) @37 s1
       StorageDead(_6) @37 s1
-      StorageDead(_5) @37 s1
+      StorageDead(_5) [clear f0] @37 s1
       StorageDead(_4) @37 s1
       StorageDead(_3) @37 s1
       StorageDead(_2) @33 s1
@@ -446,20 +495,25 @@ fn attempt @62
   _54: ref/FixedBuffer temp @77 s1
   _55: isize temp @77 s1
   _56: string temp @81 s1
-  _57: ref/string temp @81 s1
-  _58: Never temp @81 s1
-  _59: Result<(), ()> temp @124 s1
+  _57: Result<(), BufferFull> temp @81 s1
+  _58: uniq/Utf8Writer temp @81 s1
+  _59: isize temp @81 s1
+  _60: Result<string, InvalidUtf8> temp @81 s1
+  _61: ref/string temp @81 s1
+  _62: Never temp @81 s1
+  _63: Result<(), ()> temp @124 s1
   s1: lexical in s0 @76
   s2: lexical in s1 @89
   s3: lexical in s1 @98
   s4: lexical in s1 @114
   s5: lexical in s1 @120
+  flags 1
   bb0:
       StorageLive(_4) @77 s1
       StorageLive(_5) @81 s1
     * _5 = Fill(const 0_u8): [(8 + bound(T, i32, i32)) of u8] @81 s1
       StorageLive(_6) @81 s1
-      StorageLive(_7) @81 s1
+      StorageLive(_7) [clear f0] @81 s1
       StorageLive(_8) @81 s1
       StorageLive(_9) @81 s1
       StorageLive(_10) @81 s1
@@ -471,7 +525,7 @@ fn attempt @62
       _6 = fixed<_>(move _12) -> bb1 @81 s1
   bb1:
       StorageDead(_12) @81 s1
-      _7 = heap(const 0_isize) -> bb2 @81 s1
+      _7 = heap(const 0_isize) -> bb2 [set f0] @81 s1
   bb2:
       switch copy _11 [0: bb3, otherwise: bb5] @81 s1
   bb3:
@@ -499,7 +553,7 @@ fn attempt @62
       _18 = &uniq two-phase _8: uniq/Utf8Writer @81 s1
       _16 = deferLiteral(move _18, const record "v=") -> bb10 @81 s1
   bb9:
-      _58 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @81 s1
+      _62 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @81 s1
   bb10:
       _17 = discriminant(_16) @81 s1
       switch copy _17 [0: bb11, otherwise: bb9] @81 s1
@@ -595,13 +649,13 @@ fn attempt @62
       StorageDead(_17) @81 s1
       StorageDead(_16) @81 s1
       StorageDead(_15) @81 s1
-      drop _7 -> bb28 [keep] @81 s1
+      drop _7 -> bb28 [keep] [clear f0] @81 s1
   bb28:
       StorageDead(_11) @81 s1
       StorageDead(_10) @81 s1
       StorageDead(_9) @81 s1
       StorageDead(_8) @81 s1
-      StorageDead(_7) @81 s1
+      StorageDead(_7) [clear f0] @81 s1
       StorageDead(_6) @81 s1
       StorageDead(_5) @81 s1
       StorageDead(_4) @77 s1
@@ -696,7 +750,10 @@ fn attempt @62
       switch copy _11 [0: bb48, otherwise: bb50] @81 s1
   bb48:
       StorageLive(_56) @81 s1
-      _56 = intrinsic FormatFinish(move _8) -> bb54 @81 s1
+      StorageLive(_57) @81 s1
+      StorageLive(_58) @81 s1
+      _58 = &uniq two-phase _8: uniq/Utf8Writer @81 s1
+      _57 = finish(move _58) -> bb54 @81 s1
   bb49:
       StorageDead(_52) @112 s1
       StorageDead(_49) @112 s1
@@ -726,7 +783,7 @@ fn attempt @62
       StorageDead(_17) @81 s1
       StorageDead(_16) @81 s1
       StorageDead(_15) @81 s1
-      drop _7 -> bb57 [keep] @81 s1
+      drop _7 -> bb61 [flag f0] [clear f0] @81 s1
   bb50:
       StorageLive(_53) @77 s1
       StorageLive(_54) @77 s1
@@ -744,33 +801,50 @@ fn attempt @62
       StorageDead(_53) @77 s1
       goto bb49 @81 s1
   bb54:
-      StorageLive(_57) @81 s1
-      _57 = &_56: ref/string @81 s1
-      _4 = writeLine(move _57) -> bb55 @77 s1
+      StorageLive(_59) @81 s1
+      _59 = discriminant(_57) @81 s1
+      switch copy _59 [0: bb55, otherwise: bb9] @81 s1
   bb55:
-      StorageDead(_57) @81 s1
-      drop _56 -> bb56 [keep] @81 s1
+      StorageLive(_60) @81 s1
+      _60 = intoString(move _7) -> bb56 [clear f0] @81 s1
   bb56:
+      _59 = discriminant(_60) @81 s1
+      switch copy _59 [0: bb57, otherwise: bb9] @81 s1
+  bb57:
+      _56 = move (_60 as case 0).0 @81 s1
+      drop _60 -> bb58 [open ((_ as case 0) open (.0 elide))] @81 s1
+  bb58:
+      StorageDead(_60) @81 s1
+      StorageDead(_59) @81 s1
+      StorageDead(_58) @81 s1
+      StorageDead(_57) @81 s1
+      StorageLive(_61) @81 s1
+      _61 = &_56: ref/string @81 s1
+      _4 = writeLine(move _61) -> bb59 @77 s1
+  bb59:
+      StorageDead(_61) @81 s1
+      drop _56 -> bb60 [keep] @81 s1
+  bb60:
       StorageDead(_56) @81 s1
       goto bb49 @81 s1
-  bb57:
+  bb61:
       StorageDead(_11) @81 s1
       StorageDead(_10) @81 s1
       StorageDead(_9) @81 s1
       StorageDead(_8) @81 s1
-      StorageDead(_7) @81 s1
+      StorageDead(_7) [clear f0] @81 s1
       StorageDead(_6) @81 s1
       StorageDead(_5) @81 s1
       StorageDead(_4) @77 s1
-      StorageLive(_59) @124 s1
-    * _59 = Adt case 0(const ()): Result<(), ()> @124 s1
-      goto bb59 check bb60 @123 s1
-  bb58:
-      StorageDead(_59) @124 s1
+      StorageLive(_63) @124 s1
+    * _63 = Adt case 0(const ()): Result<(), ()> @124 s1
+      goto bb63 check bb64 @123 s1
+  bb62:
+      StorageDead(_63) @124 s1
       goto bb26 @62
-  bb59:
-      _39 = move _59 @123 s1
-      goto bb58 @123 s1
-  bb60:
-      StorageDead(_59) @124 s1
+  bb63:
+      _39 = move _63 @123 s1
+      goto bb62 @123 s1
+  bb64:
+      StorageDead(_63) @124 s1
       unreachable @76

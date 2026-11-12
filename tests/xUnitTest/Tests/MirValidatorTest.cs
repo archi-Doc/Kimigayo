@@ -17,7 +17,7 @@ namespace XunitTest;
 [Collection(nameof(MirValidatorTest))] // Its fixture's TyCtxt, which MirDumpTest shares, is not thread-safe.
 public sealed class MirValidatorTest(ITestOutputHelper output)
 {
-    // An owning interpolation of a literal, a value and a literal (Text.heap, three FormatSegments, a write, FormatFinish).
+    // An owning interpolation of a literal, a value and a literal (Text.heap, three FormatSegments, a write, finish, intoString).
     private const string Interpolation = "func f(n: i32) -> string => \"n=\\(n)!\"\n";
 
     // A static, as the static tests write it, and a body reading it on two branches, each after its own staticEnsure (G191).
@@ -102,14 +102,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             {
                 IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.WriteStdout, IntrinsicId.MakeObj,
                 IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone, IntrinsicId.TestRequireAbort, IntrinsicId.StaticEnsure,
-                IntrinsicId.FormatFinish, // FormatSegment only stores its hint since R8-W2 c1; the buffer is Text.heap, a body, since c3b.
+                // FormatSegment only stores its hint since R8-W2 c1; the buffer is Text.heap, a body, since c3b, and the end Utf8Writer.finish
+                // and HeapBuffer.intoString, bodies, since c3a.
             },
             Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Abort) != 0));
         Assert.Equal(
             new[]
             {
                 IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.TryAllocateBytes, IntrinsicId.MakeObj, IntrinsicId.MakeRc,
-                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory, IntrinsicId.FormatFinish,
+                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory,
             },
             Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Allocation) != 0));
     }
@@ -790,9 +791,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // R3-10 (PLAN G157 (37)): an owning interpolation's steps carry their constants, which code generation reads unchecked, each of its
     // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple): the built bodies are valid, a nested
     // interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for
-    // another kind). FormatFinish takes only its adapter since R8-W2 a2 (R5-M131's pairing went with the stack form), a FormatSegment
-    // no text since R8-W2 c1 (ALiteralPositionsTextIsAConstantRecord), and the buffer is a body's call, Text.heap, with no estimate since
-    // R8-W2 c3b (the FormatBuffer row went with its intrinsic).
+    // another kind). A FormatSegment takes no text since R8-W2 c1 (ALiteralPositionsTextIsAConstantRecord), the buffer is a body's call,
+    // Text.heap, with no estimate since R8-W2 c3b (the FormatBuffer row went with its intrinsic), and the end is two bodies' calls,
+    // Utf8Writer.finish and HeapBuffer.intoString, since R8-W2 c3a (the FormatFinish row went with its intrinsic).
     [Theory]
     [InlineData(null, false)]
     [InlineData(null, true)]
@@ -807,10 +808,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var at = broken == "later" ? 1 : 2;
         MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
             .Where(x => x.Callee is { Kind: MirCalleeKind.Intrinsic } callee && callee.Arg == (int)step)];
-        var (steps, finishes) = (Steps(IntrinsicId.FormatSegment), Steps(IntrinsicId.FormatFinish));
-        Assert.Equal(nested ? 2 : 1, finishes.Length);
+        int Calls(string name) => body.Blocks.ToArray().Count(x => x.Terminator is { Kind: MirTerminatorKind.Call } call && call.Callee.Symbol?.Name == name);
+        var steps = Steps(IntrinsicId.FormatSegment);
         Assert.Equal(nested ? 5 : 3, steps.Length);
-        Assert.Equal(finishes.Length, body.Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "heap" }));
+        Assert.Equal(Enumerable.Repeat(nested ? 2 : 1, 3), new[] { Calls("heap"), Calls("finish"), Calls("intoString") });
         var step = body.Subject(steps[0].Source);
         if (broken is not null)
         {
@@ -1908,8 +1909,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
-    // V11: validating a body again, the Type tier's and its Adapt's case views included, an owning interpolation's steps and its FormatFinish's
-    // pairing (DECISIONS R5-M131) included, a static's reads on two branches with G191 rule (3)'s solve included, and enumerating its uses,
+    // V11: validating a body again, the Type tier's and its Adapt's case views included, an owning interpolation's steps and its end
+    // included, a static's reads on two branches with G191 rule (3)'s solve included, and enumerating its uses,
     // of the body and under each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]

@@ -197,7 +197,6 @@ internal static class MirDescriptors
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         // The adapter, then the later literal bytes and values' Types' token: its hint (R8-W2 c1: a literal position's text is a library call).
         IntrinsicId.FormatSegment => Intrinsic(MirEffect.None, 3),
-        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // The adapter.
         _ => default,
     };
 

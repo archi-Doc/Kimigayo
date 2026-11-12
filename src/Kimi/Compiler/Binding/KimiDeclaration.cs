@@ -69,6 +69,7 @@ public enum KimiDeclarationId : byte
     WriterReserve,
     WriterWriteUtf8,
     WriterDeferLiteral,
+    WriterFinish,
     WriteLineUtf8,
     BoolFormatFormat,
     CharFormatFormat,

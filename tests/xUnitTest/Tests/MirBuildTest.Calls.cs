@@ -578,26 +578,26 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"\\(\"only\")\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
     public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
     // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
     // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
     // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), Text.heap,
-    // its writer, the writes, FormatFinish and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
+    // its writer, the writes, finish, intoString and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
     // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
     // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
     [Theory]
@@ -609,13 +609,13 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "heap", "write", "writeLine" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
-        new[] { "fixed", "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "ErasedWriter", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "heap", "text", "write", "writeLine", "writeLine" })]
+        new[] { "fixed", "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
         var body = Body(source, "f");
@@ -631,8 +631,9 @@ public sealed partial class MirBuildTest
     // SPEC 22.10.5 (DECISIONS R8-M24 as amended at R8-W2 c3b): an owning interpolation's buffer is the plan's first call, Text.heap, of the
     // constant capacity 0. A generic direct line makes both buffers before its first branch, Text.fixed over the region, whose Len the
     // branch's test read first, then Text.heap, and each arm makes only the writer; so each end reads a buffer initialized on every path,
-    // and the owning buffer's one Drop keeps it whole on both, with no flag (fail-before: FormatBuffer of the instance's estimate; each
-    // buffer made in its arm, the owning buffer's Drop flagged and the fixed end's read accepted by A1's rule for a temp).
+    // and the owning buffer's one Drop is MirDrops' ordinary flagged one, since the owning end's intoString moves it (R8-W2 c3a; at c3b
+    // Keep, with no flag) (fail-before: FormatBuffer of the instance's estimate; each buffer made in its arm, the fixed end's read
+    // accepted by A1's rule for a temp).
     [Fact]
     public void AGenericLinesBuffersAreMadeBeforeItsFirstBranch()
     {
@@ -668,9 +669,33 @@ public sealed partial class MirBuildTest
         }
 
         var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();
-        Assert.DoesNotContain(lines, static x => x.StartsWith("flags", StringComparison.Ordinal));
-        Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[keep]", StringComparison.Ordinal));
+        Assert.Equal(["flags 1"], lines.Where(static x => x.StartsWith("flags", StringComparison.Ordinal)));
+        Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[flag f0]", StringComparison.Ordinal));
     }
+
+    // SPEC 22.10.3, 22.9.3 (R8-W2 c3a): an owning interpolation's end is Utf8Writer.finish, the writer's last use, so its Loan on the buffer
+    // ends there, then HeapBuffer.intoString of the moved buffer. Rows labelled from SPEC 22.10.3 before running: valid, so accepted, an
+    // owning interpolation in a let, a generic body's owning instance and a nested one in a direct line; the builder's shape written out,
+    // the writer's status for its finish, valid with the writer's last use first and a Loan conflict with intoString moving the buffer
+    // while the writer is used after it (fail-before: the first three built FormatFinish, which took the writer by move).
+    [Theory]
+    [InlineData("func f(x: i32) -> string\n    let t = \"a\\(x)b\"\n    return t@move\n", null)]
+    [InlineData("func g<T>(v: ref/T) -> string\n    T is Utf8Format\n    return \"v=\\(v)\"\nfunc f() -> string => g(\"abc\")\n", null)]
+    [InlineData("func f(x: i32) => Console.writeLine(\"o\\(\"i\\(x)\")\")\n", null)]
+    [InlineData(EndShape + "    _ = writer.status()\n    let taken = (buffer@move).intoString()\n" + EndTaken, null)]
+    [InlineData(EndShape + "    let taken = (buffer@move).intoString()\n    _ = writer.status()\n" + EndTaken, DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void AnOwningEndTakesTheBufferAfterTheWritersLastUse(string source, DiagnosticCode? conflict)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflict is { } code ? [code] : [], program.Problems.All.ToArray().Select(static x => x.Code));
+    }
+
+    // The builder's owning end written out (AnOwningEndTakesTheBufferAfterTheWritersLastUse): the buffer, its writer and one write.
+    private const string EndShape = "func f(n: i32) -> string\n    var buffer = Text.heap(0)\n    let writer = Text.writer(buffer@uniq)\n    _ = writer.write(n)\n";
+
+    // The owning end's string taken from intoString's Result (AnOwningEndTakesTheBufferAfterTheWritersLastUse).
+    private const string EndTaken = "    match taken@move\n        .Ok(let s) => return s@move\n        .Err(_) => $abort(\"invalid\")\n";
 
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
     // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).

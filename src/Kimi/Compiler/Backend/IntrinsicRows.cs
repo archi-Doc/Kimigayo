@@ -42,7 +42,6 @@ internal enum IntrinsicWriter : byte
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
     Segment, // FormatSegment: the hint routine given its estimate's hint (FunctionCodegen.Interpolation).
-    Finish, // FormatFinish: the routine over the adapter and its buffer (FunctionCodegen.Interpolation).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
@@ -129,7 +128,6 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LayoutNeed.None, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
-        new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

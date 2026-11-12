@@ -111,8 +111,8 @@ public partial class KimiLibraryShapeTest
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
-        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1).
-        Assert.Equal(193, KimiLibraryCatalog.Entries.Length);
+        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
+        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -278,8 +278,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 29 intrinsics, and the temporary Capacity, FormatSegment and FormatFinish
-    // (owner approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133; FormatBuffer went at R8-W2 c3b) until R8.
+    // which carries a fixed SPEC 22.5.2 code; there are at most 29 intrinsics, and the temporary Capacity and FormatSegment (owner
+    // approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133; FormatBuffer went at R8-W2 c3b, FormatFinish at c3a) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
