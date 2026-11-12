@@ -633,7 +633,7 @@ let small = sum(1..5@u8)   // 10
 
 ### 8.7.5. Closed Contracts
 
-`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members. Every `tryResolve` implementation reads only its boundaries and the length and has no other effect, and both Contracts bound `format` with `confined` ([§8.11.1](#8111-declarations)), so a generic body may format a position or a range, including a `T is PrimitiveInteger` ([§8.7.4](#874-primitiveinteger)), under that bound.
+`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members. Every `tryResolve` implementation reads only its boundaries and the length and has no other effect. Both Contracts bound `format` with `confined` ([§8.11.1](#8111-declarations)); a requirement call of `format` on a position or a range uses that bound ([§8.11.3](#8113-checking-and-use)), also where the position's Type is a `T` with `T is PrimitiveInteger` ([§8.7.4](#874-primitiveinteger)).
 
 ```kimi
 struct Offset
@@ -906,26 +906,17 @@ struct Countdown
 ```
 
 ```kimi
-// Take is the contract of §8.11.1.
-func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
-    S is Take
-    let first = source.take()
-    let second = source.take()   // Valid: first keeps no receiver Loan, and the call reaches only source's Places.
-    return (first@move, second@move)
-```
-
-```kimi
 contract Report
     func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         effect confined
 
 struct Meter<T>
-    T is PrimitiveInteger
+    T is Position
     Self is Report
     var reading: T
 
     public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
-        return writer.write(self.reading)   // Valid: Position bounds format with confined.
+        return self.reading.format(writer)   // Valid: Position bounds format with confined.
 
 struct Echo<T>
     T is Utf8Format
@@ -933,7 +924,16 @@ struct Echo<T>
     var item: T
 
     public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
-        return writer.write(self.item)      // Error: Utf8Format bounds no effect, so T's format is unknown.
+        return self.item.format(writer)      // Error: Utf8Format declares no bound, so the call has unknown effects.
+```
+
+```kimi
+// Take is the contract of §8.11.1.
+func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is Take
+    let first = source.take()
+    let second = source.take()   // Valid: first keeps no receiver Loan, and the call reaches only source's Places.
+    return (first@move, second@move)
 ```
 
 A result whose Type depends on its call's receiver Loan, such as a LendingIterator item `ref/E during step` ([§22.2.1](22-core-execution-and-foreign-functions.md#2221-iterator-contracts)), keeps that Loan, so a later call that conflicts with it, such as an exclusive call on the receiver, is an error while the result is live.
