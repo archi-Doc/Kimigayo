@@ -615,7 +615,7 @@ public sealed partial class Binding
         // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
         // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
         // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot) is { } value &&
+        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, this.ConstraintScope(visit.Use), out var slot) is { } value &&
             !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
         {
             return false;

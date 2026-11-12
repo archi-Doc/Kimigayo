@@ -18,6 +18,9 @@ public sealed partial class Binding
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
         : this.symbols[function.Parameters[index]];
 
+    // A statement of a generated function's block, which binds in its source document's scope (NodeScope).
+    private static bool GeneratedStatement(Koto node) => node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } };
+
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)
     {
         if (!this.scopes.TryGetValue(key, out var scope))
@@ -33,7 +36,7 @@ public sealed partial class Binding
 
     private BindingScope NodeScope(Koto node, BindingScope fallback)
     {
-        if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source && this.scopes.TryGetValue(source, out var sourceScope))
+        if (GeneratedStatement(node) && node.CodeContext.SourceDocument is { } source && this.scopes.TryGetValue(source, out var sourceScope))
         {
             fallback = sourceScope;
         }

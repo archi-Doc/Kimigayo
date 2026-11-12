@@ -48,6 +48,12 @@ public sealed partial class Binding
         => node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement, TypeKoto: { } header } property &&
             ReferenceEquals(header, previous) && property.BoundSymbol?.Property is not null ? property.GetAccessor(PropertyAccessorKind.Get) : null;
 
+    // Whether ExtractOriginPremises reads `node`, reached from its child `previous`: an associated requirement or application (R4), a
+    // signature (R2, R3; a computed or requirement Property's header reads its getter's) or a declaration whose clauses it reads (R1).
+    private static bool PremiseFrame(Koto node, Koto? previous)
+        => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto or DeclarationContainerKoto || AssociatedHead(node) is OriginApplicationKoto ||
+            HeaderGetter(node, previous) is not null;
+
     // The signature whose premises a request at `node` has: the innermost function (an anonymous one included), Function Type or
     // accessor at or above it; null at the top level.
     private static Koto? PremiseSignature(Koto? node)
@@ -217,6 +223,11 @@ public sealed partial class Binding
         Koto? previous = null;
         for (var node = from; node is not null; previous = node, node = node.Parent)
         {
+            if (!PremiseFrame(node, previous))
+            {
+                continue;
+            }
+
             var requirement = IsAssociatedRequirement(node);
             if (requirement && AssociatedFormationType(node) is { } formation)
             {
@@ -439,8 +450,8 @@ public sealed partial class Binding
         if (TryPairLayer(type, out var whole, out var target))
         {
             if (target.StoresOrigin && this.OuterOrigin(type) is { } slot &&
-                (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0 &&
-                this.PairSlotCondition(type, environment.Use) is { } condition)
+                (this.AdmittedSemantics(whole, this.PremiseScope(environment)) & SemanticsMask.Borrow) != 0 &&
+                this.PairSlotCondition(type, this.PremiseScope(environment)) is { } condition)
             {
                 this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false, condition);
             }
@@ -498,7 +509,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
+        if (this.StoredSlot(type, this.PremiseScope(environment), out var slot) is { } origin)
         {
             AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
@@ -516,6 +527,9 @@ public sealed partial class Binding
             }
         }
     }
+
+    // The constraint scope of the environment's use, found once per environment.
+    private BindingScope PremiseScope(OriginPremiseEnvironment environment) => environment.Scope ??= this.ConstraintScope(environment.Use);
 
     // The storage of one proof request: its graph and closure, the resolved endpoint of each premise Origin, the Types already
     // visited and the resolving declarations. Clear releases every reference and keeps the capacity.

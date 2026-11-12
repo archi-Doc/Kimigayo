@@ -101,21 +101,21 @@ public sealed partial class Binding
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
     /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
-    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders(Koto, List{PairBinder})"/> at
-    /// the use when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders(BindingScope, List{PairBinder})"/> in
+    /// the use's scope when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
     /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
-    /// <param name="use">The use whose binders give the bits.</param>
+    /// <param name="scope">The constraint scope of the use, whose binders give the bits.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, Koto use)
+    internal ulong? PairSlotCondition(BoundType layer, BindingScope scope)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {
             return 0;
         }
 
-        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(use));
+        var admitted = this.AdmittedSemantics(whole, scope);
         if ((admitted & SemanticsMask.Borrow) == 0)
         {
             return null;
@@ -132,7 +132,7 @@ public sealed partial class Binding
         this.pairConditionActive = true;
         try
         {
-            this.PairBinders(use, binders);
+            this.PairBinders(scope, binders);
             for (var i = 0; i < binders.Count && i < 64; i++)
             {
                 if (ReferenceEquals(binders[i].Target.WholeType, whole))
@@ -154,10 +154,10 @@ public sealed partial class Binding
     /// slot, the implicit <c>o</c> of an original <c>s/T</c> included, in its binder's borrow cases (<see cref="PairSlotCondition"/>), and
     /// any other Type's written Origin in every case.</summary>
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
-    /// <param name="use">The use whose binders give the condition's bits.</param>
+    /// <param name="scope">The constraint scope of the use, whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
-    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition)
+    internal BoundOrigin? StoredSlot(BoundType type, BindingScope scope, out ulong condition)
     {
         condition = 0;
         if (!type.ContainsPairLayer)
@@ -165,7 +165,7 @@ public sealed partial class Binding
             return type.Origin;
         }
 
-        if (this.PairSlotCondition(type, use) is not { } slot)
+        if (this.PairSlotCondition(type, scope) is not { } slot)
         {
             return null;
         }

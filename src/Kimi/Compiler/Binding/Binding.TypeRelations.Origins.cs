@@ -179,5 +179,5 @@ public sealed partial class Binding
 
     // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
     private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use)
-        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
+        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, binding.ConstraintScope(use))) : 0;
 }

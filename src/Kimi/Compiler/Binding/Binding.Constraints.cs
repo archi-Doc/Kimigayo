@@ -39,12 +39,7 @@ public sealed partial class Binding
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
-            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
-            {
-                return this.NodeScope(node, armScope);
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
+            if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);
             }
@@ -78,6 +73,11 @@ public sealed partial class Binding
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
+
+    // The scope `current`, reached from its child `child`, gives the nodes below it: a match arm's body has its pattern's (SPEC 14.8.2),
+    // a scope's owner its own; null when it gives none.
+    private BindingScope? ScopeStop(Koto current, Koto? child)
+        => (current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) ?? this.scopes.GetValueOrDefault(current);
 
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)

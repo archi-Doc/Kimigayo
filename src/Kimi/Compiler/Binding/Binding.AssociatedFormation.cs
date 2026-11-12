@@ -97,7 +97,7 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (TryPairLayer(type, out _, out var target) && this.StoredSlot(type, use, out var condition) is { } slot &&
+        else if (TryPairLayer(type, out _, out var target) && this.StoredSlot(type, this.ConstraintScope(use), out var condition) is { } slot &&
             !this.AssociatedOriginsOutlive(target, slot, use, RequiredCondition(condition)))
         {
             // SPEC 8.1.2: an active slot is a conditional borrow layer whose target's Origins outlive it in its binder's borrow cases; a
@@ -124,7 +124,7 @@ public sealed partial class Binding
             return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use, condition);
         }
 
-        if (this.StoredSlot(type, use, out var slot) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
+        if (this.StoredSlot(type, this.ConstraintScope(use), out var slot) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
         {
             return false;
         }
@@ -215,7 +215,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (TryPairLayer(premise, out _, out var target) && this.StoredSlot(premise, use, out var slot) is { } pairSlot && slot != ulong.MaxValue &&
+        if (TryPairLayer(premise, out _, out var target) && this.StoredSlot(premise, this.ConstraintScope(use), out var slot) is { } pairSlot && slot != ulong.MaxValue &&
             (condition & slot) == slot && StoresTypeArgument(target, type) && this.ProvesOriginOutlives(pairSlot, outer, use, condition))
         {
             return true;
