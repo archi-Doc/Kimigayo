@@ -209,6 +209,7 @@ public sealed partial class Binding
     private void ClearCapabilityResults()
     {
         this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
+        this.ClearKeptRows(); // So do Enumerate's kept rows (ContractSolver).
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.capabilityConsumer = null;

@@ -133,6 +133,7 @@ public sealed partial class Binding
         if (!this.capabilitiesReady || this.normalizingAssociated.Count != 0 || this.identityExpansions.Count != 0)
         {
             serial = null;
+            this.readingFormations++;
             return this.NormalizeProofConstraint(fact, scope, out _);
         }
 
@@ -143,6 +144,7 @@ public sealed partial class Binding
             return kept.Reading;
         }
 
+        this.readingFormations++;
         var reading = this.NormalizeProofConstraint(fact, scope, out var completion);
         serial = SerialOf(scope);
         if (completion == Completion.Complete && serial == before)
@@ -205,6 +207,11 @@ public sealed partial class Binding
     private readonly HashSet<(EvidenceView, int)> enumeratePrepared = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
+
+    // The rows an outermost request walked in the kept region (Reading's), per link, view value and requirement Contract, for one
+    // capability epoch (ClearCapabilityResults empties them with the capability results, capacity and pooled lists kept).
+    private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), List<BindingSymbol>> enumerateKept = new();
+    private readonly List<List<BindingSymbol>> enumerateKeptPool = new();
     private readonly List<List<BindingSymbol>> enumeratePool = new();
     private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> enumerateFactPool = new();
     private readonly List<BoundType> enumerateChain = new();
@@ -213,6 +220,8 @@ public sealed partial class Binding
     private int enumerateFactPoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
+    private int enumerateKeptPoolNext;
+    private int readingFormations;
 
     // SPEC 8.3.2's refinement row: the premises of `scope` supply `subject is R` for a refinement R of `contract`. The subject is as
     // its reader has it (identity is the request boundary's: the reader's subject and, for the outermost request, the view's facts).
@@ -223,11 +232,17 @@ public sealed partial class Binding
             throw new InvalidOperationException($"PremiseRefines of `{subject}` entered from Enumerate's walk (InternalInvariant; R7-C2a).");
         }
 
+        var view = this.ViewOf(scope);
+        var serial = SerialOf(scope);
+        var keep = this.enumerateDepth == 0 && this.capabilitiesReady && this.normalizingAssociated.Count == 0 && this.identityExpansions.Count == 0;
+        if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept))
+        {
+            return RowsRefine(kept, contract);
+        }
+
         this.enumerateDepth++;
         try
         {
-            var view = this.ViewOf(scope);
-            var serial = SerialOf(scope);
             if (this.enumeratePrepared.Add((view, serial)))
             {
                 this.IndexWritten(view, serial);
@@ -238,18 +253,26 @@ public sealed partial class Binding
             // view it took: a demand of its preparation that moved them is a builder's broken contract.
             if (this.enumerateDepth == 1)
             {
+                var formations = this.readingFormations;
                 if (this.IndexNormalized(view, serial) != serial)
                 {
                     throw new InvalidOperationException($"The preparation of the request for `{subject}` moved its own view (InternalInvariant; R7-C2a).");
                 }
 
                 this.enumerateMemo.Clear();
+                keep &= formations == this.readingFormations; // Every reading of the preparation was a kept one.
             }
 
             this.enumerateWalking++;
             try
             {
-                return RowsRefine(this.Enumerate(subject, view, serial), contract);
+                var rows = this.Enumerate(subject, view, serial);
+                if (keep)
+                {
+                    this.KeepRows(view, serial);
+                }
+
+                return RowsRefine(rows, contract);
             }
             finally
             {
@@ -263,11 +286,52 @@ public sealed partial class Binding
                 this.enumerateMemo.Clear();
                 this.enumerateIndex.Clear();
                 this.enumeratePrepared.Clear();
-                this.enumerateHeads.Clear();
                 this.enumeratePoolNext = 0;
+                if (!this.capabilitiesReady)
+                {
+                    this.enumerateHeads.Clear(); // Before the capability phase a Contract's clauses may still be bound.
+                }
+
                 this.enumerateFactPoolNext = 0;
             }
         }
+    }
+
+    // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies).
+    private void KeepRows(EvidenceView view, int serial)
+    {
+        foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
+        {
+            if (rows is null || linkView != view || linkSerial != serial ||
+                this.enumerateKept.ContainsKey((link, view, serial, this.activeRequirementContract)))
+            {
+                continue;
+            }
+
+            List<BindingSymbol> copy;
+            if (this.enumerateKeptPoolNext < this.enumerateKeptPool.Count)
+            {
+                copy = this.enumerateKeptPool[this.enumerateKeptPoolNext++];
+                copy.Clear();
+            }
+            else
+            {
+                copy = new(rows.Count);
+                this.enumerateKeptPool.Add(copy);
+                this.enumerateKeptPoolNext++;
+            }
+
+            copy.AddRange(rows);
+            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = copy;
+        }
+    }
+
+    // The capability epoch ended (ClearCapabilityResults): kept rows and head depths go with the capability results.
+    private void ClearKeptRows()
+    {
+        this.enumerateKept.Clear();
+        this.enumerateKeptPoolNext = 0;
+        this.enumerateHeads.Clear();
     }
 
     // The view's Contract facts by subject key, as written.
