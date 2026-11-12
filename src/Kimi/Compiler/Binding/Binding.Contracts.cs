@@ -9,7 +9,6 @@ public sealed partial class Binding
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
-    private readonly Dictionary<(BoundType Type, BindingScope Scope), Koto> projectionForms = new(); // ProjectionUseOf
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -148,7 +147,6 @@ public sealed partial class Binding
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
-        this.projectionForms.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();
@@ -280,18 +278,14 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.3: a generic parent is never deferred; its arity and its arguments are the former's (BindContractReference).
             var generic = ContractApplication(name);
             var parentPath = this.NamePath(name, this.scopes[contract]);
             var parent = parentPath.Symbol;
-            if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
+            if (parent is null && this.PendingReference(syntax, null, this.scopes[contract]))
             {
-                this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax))
-                {
-                    shape.HasUnresolvedParents = true;
-                    continue;
-                }
+                // A missing parent, generic or not, is pending (BU-151, O-216 (a)): a later source may declare it.
+                shape.HasUnresolvedParents = true;
+                continue;
             }
 
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
@@ -318,6 +312,12 @@ public sealed partial class Binding
             // (contract UniqIndexable<Key>: Indexable<Key>).
             var selection = parent;
             parent = this.BindContractReference(name, selection, this.scopes[contract]);
+            if (parent is null && this.PendingReference(syntax, selection, this.scopes[contract]))
+            {
+                shape.HasUnresolvedParents = true; // A Type argument is missing (SPEC 9.7.1): pending as a missing parent is.
+                continue;
+            }
+
             if (parent is null)
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);

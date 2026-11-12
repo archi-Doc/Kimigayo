@@ -236,7 +236,6 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        this.projectionForms.TryAdd((projection, this.ConstraintScope(syntax)), syntax);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
         Complete(syntax.Right, projection);
@@ -246,30 +245,6 @@ public sealed partial class Binding
         }
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);
-    }
-
-    // DECISIONS BU-61 (SPEC 23.1.2): the projection use that formed `type` and is judged under `scope`'s own premises: the first use
-    // found walking `scope`'s chain inward-out (the scopes whose premises the solver reads, Supply) before a scope that adds premises
-    // without forming it; null otherwise. Each use is keyed by its Type and the scope its conformance check (ValidateConformances, after
-    // the bodies) judges it in, ConstraintScope. Premises only grow inward, so a use found before such a scope is judged as `scope`
-    // would judge it, and one beyond it may be rejected under fewer premises than `scope` has. A check that fails only because its
-    // Type is such a projection rests on that use, which publication judges (AddPendingPrerequisite).
-    private Koto? ProjectionUseOf(BoundType type, BindingScope scope)
-    {
-        for (BindingScope? current = scope; current is not null; current = current.Parent)
-        {
-            if (this.projectionForms.TryGetValue((type, current), out var use))
-            {
-                return use;
-            }
-
-            if (current.Constraints is { } premises && (premises.Invalid || premises.Facts.Count != 0))
-            {
-                return null;
-            }
-        }
-
-        return null;
     }
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
@@ -346,7 +321,15 @@ public sealed partial class Binding
             return null;
         }
 
-        if (this.BindAssociatedName(clause, scope, owner) is not { Symbol: { } associated } projection)
+        var projection = this.BindAssociatedName(clause, scope, owner, out var pending);
+        if (pending)
+        {
+            // The requirement binds against no subject and keeps its own records, as under a pending subject (BindConstraint).
+            var open = this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
+            return open.Kind == ConstraintKind.Error ? open : this.InternConstraint(new(ConstraintKind.Unresolved));
+        }
+
+        if (projection is not { Symbol: { } associated })
         {
             return null;
         }
@@ -367,9 +350,11 @@ public sealed partial class Binding
     // selector (`C.X`, `(C).X`, `::C.X`) is looked up once in its own row (UseRow) and names, with its Type arguments (QualifierReference
     // on the reference WrittenReference reads), a direct conformance or an ancestor of the owner, judged on the selector
     // itself (SelectorQualifies); the Name is found among that Contract's associated Types, an unqualified Name among all available ones;
-    // the Origin parameters repeat the count. Null after the clause's failure.
-    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner)
+    // the Origin parameters repeat the count. Null after the clause's failure, or with pending set and the clause unfailed when its
+    // selector formed no reference for a missing name (PendingReference).
+    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner, out bool pending)
     {
+        pending = false;
         var self = this.DeclarationSelf(owner);
         var head = AssociatedHead(clause);
         var applied = head as OriginApplicationKoto;
@@ -379,9 +364,15 @@ public sealed partial class Binding
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || WrittenReference(member.Left) is not { } written ||
-                this.QualifierReference(written, selection, scope) is not { } bound ||
-                !this.SelectorQualifies(owner, self, bound))
+            var selection = this.TypeName(member.Left, scope);
+            if (selection is not { IsContract: true } || WrittenReference(member.Left) is not { } written ||
+                this.QualifierReference(written, selection, scope) is not { } bound)
+            {
+                pending = this.PendingReference(member.Left, selection, scope);
+                return pending ? null : this.Fail(clause, BindingFailure.InvalidAssociatedType);
+            }
+
+            if (!this.SelectorQualifies(owner, self, bound))
             {
                 return this.Fail(clause, BindingFailure.InvalidAssociatedType);
             }

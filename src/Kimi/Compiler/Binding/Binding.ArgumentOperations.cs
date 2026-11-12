@@ -174,32 +174,20 @@ public sealed partial class Binding
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
-        if (ScalarReferent(type) is not { } referent)
+        if (this.ReadTypeReferent(type, node) is not { } read)
         {
-            // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
-            // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
-            var scope = this.ConstraintScope(node);
-            if (this.ReadTypeReferent(type, scope) is { } read)
-            {
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.7.4: a read Type.
-                return read;
-            }
-
-            if (type is not null &&
-                this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
-                this.PairTerminal(target, scope) is { } terminal &&
-                (terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : ScalarReferent(terminal)) is { } scalar)
-            {
-                this.implicitPairFollows[node] = admitted;
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, scalar);
-                return scalar;
-            }
-
             return type;
         }
 
-        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
-        return referent;
+        // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
+        // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
+        if (TryPairLayer(type, out _, out _))
+        {
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+        }
+
+        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);
+        return read;
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
@@ -249,6 +237,39 @@ public sealed partial class Binding
             adapted = erased;
             quality = ArgumentAdaptation.Erasure;
             return fixedExpectation || this.AcquiresBare(source, source.BoundType ?? erased, erased, pattern, deferAcquisition);
+        }
+
+        if (pattern.IsObjectBorrow && TryPairLayer(actual, out var whole, out _) && this.ObjectCases(actual, scope, out _) is var layerCases && layerCases != SemanticsMask.None)
+        {
+            // SPEC 10.2, 8.14, 8.15.2: an object pair layer is adapted to a fixed object borrow by this rule in each of its cases, on the
+            // case's complete Type: a case that does not adapt fails the layer, and a case that needs a spelling records it
+            // (RequireAcquisition), as its concrete twin does. Where every case adapts, the adaptation differs by case (objref Copies,
+            // objuniq Reborrows, a handle lends), which no plan forms yet (PLAN G762): the located limit, the call's one obstacle as an
+            // acquisition's; a case's spelling, then an earlier input's record, take precedence. Its Type is a case's, for the fit.
+            var before = this.acquisitionFailure;
+            this.acquisitionFailure = null;
+            foreach (var mode in SemanticsOrder)
+            {
+                if (layerCases.Contains(mode))
+                {
+                    ReadOnlySpan<PairCase> selected = [new(whole.Symbol!, mode)];
+                    if (!this.AdaptInput(source, fixedPattern, this.CaseType(actual, selected), scope, path, declaringType, out adapted, out _, out _, explicitBorrow, receiver, fixedExpectation, false, deferAcquisition) ||
+                        !this.FitsStructuralPartAt(adapted, pattern, source))
+                    {
+                        this.acquisitionFailure ??= before;
+                        return false;
+                    }
+                }
+            }
+
+            if (fixedExpectation)
+            {
+                this.acquisitionFailure ??= before;
+                return false;
+            }
+
+            this.acquisitionFailure ??= before ?? new(source, BindingFailure.Unsupported, true);
+            return deferAcquisition;
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
@@ -333,9 +354,9 @@ public sealed partial class Binding
         // A shared receiver can inspect an open payload or its selected base without granting replacement authority.
         // The selected implementation still supplies the per-operation proof before the call is accepted.
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
-            IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && ReferenceEquals(pattern.Components[0], declaringType) &&
-            (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
-            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.LendsHandle(source, scope, false, out _)))
+            this.ObjectCases(actual, scope, out var view) is var objects && objects != SemanticsMask.None && ReferenceEquals(pattern.Components[0], declaringType) &&
+            (projected || ReferenceEquals(view, declaringType)) &&
+            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, scope, false, out _)))
         {
             adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

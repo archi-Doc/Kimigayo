@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -265,6 +266,83 @@ public class PairFollowTest
         "    require pick(n@ref, b@ref) == 3 and call(n@ref) == 3 else => $abort(\"pick\")\n" +
         "    Console.writeLine(\"Implicit outer Origin.\")\n";
 
+    // SPEC 3.4.3, 7.3, 7.7.2, 13.5.1 (PLAN G759, G760): members, receivers (MIR's payload step through the pair layer), a write, a
+    // borrow, a callable payload and a capture through object pair layers, and an application local `p@s`, in each admitted case.
+    private const string ObjectLayers =
+        "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func get(self: ref/Self) -> i32 => self.n\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+        "func readLayer<s/T>(m: s/T, y: s/Node) -> i32\n    s is objref or objuniq\n    return y.get() * 10 + y.n\n" +
+        "func localLayer<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n    let y: s/Node = p@s\n    return y.get() * 10 + y.n\n" +
+        "func writeLayer<s/T>(m: s/T, y: s/Node) -> i32\n    s is objuniq\n    y.n = y.n + 10\n    y.bump()\n    return y.get()\n" +
+        "func ownedLayer<s/T>(m: s/T, y: s/Node) -> i32\n    s is obj or rc\n    return y.get() * 10 + y.n\n" +
+        "func borrowedLayer<s/T>(m: s/T, y: s/Node) -> i32\n    s is objref or objuniq\n    let r = y@ref\n    return r.n\n" +
+        "func callLayer<s/T>(m: s/T, h: s/((i32) -> i32)) -> i32\n    s is objref or objuniq\n    return h(1)\n" +
+        "func capturedLayer<s/T>(m: s/T, y: s/Node) -> i32\n    s is objref\n    let g = func [y] () -> i32 => y.n\n    return g()\n" +
+        "public func main()\n    var a = Node.init(1)@obj\n    var b = Node.init(2)@obj\n" +
+        "    let x = readLayer(a@objref, b@objref)\n    let u = readLayer(a@objuniq, b@objuniq)\n" +
+        "    let z = localLayer(a@objuniq, Node.init(3)@obj)\n    let w = localLayer(a@objref, Node.init(4)@obj)\n" +
+        "    let v = writeLayer(a@objuniq, b@objuniq)\n" +
+        "    let o = ownedLayer(Node.init(5)@obj, Node.init(6)@obj)\n    let q = ownedLayer(Node.init(7)@rc, Node.init(8)@rc)\n" +
+        "    let k = borrowedLayer(a@objref, b@objref)\n    let j = borrowedLayer(a@objuniq, b@objuniq)\n" +
+        "    var e = Kimi.Intrinsics.makeObj<(i32) -> i32>(func [] (i: i32) => i + 1)\n" +
+        "    var f = Kimi.Intrinsics.makeObj<(i32) -> i32>(func [] (i: i32) => i + 41)\n" +
+        "    let c = callLayer(e@objref, f@objref)\n    let d = callLayer(e@objuniq, f@objuniq)\n" +
+        "    let t = capturedLayer(a@objref, b@objref)\n" +
+        "    Console.writeLine(\"\\(x) \\(u) \\(z) \\(w) \\(v) \\(b.n) \\(o) \\(q) \\(k) \\(j) \\(c) \\(d) \\(t)\")\n";
+
+    // PLAN G703 (SPEC 3.5.3, 8.7.4, 10.2, 13.5.2): each read position through a qualifying pair layer and a pair target's operators, in
+    // owner, ref and uniq instances, ref then pair, two binders (design review 1's native program).
+    private const string Reads =
+        "func h(v: i32) -> i32 => v\n" +
+        "func add<s/T>(a: s/T, b: s/T) -> T\n" +
+        "    s is value or valueborrow\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a + b\n" +
+        "func read<s/T>(x: s/i32, m: s/T) -> i32\n" +
+        "    s is value or valueborrow\n" +
+        "    let v: i32 = x\n" +
+        "    return h(x) + v\n" +
+        "func wide<s/T>(x: s/i32, m: s/T) -> i64\n" +
+        "    s is value or valueborrow\n" +
+        "    return x@i64\n" +
+        "func deep<s/T>(x: ref/(s/i32 during a), m: s/T) -> i32\n" +
+        "    s is owner or ref\n" +
+        "    let v: i32 = x\n" +
+        "    return v + x\n" +
+        "func alone<s/T>(a: T, b: T, m: s/T) -> T\n" +
+        "    s is owner or ref\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a * b + 1\n" +
+        "func two<s/T, t/U>(x: s/(t/i32 during a), m: s/T, n: t/U) -> i32\n" +
+        "    s is owner or ref\n" +
+        "    t is owner or ref\n" +
+        "    let v: i32 = x\n" +
+        "    return v\n" +
+        "func cmp<s/T>(a: s/T, b: s/T) -> bool\n" +
+        "    s is value or valueborrow\n" +
+        "    T is PrimitiveInteger\n" +
+        "    return a < b\n" +
+        "public func main()\n" +
+        "    var n: i32 = 20\n" +
+        "    let one: i32 = 1\n" +
+        "    var m: i32 = 2\n" +
+        "    let a = add(n, one)\n" +
+        "    let b = add(n@ref, one@ref)\n" +
+        "    let c = add(n@uniq, m@uniq)\n" +
+        "    let d = read(n, n) + read(n@ref, n@ref)\n" +
+        "    let e = read(n@uniq, m@uniq)\n" +
+        "    let rn = n@ref\n" +
+        "    let w = wide(n, one) + wide(n@ref, one@ref)\n" +
+        "    let p = deep(n@ref, one)\n" +
+        "    let q = deep(rn@ref, one@ref)\n" +
+        "    let r = alone(3, 4, one)\n" +
+        "    let r2 = alone(3, 4, one@ref)\n" +
+        "    let t = two(n, one, one)\n" +
+        "    let t2 = two(rn, one@ref, one)\n" +
+        "    let k = cmp(one, n)\n" +
+        "    let k2 = cmp(n@ref, one@ref)\n" +
+        "    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(w) \\(p) \\(q) \\(r) \\(r2) \\(t) \\(t2) \\(k) \\(k2)\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "ImplicitOuterOrigin", ImplicitOuterOrigin, "Implicit outer Origin.\n" },
@@ -283,7 +361,10 @@ public class PairFollowTest
         { "Positions", Positions, "Positions.\n" },
         { "Explicit", Explicit, "Owned followed.\nShared followed.\nExclusive followed.\n" },
         { "Scaled", Scaled, "Scaled.\n" },
+        { "Reads", Reads, "21 21 22 80 40 40 40 40 13 13 20 20 true false\n" },
+        { "DeepReads", DeepReads(), "21 21 21 21\n" },
         { "Collected", Collected, "Owned elements total 6.\nBorrowed elements total 30.\nExclusive elements total 73.\n" },
+        { "ObjectLayers", ObjectLayers, "22 22 33 44 13 13 66 88 13 13 42 42 13\n" },
     };
 
     [Theory]
@@ -559,6 +640,69 @@ public class PairFollowTest
         Assert.Equal(code is { } expected ? [expected] : Array.Empty<DiagnosticCode>(), c.Binding.Issues.Select(x => x.Code));
     }
 
+    // SPEC 3.4.3, 8.15.2, 13.5.5 (PLAN G760): a pair layer whose admitted set lies in the object family is an object handle or borrow in
+    // every case, so it has its View Target's declarations, for a member and a receiver, with the weakest capability of its cases.
+    // Labels from SPEC: rows 1-11 are valid (a family local `p@s`, an application parameter, `s is objuniq` alone writing and calling an
+    // exclusive method, owning cases `obj or rc` reading, a writable `var` over `obj or objuniq` writing and calling an exclusive method);
+    // rows 12-19 are invalid: a write or an exclusive receiver through a shared case (objref, rc) or a `let` over an owning case, or a
+    // member Node lacks. Row 20 is invalid as its concrete twin: a setter needs an exclusive receiver (11.3.1). Row 21 calls each view's
+    // callable payload (7.3, 7.7.3), valid.
+    // Rows 22-27 adapt to a fixed object borrow, each case by the whole input rule (SPEC 10.2, 8.14): where every case adapts (an
+    // `objref/Self` receiver, an `objref/Node` argument, an `objuniq/Self` receiver over a `var`) the per-case adaptation is the located
+    // limit until PLAN G762; the others are invalid in one case with that case's record: the objref case lends no `objuniq/Node`, the obj
+    // case lends its handle exclusively outside a Receiver Expression only when written `@objuniq` (SPEC 15.1.5), and a transferred
+    // objuniq reference reaches only its own Type (10.2).
+    // Rows 28-31 capture an object pair layer, an environment entry by the rule of its cases (7.7.2): a read under `objref` is valid and
+    // a capture of the owning `obj or rc` handles is invalid, with the concrete twin's record. Rows 29-30 (`objref or objuniq`, a read,
+    // valid, and a write through the objref case, invalid) are G721's interim row (1), until PLAN G254: a pair layer whose bare
+    // acquisition Reborrows in some case is a located Unsupported_Kd at the entry.
+    [Theory]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.n\n", "")]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y: s/Node = p@s\n    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is objuniq", "    y.n = 1\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.get()\n", "")]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.get()\n", "")]
+    [InlineData("y: s/Node", "s is objuniq", "    y.bump()\n", "")]
+    [InlineData("y: s/Node", "s is obj or rc", "    let v = y.n\n", "")]
+    [InlineData("y: s/Node", "s is obj or rc", "    let v = y.get()\n", "")]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    y.n = 1\n", "")]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    y.bump()\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    var y = p@s\n    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is obj or rc", "    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is obj or rc", "    y.n = 1\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    let y = a@move\n    y.n = 1\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    let y = a@move\n    y.bump()\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.q\n", nameof(DiagnosticCode.UnresolvedBinding_Kd))]
+    [InlineData("y: s/Gauge", "s is objref or objuniq", "    y.level = 3\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("h: s/((i32) -> i32)", "s is objref or objuniq", "    let v = h(1)\n", "")]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.peek()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = take(y)\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    let v = y.claim()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = takeU(y)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    let v = takeU(y)\n", nameof(DiagnosticCode.ExclusiveBorrowRequired_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let v = take(y@move)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("y: s/Node", "s is objref", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", "")]
+    // G721's interim row (1), until PLAN G254 (the next two rows).
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32\n        y.n = 1\n        return 0\n    let v = g()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is obj or rc", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", nameof(DiagnosticCode.TransferRequired_Kd))]
+    public void AnObjectPairLayerHasItsViewTargetsMembers(string parameter, string premise, string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func get(self: ref/Self) -> i32 => self.n\n" +
+            "    public func bump(self: uniq/Self) => self.n += 1\n    public func peek(self: objref/Self) -> i32 => self.n\n" +
+            "    public func claim(self: objuniq/Self) -> i32 => self.n\n" +
+            "struct Gauge\n    public var level: i32 = 0\n        get() -> i32\n            return storage\n        set(value: i32) -> ()\n" +
+            "            storage = value\n    public init() => ()\n" +
+            "func take(x: objref/Node) -> i32 => x.n\nfunc takeU(x: objuniq/Node) -> i32 => x.n\n" +
+            $"func f<s/T>(m: s/T, {parameter}) -> i32\n    {premise}\n" + body + "    return 0\npublic func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && code.Split(',').All(x => codes.Contains(x, StringComparison.Ordinal)), codes);
+    }
+
     // SPEC 10.2: s/U parameters are solved together with the other arguments, whatever their order, and must agree on s.
     [Fact]
     public void PairApplicationsAgreeOnSemantics()
@@ -601,7 +745,118 @@ public class PairFollowTest
     [InlineData("arith", 33)]
     [InlineData("match", 17)]
     [InlineData("match", 33)]
+    [InlineData("let", 17)]
+    [InlineData("let", 18)]
+    [InlineData("let", 33)]
+    [InlineData("argval", 17)]
+    [InlineData("argval", 18)]
+    [InlineData("arith", 18)]
+    [InlineData("lt", 17)]
+    [InlineData("lt", 18)]
     public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
+
+    // PLAN G703 (SPEC 8.7.4, 8.1.1; 3.4.3, 3.5.3, 10.2; 13.5.2): a pair target standing alone has the capabilities its Constraints
+    // prove, as a Type slot has; a value read follows qualifying pair layers at every read position (an annotated let, an argument,
+    // a result, an assignment, a condition, an operand, a conversion's operand), in any order with ref and uniq layers, and ends
+    // only in a read Type; a pair of one admitted Semantics is its head (SPEC 8.2.3). Each Loan and Move twin below has its counterpart
+    // here (the read after the Loan's last use or before the Move), and the pair itself keeps its Object Target rule (SPEC 8.7.3).
+    [Theory]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return (a % b) << b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> bool\n    s is owner or ref\n    T is PrimitiveInteger\n    return a < b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 1\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: ref/T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = a\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let w = a@Wrapping<T>\n    return (-w)@T")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is value or valueborrow\n    T is PrimitiveInteger\n    return a % b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return a + b + 1")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> bool\n    s is owner or ref\n    T is PrimitiveInteger\n    return a < b and a == b")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    let v: i32 = x\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    return h(x)")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    return x")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    var v: i32 = 0\n    v = x\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(c: s/bool, m: s/T) -> i32\n    s is owner or ref\n    if c\n        return 1\n    return 0")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = a\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: ref/(s/i32 during a), m: s/T) -> i32\n    s is owner or ref\n    let v: i32 = x\n    return v + x")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is owner or ref\n    return x@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> i64\n    s is owner or ref\n    T is PrimitiveInteger\n    return a@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or ref\n    let w = x@Wrapping<i32>\n    return w@i32 + x@i32")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> s/T\n    s is owner\n    T is PrimitiveInteger\n    let v: s/T = 1\n    return 1")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    let v: i32 = x\n    return v + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    return h(x) + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    return x@i64")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v: i32 = x\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = h(x)\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let w: i32 = r\n    let v = x + 0\n    return v + w")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = x + 0\n    let z = x@move\n    return v")]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let v = x@i32\n    let z = x@move\n    return v")]
+    [InlineData("func f<s/T>(x: s/T) -> i32\n    s is owner\n    T is ObjectPayload\n    let o: Option<obj/(s/T)> = .None\n    return 0")]
+    public void PairTargetsAndValueReadsVerify(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // The invalid counterparts: no capability without its proof, no read through a pair layer that does not qualify, no conversion
+    // by a read, no read of a Type that is no read Type, a read through a live exclusive Loan or of a Moved Place, a pair as an Object
+    // Target without its owner proof (SPEC 8.7.3), and a pair target as a runtime test's target (SPEC 13.6.4; `v is s/T` does not name
+    // the pair under any admitted Semantics).
+    [Theory]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return -a", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 128\n    return v", DiagnosticCode.InvalidNumericLiteral_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    let v: i32 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or object\n    return h(x)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is owner or ref\n    let v: i64 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T) -> T\n    s is owner or ref\n    T is Copy\n    let v: T = a\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    return x@i64", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> i32\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: s/T = 1\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v: i32 = x\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v: i32 = x\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = h(x)\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = h(x)\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = x + 0\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = x + 0\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is uniq\n    let r = x@follow@uniq\n    let v = x@i32\n    let w: i32 = r\n    return v + w", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is owner or uniq\n    let z = x@move\n    let v = x@i32\n    return v", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is T", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is s/T", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner\n    return v is s/T", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("func f<s/T>(x: s/T) -> i32\n    T is ObjectPayload\n    let o: Option<obj/(s/T)> = .None\n    return 0", DiagnosticCode.UnprovenConstraint_Kd)]
+    public void PairTargetsAndValueReadsReject(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Contains(code, Codes(c));
+    }
+
+    // SPEC 13.6.4: a runtime test's target is one named struct Core, so the grouped pair of `v is (s/T)` is a syntax error, published.
+    [Fact]
+    public void AGroupedPairIsNoRuntimeTestTarget()
+        => Assert.Contains(
+            nameof(DiagnosticCode.ExpectedSyntax_Kd),
+            ContextualCaptureTest.PublishedRecords("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is (s/T)\npublic func main() => ()\n").Select(static x => x.Code));
+
+    // PLAN G703 (SPEC 3.4.3, 3.5.3, 10.2; the Middle's C-219 condition 1): a let, an argument and an operand read through 17 and 18
+    // nested qualifying pair layers, in an owner instance and in a ref instance of as many `@ref` steps.
+    private static string DeepReads()
+    {
+        var source = new StringBuilder("func h(v: i32) -> i32 => v\n");
+        foreach (var layers in new[] { 17, 18 })
+        {
+            source.Append($"func f{layers}<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n    let v: i32 = x\n    return v + h(x) + x\n");
+        }
+
+        source.Append("public func main()\n    let n: i32 = 7\n    let one: i32 = 1\n    let r1 = n@ref\n");
+        for (var k = 2; k <= 18; k++)
+        {
+            source.Append($"    let r{k} = r{k - 1}@ref\n");
+        }
+
+        return source.Append("    let a = f17(n, one)\n    let b = f17(r17, one@ref)\n    let c = f18(n, one)\n    let d = f18(r18, one@ref)\n")
+            .Append("    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d)\")\n").ToString();
+    }
 
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)
         => c.Binding.Issues.Select(x => x.Code).Concat(c.Problems.Select(x => x.Code));
