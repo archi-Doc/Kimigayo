@@ -221,20 +221,20 @@ internal sealed partial class MirBorrows
 
         this.Work++;
         var keep = this.escape[slot] ? origins.Fixed(receiving, this.body.Subject(this.Source(this.planLocation)))
-            : whole || (through != 0 && this.WholeTarget(through, slot));
+            : whole || (through != 0 && this.WholeTarget(through, slot, receiving));
         return keep ? value : marked;
     }
 
-    // Whether a reference set has a direct Loan naming a holder and every one borrows the holder's whole root: a write through it writes the
-    // holder's whole value, a Copy into it.
-    private bool WholeTarget(int set, int slot)
+    // Whether a reference set has a direct Loan or address naming a holder and a write of Type `written` through each designates the
+    // holder's whole value (MirBorrows.Reach's Whole): a Copy into it.
+    private bool WholeTarget(int set, int slot, BoundType? written)
     {
         var any = false;
         foreach (var element in this.sets.Elements(set))
         {
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan && loan.Named == slot)
             {
-                if (loan.Count != 0)
+                if (!this.Whole(loan, written))
                 {
                     return false;
                 }

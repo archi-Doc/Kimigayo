@@ -138,8 +138,7 @@ internal sealed partial class MirBorrows
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
-        var input = cases.TypeOf(this.Input(call, position));
-        BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
+        var referent = Referent(cases.TypeOf(this.Input(call, position)));
         if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
             this.BeginWalk();
@@ -313,10 +312,10 @@ internal sealed partial class MirBorrows
     // union of each kind a record gives.
     private int Retained(ulong[] state, in MirOperand operand, int position, RetentionKind kind)
     {
-        var value = this.argValues[position];
-        var retained = (kind & RetentionKind.Chain) != 0 ? this.Chain(state, value) : 0;
-        retained = (kind & RetentionKind.Content) != 0 || ((kind & RetentionKind.Value) != 0 && Borrows(cases.TypeOf(operand)))
-            ? this.sets.Union(retained, this.Content(state, value)) : retained;
+        var (value, type) = (this.argValues[position], cases.TypeOf(operand));
+        var retained = (kind & RetentionKind.Chain) != 0 ? this.Chain(state, value, Referent(type)) : 0;
+        retained = (kind & RetentionKind.Content) != 0 || ((kind & RetentionKind.Value) != 0 && Borrows(type))
+            ? this.sets.Union(retained, this.Content(state, value, Referent(type))) : retained;
         return (kind & RetentionKind.Value) != 0 ? this.sets.Union(retained, value) : retained;
     }
 

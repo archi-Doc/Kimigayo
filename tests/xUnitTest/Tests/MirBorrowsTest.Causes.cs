@@ -25,6 +25,16 @@ public sealed partial class MirBorrowsTest
     private const string ChainHolder = "struct Holder {a}\n    public var p: raw/u8\n    public var r: ref/i32 during a\n" +
         "func mkE(x: ref/(ref/(ref/i32 during a) during b) during c) -> Holder during a\n    loop => ()\n";
 
+    // PLAN G783's callees: a store through a raw input, a read through one (Content retention), an array result retaining its argument.
+    private const string Put = "func put(p: raw/(ref/i32 during a), v: ref/i32 during a)\n    unsafe => *p = v\n";
+    private const string FirstR = "func firstR(p: raw/(ref/i32 during a)) -> ref/i32 during a\n    unsafe => return *p\n";
+    private const string Mka = "func mka(r: ref/i32 during a) -> [2 of ref/i32 during a] => [r, r]\n";
+
+    // PLAN G783's array holder of a stored borrow, written through `p` (a raw/(ref/i32 during a) at `{0}`) and then Copied out whole.
+    private const string ElementWrite = "func f(target: uniq/[2 of ref/i32 during a], q: ref/i32 during a)\n    var local: i32 = 1\n" +
+        "    var x: [2 of ref/i32 during a] = [q, q]\n    let p: raw/(ref/i32 during a) = {0}\n    var r = local@ref\n    {1}\n" +
+        "    target@follow = x\n    local = 2\n";
+
     // The rows' sources (the 2a-2 round's programs, the 65be867e9 ledger's and the design review's), each with a `public func main`.
     private static readonly Dictionary<string, string> CausedSources = new()
     {
@@ -96,6 +106,16 @@ public sealed partial class MirBorrowsTest
         ["pair-application-null"] = "func write<T>(target: uniq/T during a, q: raw/T during a, v: T) => ()\n" +
             "func pn<s/U>(x: s/i32 during b, m: s/U, t: uniq/(ref/(s/i32 during b) during c) during a)\n" +
             "    s is owner or ref\n    var local = x@copy\n    write(t, null, local@ref)\n",
+        ["raw-whole-write"] = "func f(target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x: ref/i32 during a = q\n" +
+            "    let p = x@raw\n    var r = local@ref\n    unsafe => *p = r\n    target@follow = x\n    local = 2\n",
+        ["raw-whole-store"] = Put + "func f(target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n" +
+            "    var x: ref/i32 during a = q\n    var r = local@ref\n    put(x@raw, r)\n    target@follow = x\n    local = 2\n",
+        ["raw-whole-read"] = FirstR + "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h = local@ref\n    return firstR(h@raw)\n",
+        ["raw-array-read"] = "func firstA(p: raw/[2 of ref/i32 during a]) -> ref/i32 during a\n    unsafe => return (*p)[0]\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n    return firstA(h@raw)\n",
+        ["reborrow-whole-read"] = "func firstAr(r: ref/[2 of ref/i32 during a]) -> ref/i32 during a => r@follow[0]\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n    let r = h@ref\n" +
+            "    return firstAr(r@follow@ref)\n",
         // pins
         ["m-write"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    let r = x@ref\n    x = 1\n    return r\n",
         ["m-write-var"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    var r = x@ref\n    x = 1\n    return r\n",
@@ -167,6 +187,28 @@ public sealed partial class MirBorrowsTest
             "    var r = local@ref\n    inspect(r)\n",
         ["g526-agg-arg"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = mk(.Some(v@ref))\n    return h@move\n",
         ["g526-borrow-arg-v"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h: H2 during q = mkr(v@ref)\n    return h@move\n",
+        ["raw-element0-write"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x@raw@raw/(ref/i32)", "unsafe => *p = r"),
+        ["raw-displaced-write"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x@raw@raw/(ref/i32)", "unsafe => *(p + 1) = r"),
+        ["raw-element-write"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x[1]@raw", "unsafe => *p = r"),
+        ["raw-element0-store"] = Put + string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x@raw@raw/(ref/i32)", "put(p, r)"),
+        ["raw-field-store"] = Put + "func f(target: uniq/((ref/i32 during a, i32)), q: ref/i32 during a)\n    var local: i32 = 1\n" +
+            "    var x: (ref/i32 during a, i32) = (q, 0)\n    var r = local@ref\n    put(x.0@raw, r)\n    target@follow = x\n    local = 2\n",
+        ["element-write"] = "func f(target: uniq/[2 of ref/i32 during a], q: ref/i32 during a)\n    var local: i32 = 1\n" +
+            "    var x: [2 of ref/i32 during a] = [q, q]\n    let p = x[0]@uniq\n    var r = local@ref\n    p@follow = r\n    target@follow = x\n" +
+            "    local = 2\n",
+        ["raw-element0-read"] = FirstR + Mka + "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n" +
+            "    var h: [2 of ref/i32 during q] = mka(local@ref)\n    let p: raw/(ref/i32 during q) = h@raw@raw/(ref/i32)\n    return firstR(p)\n",
+        ["raw-displaced-read"] = FirstR + Mka + "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n" +
+            "    var h: [2 of ref/i32 during q] = mka(local@ref)\n    var p: raw/(ref/i32 during q) = h@raw@raw/(ref/i32)\n" +
+            "    unsafe => p = p + 1\n    return firstR(p)\n",
+        ["raw-element-read"] = FirstR + Mka + "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n" +
+            "    var h: [2 of ref/i32 during q] = mka(local@ref)\n    return firstR(h[0]@raw)\n",
+        ["reborrow-element-read"] = "func firstF(r: ref/(ref/i32 during a)) -> ref/i32 during a => r@follow\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n    let r = h@ref\n" +
+            "    return firstF(r@follow[0]@ref)\n",
+        ["reborrow-element-own-read"] = Mka + "func f(target: uniq/(ref/i32 during a))\n    var local: i32 = 1\n" +
+            "    var h: [2 of ref/i32 during a] = mka(local@ref)\n    let r = h@ref\n    let s = r@follow[0]@ref\n    target@follow = s@follow\n" +
+            "    local = 2\n",
     };
 
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
@@ -180,8 +222,9 @@ public sealed partial class MirBorrowsTest
     // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
     // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
     // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
-    // fail-before: independent), and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
-    // (chain-retention: no conflict at `local`, a Chain row read as one read).
+    // fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and the same whole-value write, store and
+    // read through a raw address of the holder's own Type and a reborrow of its whole (SPEC 5.2's designation; PLAN G783's pins). Fail-
+    // before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -216,6 +259,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("two-views", "pp: let local = 1 <- r")]
     [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
     [InlineData("pair-application-null", "pn: var local = x@copy <- local@ref")]
+    [InlineData("raw-whole-write", "f: local = 2 <- r")]
+    [InlineData("raw-whole-store", "f: local = 2 <- r")]
+    [InlineData("raw-whole-read", "f: let local = 1 <- firstR(h@raw)")]
+    [InlineData("raw-array-read", "f: let local = 1 <- var h: [2 of ref/i32 during q] = mka(local@ref)")]
+    [InlineData("reborrow-whole-read", "f: let local = 1 <- var h: [2 of ref/i32 during q] = mka(local@ref)")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -225,7 +273,11 @@ public sealed partial class MirBorrowsTest
     // `.Some(v@ref)`, R4-M104), a call result read by part, a conflict with no Refuted relation, a report of one key both derived and
     // direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the storage the body does not own (B's
     // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e); the twins' literal forms
-    // report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes before.
+    // report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes before. A write, a call's store or a
+    // read through a pointer that designates a part (SPEC 5.2, 4.1, 5.3: `x@raw@raw/(ref/i32)` designates x[0], its displacement x[1]) or
+    // through a reborrow of a part of a whole reference (its value keeps the whole's Loan as a parent) is no Copy of the whole holder
+    // either (PLAN G783; fail-before: derived, as each entry's whole root was read as the access's Place); its part-address and non-raw
+    // twins are pins.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -259,6 +311,17 @@ public sealed partial class MirBorrowsTest
     [InlineData("m-write4", "")]
     [InlineData("j-bad-v.r1", "")]
     [InlineData("m-store-v.r1", "")]
+    [InlineData("raw-element0-write", "f: local = 2")]
+    [InlineData("raw-displaced-write", "f: local = 2")]
+    [InlineData("raw-element-write", "f: local = 2")]
+    [InlineData("raw-element0-store", "f: local = 2")]
+    [InlineData("raw-field-store", "f: local = 2")]
+    [InlineData("element-write", "f: local = 2")]
+    [InlineData("raw-element0-read", "f: let local = 1")]
+    [InlineData("raw-displaced-read", "f: let local = 1")]
+    [InlineData("raw-element-read", "f: let local = 1")]
+    [InlineData("reborrow-element-read", "f: let local = 1")]
+    [InlineData("reborrow-element-own-read", "f: local = 2")]
     public void AConflictAnotherCarrierKeepsStaysIndependent(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -292,7 +355,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(37, causes);
+        Assert.Equal(42, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a

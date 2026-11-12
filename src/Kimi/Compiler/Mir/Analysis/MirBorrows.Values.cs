@@ -107,11 +107,13 @@ internal sealed partial class MirBorrows
         for (var i = 0; i < end; i++)
         {
             var pointer = this.PointerOf(root, layer, parents, i);
+            var access = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw
+                ? Referent(cases.TypeOf(new MirPlace(root, this.walk[i].Prefix))) : null; // What the Deref designates (Whole).
             (parents, layer) = this.walk[i].Class switch
             {
-                MirStepClass.Shared => (pointer, this.Content(state, pointer)),
-                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer))), // A fresh anchor (5.2.2); no reference (rule W).
-                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
+                MirStepClass.Shared => (pointer, this.Content(state, pointer, access)),
+                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer, access))), // A fresh anchor (5.2.2); no reference (rule W).
+                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer, access)),
                 _ => (parents, this.Indirect(layer)), // Rule W: a part of a holder is no Copy of a borrow it holds.
             };
         }
