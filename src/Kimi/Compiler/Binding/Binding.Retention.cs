@@ -320,13 +320,15 @@ public sealed partial class Binding
             this.retentionInstantiated.Add(origin);
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
+            var argument = type.OriginArguments[i];
             this.retentionInstantiated.Add(argument);
         }
 
-        foreach (var part in type.Components)
+        for (var i = 0; i < type.Components.Count; i++)
         {
+            var part = type.Components[i];
             this.Instantiation(part);
         }
     }
@@ -406,8 +408,9 @@ public sealed partial class Binding
     {
         if (this.retentionReached.Add(type))
         {
-            foreach (var component in type.Components)
+            for (var i = 0; i < type.Components.Count; i++)
             {
+                var component = type.Components[i];
                 this.Reach(component);
             }
         }

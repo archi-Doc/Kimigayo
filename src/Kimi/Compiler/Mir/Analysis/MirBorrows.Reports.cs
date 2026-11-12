@@ -47,7 +47,7 @@ internal sealed partial class MirBorrows
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
-        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, this.CauseFacts(count)));
+        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.CauseFacts(count));
     }
 
     // A rejection with its facts (D7, R4-M98): in a view PD13 holds (R4-M126 (iii), R4-M148) the located Unsupported_Kd at its subject
