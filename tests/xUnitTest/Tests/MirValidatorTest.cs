@@ -974,7 +974,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
         var at = form switch
         {
-            "inlined" => Broken with { Scope = (ushort)body.AddScope(0, MirScopeKind.Inlined, default) },
+            "inlined" => Broken with { Scope = body.AddScope(0, MirScopeKind.Inlined, default) },
             "unscoped" => Broken with { Scope = 9 },
             _ => Broken,
         };
@@ -1662,13 +1662,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var body = MirModelTest.NewBody(Fixture.Value.Types);
         var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
-        var first = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
-        var copy = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
-        var inner = (ushort)body.AddScope(copy, MirScopeKind.Inlined, default);
-        var loop = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var first = body.AddScope(0, MirScopeKind.Inlined, default);
+        var copy = body.AddScope(0, MirScopeKind.Inlined, default);
+        var inner = body.AddScope(copy, MirScopeKind.Inlined, default);
+        var loop = body.AddScope(0, MirScopeKind.Inlined, default);
         var (entry, call, rest, after) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
         var (head, next, tail, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
-        SourceInfo In(ushort scope, string form = "") => (broken == form ? Broken : At) with { Scope = scope };
+        SourceInfo In(int scope, string form = "") => (broken == form ? Broken : At) with { Scope = scope };
         void Read(int block, SourceInfo source) => body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, flag, source));
         MirTerminator Branch(int to, int otherwise, SourceInfo source)
         {
@@ -1704,18 +1704,20 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R5-M90's guard: the region walk follows the scope table and each location's scope, so a scope chain that does not lead out (an
-    // Inlined scope its own outer scope) or a location outside the scopes stops that walk alone: the Scope finding and the other rules'
-    // findings (an unreachable block) are reported, and the edge to block 0 is not walked.
+    // Inlined scope its own outer scope) or a location outside the scopes (past the table or, the index being an int since PLAN G796,
+    // negative) stops that walk alone: the Scope finding and the other rules' findings (an unreachable block) are reported, and the edge
+    // to block 0 is not walked.
     [Theory]
-    [InlineData("outer")]
-    [InlineData("location")]
-    public void AScopeTheRegionWalkCannotFollowStopsOnlyIt(string broken)
+    [InlineData("outer", 0)]
+    [InlineData("location", 9)]
+    [InlineData("location", -1)]
+    public void AScopeTheRegionWalkCannotFollowStopsOnlyIt(string broken, int outside)
     {
         var body = MirModelTest.NewBody(Fixture.Value.Types);
         var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
         var scope = body.AddScope(broken == "outer" ? body.Scopes.Length : 0, MirScopeKind.Inlined, default);
         var (entry, loop) = (body.AddBlock(), body.AddBlock());
-        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, flag, At with { Scope = (ushort)(broken == "outer" ? scope : 9) }));
+        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, flag, At with { Scope = broken == "outer" ? scope : outside }));
         body.Terminate(entry, MirTerminator.Goto(loop, At));
         body.Terminate(loop, MirTerminator.Goto(entry, At));
         body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));
@@ -2010,7 +2012,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var parent = MirModelTest.Local(body, types.Base);
 
         PairBinder.Collect(types.Generic, body.Binders);
-        var scope = (ushort)body.AddScope(0, MirScopeKind.Unsafe, default);
+        var scope = body.AddScope(0, MirScopeKind.Unsafe, default);
         var shared = body.Static(new(types.Function, BoundType.I32, false, false));
         if (broken == MirViolation.NoBlocks)
         {

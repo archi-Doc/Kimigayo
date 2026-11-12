@@ -102,7 +102,7 @@ internal sealed partial class MirBuilder
     }
 
     // A copy's location, in the copy's scope (Frame).
-    private SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = (ushort)this.folded[info.Scope] };
+    private SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = this.folded[info.Scope] };
 
     // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's.
     private BoundType FoldType(BoundType type, Subst? subst) => subst is null ? type : this.instances[type];

@@ -270,5 +270,5 @@ internal sealed partial class MirBuilder
     private record struct DropScope(int Id, int Last, int Count, int Temporaries, int Lexical);
 
     // A cleanup: its kind, the local it ends or drops or the defer it runs, the scope it was registered in, and its scope's previous one.
-    private readonly record struct Registration(Cleanup Kind, int Local, Koto? Defer, ushort Scope, int Prev);
+    private readonly record struct Registration(Cleanup Kind, int Local, Koto? Defer, int Scope, int Prev);
 }

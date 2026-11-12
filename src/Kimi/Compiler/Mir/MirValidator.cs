@@ -193,7 +193,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private bool At(in SourceInfo source)
         {
             this.at = source;
-            if (source.Scope >= body.Scopes.Length)
+            if ((uint)source.Scope >= (uint)body.Scopes.Length)
             {
                 this.Report(MirViolation.Scope);
                 return false;
