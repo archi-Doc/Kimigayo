@@ -104,8 +104,22 @@ public sealed partial class Binding
     // With `select`, candidate applicability: the bounds are not judged, since the Origin relations of a fit never change a selection
     // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
     // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
-    // is never verified here.
+    // is never verified here. The trials' requests share a premise session (PLAN G778).
     private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
+    {
+        var session = this.OpenPremiseSession();
+        try
+        {
+            return this.SolveOriginInferenceInSession(inference, origins, inputs, use, declaringType, select);
+        }
+        finally
+        {
+            session?.Close();
+        }
+    }
+
+    private bool SolveOriginInferenceInSession(
+        OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, bool select)
     {
         var binder = inference.Binder;
         inference.Failure = default;

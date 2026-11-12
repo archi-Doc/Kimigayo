@@ -101,9 +101,9 @@ public sealed partial class Binding
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
     /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
-    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders(BindingScope, List{PairBinder})"/> in
-    /// the use's scope when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
-    /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of
+    /// <see cref="PairBinders(BindingScope, List{PairBinder})"/> in the use's scope when its admitted set mixes borrows with other
+    /// Semantics, and null when no admitted case is a borrow, so the slot never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
     /// <param name="scope">The constraint scope of the use, whose binders give the bits.</param>

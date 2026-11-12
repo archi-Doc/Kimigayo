@@ -127,6 +127,19 @@ public class LocalOriginClauseTest
     // The whole program behind the write through W: a caller passes a shorter `b`, so `f` stores a borrow of `two` where its caller's
     // Type promises `one`'s Origin. Only `f`'s relation is reported; it was accepted and failed at generation. A5's record is at the
     // declaration and names the failing direction, `b outlives a` (H3b T45 and T47: it was `b == a` at `w0@move`).
+    // SPEC 15.4.4, 15.3.7 (PLAN G778): a local's Origin clause resolves Origins only at uses inside that local, so a call beside it in the
+    // same block has the premise environment of its own anchor. With the function's `origin a outlives b` the local's fit of `a` to
+    // `x.s == b` is valid; without it that relation is unproven.
+    [Theory]
+    [InlineData("    origin a outlives b\n", true)]
+    [InlineData("", false)]
+    public void ACallBesideALocalWithAnOriginClauseHasItsOwnPremises(string clause, bool valid)
+    {
+        var source = Holder + $"func g(a: ref/i32, b: ref/i32) -> ref/i32 during b\n{clause}    let h0 = H.init(a)\n    let h: H{{x}} = h0@move\n" +
+            "        origin x.s == b\n    let k = H.init(b)\n    return h.item\n" + Main;
+        Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
     [Fact]
     public void AWriteThroughAnInvariantTypeArgumentIsNotAccepted()
     {

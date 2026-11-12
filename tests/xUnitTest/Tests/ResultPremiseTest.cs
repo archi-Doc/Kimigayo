@@ -219,6 +219,21 @@ public partial class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(source.Replace("    origin h.a outlives x\n", "    origin h.a outlives x\n    origin x outlives s\n", StringComparison.Ordinal)).Accepted);
     }
 
+    // SPEC 15.3.7 (PLAN G778): a recursive call's result premises are proven without the definition's own (resultPremiseExcluded), each
+    // a request at the definition; each one the definition does not prove becomes an obligation of the call, which changes the Origin
+    // state, so the next request rebuilds the definition's premise environment in place. Three nested layers give three such premises:
+    // the call passing its inputs in order is valid, and its twin passing q for p needs q outlives p, which is unproven.
+    [Theory]
+    [InlineData("p, q, r", true)]
+    [InlineData("q, p, r", false)]
+    public void ARecursiveCallsResultPremisesRebuildItsEnvironment(string arguments, bool valid)
+    {
+        var output = DiagnosticCorpus.Check(
+            "func leak(p: ref/i32, q: ref/i32, r: ref/i32, n: i32) -> (Option<ref/(ref/(ref/i32 during r) during q) during p>, ref/i32 during p)\n" +
+            $"    if n == 0\n        return (.None, p)\n    return leak({arguments}, n - 1)\n" + Main);
+        Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], output.Diagnostics.Select(static x => x.Code).Distinct());
+    }
+
     // SPEC 15.6.4 step 3, 15.3.7: a call through a Function Item, or through a reference to one, solves the named callee's fresh Origins
     // under its result premises and declared relations, as a direct call does. The valid uses run; a result part that would outlive the
     // local borrow is the fit record at the return, related at that borrow (these calls were accepted and read a dead stack slot).

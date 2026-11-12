@@ -13,26 +13,34 @@ public sealed partial class Binding
 
     // One reusable premise environment per active proof request (PLAN G74).
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
+
+    // PLAN G778: the premise session, open while a judge that makes many requests runs (OpenPremiseSession).
+    private readonly OriginPremiseSession premiseSession = new();
     private int originPremiseDepth;
 
-    // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
-    // whether any of them still references an Origin, a Type, a declaration or syntax.
+    // The retained premise storage between requests (PLAN G74 U5): the environments, a premise session's included, their largest node
+    // and edge capacity, and whether any of them, or the session, still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
     {
         get
         {
-            var (nodes, edges, retains) = (0, 0, false);
-            foreach (var environment in this.originPremiseEnvironments)
-            {
-                var capacity = environment.Closure.Capacity;
-                nodes = Math.Max(nodes, capacity.Nodes);
-                edges = Math.Max(edges, capacity.Edges);
-                retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
-                    environment.Comparison.Expected is not null || environment.Shorter is not null;
-            }
+            var (nodes, edges, retains) = (0, 0, this.premiseSession.Environments.Count != 0);
+            Measure(this.originPremiseEnvironments);
+            Measure(this.premiseSession.Pool);
+            return (this.originPremiseEnvironments.Count + this.premiseSession.Pool.Count, nodes, edges, retains);
 
-            return (this.originPremiseEnvironments.Count, nodes, edges, retains);
+            void Measure(List<OriginPremiseEnvironment> environments)
+            {
+                foreach (var environment in environments)
+                {
+                    var capacity = environment.Closure.Capacity;
+                    nodes = Math.Max(nodes, capacity.Nodes);
+                    edges = Math.Max(edges, capacity.Edges);
+                    retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 ||
+                        environment.Results.Count != 0 || environment.Resolvers.Count != 0 || environment.Use is not null ||
+                        environment.Scope is not null || environment.Comparison.Expected is not null || environment.Shorter is not null;
+                }
+            }
         }
     }
 
@@ -85,6 +93,12 @@ public sealed partial class Binding
             return false; // Rulings S4: Refuted before any premise node is built.
         }
 
+        // PLAN G778: in a premise session, a top-level request outside a Callable comparison reads its anchor's environment.
+        if (this.premiseSession.Open && this.originPremiseDepth == 0 && !InComparison(comparison))
+        {
+            return this.EntailsInSession(longer, shorter, use, condition);
+        }
+
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
@@ -99,6 +113,7 @@ public sealed partial class Binding
             var candidate = closure.Node(longer, out _);
             this.ExtractOriginPremises(environment, use);
             entailed = closure.Entails(candidate, target, condition);
+            this.OriginProofMetrics?.Construction(closure.EdgeCount, built: true);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
         }
         finally
@@ -138,8 +153,91 @@ public sealed partial class Binding
         return false;
     }
 
+    // PLAN G778: the anchor of a request at `use`, below which its environment reads nothing: the child on the use's path of the
+    // innermost node the environment reads (a premise frame, a witness bridge among them, a scope stop, a resolving declaration, a local
+    // whose R5 the use is within, the root), as a Property's header and a match arm's body read their parent by child; a generated
+    // function's block itself, whose statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such
+    // a statement. Requests outside a comparison whose uses share an anchor have one environment.
+    private Koto PremiseAnchor(Koto use)
+    {
+        if (GeneratedStatement(use))
+        {
+            return use;
+        }
+
+        Koto? child = null;
+        for (var node = use; ; child = node, node = node.Parent!)
+        {
+            if (node is VariableKoto or { Parent: null } || PremiseFrame(node, child) || this.ScopeStop(node, child) is not null || this.ResolvesAt(node))
+            {
+                return child is null || GeneratedStatement(child) ? node : child;
+            }
+        }
+    }
+
+    // PLAN G778: opens the premise session for a judge that makes many requests; null when one is open, which the judge then shares. The
+    // opener closes what it opened (OriginPremiseSession.Close) in a finally block.
+    private OriginPremiseSession? OpenPremiseSession()
+    {
+        if (this.premiseSession.Open)
+        {
+            return null;
+        }
+
+        this.premiseSession.Open = true;
+        return this.premiseSession;
+    }
+
+    // PLAN G778: a session request. Its anchor's environment under the excluded result premise (resultPremiseExcluded) is built on first
+    // use, its construction nested at depth 1 as a rented one's is, and rebuilt in place after a change of Origin state; each request
+    // adds its endpoints and R5 over the nodes they introduce, which only point into them, then closes from its target.
+    private bool EntailsInSession(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition)
+    {
+        var session = this.premiseSession;
+        var key = (this.PremiseAnchor(use), this.resultPremiseExcluded);
+        if (!session.Environments.TryGetValue(key, out var environment))
+        {
+            if (session.Pool.Count == session.Environments.Count)
+            {
+                session.Pool.Add(new());
+            }
+
+            environment = session.Pool[session.Environments.Count];
+            session.Environments.Add(key, environment);
+        }
+
+        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        this.originPremiseDepth++;
+        try
+        {
+            var closure = environment.Closure;
+            var built = environment.Use is null || environment.Version != this.originStateVersion;
+            if (built)
+            {
+                environment.Clear();
+                environment.Use = key.Item1;
+                environment.Version = this.originStateVersion;
+                this.CollectOriginResolvers(environment);
+                this.ExtractOriginPremises(environment, environment.Use);
+            }
+
+            var edges = built ? 0 : closure.EdgeCount;
+            var target = closure.Node(shorter, out _);
+            var candidate = closure.Node(longer, out _);
+            this.AddLocalPlacePremises(environment);
+            var entailed = closure.Entails(candidate, target, condition);
+            this.OriginProofMetrics?.Construction(closure.EdgeCount - edges, built);
+            this.OriginProofMetrics?.Closure(closure, nested: false, Stopwatch.GetTimestamp() - start);
+            return entailed;
+        }
+        finally
+        {
+            this.originPremiseDepth--;
+        }
+    }
+
     // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
-    // where the request's construction depends on itself and the requester fails.
+    // where the request's construction depends on itself and the requester fails. A session request's construction starts at depth 1.
     private OriginPremiseEnvironment? RentPremises(Koto use)
     {
         if (this.originPremiseDepth == MaxOriginPremiseDepth)
@@ -147,7 +245,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (this.originPremiseDepth == this.originPremiseEnvironments.Count)
+        while (this.originPremiseEnvironments.Count <= this.originPremiseDepth)
         {
             this.originPremiseEnvironments.Add(new());
         }
@@ -181,6 +279,9 @@ public sealed partial class Binding
             }
         }
     }
+
+    // Whether CollectOriginResolvers may read a declaration at `node`.
+    private bool ResolvesAt(Koto node) => this.originDeclarations.ContainsKey(node) || this.initializerOrigins.ContainsKey(node);
 
     // A premise endpoint's node: the endpoint resolved at the use (I5 resolves `==` substitutions before proof), once per endpoint.
     private int PremiseNode(OriginPremiseEnvironment environment, BoundOrigin origin)
@@ -309,11 +410,18 @@ public sealed partial class Binding
             return;
         }
 
-        for (var node = 0; node < closure.NodeCount; node++)
+        this.AddLocalPlacePremises(environment);
+    }
+
+    // R5 outside a comparison at each node from the first one it was not applied to, the nodes its stored Origins introduce included.
+    private void AddLocalPlacePremises(OriginPremiseEnvironment environment)
+    {
+        var body = PremiseSignature(environment.Use);
+        for (var closure = environment.Closure; environment.LocalPlaces < closure.NodeCount; environment.LocalPlaces++)
         {
-            if (this.LocalPlaceType(environment, node, body) is { } stored)
+            if (this.LocalPlaceType(environment, environment.LocalPlaces, body) is { } stored)
             {
-                this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
+                this.AddStoredPremises(environment, stored, environment.LocalPlaces, OriginPremiseRule.LocalPlace, false);
             }
         }
     }
@@ -559,6 +667,12 @@ public sealed partial class Binding
         // In a comparison, R5's Places from the shorter end: its node, then the nodes its stored Origins introduce, each once.
         internal List<int> Places { get; } = new();
 
+        // Outside a comparison, the nodes R5 was applied to, in order (AddLocalPlacePremises).
+        internal int LocalPlaces { get; set; }
+
+        // A session environment's Origin state (originStateVersion) when it was built.
+        internal int Version { get; set; }
+
         // Whether this request is a fit's dependence query (DECISIONS BU-69), which reads a repair of each failed clause of a contract
         // it reads, with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
         internal bool Dependence { get; set; }
@@ -577,8 +691,33 @@ public sealed partial class Binding
             this.Comparison = default;
             this.Shorter = null;
             this.Places.Clear();
+            this.LocalPlaces = 0;
             this.Dependence = false;
             this.Repairs.Clear();
+        }
+    }
+
+    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
+    // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
+    // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
+    // writes the other premise inputs (scopes, bound input Types, a Closure's classification).
+    private sealed class OriginPremiseSession
+    {
+        internal Dictionary<(Koto Anchor, FunctionKoto? Excluded), OriginPremiseEnvironment> Environments { get; } = new();
+
+        internal List<OriginPremiseEnvironment> Pool { get; } = new();
+
+        internal bool Open { get; set; }
+
+        internal void Close()
+        {
+            foreach (var environment in this.Environments.Values)
+            {
+                environment.Clear();
+            }
+
+            this.Environments.Clear();
+            this.Open = false;
         }
     }
 }

@@ -511,9 +511,19 @@ public sealed partial class Binding
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
     // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
     // pair; each skip prunes a revisit whose first visit completed in the query. Whether that bounds a form whose argument parts alternate
-    // beside a shared pattern part is unshown (PLAN G387).
+    // beside a shared pattern part is unshown (PLAN G387). The visit's requests share a premise session (PLAN G778).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
-        => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+    {
+        var session = this.OpenPremiseSession();
+        try
+        {
+            return this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+        }
+        finally
+        {
+            session?.Close();
+        }
+    }
 
     private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {

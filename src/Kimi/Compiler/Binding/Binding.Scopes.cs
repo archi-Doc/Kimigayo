@@ -44,6 +44,11 @@ public sealed partial class Binding
         return this.scopes.TryGetValue(node, out var scope) ? scope : fallback;
     }
 
+    // The scope `current`, reached from its child `child`, gives the nodes below it (ConstraintScope): a match arm's body has its
+    // pattern's (SPEC 14.8.2), a scope's owner its own; null when it gives none.
+    private BindingScope? ScopeStop(Koto current, Koto? child)
+        => (current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) ?? this.scopes.GetValueOrDefault(current);
+
     private BindingSymbol Declare(object key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
     {
         if (!this.symbols.TryGetValue(key, out var symbol))

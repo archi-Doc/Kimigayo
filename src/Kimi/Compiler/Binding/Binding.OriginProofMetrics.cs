@@ -25,8 +25,16 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets every proof request, nested ones included.</summary>
     internal long Entries { get; private set; }
 
-    /// <summary>Gets the premise environments built: requests the structural instances did not answer, one closure each.</summary>
+    /// <summary>Gets the premise closures: one per request the structural instances did not answer.</summary>
     internal long Closures { get; private set; }
+
+    /// <summary>Gets the premise environments built for requests: one per request outside a premise session, one per anchor and Origin
+    /// state within one (PLAN G778).</summary>
+    internal long Environments { get; private set; }
+
+    /// <summary>Gets the premise edges written for requests: an environment's when it is built and a session request's own, the
+    /// construction work a premise session shares among the requests at one anchor (PLAN G778).</summary>
+    internal long WrittenEdges { get; private set; }
 
     /// <summary>Gets the environments built while another one was being built.</summary>
     internal long NestedClosures { get; private set; }
@@ -82,6 +90,8 @@ internal sealed class OriginProofMetrics
         this.Requests = 0;
         this.Entries = 0;
         this.Closures = 0;
+        this.Environments = 0;
+        this.WrittenEdges = 0;
         this.NestedClosures = 0;
         this.Nodes = 0;
         this.Edges = 0;
@@ -111,6 +121,15 @@ internal sealed class OriginProofMetrics
         }
 
         this.queries.Add((longer, shorter, use));
+    }
+
+    internal void Construction(int edges, bool built)
+    {
+        this.WrittenEdges += edges;
+        if (built)
+        {
+            this.Environments++;
+        }
     }
 
     internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)

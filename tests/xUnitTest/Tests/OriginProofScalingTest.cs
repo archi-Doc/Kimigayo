@@ -56,17 +56,33 @@ public class OriginProofScalingTest
     // differs (c: d, unproven), past the 32 and 64 components the relation walks once counted. The walks' steps (TermWalkWork) grow with
     // the layers where the Types differ, and do not grow where they are one Type, which the fit does not enter. n nested Origins have n(n-1)/2 outlives premises by SPEC, so the premise graph's nodes at most double and its edges at
     // most quadruple (plus two a layer) per doubling; the summed proof work is not this row's (PLAN G647's design section 7).
+    // PLAN G778: the same through pair layers (`x < x` under `s is value or valueborrow`, valid; its twin returns x as y's Type, which
+    // needs c: d in the borrow cases) and through a call (returning first(x, y), valid; first(y, x) needs d: c). The declaration judge's
+    // rows, one per Origin stored below a layer, and a call's well-formedness and inference requests share one premise environment per
+    // anchor (a premise session), so the edges written grow with the premises, at most four times plus four a layer per doubling, and the
+    // environments built at most double; each request still closes the graph from its target (R7-O1 e).
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void NestedLayerRelationsFollowTheOriginPairs(bool valid)
+    [InlineData("ref", true)]
+    [InlineData("ref", false)]
+    [InlineData("pair", true)]
+    [InlineData("pair", false)]
+    [InlineData("call", true)]
+    [InlineData("call", false)]
+    public void NestedLayerRelationsFollowTheOriginPairs(string form, bool valid)
     {
-        var rows = new[] { 17, 34, 68 }.Select(layers =>
+        var rows = new[] { 33, 65, 129 }.Select(layers =>
         {
             var (c, d) = (TypeDagScalingTest.RefLayers(layers, "i32", "c"), TypeDagScalingTest.RefLayers(layers, "i32", "d"));
+            var (pc, pd) = (c.Replace("ref/", "s/", StringComparison.Ordinal), d.Replace("ref/", "s/", StringComparison.Ordinal));
+            var source = form switch
+            {
+                "ref" => $"func f(x: {c}, y: {d}) -> {(valid ? c : d)}\n    return x\n",
+                "pair" => $"func f<s/T>(x: {pc}, y: {pd}, m: s/T) -> {(valid ? "bool" : pd)}\n    s is value or valueborrow\n    return {(valid ? "x < x" : "x")}\n",
+                _ => $"func first(x: {c}, y: {d}) -> {c}\n    return x\nfunc f(x: {c}, y: {d}) -> {c}\n    return first({(valid ? "x, y" : "y, x")})\n",
+            };
             var compilation = Compilation.CreateForTest();
             Assert.True(compilation.Prepare(WindowsProfile.Target));
-            compilation.Kotonoha.AddSource(new SourceDocument("nested.kimi", $"func f(x: {c}, y: {d}) -> {(valid ? c : d)}\n    return x\npublic func main() => ()\n"));
+            compilation.Kotonoha.AddSource(new SourceDocument("nested.kimi", source + "public func main() => ()\n"));
             var metrics = new OriginProofMetrics();
             compilation.Binding.OriginProofMetrics = metrics;
             compilation.Bind();
@@ -74,10 +90,11 @@ public class OriginProofScalingTest
             compilation.Analyze();
             var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.Problems.Select(static x => x.Code.ToString()));
             Assert.Equal(valid ? [] : ["UnprovenOriginRelation_Kd"], codes.Distinct());
-            return (Layers: layers, Work: (long)compilation.Binding.TermWalkWork, metrics.MaxNodes, metrics.MaxEdges);
+            return (Layers: layers, Work: (long)compilation.Binding.TermWalkWork, metrics.MaxNodes, metrics.MaxEdges, metrics.WrittenEdges, metrics.Environments);
         }).ToArray();
-        Assert.True((valid || rows[1].Work > rows[0].Work) && MirBorrowsTest.Grows(rows.Select(static x => x.Work).ToArray(), 2), string.Join(' ', rows));
+        Assert.True(form != "ref" || ((valid || rows[1].Work > rows[0].Work) && MirBorrowsTest.Grows(rows.Select(static x => x.Work).ToArray(), 2)), string.Join(' ', rows));
         Assert.True(rows[2].MaxNodes <= 2 * rows[1].MaxNodes && rows[2].MaxEdges <= (4 * rows[1].MaxEdges) + (2 * rows[2].Layers), string.Join(' ', rows));
+        Assert.True(rows[2].WrittenEdges <= (4 * rows[1].WrittenEdges) + (4 * rows[2].Layers) && rows[2].Environments <= 2 * rows[1].Environments, string.Join(' ', rows));
     }
 
     [Fact]
