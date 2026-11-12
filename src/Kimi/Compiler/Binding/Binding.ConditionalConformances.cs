@@ -197,11 +197,18 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
                 }
+
+                if (target.BoundConstraint.Kind == ConstraintKind.Unresolved)
+                {
+                    continue; // A pending Contract reference (SPEC 9.2, 9.5) registers nothing yet; the pending loop leaves the conformance and its Type pending (PendingDeclaration).
+                }
+
+                var contract = target.BoundConstraint.Contract!;
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
@@ -264,7 +271,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Invalidate();
+                (scope.Constraints ??= new()).Fail(syntax);
             }
         }
     }
@@ -274,9 +281,9 @@ public sealed partial class Binding
         evidence = null;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints?.Invalid == true)
+            if (current.Constraints is { Invalid: true } invalid)
             {
-                return ConstraintProof.Error;
+                return this.InvalidEnvironment(invalid);
             }
         }
 
@@ -426,9 +433,9 @@ public sealed partial class Binding
             return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
         }
 
-        if (path.Scope.Parent?.Constraints?.Invalid == true)
+        if (path.Scope.Parent?.Constraints is { Invalid: true } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         return this.ProveConditionalPremises(path.Premises, type, scope);

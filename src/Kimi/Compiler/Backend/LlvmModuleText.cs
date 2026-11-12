@@ -2,7 +2,8 @@
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the erased writer's kept runtime
-// (ErasedWriterRuntime.ll.in: the ErasedWriter and ErasedReserve intrinsics' routines, a module part on request), the runtime routines a module
+// (ErasedWriterRuntime.ll.in: the ErasedWriter and ErasedReserve intrinsics' routines, a module part on request), the float formatting
+// part (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the runtime routines a module
 // defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte copy), the checked one-scan expansion
 // every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too), the external declarations, the overflow and memory
 // intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
@@ -241,6 +242,10 @@ internal static partial class LlvmModuleText
     /// <summary>Gets the erased writer's kept runtime (ErasedWriterRuntime.ll.in), expanded once.</summary>
     internal static string ErasedWriterRuntime => ErasedWriter.Text;
 
+    /// <summary>Gets the float formatting part (Utf8FloatRuntime.ll.in, then Utf8FloatRyu.ll.in), the FormatFloat intrinsic's routine
+    /// with Ryu, expanded once, on first use.</summary>
+    internal static string FormatFloatRuntime => FormatFloat.Text;
+
     private static string ReadRuntime()
     {
         using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.WindowsRuntime.ll.in")!;
@@ -297,6 +302,22 @@ internal static partial class LlvmModuleText
             using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.ErasedWriterRuntime.ll.in")!;
             using var reader = new StreamReader(stream);
             return ExpandRuntime(reader.ReadToEnd(), Definitions);
+        }
+    }
+
+    // The float formatting part, initialized on first use (a module without a float write never reads it): the FormatFloat routine's
+    // template with its definition spliced from RuntimeAbi.FormatFloat, then Ryu, which has no marker.
+    private static class FormatFloat
+    {
+        internal static readonly string Text = Read();
+
+        private static string Read()
+        {
+            using var routine = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.Utf8FloatRuntime.ll.in")!;
+            using var routineReader = new StreamReader(routine);
+            using var ryu = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend.Utf8FloatRyu.ll.in")!;
+            using var ryuReader = new StreamReader(ryu);
+            return ExpandRuntime(routineReader.ReadToEnd() + "\n" + ryuReader.ReadToEnd(), [RuntimeAbi.FormatFloat]);
         }
     }
 }

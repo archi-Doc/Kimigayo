@@ -436,10 +436,11 @@ public sealed partial class Binding
         var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
         // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
-        // conformances of its argument but is never a Position (SPEC 3.1.1).
+        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison conformances of
+        // its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat row, for an
+        // abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -537,6 +538,7 @@ public sealed partial class Binding
                 {
                     this.failedCause = null;
                     this.conformanceChecks++;
+                    var frame = this.BeginConsultation(identity.PathStorage[0].Use); // The agreement's judgment is at its first path's use.
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
                     var explicitPath = false;
@@ -547,7 +549,11 @@ public sealed partial class Binding
 
                     if (explicitPath || agreement == ConstraintProof.Error)
                     {
-                        this.RequireConstraint(identity.PathStorage[0].Use, agreement, mode);
+                        this.RequireConstraintInFrame(identity.PathStorage[0].Use, agreement, mode, frame);
+                    }
+                    else
+                    {
+                        this.DropConsultation(frame);
                     }
                 }
             }
@@ -587,7 +593,7 @@ public sealed partial class Binding
 
                     if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
-                        environment.Invalidate();
+                        environment.Fail(scope.Owner);
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
                     }
 

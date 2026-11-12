@@ -13,7 +13,7 @@ public class BaseProjectionAccessBindingTest
     [InlineData("internal", "public")]
     public void NormalizationCannotHideBaseProjectionAccess(string sourceAccess, string contractAccess)
     {
-        var c = MinimalEmissionTest.Analyze($"public open struct Base\n{contractAccess} contract C\n    associate Element\n{sourceAccess} struct Source\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source.C.Element");
+        var c = MinimalEmissionTest.Analyze($"public open struct Base\n{contractAccess} contract C\n    associate Element\n{sourceAccess} struct Source\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source.(C).Element");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
@@ -22,8 +22,8 @@ public class BaseProjectionAccessBindingTest
 
     [Theory]
     [InlineData("Source.Element")]
-    [InlineData("GenericBase<Source.C.Element>")]
-    [InlineData("GenericBase<(i32, Source.C.Element)>")]
+    [InlineData("GenericBase<Source.(C).Element>")]
+    [InlineData("GenericBase<(i32, Source.(C).Element)>")]
     public void NestedBaseProjectionsRetainAccess(string type)
         => Check(Prefix + "public open struct GenericBase<T>\npublic struct Api: " + type, false);
 
@@ -33,20 +33,20 @@ public class BaseProjectionAccessBindingTest
     [InlineData("public", "internal", true)]
     [InlineData("public", "public", false)]
     public void BaseUsesEffectiveDerivedDomain(string outerAccess, string typeAccess, bool valid)
-        => Check(Prefix + outerAccess + " group Outer\n    " + typeAccess + " struct Api: Source.C.Element", valid);
+        => Check(Prefix + outerAccess + " group Outer\n    " + typeAccess + " struct Api: Source.(C).Element", valid);
 
     [Theory]
     [InlineData("internal", false)]
     [InlineData("public", true)]
     public void ConstructedQualifierRetainsArgumentAccess(string access, bool valid)
-        => Check("public open struct Base\npublic contract C\n    associate Element\n" + access + " struct Argument\npublic struct Source<T>\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source<Argument>.C.Element", valid);
+        => Check("public open struct Base\npublic contract C\n    associate Element\n" + access + " struct Argument\npublic struct Source<T>\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source<Argument>.(C).Element", valid);
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void InvalidBasePropagatesToDescendantsAndConformances(bool reverseOrder)
     {
-        var middle = "public open struct Middle: Source.C.Element\n";
+        var middle = "public open struct Middle: Source.(C).Element\n";
         var derived = "public struct Api: Middle\n    Self is Marker\n";
         var c = Check(Prefix + "public contract Marker\n" + (reverseOrder ? derived + middle : middle + derived), false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
@@ -60,7 +60,7 @@ public class BaseProjectionAccessBindingTest
     [InlineData("internal", true)]
     public void ReloadAndRebindRetainBaseAccess(string access, bool valid)
     {
-        var c = Check(Prefix + access + " struct Api: Source.C.Element", valid);
+        var c = Check(Prefix + access + " struct Api: Source.(C).Element", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -74,7 +74,7 @@ public class BaseProjectionAccessBindingTest
     [Fact]
     public void ReplacingBaseRechecksProjectionAccess()
     {
-        var c = Check(Prefix + "public struct Api: Source.C.Element", false);
+        var c = Check(Prefix + "public struct Api: Source.(C).Element", false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var original = api.Bases[0];
         var replacement = Check("public open struct Base\npublic struct Api: Base", true).Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Bases[0];
@@ -90,7 +90,7 @@ public class BaseProjectionAccessBindingTest
     [Fact]
     public void WarmBaseAccessChecksAllocateNothing()
     {
-        var c = Check(Prefix + "internal struct Api: Source.C.Element", true);
+        var c = Check(Prefix + "internal struct Api: Source.(C).Element", true);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

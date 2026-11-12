@@ -215,15 +215,15 @@ internal sealed class MirBody
         switch (kind)
         {
             case MirProjectionKind.Deref or MirProjectionKind.PairLayer:
-                // TyCtxt.Layer: a pair layer names its binder and a reference or object handle has its referent below it; a raw pointer
-                // is followed only explicitly (SPEC 5.4).
-                _ = TyCtxt.Layer(type, out var below, out var binder);
+                // TyCtxt.Layer: a pair layer (its binder TyCtxt.PairBinder's) and a reference or object handle have their target below
+                // them; a raw pointer is followed only explicitly (SPEC 5.4).
+                var layer = TyCtxt.Layer(type, out var below, out _);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return this.Binds(arg, binder) ? below : null;
+                    return layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
                 }
 
-                if (binder is null && !ReferenceEquals(below, type))
+                if (layer == HirPlaceKind.Deref)
                 {
                     return below;
                 }
@@ -237,7 +237,7 @@ internal sealed class MirBody
         }
     }
 
-    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.Layer"/>).</summary>
+    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.PairBinder"/>).</summary>
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
     /// <param name="target">The pair layer's binder.</param>
     /// <returns>Whether the index names that binder.</returns>
@@ -309,7 +309,8 @@ internal sealed class MirBody
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports.</returns>
+    /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
+    /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
     internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
     {
         var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));

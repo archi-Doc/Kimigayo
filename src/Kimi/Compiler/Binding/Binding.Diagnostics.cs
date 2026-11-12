@@ -13,6 +13,11 @@ public sealed partial class Binding
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
+    // The rows of every failed selection's rejectedCandidates range, cleared by ResetPrerequisites with their capacity kept, as the
+    // prerequisite and parameter-shape stores are, so a warm rebind of a rejected call allocates nothing. A range is contiguous: a
+    // check appends its rows with no other append to this list between its first row and RecordRejected.
+    private readonly List<RejectedCandidate> rejectedRows = [];
+
     // Keep proof failures intact. Only diagnostic publication follows these recorded
     // missing-name causes; later validators must still see an invalid declaration.
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
@@ -44,8 +49,8 @@ public sealed partial class Binding
     // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
     private Dictionary<Koto, Koto>? writeTargets;
 
-    // The candidates a failed overload selection considered, recorded only when it fails.
-    private Dictionary<Koto, RejectedCandidate[]>? rejectedCandidates;
+    // The candidates a failed overload selection considered, recorded only when it fails: the use's range of rejectedRows.
+    private Dictionary<Koto, (int Start, int Count)>? rejectedCandidates;
 
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
@@ -354,6 +359,10 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
+    // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
+    private static bool IsMissingInformation(Koto? node)
+        => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
     // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
     {
@@ -483,20 +492,12 @@ public sealed partial class Binding
     private DiagnosticCode OriginRelationCode(Koto node)
         => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
 
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only, or one taking its own clause's resting
-    // InvalidOrigin (SlotTaken), so the facts are recorded only with the failure the slot takes: a fact in a publication table always
-    // explains the failure of its node, whatever the failure's code.
-    // Interim (PLAN G758; Binding.LocalRegions.Types.cs): an Origin relation record on a mutable local's unopened pair slot, formed
-    // against that local, whatever recorded it (a fit, a pending relation, a call's position, an obligation), is the analysis limit, a
-    // located Unsupported_Kd at the relation's `At`, where the Language record it replaces would sit.
+    // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
+    // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
+    // failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (failure == BindingFailure.OriginRelation && fact is OriginRelationFact relation && this.UnregionedPairSlot(node, relation))
-        {
-            return this.Fail(relation.At, BindingFailure.Unsupported);
-        }
-
-        if (!this.SlotTaken(node))
+        if (node.BindingFailure == BindingFailure.None)
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }
@@ -625,6 +626,10 @@ public sealed partial class Binding
             related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 
+    // Publishes the rejected-candidate rows a failed selection appended from `start` on as its fact at `use`.
+    private void RecordRejected(Koto use, int start)
+        => (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = (start, this.rejectedRows.Count - start);
+
     private void ResetPrerequisites()
     {
         this.caseBinders?.Clear();
@@ -651,11 +656,14 @@ public sealed partial class Binding
         this.takeLayers?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
+        this.captureRepeatRows.Clear();
         this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.invalidStaticOriginSlots?.Clear();
         this.phantomRawOrigins?.Clear();
+        this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
+        this.rejectedRows.Clear();
         this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
@@ -766,9 +774,9 @@ public sealed partial class Binding
         }
 
         this.Fail(use, BindingFailure.InvalidConstraint);
-        if (diagnosticCause is null && use is IsKoto clause)
+        if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
-            diagnosticCause = this.FindMissingConformanceName(clause);
+            diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
         if (diagnosticCause is not null)

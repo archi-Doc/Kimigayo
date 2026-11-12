@@ -24,6 +24,7 @@ public class EffectBoundSyntaxTest
     [Theory]
     [InlineData("contract StableSource: Source\n    effect Source.take confined", "Source", "take")]
     [InlineData("contract Strict: Indexable<i32>\n    effect (Indexable<i32>).index confined", "(Indexable<i32>)", "index")]
+    [InlineData("contract Strict: Indexable<i32>\n    effect ((::Indexable<i32>)).index confined", "((::Indexable<i32>))", "index")]
     [InlineData("contract Stable: Kimi.Iterator\n    effect Kimi.LendingIterator.next confined", "Kimi.LendingIterator", "next")]
     [InlineData("contract Strict: confined\n    effect confined.f confined", "confined", "f")]
     public void ParsesEffectSpecificationsAsContractItems(string source, string selector, string name)
@@ -33,6 +34,7 @@ public class EffectBoundSyntaxTest
         var effect = Assert.IsType<EffectBoundKoto>(Assert.Single(contract.Members));
         Assert.True(effect.IsSpecification);
         Assert.Equal(selector, effect.Selector!.ToString());
+        Assert.Equal(selector[0] == '(', effect.Selector is ParenthesizedTypeKoto); // Every grouped Contract reference's form (PLAN G740).
         Assert.Equal(name, effect.Name!.ToString());
         AssertRoundTrip(tree);
     }

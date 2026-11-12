@@ -175,15 +175,10 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope, out var baseSyntax) is { IsContract: true } contract)
+        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope) is { } contract)
         {
-            if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
-            {
-                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
-            }
-
             qualifier = contract;
-            receiver = baseSyntax!;
+            receiver = qualified.Left;
         }
 
         // The receiver's lookup, published by the path's walk; when it failed, its record is the path's (one, SPEC 23.1.2) and the
@@ -285,19 +280,12 @@ public sealed partial class Binding
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
 
-    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope, out Koto? receiver)
+    // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
+    // path (9.6, 9.7.3), never read as `T.(C).X`.
+    private BindingSymbol? ProjectionQualifier(MemberAccessKoto syntax, BindingScope scope)
     {
-        if (syntax.Left is MemberAccessKoto left && this.ProjectionQualifier(left, scope, out receiver) is { Kind: BindingSymbolKind.Container } prefix && this.scopes.TryGetValue(prefix.Declaration, out var members) && TypeSpelling(syntax.Right) is { } name && MemberTypes(members, name) is { } target && this.Accessible(target, scope))
-        {
-            syntax.Right.BoundSymbol = target;
-            Complete(syntax.Right, BoundType.Unit);
-            Complete(syntax.Left, BoundType.Unit);
-            return target;
-        }
-
-        var selection = this.TypeName(syntax.Right, scope);
-        receiver = syntax.Left;
-        if (selection is null || (selection.Kind != BindingSymbolKind.Container && !selection.IsContract) || WrittenReference(syntax.Right) is not { } referenceSyntax)
+        if (syntax.Right is not ParenthesizedTypeKoto || this.TypeName(syntax.Right, scope) is not { IsContract: true } selection ||
+            WrittenReference(syntax.Right) is not { } referenceSyntax)
         {
             return null;
         }
@@ -337,7 +325,12 @@ public sealed partial class Binding
         if (owner.Declaration is ContractKoto)
         {
             clause.BoundConstraint ??= this.InternConstraint(new(ConstraintKind.Error));
-            this.AddConstraintFact(scope.Constraints ??= new(), clause.BoundConstraint);
+            var environment = scope.Constraints ??= new();
+            if (this.AddConstraintFact(environment, clause.BoundConstraint))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement is null)
             {
                 this.AddPrerequisite(scope.Owner, clause);

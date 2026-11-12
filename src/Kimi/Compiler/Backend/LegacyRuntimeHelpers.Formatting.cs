@@ -44,7 +44,7 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
     }
 }
 
-/// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer, formatting and floating-point runtime (Windows x64 profile).</summary>
+/// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer and formatting runtime (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
     /// <summary>The runtime's hint of an internal adapter (<c>__kimi_format_hint</c>, SPEC 22.10.5): the bytes its later writes may still
@@ -111,7 +111,11 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
     /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
-    /// integer's by its width and signedness, then f32, f64, char, bool, Unit, string and Utf8Slice. The one table code generation reads.</summary>
+    /// integer's by its width and signedness, then f32, f64, char, bool, Unit and string. The one table code generation reads. f32, f64,
+    /// char, bool, Unit, string and the wrapping integers format through the witness table's bodies (R8-S2a, R8-S2c, R8-S2d1), so the
+    /// routine has no arm for 11 to 15, and string's 16 serves only SegmentText's literal text (until R8-W2); their numbers stay while
+    /// FormattingTypes.IsBuiltin answers them, which FormatKindsAreTheRuntimesNumbering ties to this table (until R8-S2d2). A view
+    /// declares its conformance (R8-S2d1), so it has none.</summary>
     /// <param name="type">A closed Type.</param>
     /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
     internal static int FormatKind(BoundType type)
@@ -130,7 +134,6 @@ internal static partial class LegacyRuntimeHelpers
             _ when ReferenceEquals(type, BoundType.Boolean) => 14,
             _ when ReferenceEquals(type, BoundType.Unit) => 15,
             _ when ReferenceEquals(type, BoundType.String) => 16,
-            _ when type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice => 17,
             _ => -1,
         };
     }
@@ -177,11 +180,11 @@ internal static partial class LegacyRuntimeHelpers
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextWriter] = new(kind, abi, needs);
     }
 
-    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, joined once and expanded by LlvmModuleText's
-    // checked one-scan expansion: each routine's definition at its marker, from the first row of its symbol.
+    // The buffer and formatting runtimes, joined once and expanded by LlvmModuleText's checked one-scan expansion: each routine's
+    // definition at its marker, from the first row of its symbol. Float formatting is its own part (LlvmModuleText.FormatFloat, R8-S2c).
     private static string ReadFormattingRuntime()
     {
-        var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
+        var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime" };
         var parts = new string[names.Length];
         for (var i = 0; i < names.Length; i++)
         {

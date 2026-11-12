@@ -42,13 +42,13 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The views, bit i for view i.</returns>
     internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
 
-    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
+    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.PairBinder).</summary>
     /// <param name="body">The body.</param>
     /// <param name="type">The Type.</param>
     /// <returns>The binder's index; -1 for another Type.</returns>
     internal static int Binder(MirBody body, BoundType? type)
     {
-        _ = TyCtxt.Layer(type, out _, out var target);
+        var target = TyCtxt.PairBinder(type);
         var binder = body.Binders.Count - 1;
         while (binder >= 0 && !ReferenceEquals(body.Binders[binder].Target, target))
         {
@@ -180,12 +180,19 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
-    /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's or its Place's Type as a case Type
-    /// (<see cref="Type"/>), the one form every case reader of an operand takes.</summary>
+    /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
+    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
+    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The case Type.</returns>
+    internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
+
+    /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
+    /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>
     /// <param name="operand">An operand of the selected body.</param>
     /// <returns>The case Type.</returns>
     internal BoundType TypeOf(in MirOperand operand)
-        => this.Type(operand.Kind == MirOperandKind.Const ? this.Body.Consts[operand.Arg].Type : this.Body.TypeOf(operand.Place)!);
+        => operand.Kind == MirOperandKind.Const ? this.Type(this.Body.Consts[operand.Arg].Type) : this.TypeOf(operand.Place);
 
     /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
@@ -195,7 +202,7 @@ internal sealed class MirCases(TyCtxt types)
     internal BoundType? Layer(MirPlace step)
     {
         var row = this.Body.Projections[step.Projection];
-        return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.Type(this.Body.TypeOf(step with { Projection = row.Prefix })!);
+        return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.TypeOf(step with { Projection = row.Prefix });
     }
 
     /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.14): its Place's case Type is an

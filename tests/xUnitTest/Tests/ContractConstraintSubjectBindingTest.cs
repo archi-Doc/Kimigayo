@@ -34,16 +34,16 @@ public class ContractConstraintSubjectBindingTest
     [InlineData("string", false)]
     public void SelfRootedProjectionConstrainsImplementations(string item, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze(Implementation("Self.Origin.Item is Copy", item));
+        var c = MinimalEmissionTest.Analyze(Implementation("Self.(Origin).Item is Copy", item));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
-    [InlineData("Source.Origin.Item is not i32")]
-    [InlineData("Source.Origin.Item is string")]
-    [InlineData("Source.Origin.Item is not Copy")]
+    [InlineData("Source.(Origin).Item is not i32")]
+    [InlineData("Source.(Origin).Item is string")]
+    [InlineData("Source.(Origin).Item is not Copy")]
     public void RefutedConcreteRootedProjectionInvalidatesTheContract(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    " + clause);
@@ -59,7 +59,7 @@ public class ContractConstraintSubjectBindingTest
     [Fact]
     public void AnInvalidContractSubjectCannotCertifyConformance()
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    Source.Origin.Item is string\npublic struct Impl\n    Self is R");
+        var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    Source.(Origin).Item is string\npublic struct Impl\n    Self is R");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
@@ -71,7 +71,8 @@ public class ContractConstraintSubjectBindingTest
     [InlineData("enum")]
     public void RefutedConcreteRootedProjectionInvalidatesTypeDeclarations(string kind)
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public " + kind + " R<T>\n    Source.Origin.Item is string" + (kind == "enum" ? "\n    A" : string.Empty));
+        var c = MinimalEmissionTest.Analyze(
+            Head + "public " + kind + " R<T>\n    Source.(Origin).Item is string" + (kind == "enum" ? "\n    A" : string.Empty));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
@@ -79,7 +80,7 @@ public class ContractConstraintSubjectBindingTest
     [Fact]
     public void ReplacingTheSubjectRestoresAndRevokesTheContract()
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Source.Origin.Item is string");
+        var c = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Source.(Origin).Item is string");
         var clause = Contract(c).ConstraintNodes[0];
         var original = clause.Left;
         var donor = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Origin.Item is Copy");

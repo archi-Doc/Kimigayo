@@ -1491,12 +1491,15 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 
-    // SPEC 22.10.2 (R8-S2a): bool's, char's and Unit's format witness is the witness table's library body, not the BuiltinFormat routine,
-    // and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
+    // SPEC 22.10.2 (R8-S2a, R8-S2c, R8-S2d1): bool's, char's, Unit's, f32's, f64's and string's format witness is the witness table's
+    // library body, not the BuiltinFormat routine, and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
     [InlineData("()", "UnitFormat")]
+    [InlineData("f32", "F32Format")]
+    [InlineData("f64", "F64Format")]
+    [InlineData("string", "StringWitness")]
     public void ABuiltinFormatCallIsItsTablesBody(string type, string group)
     {
         var (program, set) = Collect($"func emit(writer: uniq/Utf8Writer, value: {type}) -> Result<(), BufferFull> => writer.write(value)\n");
@@ -1504,6 +1507,29 @@ public sealed partial class InstanceCollectorTest
         var body = $"library Fn format in group {group}";
         Assert.Contains(body, Calls(program, set, $"library Fn write in struct Utf8Writer [Utf8Writer, {type}]"));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, body));
+    }
+
+    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is its declared member, written, called directly and called through a
+    // `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which writes its
+    // integer, the BuiltinFormat routine until R8-S2b1 (fail-before: Builtin Utf8Slice and Builtin Wrapping<u8> BuiltinFormat).
+    [Fact]
+    public void AViewAndAWrappingIntegerFormatThroughTheirWitnesses()
+    {
+        var (program, set) = Collect(
+            "func emit(writer: uniq/Utf8Writer, view: Text.Utf8Slice, wrapped: Wrapping<u8>) -> Result<(), BufferFull>\n" +
+            "    try writer.write(view)\n    try view.format(writer)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
+            "func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
+            "    return value.format(writer)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        const string View = "library Fn format in struct Utf8Slice";
+        Assert.Contains(View, Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Utf8Slice]"));
+        Assert.Contains(View, Calls(program, set, "Fn emit"));
+        Assert.Contains(View, Calls(program, set, "Fn show [Utf8Slice]"));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, View));
+        const string Wrapped = "library Fn format in group WrappingFormat [u8]";
+        Assert.Equal([Wrapped], Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Wrapping<u8>]").Where(static x => x.Contains("format", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains("library Fn write in struct Utf8Writer [Utf8Writer, u8]", Calls(program, set, Wrapped));
+        Assert.Contains("Builtin u8 BuiltinFormat", Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, u8]"));
     }
 
     // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a

@@ -638,6 +638,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
+    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, by its kind's family, Inputs; its
+    // descriptor states no effect of its own over its three operands (the bits, the width flag and the destination), and its signature's
+    // `uniq` destination states the one write (fail-before: the descriptor's arity was -1, the kind did not exist).
+    [Fact]
+    public void AFormatFloatCallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
+        Assert.Equal(
+            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
+            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+    }
+
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
     // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
     // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
@@ -650,12 +663,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
 
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
-    // for bool, char and Unit (R8-S2a), Shown's printing one, also in an interpolation (fail-before: each, a limit).
+    // for bool, char and Unit (R8-S2a), for f32 and f64 (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's
+    // Allocation and Abort are permitted under confined, SPEC 8.11.2, so no record) and for string and Wrapping<i32> (R8-S2d1), the view's
+    // declared one (R8-S2d1; the view of a local string, since a temporary's ends with its statement, SPEC 3.6), Shown's printing one,
+    // also in an interpolation (fail-before: the earlier rows, a limit; R8-S2d1's rows pass before too, through builtinFormat).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
     [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
     [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
     [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]
+    [InlineData("        _ = Text.toString(1.5@f32)\n        let narrow = value@f32\n        _ = \"\\(narrow)\"\n", "")]
+    [InlineData("        _ = Text.toString(1.5)\n        let wide = value@f64\n        _ = \"\\(wide)\"\n", "")]
+    [InlineData("        _ = Text.toString(\"abc\")\n        let text = \"x\"\n        _ = \"\\(text)\"\n", "")]
+    [InlineData("        _ = Text.toString(Text.utf8(\"abc\"))\n        let text = \"x\"\n        let view = Text.utf8(text)\n        _ = \"\\(view)\"\n", "")]
+    [InlineData("        _ = Text.toString((7@u8)@Wrapping<u8>)\n        let wrapped = value@Wrapping<i32>\n        _ = \"\\(wrapped)\"\n", "")]
     [InlineData("        _ = Text.toString(Shown.init())\n", Failed)]
     [InlineData("        let shown = Shown.init()\n        _ = \"\\(shown)\"\n", Failed)]
     public void FormattingRunsTheValuesWitness(string body, string expected)
@@ -663,6 +684,36 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
+
+    // SPEC 8.11.3, 8.11.2, 3.1.1 (R8-S2d1, C-252): a generic's confined put that formats an abstract Wrapping<T> runs the witness table's
+    // WrappingFormat body at T, whose call of T's format has no known callee and Utf8Format bounds no effect, so its environment effect is
+    // unknown, a conflict at the conformance, the record a bare T gives (fail-before for the first three: Unsupported_Kd Self is Sink 1, a
+    // limit); without formatting, or at a concrete Wrapping<u8>, nothing; a printing formatter still reports.
+    [Theory]
+    [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", Failed)]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", Failed)]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = Text.toString(w)\n        return .Ok(())\n", Failed)]
+    [InlineData("        let v: T = 7\n        return writer.write(v)\n", Failed)]
+    [InlineData("        let v: T = 7\n        _ = \"\\(v)\"\n        return .Ok(())\n", Failed)]
+    [InlineData("        let v: T = 7\n        _ = Text.toString(v)\n        return .Ok(())\n", Failed)]
+    [InlineData("        let v: T = 7\n        let x = v + v\n        return .Ok(())\n", "")]
+    [InlineData("        let w: Wrapping<u8> = 7\n        _ = Text.toString(w)\n        _ = \"\\(w)\"\n        return writer.write(w)\n", "")]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = writer.write(w)\n        return writer.write(Loudly.init())\n", Failed)]
+    public void AnAbstractWrappingIntegerFormatsAsItsArgument(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + "struct Loudly\n    Self is Utf8Format\n    public init() => ()\n" +
+                "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        Console.writeLine(\"format\")\n" +
+                "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" +
+                "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        var bytes = [64 of 0@u8]\n" +
+                "        var buffer = Text.fixed(bytes@uniq)\n        var writer = Text.writer(buffer@uniq)\n" + body));
+
+    // SPEC 8.11.3 (R8-S2d1, C-252): a generic with no effect bound that formats an abstract Wrapping<T> keeps no record.
+    [Fact]
+    public void AnUnboundedGenericFormatsAnAbstractWrappingInteger()
+        => Assert.Empty(Problems(
+            "func plain<T>(writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is PrimitiveInteger\n    let w: Wrapping<T> = 7\n" +
+            "    _ = Text.toString(w)\n    _ = \"\\(w)\"\n    return writer.write(w)\n"));
 
     // SPEC 8.11.3, 13.4: a tuple operator runs its leaves' witnesses (its expansion, DECISIONS R5-M75): built-in for i32, Compared's
     // environment read, also nested; a leaf with an abstract part runs its requirement under the caller's premises: Fixed's confined
