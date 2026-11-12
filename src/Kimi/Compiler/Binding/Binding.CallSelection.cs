@@ -110,7 +110,6 @@ public sealed partial class Binding
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
                 this.Solution(evaluation, index, function, declaringType),
-                evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
                 evaluation.Expected,
@@ -240,6 +239,7 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal RequirementGroup? Requirements;
         internal SlotFrame Frame;
+        internal BoundType?[] ExplicitTypes;
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
         internal bool[] Used;

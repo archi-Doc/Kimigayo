@@ -320,7 +320,9 @@ public sealed partial class Binding
                 continue;
             }
 
+            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
             this.PrepareVirtualOverridePremises(function, slot);
+            this.DropConsultation(frame);
             this.CheckVirtualOverrideSignature(function, slot);
             if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {

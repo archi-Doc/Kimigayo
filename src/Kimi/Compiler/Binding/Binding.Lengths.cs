@@ -215,7 +215,7 @@ public sealed partial class Binding
             return left is null ? -1 : 1;
         }
 
-        var result = left.Operation.CompareTo(right.Operation);
+        var result = ((int)left.Operation).CompareTo((int)right.Operation);
         if (result == 0)
         {
             result = left.Value.CompareTo(right.Value);

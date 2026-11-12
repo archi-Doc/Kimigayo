@@ -120,6 +120,14 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
+    // SPEC 10.1, 10.2.1, 10.5 (PLAN G680): a check of the selected candidate once more, after its defaults (CheckDefaulted), its
+    // waiting arguments (BindCallCore) or its fixed construction (ValidateFixedConstruction), never reopens selection: past every
+    // argument and result check its step-5 verdict, Refuted as Unknown, is the selected call's obligation, whose record names the clause
+    // (CheckCallTypeConstraints, RequireClauses), and the candidate keeps the state it is selected in. The trial keeps a Refuted clause
+    // fact only past those checks (TryCandidateCore).
+    private static CandidateApplicability AsSelected(CandidateApplicability state, ReferenceConstraintFailure? failure, CandidateApplicability selected)
+        => state == CandidateApplicability.Inapplicable && failure is { Proof: ConstraintProof.Refuted } ? selected : state;
+
     // SPEC 10.5.1: whether the part awaits its call, from its producer's record (Awaits): the one query of call waiting.
     private bool AwaitsCall(Koto part) => this.AwaitedKind(part) is not null;
 
@@ -460,9 +468,9 @@ public sealed partial class Binding
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
     // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
-    // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another, and a slot
-    // still unbound is the inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or
-    // failed.
+    // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another (its
+    // Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the inference boundary, a failed
+    // argument part included (rule W). False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
@@ -534,7 +542,6 @@ public sealed partial class Binding
     {
         var state = this.TryCandidate(
             solution,
-            evaluation.ExplicitLengths,
             evaluation.Mapping,
             evaluation.Evaluated[winner].ArgumentMap,
             evaluation.Expected,
@@ -545,6 +552,7 @@ public sealed partial class Binding
             out _,
             out var failure,
             out _);
+        state = AsSelected(state, failure, evaluation.Evaluated[winner].State);
         if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
             evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
@@ -552,7 +560,8 @@ public sealed partial class Binding
         }
 
         var call = evaluation.Call;
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(solution.Function, null, null, ConstraintFailure: failure)];
+        this.rejectedRows.Add(new(solution.Function, null, null, ConstraintFailure: failure));
+        this.RecordRejected(call, this.rejectedRows.Count - 1);
         this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         return false;
     }

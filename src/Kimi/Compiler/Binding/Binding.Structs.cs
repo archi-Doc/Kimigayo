@@ -18,7 +18,6 @@ public sealed partial class Binding
     private const int StorageRejected = -1;
 
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
 
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
@@ -365,18 +364,12 @@ public sealed partial class Binding
         }
 
         if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
-            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 } declaration)
+            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);
         }
 
-        var pattern = this.SelfType(symbol);
-        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), ((BoundType[])pattern.Components).AsSpan(0, declaration.GenericParameterNodes.Count));
-        if (type is not null)
-        {
-            this.inferredConstructorTargets.Add(syntax);
-        }
-
+        var type = this.ConstructionTargetType(syntax, symbol, scope, null);
         syntax.BoundSymbol = symbol;
         return Complete(syntax, type);
     }
@@ -495,8 +488,9 @@ public sealed partial class Binding
     private BoundType ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping, BoundType? expected)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
-        var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
-            ? AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!))!
+        var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
+        var type = baseInitializer
+            ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
@@ -514,11 +508,13 @@ public sealed partial class Binding
 
         try
         {
+            // SPEC 10.8.1, 10.2: each argument is adapted as the trial adapts it, at the pattern under the slots its construction Type fixes.
+            var fixedSlots = ConstructionSlots(function, type, !baseInitializer && this.InfersConstruction(call));
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var slot = mapping[i];
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
-                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                    this.AdaptInput(call.ArgumentNodes[i], FixedPattern.Of(this, pattern, fixedSlots), actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.MatchInputOrigins(this.StoredType(pattern, type)!, adapted, owner, origins, []);
                 }

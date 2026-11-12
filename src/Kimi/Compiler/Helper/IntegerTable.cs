@@ -2,10 +2,11 @@
 
 // Reads the compiler's constant integer tables, stored as little-endian bytes (DECISIONS R5-M179): a constant byte span is static
 // data in every configuration, while a constant span of wider elements is built by RuntimeHelpers.CreateSpan, which allocates under
-// Debug's JIT minopts. A table's owner publishes its bytes (UnicodeIdentifierData, UnicodeNameData, MarkdownUnicodeData) and its one
-// reader wraps them in IntegerTable of their element type. Input: the bytes, a whole number of elements. Output: the element count and
-// the element at an index, little-endian on any host (a plain load on a little-endian one, misaligned loads being supported on every
-// .NET platform); an index out of range throws. No allocation; each read is one range check and one load, as an integer span's.
+// Debug's JIT minopts. A table's owner publishes its bytes (UnicodeIdentifierData, UnicodeNameData, MarkdownUnicodeData), written by
+// its generator through Add-IntegerTable (IntegerTable.ps1 beside this file, the one writer of the form), and its one reader wraps them
+// in IntegerTable of their element type. Input: the bytes, a whole number of elements. Output: the element count and the element at an
+// index, little-endian on any host (a plain load on a little-endian one, misaligned loads being supported on every .NET platform); an
+// index out of range throws. No allocation; each read is one range check and one load, as an integer span's.
 
 using System.Numerics;
 using System.Runtime.CompilerServices;

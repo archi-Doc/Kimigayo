@@ -6,13 +6,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // A temporary limit, not a rule (PLAN G647): the Field steps CExchangeable follows on one path (SPEC 22.6). A struct met after them
+    // is not judged, the import's located Unsupported_Kd: 32 nested C-layout structs are judged; 33, though valid, and a struct that
+    // reaches itself through a ref Field are not. Removed by the O-138 (a) checker unit (the PLAN row from D-293): SPEC 22.6 is read
+    // coinductively, so a revisit of a C-layout struct on its own path is eligible and ends the walk, and a finite nest has no limit.
+    private const int CLayoutFieldBound = 32;
+
     private readonly List<BindingSymbol> importDeclarations = new();
     private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
     private readonly List<string?> importSignatures = new();
 
     /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
-    /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
+    /// ones. One whose Attribute fails before (InvalidLibraryImport) is none here, though <c>DirectCallOnly</c>, which reads the Attribute,
+    /// still holds it to direct calls.</summary>
     internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
 
     private static Koto? AttributeTarget(AttributeKoto attribute)
@@ -321,14 +328,13 @@ public sealed partial class Binding
     // SPEC 22.6: whether a referent is C-exchangeable: fixed-width integer Cores and f32/f64, raw pointers, ref/uniq borrows of eligible
     // referents, positive-length fixed arrays of eligible elements and owned C-layout structs (AdtDef.IsCLayout) with eligible prepared
     // Fields. Null when the decision rests on a struct whose declaration or Field Type already failed, which has its own diagnostic.
-    // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
-    private bool? CExchangeable(BoundType type, int depth)
+    // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted. A borrow and an array step
+    // descend into a component of the Type and end with it (IMPL A.4's height); a Field step crosses a declaration, and a C-layout struct
+    // can reach itself through a ref Field, so until the O-138 (a) checker unit the Field steps of one path stop at the limit
+    // CLayoutFieldBound (false: the located Unsupported_Kd of the import).
+    private bool? CExchangeable(BoundType type, int fields)
     {
-        if (depth > 32)
-        {
-            return false;
-        }
-
+        this.termWalks++;
         if (type.Kind == BoundTypeKind.Primitive)
         {
             return ScalarCode(type) != '?';
@@ -339,14 +345,14 @@ public sealed partial class Binding
             return type.Semantics switch
             {
                 SemanticsKind.Raw => true,
-                SemanticsKind.Ref or SemanticsKind.Uniq => this.CExchangeable(referent, depth + 1),
+                SemanticsKind.Ref or SemanticsKind.Uniq => this.CExchangeable(referent, fields),
                 _ => false,
             };
         }
 
         if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Length: > 0, Components: [var element] })
         {
-            return this.CExchangeable(element, depth + 1);
+            return this.CExchangeable(element, fields);
         }
 
         if (type.Semantics != SemanticsKind.Owner || type.Symbol is not { } symbol)
@@ -359,14 +365,14 @@ public sealed partial class Binding
             return null;
         }
 
-        if (symbol.Adt is not { IsCLayout: true } shape)
+        if (symbol.Adt is not { IsCLayout: true } shape || fields == CLayoutFieldBound)
         {
             return false;
         }
 
         for (var i = 0; i < shape.Types.Count; i++)
         {
-            if ((this.StoredType(shape.Types[i], type) is { } field ? this.CExchangeable(field, depth + 1) : null) is not true and var decision)
+            if ((this.StoredType(shape.Types[i], type) is { } field ? this.CExchangeable(field, fields + 1) : null) is not true and var decision)
             {
                 return decision;
             }

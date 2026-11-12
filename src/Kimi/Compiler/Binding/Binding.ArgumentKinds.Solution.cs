@@ -17,6 +17,8 @@ public sealed partial class Binding
             Call = evaluation.Call,
             Binder = function,
             Generic = evaluation.Generic,
+            ExplicitTypes = evaluation.ExplicitTypes.AsSpan(0, evaluation.Generic?.TypeArguments.Count ?? 0),
+            ExplicitLengths = evaluation.ExplicitLengths.AsSpan(0, evaluation.Generic?.TypeArguments.Count ?? 0),
             Scope = evaluation.Scope,
             Self = evaluation.Self,
             DeclaringType = declaringType,
@@ -47,18 +49,22 @@ public sealed partial class Binding
         };
 
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
-    // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
-    // inferred Type is checked fixed (ValidateFixedConstruction), the Origin inference its evidence begins, and a candidate's
-    // root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164). The binder (a function or
-    // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
-    // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
-    // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
+    // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments (their syntax and their
+    // Types and lengths, bound once per call), whether a construction's inferred Type is checked fixed (ValidateFixedConstruction), the
+    // slot bindings fixed before any evidence (Fixed, which FixCallSlots publishes as it seeds the frame), the Origin inference its
+    // evidence begins, and a candidate's root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164).
+    // The binder (a function or an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a
+    // constructor. Invariant: a Case construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk,
+    // the defaults, the waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
     private ref partial struct SlotSolution
     {
         internal Binding Binding;
         internal InvocationKoto Call;
         internal Koto Binder;
         internal GenericsKoto? Generic;
+        internal ReadOnlySpan<BoundType?> ExplicitTypes;
+        internal ReadOnlySpan<BoundLength?> ExplicitLengths;
+        internal FixedSlots Fixed;
         internal BindingScope Scope;
         internal BoundType? Self;
         internal BoundType? DeclaringType;
@@ -127,7 +133,7 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
@@ -254,14 +260,6 @@ public sealed partial class Binding
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
                 ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
-
-        // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
-        private readonly bool InfersConstruction(out Koto? target)
-        {
-            target = !this.FixedConstruction && this.Call.Method is MemberAccessKoto member && this.Binding.inferredConstructorTargets.Contains(member.Left)
-                ? member.Left : null;
-            return target is not null;
-        }
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 

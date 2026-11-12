@@ -185,7 +185,7 @@ public sealed partial class Binding
     {
         if (function.IsRequirement && item.Components is [var self, var reference])
         {
-            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference)), this.ConstraintScope(function), self);
+            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference), out _), this.ConstraintScope(function), self);
         }
 
         if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
@@ -318,15 +318,14 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnboundTypeArgument);
         }
 
-        var rejected = new RejectedCandidate[count];
-        var next = 0;
+        var start = this.rejectedRows.Count;
         for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
         {
             var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-            rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true);
+            this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true));
         }
 
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+        this.RecordRejected(use, start);
         return this.Fail(use, BindingFailure.Ambiguous);
     }
 
@@ -385,9 +384,9 @@ public sealed partial class Binding
         }
 
         var target = (FunctionKoto)selected!.Declaration;
-        if ((target.Modifier & ModifierKind.Unsafe) != 0)
+        if (DirectCallOnly(target))
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
         var arguments = this.typeScratch.Rent(count);

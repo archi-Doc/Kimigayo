@@ -143,6 +143,14 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public struct Target<T>\n    T is [2 of Future]", "public struct Future", true)]
     [InlineData("public struct Target\n    Self is Future", "public contract Future", true)]
     [InlineData("public struct Target<T>\n    T is not Future", "public contract Future", true)]
+    // A conditional conformance's Contract and its conditions are pending like an unconditional one's (SPEC 8.8.1, 9.2, 9.5): a nearer
+    // struct or group the Contract Reference role excludes decides nothing.
+    [InlineData("public struct Target<T>\n    Self is Future when T is Copy", "public contract Future", true)]
+    [InlineData("public group G\n    struct Future\n    public struct Target<T>\n        Self is Future when T is Copy", "public contract Future", true)]
+    [InlineData("public group G\n    group Future\n        func z() -> i32 => 0\n    public enum Target<T>\n        Self is Future when T is Copy\n        A", "public contract Future", true)]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future and Copy", "public contract Future", true)]
+    [InlineData("public struct Target<T>\n    Self is Future when T is Copy", "public struct Future", false)]
+    [InlineData("public struct Target<T>\n    Self is Future\n    Self is Future when T is Copy", "public contract Future", false)]
     public void MissingDeclarationsRemainUnresolvedUntilFinalBinding(string source, string generated, bool valid)
     {
         var c = Parse(source);
@@ -165,6 +173,7 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public group Future\npublic struct Target\n    i32 is Future")]
     [InlineData("public group Invalid\npublic struct Target\n    Invalid is Copy")]
     [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
+    [InlineData("public struct Future\npublic struct Target<T>\n    Self is Future when T is Copy")]
     public void FinalBindingRejectsNamesThatRemainMissing(string source)
     {
         var c = Parse(source);
@@ -177,6 +186,11 @@ public class UnresolvedConstraintBindingTest
 
     [Theory]
     [InlineData("public struct Target<s/T>\n    s is Future")]
+    // SPEC 8.8.1: a non-generic Type, a non-parameter subject and `or` or `not` fail whatever the missing name finds.
+    [InlineData("public struct Target\n    Self is Future when Self is Copy")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when i32 is Future")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future or Copy")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is not Future")]
     public void AvailableViolationsRemainInvalidInProvisionalBinding(string source)
     {
         var c = Parse(source);
@@ -216,6 +230,55 @@ public class UnresolvedConstraintBindingTest
         Assert.Equal(valid, call.CallOf() is not null);
     }
 
+    // A conformance whose Contract is pending leaves its Type pending, conditional or not (SPEC 8.6.2, 8.8.3, BU-151): once
+    // `contract C: D` exists S<i64> is D through C, so neither `X is D` (take) nor `X is not D` (plain) is decided before it.
+    [Theory]
+    [InlineData("public struct S<T>\n    Self is D when T is i32\n    Self is C when T is i64", "take", true)]
+    [InlineData("public struct S<T>\n    Self is D when T is i32\n    Self is C when T is i64", "plain", false)]
+    [InlineData("public enum S<T>\n    Self is D when T is i32\n    Self is C when T is i64\n    A", "plain", false)]
+    [InlineData("public struct S<T>\n    Self is D when T is i32\n    Self is C", "plain", false)]
+    public void PendingConformancesLeaveTheirTypePending(string type, string callee, bool valid)
+    {
+        var c = Parse("public contract D\n" + type + "\nfunc take<X>(x: X)\n    X is D\n    ()\nfunc plain<X>(x: X)\n    X is not D\n    ()\nfunc use(x: S<i64>) => " + callee + "(x@move)");
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        Assert.Equal(BindingState.Unresolved, Container(c, "S").StateOf());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.Equal(BindingState.Unresolved, call.StateOf());
+        Assert.Null(call.CallOf());
+        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract C: D"));
+        Assert.Equal(valid, c.Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
+    // A pending target is proven in its Type's scope and hides no independent failure (SPEC 23.1.2): a condition's malformed Type fails
+    // the conformance, never the Type; another conformance's missing implementation stays its own failure.
+    [Theory]
+    [InlineData("public struct Box<U>\n    U is i64\npublic struct S<T>\n    Self is C when T is Box<i32>", "Box<i32>")]
+    [InlineData("public contract D\n    func m(self: ref/Self) -> i32\npublic struct S<T>\n    Self is D\n    Self is C when T is Copy", "Self is D")]
+    public void PendingConformancesKeepIndependentFailures(string source, string independent)
+    {
+        var c = Parse(source);
+        Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
+        Assert.Equal(BindingState.Unresolved, Container(c, "S").StateOf());
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.ToString() == independent && x.StateOf() == BindingState.Invalid);
+        Assert.False(c.Bind().IsComplete);
+    }
+
+    // A pending condition is a premise (SPEC 8.8.1-8.8.3): a proof applying the conformance reads it as Unknown, so a use waits while
+    // the Type stays decided; once `contract E` exists i64 is not E, so S<i64> is neither C nor D.
+    [Theory]
+    [InlineData("take", false)]
+    [InlineData("plain", true)]
+    public void PendingConditionsLeaveTheirUsesPending(string callee, bool valid)
+    {
+        var c = Parse("public contract D\npublic contract C: D\npublic struct S<T>\n    Self is C when T is E\nfunc take<X>(x: X)\n    X is D\n    ()\nfunc plain<X>(x: X)\n    X is not D\n    ()\nfunc use(x: S<i64>) => " + callee + "(x@move)");
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        Assert.Equal(BindingState.Resolved, Container(c, "S").StateOf());
+        Assert.Equal(BindingState.Unresolved, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).StateOf());
+        c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract E"));
+        Assert.Equal(valid, c.Bind().IsComplete);
+    }
+
     [Fact]
     public void MissingPropositionsAreNotAddedAsAssumptions()
     {
@@ -237,9 +300,10 @@ public class UnresolvedConstraintBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "group G\n    func take<T>()\n        Future is Copy\n        ()"));
-        Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
+        // SPEC 7.5: the leading clause is a Constraint whatever it names; Binding rejects its subject, and does not wait for a source.
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
+        Assert.Equal(["UnresolvedBinding_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
     [Trait("Purpose", "Allocation")]

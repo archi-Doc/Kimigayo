@@ -57,8 +57,10 @@ public sealed partial class Binding
         return fits;
     }
 
-    // SPEC 3.8 at a use whose premises and Origins the relation reads.
-    internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected);
+    // SPEC 3.8 at a use whose premises and Origins the relation reads, in the whole-contract comparison `comparison` (SPEC 15.3.7), whose
+    // required signature's own well-formedness its proofs assume.
+    internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use, in CallableInstance comparison)
+        => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected, instance: comparison);
 
     // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
     // required result it is compared against.

@@ -490,11 +490,6 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (declaration.Unavailable)
-        {
-            return ConstraintProof.Error;
-        }
-
         foreach (var relation in declaration.Relations)
         {
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
@@ -513,13 +508,9 @@ public sealed partial class Binding
     // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
     // the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
     // its result is judged at its own occurrence (BindFunctionType; DECISIONS R4-M162).
-    private void AddTypeClauseObligations(BoundType type, Koto occurrence, int depth = 0)
+    private void AddTypeClauseObligations(BoundType type, Koto occurrence)
     {
-        if (depth > 64)
-        {
-            return;
-        }
-
+        this.termWalks++;
         if (type.OriginArguments.Count != 0 && type.Symbol is { } symbol &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
@@ -541,7 +532,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddTypeClauseObligations(type.Components[i], occurrence, depth + 1);
+            this.AddTypeClauseObligations(type.Components[i], occurrence);
         }
     }
 
@@ -551,11 +542,6 @@ public sealed partial class Binding
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
             return true;
-        }
-
-        if (declaration.Unavailable)
-        {
-            return false;
         }
 
         foreach (var relation in declaration.Relations)

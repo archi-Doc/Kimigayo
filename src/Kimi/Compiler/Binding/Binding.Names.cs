@@ -95,10 +95,10 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
-            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
+            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && DirectCallOnly(named) && IsValueUse(node))
             {
-                // SPEC 7: an unsafe function supports direct calls only. An overload group is checked after selection.
-                return this.Fail(node, BindingFailure.UnsafeFunctionValue);
+                // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
+                return this.Fail(node, BindingFailure.DirectCallFunctionValue);
             }
 
             // A function group is resolved for call selection, but not an inferred first-class value.
@@ -186,7 +186,7 @@ public sealed partial class Binding
                     (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
                 {
                     // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
-                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
+                    if (!this.AdaptInput(sourceReceiver, FixedPattern.Open(required), sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
                         // SPEC 11.3: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
                         if (this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update))

@@ -189,7 +189,7 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
                 applied = false;
                 Koto? misfit = null;
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
@@ -272,17 +272,19 @@ public sealed partial class Binding
         {
             var binding = this.Binding;
             var binder = this.Binder;
-            var inferred = this.InfersConstruction(out var target);
-            var fixedOwner = inferred ? target!.BoundType : this.DeclaringType;
-            var adaptationPattern = this.Constructor ? binding.MemberType(pattern, fixedOwner) ?? pattern : pattern;
+
+            // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: the adaptation, and the call signature a Function Type takes, are planned at the pattern
+            // under the bindings fixed before any evidence (FixedPattern); a slot that evidence binds stays a slot, so no argument's
+            // adaptation follows another's binding.
+            var fixedPattern = FixedPattern.Of(binding, pattern, this.Fixed);
             if (!binding.AdaptInput(
-                source, adaptationPattern, actual, this.Scope, path, this.DeclaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
+                source, fixedPattern, actual, this.Scope, path, this.DeclaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
             {
                 return false;
             }
 
             var callee = actual;
-            actual = binding.SignatureAtFunction(pattern, actual);
+            actual = binding.SignatureAtFunction(fixedPattern.Type, actual);
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
@@ -306,7 +308,6 @@ public sealed partial class Binding
                 return true;
             }
 
-            var common = this.Generic is null && (!this.Constructor || inferred);
             var structural = pattern.Kind == BoundTypeKind.Function;
             return binding.Infer(
                 pattern,
@@ -315,7 +316,7 @@ public sealed partial class Binding
                 this.Frame,
                 inferOrigins: true,
                 lengths: true,
-                commonOrigins: common,
+                commonOrigins: !this.Fixed.Own, // SPEC 10.8: a fixed binding is kept; open slots' covariant bindings meet.
                 structural: structural,
                 evidence: known,
                 relateLater: true);
@@ -334,7 +335,7 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
-                    type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
+                    type = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, type); // As InferAdapted (U1.6g (c)).
                     binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);

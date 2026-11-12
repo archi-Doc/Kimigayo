@@ -977,17 +977,44 @@ public class ParserRegressionTest
         Assert.Equal("replacement", change.Text);
     }
 
-    // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
-    // declaration does not permit is diagnosed, never read as a runtime test; parentheses make the test executable.
+    // SPEC 7.5: every function, constructor, destructor and accessor body begins with its leading region. An item that derives
+    // ConstraintClause is a Constraint there whatever its subject names (Binding judges the subject), never a runtime test, and the
+    // region goes on after it; parentheses make the test executable, and a Type that is no ConstraintSubject before `is` is an
+    // expression, which ends the region.
     [Theory]
-    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 1)]
+    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 0)]
+    [InlineData("func f<T, U>(value: U)\n    Box<U>.(C).X is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(value: T)\n    (T, T).(C).X is Copy\n    S.(C).X(a) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T, U>(value: U)\n    Box<U> is Copy\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(value: T)\n    g(value) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    make().inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    make().inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(hs: Array<H>)\n    hs[0].inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(hs: Array<H>)\n    hs[0].inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    (h).inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    (h).inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek(1).inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek(1) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek(k) is Dog\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    [2 of T].(C).X is Copy\n    T.(C).LentItem(static) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek((n + 1)) is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.pair(n, (n * 2)) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek((n)) is Dog\n    h.pair(n, m) is Dog\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.flag((a and b)) is Dog\n    ().(C).X is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek(a).inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    T.(C).LentItem(a) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    (T, T).(C).X is Copy\n    (h).(C).X is Copy\n    T is Copy\n    ()", 1)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    public func m(self)\n        Holder.make().inner is Dog\n        E is Copy\n        ()\n", 1)]
+    [InlineData("struct W<E>\n    var item: i32\n    public init(item: i32)\n        Holder.make().inner is Dog\n        E is Copy\n        self.item = item\n", 1)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    public computed first: i32\n        get() -> i32\n            Holder.make().inner is Dog\n            return 0\n", 0)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    drop\n        Holder.make().inner is Dog\n        ()\n", 0)]
     [InlineData("func f(value: i32)\n    (value is Dog)\n    ()", 0)]
     [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
     [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    drop\n        T is Copy\n        ()\n", 1)]
     [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
-    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
+    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 0)]
     public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)
     {
         var (_, diagnostics) = Parse(source);
@@ -1006,6 +1033,57 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
     }
 
+    // SPEC F.6.2: AssociatedTypeName := Name | ContractSelector "." Name, so `associate` before any start of a ContractSelector introduces
+    // the item, whose selector is one node (a group, a rooted first segment or a path) before its `. Name` (G683). A specification is a
+    // member of its owner, a Contract's included; a Contract's `associate Name is R` declares, among its Constraints (8.5.1).
+    [Theory]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C).Item is i32\n", "(C).Item")]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i32>).Item is i32\n", "(C<i32>).Item")]
+    [InlineData("contract L\n    associate View(a)\nstruct S\n    Self is L\n    associate (L).View(a) is ref/i32 during a\n", "(L).View(a)")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ::C.Item is i32\n", "::C.Item")]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate ::C<i32>.Item is i32\n", "::C<i32>.Item")]
+    [InlineData("struct S\n    contract Inner\n        associate Item\n    Self is Inner\n    associate Self.Inner.Item is i32\n", "Self.Inner.Item")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Item is i32\n", "(C).Item")]
+    public void AssociateIntroducesEveryAssociatedTypeName(string source, string name)
+    {
+        var (root, diagnostics) = Parse(source);
+        Assert.Empty(diagnostics);
+        var specification = Assert.Single(KotoTree.Walk(root).OfType<IsKoto>(), static x => x.IsAssociatedConstraint);
+        Assert.Equal(name, specification.Left.ToString());
+        var owner = Assert.IsAssignableFrom<DeclarationContainerKoto>(specification.Parent);
+        Assert.Contains(specification, owner.Members);
+        Assert.DoesNotContain(specification, owner.ConstraintNodes);
+    }
+
+    // SPEC F.6.2: a head that is no AssociatedTypeName is rejected where it is read, in every owner, with one record at the head (G683).
+    [Theory]
+    [InlineData("struct S\n    let v: i32 = 0\ncontract D\n    associate ::S is S\n", "::S")]
+    [InlineData("struct S\n    let v: i32 = 0\ncontract D\n    associate (S) is S\n", "(S)")]
+    [InlineData("struct W<T>\n    let v: i32 = 0\ncontract D\n    associate W<i32> is W<i32>\n", "W<i32>")]
+    [InlineData("contract D\n    associate i32 is i32\n", "i32")]
+    [InlineData("contract D\n    associate [2 of i32] is [2 of i32]\n", "[2 of i32]")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate Self is i32\n", "Self")]
+    [InlineData("contract D\n    associate ::Item is i32\n", "::Item")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Item<i32> is i32\n", "(C).Item<i32>")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ::C is C\n", "::C")]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ref/C.Item is i32\n", "ref/C.Item")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate Self(a) is ref/i32 during a\n", "Self(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate i32(a) is ref/i32 during a\n", "i32(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate ::View(a) is ref/i32 during a\n", "::View(a)")]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate View<i32>(a) is ref/i32 during a\n", "View<i32>(a)")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C) is i32\n", "(C)")]
+    [InlineData("contract L\n    associate View(a)\nstruct S\n    Self is L\n    associate Self(a) is ref/i32 during a\n", "Self(a)")]
+    [InlineData("struct W<T>\n    let v: i32 = 0\nenum E\n    A\n    associate W<i32> is W<i32>\n", "W<i32>")]
+    [InlineData("enum E\n    A\n    associate i32 is i32\n", "i32")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    let v: i32 = 0\nstruct W<T>\n    Self is C when T is Copy\n        associate ::S is S\n", "::S")]
+    public void AnAssociateHeadThatIsNoAssociatedTypeNameIsRejectedAtTheHead(string source, string head)
+    {
+        var (_, diagnostics) = Parse(source);
+        var record = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains($"found '{head}'", record.Message);
+    }
+
     // A repeated modifier is named as written, whether it is an access modifier or a flag such as open.
     [Theory]
     [InlineData("open open struct S\n    let x: i32\n", "open")]
@@ -1015,6 +1093,35 @@ public class ParserRegressionTest
         var (_, diagnostics) = Parse(source);
         var duplicate = Assert.Single(diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicateModifier_Kd));
         Assert.Contains($"'{modifier}'", duplicate.Message);
+    }
+
+    // SPEC 7.5 (G507): the leading region is decided on the one parse of each item's operand, so a body's parse allocation grows
+    // linearly with its leading Constraints and the items after them: doubling both doubles the increment.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ALongLeadingRegionParsesInLinearAllocation()
+    {
+        static long Allocation(int count)
+        {
+            var source = new System.Text.StringBuilder("func f<T>(h: H)\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    T.(C).X").Append(i).Append("(a) is Copy\n");
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    h.peek(").Append(i).Append(")\n");
+            }
+
+            var text = source.Append("    ()\n").ToString();
+            return AllocationMeasurement.MeasureOnce(() => ParseTestHelper.Parse(text));
+        }
+
+        var small = Allocation(100);
+        var medium = Allocation(200);
+        var large = Allocation(400);
+        Assert.True(large - medium <= (medium - small) * 5 / 2, $"{small} {medium} {large}");
     }
 
     private static (GroupKoto Root, TestDiagnostic[] Diagnostics) Parse(string source)

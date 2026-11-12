@@ -41,9 +41,9 @@ internal enum IntrinsicWriter : byte
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
-    Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
+    Buffer, // FormatBuffer: an owning interpolation's private buffer on the heap, of its estimate's capacity (FunctionCodegen.Interpolation).
     Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
-    Finish, // FormatFinish: the routine, or its stack form, over the adapter's buffer (FunctionCodegen.Interpolation).
+    Finish, // FormatFinish: the routine over the adapter and its buffer (FunctionCodegen.Interpolation).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
@@ -90,7 +90,13 @@ internal static class IntrinsicRows
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Fail, RuntimeAbi.Abort),
         new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Stdout),
-        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(
+            IntrinsicId.FormatFloat,
+            IntrinsicTarget.None,
+            LayoutNeed.None,
+            IntrinsicWriter.Requested,
+            RuntimeAbi.FormatFloat,
+            ModuleCodegen.Needs.FormatFloat), // Storage.formatFloat (R8-S2c).
         new(
             IntrinsicId.ErasedWriter,
             IntrinsicTarget.Witness,

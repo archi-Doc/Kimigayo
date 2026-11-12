@@ -444,7 +444,7 @@ public sealed partial class InstanceCollectorTest
         {
             var targets = set.Targets(item).ToArray();
             Assert.Equal(targets.OrderBy(static x => x.At.Block).ThenBy(static x => x.At.Index), targets);
-            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            var body = program.Body(set.Items[item].BodyOrdinal);
             Assert.All(targets, x => Assert.True(x.At.Index == body.Blocks[x.At.Block].Count
                 ? body.Blocks[x.At.Block].Terminator.Kind == MirTerminatorKind.Call
                 : body.Statements[body.Blocks[x.At.Block].Start + x.At.Index] is
@@ -574,7 +574,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        var items = set.Items[set.RootCount..].ToArray().Where(x => x.BodyOrdinal >= 0 && program.Bodies[x.BodyOrdinal].Source.Module == 0).ToArray();
+        var items = set.Items[set.RootCount..].ToArray().Where(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Source.Module == 0).ToArray();
         Assert.Equal(instances, string.Join(" | ", items.Where(static x => x.Key.Body.Def.Kind == MirBodyKind.Fn && x.Representative is not null)
             .Select(x => Label(program, x)).Order(StringComparer.Ordinal)));
         Assert.Equal(closures, items.Count(static x => x.Key.Body.Def.Kind == MirBodyKind.Closure));
@@ -1390,7 +1390,7 @@ public sealed partial class InstanceCollectorTest
         Assert.All(
             set.Targets(Item(program, set, "Fn pick [Stamp]")).ToArray().Where(x => set.Items[x.Item].BodyOrdinal >= 0),
             x => Assert.Equal(witness, x.Item));
-        Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Bodies[set.Items[witness].BodyOrdinal].Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
+        Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Body(set.Items[witness].BodyOrdinal).Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
         var item = set.Items[adapter].RepresentativeType!;
         Assert.Same(c.Types.SubstOfItem(item), c.Types.Witness(item)!.Value.Subst);
     }
@@ -1411,7 +1411,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn area"], Targets(program, set, "Fn measure [Leaf]"));
         Assert.Equal(["Fn area [Held<i32>]"], Targets(program, set, "Fn measure [Held<i32>]"));
         var inherited = set.Items[set.Targets(Item(program, set, "Fn measure [Leaf]"))[0].Item];
-        Assert.Equal("struct Base", $"{program.Bodies[inherited.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal("struct Base", $"{program.Body(inherited.BodyOrdinal).Key.Decl!.Scope.Owner}");
         Assert.Equal(
             ["PropertyWitness Tally StorageCopy", "PropertyWitness Tally StorageSet", "PropertyWitness Tally StorageCopy"],
             Targets(program, set, "Fn bump [Tally]"));
@@ -1463,9 +1463,10 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: Utf8Writer.write is a body (R8-W1b-4): one instance per value Type, shared by its
-    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
-    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Text.toString and Text.tryFormat are
-    // bodies (R8-W1c-2): one instance per value Type, whose interpolation or write calls that write instance.
+    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, an integer's the witness
+    // table's IntegerFormat body at its Type (R8-S2b1), i128's and u128's the BuiltinFormat shim, keyed by its compiler function and the
+    // erased Type, which calls no witness. Text.toString and Text.tryFormat are bodies (R8-W1c-2): one instance per value Type, whose
+    // interpolation or write calls that write instance.
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
@@ -1482,13 +1483,63 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([WriteBox], Calls(program, set, ShowBox));
         Assert.Equal([WriteI32], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
-        Assert.Equal(["Builtin i32 BuiltinFormat", Failure, Failure], Calls(program, set, WriteI32));
+        const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
+        Assert.Equal([FormatI32, Failure, Failure], Calls(program, set, WriteI32));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, FormatI32));
         Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
         Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
         Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
-        Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
+        var (wide, wideSet) = Collect("func emitWide(writer: uniq/Utf8Writer, x: u128) -> Result<(), BufferFull> => writer.write(x)\n");
+        Assert.Equal(["Builtin u128 BuiltinFormat", Failure, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
+        Assert.Empty(Targets(wide, wideSet, "Builtin u128 BuiltinFormat"));
+    }
+
+    // SPEC 22.10.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1): bool's, char's, Unit's, f32's, f64's, string's and an integer's up to 64 bits format
+    // witness is the witness table's library body, not the BuiltinFormat routine, and the body writes through the writer's leaf
+    // (fail-before: Builtin <Type> BuiltinFormat).
+    [Theory]
+    [InlineData("bool", "BoolFormat")]
+    [InlineData("char", "CharFormat")]
+    [InlineData("()", "UnitFormat")]
+    [InlineData("f32", "F32Format")]
+    [InlineData("f64", "F64Format")]
+    [InlineData("string", "StringWitness")]
+    [InlineData("i32", "IntegerFormat [i32]")]
+    [InlineData("u8", "IntegerFormat [u8]")]
+    [InlineData("isize", "IntegerFormat [isize]")]
+    public void ABuiltinFormatCallIsItsTablesBody(string type, string group)
+    {
+        var (program, set) = Collect($"func emit(writer: uniq/Utf8Writer, value: {type}) -> Result<(), BufferFull> => writer.write(value)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var body = $"library Fn format in group {group}";
+        Assert.Contains(body, Calls(program, set, $"library Fn write in struct Utf8Writer [Utf8Writer, {type}]"));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, body));
+    }
+
+    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is its declared member, written, called directly and called through a
+    // `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which writes its
+    // integer through the IntegerFormat body at u8 (R8-S2b1; fail-before: Builtin Utf8Slice and Builtin Wrapping<u8> BuiltinFormat, then
+    // Builtin u8 BuiltinFormat).
+    [Fact]
+    public void AViewAndAWrappingIntegerFormatThroughTheirWitnesses()
+    {
+        var (program, set) = Collect(
+            "func emit(writer: uniq/Utf8Writer, view: Text.Utf8Slice, wrapped: Wrapping<u8>) -> Result<(), BufferFull>\n" +
+            "    try writer.write(view)\n    try view.format(writer)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
+            "func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
+            "    return value.format(writer)\n");
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        const string View = "library Fn format in struct Utf8Slice";
+        Assert.Contains(View, Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Utf8Slice]"));
+        Assert.Contains(View, Calls(program, set, "Fn emit"));
+        Assert.Contains(View, Calls(program, set, "Fn show [Utf8Slice]"));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, View));
+        const string Wrapped = "library Fn format in group WrappingFormat [u8]";
+        Assert.Equal([Wrapped], Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Wrapping<u8>]").Where(static x => x.Contains("format", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains("library Fn write in struct Utf8Writer [Utf8Writer, u8]", Calls(program, set, Wrapped));
+        Assert.Contains("library Fn format in group IntegerFormat [u8]", Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, u8]"));
     }
 
     // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a
@@ -1499,7 +1550,7 @@ public sealed partial class InstanceCollectorTest
         var (program, set) = Collect(FormatSource);
         Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
         var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
-        Assert.Equal("struct Sink", $"{program.Bodies[reserve.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal("struct Sink", $"{program.Body(reserve.BodyOrdinal).Key.Decl!.Scope.Owner}");
         Assert.Equal(["library Fn fixed in group Text [Text, ]", "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
     }
 
@@ -1532,7 +1583,7 @@ public sealed partial class InstanceCollectorTest
             ["struct Box", "struct Rank", "struct Box"],
             new[] { "Builtin ref/Box BuiltinEquals", "Builtin ref/Rank BuiltinCompare", "Builtin ref/Box BuiltinEquals Operator" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
-                .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
+                .Select(x => $"{program.Body(set.Items[x.Item].BodyOrdinal).Key.Decl!.Scope.Owner}"));
         var template = set.Items[Item(program, set, "Builtin (ref/Box, i32) BuiltinEquals Operator")].Key;
         Assert.True(template.Type!.ContainsParameter && template.Body.Erased is not null, $"{template}");
     }
@@ -1855,7 +1906,7 @@ public sealed partial class InstanceCollectorTest
         // The labels of an item's targets at its one Value call, joined.
         string AtValueCall(int item)
         {
-            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            var body = program.Body(set.Items[item].BodyOrdinal);
             var block = Enumerable.Range(0, body.Blocks.Length)
                 .Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
             return string.Join("|", set.Targets(item).ToArray().Where(x => x.At == new MirLocation(block, body.Blocks[block].Count))
@@ -2567,7 +2618,7 @@ public sealed partial class InstanceCollectorTest
     private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
     {
         var item = Item(program, set, label);
-        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        var body = program.Body(set.Items[item].BodyOrdinal);
         var sites = new List<string>();
         for (var b = 0; b < body.Blocks.Length; b++)
         {
@@ -2589,7 +2640,7 @@ public sealed partial class InstanceCollectorTest
     // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a type-driven
     // item has none).
     private static bool Closed(Compilation c, MirProgram program, in MonoItem item)
-        => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Bodies[item.BodyOrdinal], representative);
+        => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Body(item.BodyOrdinal), representative);
 
     // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
@@ -2612,7 +2663,7 @@ public sealed partial class InstanceCollectorTest
             return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}{variant}";
         }
 
-        var body = program.Bodies[item.BodyOrdinal];
+        var body = program.Body(item.BodyOrdinal);
         var name = body.Key.Decl?.Declaration switch
         {
             null => "top",

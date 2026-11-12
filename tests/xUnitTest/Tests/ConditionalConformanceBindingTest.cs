@@ -163,7 +163,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void DifferentInheritedAssociatedBindingsAreRejectedAtDefinition()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\ncontract C: A\n    Self.A.E is string\nstruct S<T>\n    Self is B when T is Copy\n    Self is C when T is Owned");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.(A).E is i32\ncontract C: A\n    Self.(A).E is string\nstruct S<T>\n    Self is B when T is Copy\n    Self is C when T is Owned");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
@@ -173,7 +173,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", false)]
     public void ConjoinedDirectContractsRetainDistinctRootEvidence(string second, bool valid)
     {
-        var c = CompilationTestHelper.ParseSuccess($"contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\ncontract C: A\n    Self.A.E is {second}\nstruct S\n    Self is B and C");
+        var c = CompilationTestHelper.ParseSuccess($"contract A\n    associate E\ncontract B: A\n    Self.(A).E is i32\ncontract C: A\n    Self.(A).E is {second}\nstruct S\n    Self is B and C");
         Assert.Equal(valid, c.Bind().IsComplete);
         var identity = c.Binding.GetConformanceDefinition(Container(c, "S").TypeOf()!, Container(c, "A").SymbolOf()!)!;
         Assert.Equal(2, identity.Paths.Count);
@@ -199,13 +199,13 @@ public class ConditionalConformanceBindingTest
     [InlineData("string", false)]
     public void AssociatedProjectionRequiresAProvenConditionalPath(string argument, bool valid)
     {
-        var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate E is i32\nstruct S<T>\n    Self is C when T is Copy\nfunc use(x: S<{argument}>.C.E) -> i32 => x");
+        var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate E is i32\nstruct S<T>\n    Self is C when T is Copy\nfunc use(x: S<{argument}>.(C).E) -> i32 => x");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Theory]
-    [InlineData("T is C, T.C.E is Copy")]
-    [InlineData("T.C.E is Copy, T is C")]
+    [InlineData("T is C, T.(C).E is Copy")]
+    [InlineData("T.(C).E is Copy, T is C")]
     public void ConditionsCanDependOnAssociatedProjections(string conditions)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate E\ncontract D\nstruct V\n    Self is C\n    associate C.E is i32\nstruct S<T>\n    Self is D when {conditions}\nfunc use(x: S<V>) => ()");
@@ -277,9 +277,9 @@ public class ConditionalConformanceBindingTest
     }
 
     [Fact]
-    public void ConditionalRefinementRetainsIntrinsicCopyDerivation()
+    public void ConditionalCopyOptInSatisfiesAConditionalRefinementOfCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C: Copy\nstruct S<T>\n    Self is Copy when T is Copy\n    Self is C when T is Copy\n    let value: T\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(use.Parameters[0].Type.TypeOf()!, use));
@@ -309,7 +309,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void TypeSubstitutionsAreComparedUnderTheOverlapConditions()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\nstruct S<T>\n    Self is A when T is i32\n    Self is B when T is i32\n    associate A.E is T");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.(A).E is i32\nstruct S<T>\n    Self is A when T is i32\n    Self is B when T is i32\n    associate A.E is T");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -394,7 +394,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void DisjointEvidenceMayRetainDifferentAssociatedBindings()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.A.E is i32\ncontract C: A\n    Self.A.E is string\nstruct S<T>\n    Self is B when T is i32\n    Self is C when T is string\nfunc use(x: S<i32>, y: S<string>) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E\ncontract B: A\n    Self.(A).E is i32\ncontract C: A\n    Self.(A).E is string\nstruct S<T>\n    Self is B when T is i32\n    Self is C when T is string\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = Function(c, "use");
         var a = Container(c, "A").SymbolOf()!;

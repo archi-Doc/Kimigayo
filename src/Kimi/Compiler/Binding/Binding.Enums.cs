@@ -130,9 +130,12 @@ public sealed partial class Binding
         }
         else
         {
+            // SPEC 6.5.2 steps 2-3, 9.7: an omitted own list takes the expected owned Type of the same enum. A top-level enum is that Type
+            // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
+            // environment from the path (ConstructionTargetType).
+            var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
             type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
-                ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
-                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
+                ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
         }
 
         qualifier.BoundSymbol = symbol;
@@ -178,6 +181,7 @@ public sealed partial class Binding
         }
 
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
+        var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
         var frame = this.infer.Rent(slots);
@@ -185,9 +189,12 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count);
         var settled = this.RentSlotSet(count);
         var adapted = this.typeScratch.Rent(count);
+        var fixedTypes = this.typeScratch.Rent(slots);
+        var fixedLengths = this.lengthScratch.Rent(slots);
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         Array.Clear(origins, 0, originCount);
         try
         {
@@ -195,7 +202,10 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < Math.Min(slots, owner.Components.Count); i++)
                 {
-                    frame.SetType(i, owner.Components[i]);
+                    if (!OpenConstructionSlot(declaration, owner, inferred, i))
+                    {
+                        frame.SetType(i, owner.Components[i]);
+                    }
                 }
             }
 
@@ -228,7 +238,21 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 6.5.2 step 2, 9.7.1, 10.8: the slots the qualifier and the expected Type fix before any evidence; each payload's adaptation
+            // reads them. An inferred qualifier fixes its environment and leaves its own slots open, each as its own parameter (FixedSlots);
+            // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types.
+            frame.Lengths[..slots].CopyTo(fixedLengths);
+            var anyFixed = false;
+            var ownFixed = true;
+            for (var i = 0; i < slots; i++)
+            {
+                fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
+                anyFixed |= frame.Types[i] is not null;
+                ownFixed &= frame.Types[i] is not null || i >= declaration.GenericParameterNodes.Count;
+            }
+
             var solution = this.Solution(call, declaration, scope, frame, origins);
+            solution.Fixed = new(declaration, anyFixed ? fixedTypes.AsSpan(0, slots) : default, fixedLengths.AsSpan(0, slots), ownFixed);
             solution.Rows = rows.AsSpan(0, count);
             solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
@@ -341,6 +365,12 @@ public sealed partial class Binding
                 call.CallStorage = null;
             }
 
+            if (inferred)
+            {
+                // SPEC 9.7, 10.8.1: an inferred qualifier names the constructed Type, as a structure's does (BindCall).
+                Complete(((MemberAccessKoto)reference).Left, result);
+            }
+
             use.BoundSymbol = reference.BoundSymbol = symbol;
             Complete(reference, result);
             return Complete(use, result);
@@ -350,6 +380,9 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            this.lengthScratch.Return(fixedLengths, clearArray: true);
+            this.typeScratch.Return(fixedTypes, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.ReturnSlotSet(settled);
@@ -375,6 +408,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
                 !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
             {
@@ -550,7 +584,7 @@ public sealed partial class Binding
             // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
             // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-            var fits = this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
+            var fits = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
                 (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);

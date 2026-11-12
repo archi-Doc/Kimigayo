@@ -25,7 +25,7 @@ public class AssociatedForwardingTest
         // Measure the associated projection/proof path, separately from main's
         // tuple-pattern construction and whole-program setup.
         var source = MilestoneSource[..MilestoneSource.IndexOf("public func main", StringComparison.Ordinal)] +
-            "func project(value: Wrapper<Wrapper<NumberSource>>.Source.Element) -> i32 => value\n()";
+            "func project(value: Wrapper<Wrapper<NumberSource>>.(Source).Element) -> i32 => value\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
@@ -77,7 +77,7 @@ public class AssociatedForwardingTest
     [Fact]
     public void EmitsCompoundAssociatedResult()
     {
-        const string source = "contract Source\n    associate Element is Copy\n    func read(self: ref/Self) -> Element\nstruct PairSource\n    Self is Source\n    associate Source.Element is (i32, bool)\n    let pair: (i32, bool)\n    public init(pair: (i32, bool)) => self.pair = pair\n    public func read(self: ref/Self) -> (i32, bool) => self.pair\nfunc readOne<T>(source: ref/T) -> T.Source.Element\n    T is Source\n    return source.read()\nlet value = PairSource.init((7, true))\nmatch readOne(value@ref)\n    (7, true) => Console.writeLine(\"Pair received.\")\n    _ => $abort(\"pair\")";
+        const string source = "contract Source\n    associate Element is Copy\n    func read(self: ref/Self) -> Element\nstruct PairSource\n    Self is Source\n    associate Source.Element is (i32, bool)\n    let pair: (i32, bool)\n    public init(pair: (i32, bool)) => self.pair = pair\n    public func read(self: ref/Self) -> (i32, bool) => self.pair\nfunc readOne<T>(source: ref/T) -> T.(Source).Element\n    T is Source\n    return source.read()\nlet value = PairSource.init((7, true))\nmatch readOne(value@ref)\n    (7, true) => Console.writeLine(\"Pair received.\")\n    _ => $abort(\"pair\")";
         ScalarEmissionTest.EmitFixture("AssociatedForwardingFieldSnapshot", source, "Pair received.\n");
         var constructed = source.Replace("let pair: (i32, bool)", "let value: i32", StringComparison.Ordinal)
             .Replace("public init(pair: (i32, bool)) => self.pair = pair", "public init(value: i32) => self.value = value", StringComparison.Ordinal)
@@ -108,7 +108,7 @@ public class AssociatedForwardingTest
     public void NormalizesAssociatedIdentityAfterEachContainerSubstitution(string inner, string result)
     {
         var source = MilestoneSource[..MilestoneSource.IndexOf("public func main", StringComparison.Ordinal)] +
-            $"func project(value: Wrapper<{inner}>.Source.Element) -> {result} => value\n()";
+            $"func project(value: Wrapper<{inner}>.(Source).Element) -> {result} => value\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }

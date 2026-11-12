@@ -202,20 +202,21 @@ public sealed partial class Binding
 
         var pattern = operation.ParameterIndex >= 0 && operation.ParameterIndex < selected.Parameters.Count ? selected.Parameters[operation.ParameterIndex].Type.BoundType : null;
         var context = new CallFit(selected, operations, argumentCount, at, parameter);
-        this.CollectCallRelations(adapted, parameter, pattern, false, context, 0, null);
+        this.CollectCallRelations(adapted, parameter, pattern, false, context, null);
     }
 
     // SPEC 15.6.1: the Origin positions of a fit, in the order of the outer borrow layer, the Semantics target, then slots and Type
     // arguments, each with the variance of the relation table; `pattern` follows the uninstantiated parameter while it has the same
     // structure, so that a fresh Origin's equality can be related to the input that fixed it; `slot` is the callee's Type parameter
     // whose solution holds the positions below it, so that an equality with that solution is related to the input that fixed it.
-    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, int depth, BoundType? slot)
+    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, BoundType? slot)
     {
-        if (depth > 64 || actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        if (actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
         }
 
+        this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { } parameter } && ContainerSlot(context.Selected, parameter) >= 0)
         {
             slot = pattern;
@@ -235,7 +236,7 @@ public sealed partial class Binding
         var exclusive = IsInvariantLayer(actual, this);
         for (var i = 0; i < actual.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, depth + 1, slot);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, slot);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -260,21 +261,21 @@ public sealed partial class Binding
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, depth + 1, slot);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, slot);
                 }
                 else if (variance == OriginVariance.Covariant)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, depth + 1, slot);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, slot);
                 }
                 else
                 {
-                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, depth + 1, slot);
+                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, slot);
                 }
 
                 continue;
             }
 
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, depth + 1, slot);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, slot);
         }
     }
 

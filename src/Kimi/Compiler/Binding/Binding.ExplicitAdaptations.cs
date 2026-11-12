@@ -61,7 +61,7 @@ public sealed partial class Binding
 
         if ((admitted & SemanticsMask.ObjectBorrow) != 0 && (TryAdaptationSelector(source, out _) || IsObjectSemantics(source.Semantics)))
         {
-            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin), true);
+            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin, scope), true);
         }
 
         if ((admitted & ~objectFamily) == 0)
@@ -83,7 +83,7 @@ public sealed partial class Binding
         }
         else if ((admitted & objectFamily) != 0 && (TryAdaptationSelector(source, out _) || IsObjectSemantics(source.Semantics)))
         {
-            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin), true);
+            return this.BindCaseAdaptation(conversion, scope, source, this.SemanticsAdaptation(semantics.Pair, source, origin, scope), true);
         }
 
         var target = ReferenceEquals(payload, semantics.Pair.Type) && origin is null
@@ -283,8 +283,11 @@ public sealed partial class Binding
 
         if (AdaptationBorrow(operation, target) is { } exclusive)
         {
-            // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, borrows a Place that lends in its mode or a Temporary Value.
-            if (!this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
+            // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, Reborrows an object view that lends its object in its mode
+            // (LendsView), as the concrete @objref and @objuniq do (AdaptObjectBorrow), and otherwise borrows a Place that lends in its
+            // mode or a Temporary Value.
+            if (source.IsObjectBorrow && target.IsObjectBorrow ? !LendsView(conversion.Left, source, exclusive)
+                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
                 if (failure == BindingFailure.Unsupported)

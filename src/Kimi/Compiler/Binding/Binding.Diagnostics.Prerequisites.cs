@@ -8,6 +8,10 @@ namespace Kimi.Compiler;
 // Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
+// A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
+// BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
+// RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
+// frame (BeginConsultation(element) around a pass element that publishes facts and records no proof, DropConsultation after it).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
 public sealed partial class Binding
 {
@@ -100,12 +104,7 @@ public sealed partial class Binding
 
         if (node.BindingFailure != BindingFailure.None)
         {
-            if (this.FailedOriginClause(node) is null)
-            {
-                return null;
-            }
-
-            this.partPrerequisites.Remove(node); // The resting InvalidOrigin of the node's own clause yields, with its edge (SlotTaken).
+            return null;
         }
 
         if (unresolved)
@@ -120,11 +119,6 @@ public sealed partial class Binding
         node.BindingFailure = failure;
         return null;
     }
-
-    // DIAGNOSTICS rule 4, SPEC 23.1.2: the node's slot holds a failure a later one leaves, its first, but for the resting InvalidOrigin of
-    // its own failed Origin clause (FailedOriginClause), which a later failure of the node takes with the clause's edge (D-2). A writer that
-    // keeps facts only for the slot's failure reads this, as Fail does.
-    private bool SlotTaken(Koto node) => node.BindingFailure != BindingFailure.None && this.FailedOriginClause(node) is null;
 
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
     private void MarkUnresolved(Koto node)
@@ -174,7 +168,7 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
-    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame): nothing becomes its prerequisite.
+    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame, a site frame): nothing becomes its prerequisite.
     private void DropConsultation((int Start, Koto? Node) parent)
     {
         this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
@@ -227,8 +221,8 @@ public sealed partial class Binding
         => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
-            this.FailedOriginClause(node) is not null ||
-            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||
+            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
+            (part.BindingState == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (node.BindingFailure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses?.ContainsKey(occurrence) == true) ||
             (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&

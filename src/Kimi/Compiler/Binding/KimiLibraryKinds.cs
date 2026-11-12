@@ -24,14 +24,17 @@ public enum IntrinsicKind : byte
 
 // The intrinsic Contract table (SPEC 8.7.1; DECISIONS R4-M89, package 2b-D §3.4): how Binding decides each compiler-intrinsic Contract.
 // Input: an IntrinsicKind. Output: its row, which ProveConstraint, a Contract's Self clause, a struct's or enum's Self clause (plain
-// or conditional) and conformance verification read.
+// or conditional), conformance verification and inheritance (VerifyConformance, InheritedConformances, VerifyInheritedConformance) and
+// KimiLibrary's registration (the judged intrinsics' empty shapes, which make them refinement parents) read.
 // Invariants: one row per IntrinsicKind, None (a declared Contract) included; a new intrinsic adds a row, never a case at a reader.
 // Must not: judge a capability (the capability engine's) or decide a conformance's members (contract matching's).
 
 /// <summary>A row of the intrinsic Contract table.</summary>
 internal readonly record struct IntrinsicContract
 {
-    /// <summary>Gets a value indicating whether the capability engine judges <c>T is K</c> (SPEC 8.7.2–8.7.4, 15.2.3).</summary>
+    /// <summary>Gets a value indicating whether the capability engine judges <c>T is K</c> (SPEC 8.7.2–8.7.4, 15.2.3): K is then a
+    /// refinement parent without members (SPEC 8.4.3), and a conformance to K, an ancestor's included, is that judgment, as a Contract's
+    /// <c>Self is K</c> is (SPEC 8.7.1): neither form opts the conforming Type in.</summary>
     internal bool Judged { get; init; }
 
     /// <summary>Gets the failure of <c>Self is K</c> in a struct or enum declaration; None when it declares a conformance (SPEC 8.7.1).</summary>
@@ -40,16 +43,13 @@ internal readonly record struct IntrinsicContract
     /// <summary>Gets a value indicating whether a Contract's <c>Self is K</c> is a requirement and a premise (SPEC 8.7.1, 8.7.3).</summary>
     internal bool SelfRequirement { get; init; }
 
-    /// <summary>Gets a value indicating whether a conformance to K, declared or an ancestor's, is decided by the judgment, not by matching.</summary>
-    internal bool ConformanceJudged { get; init; }
-
     internal static IntrinsicContract Of(IntrinsicKind kind) => kind switch
     {
         IntrinsicKind.None => default,
-        IntrinsicKind.Copy => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // Derived Copy (SPEC 3.5.2).
-        IntrinsicKind.Owned => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // A checked assertion.
+        IntrinsicKind.Copy => new() { Judged = true, SelfRequirement = true }, // Derived Copy (SPEC 3.5.2).
+        IntrinsicKind.Owned => new() { Judged = true, SelfRequirement = true }, // A checked assertion.
         IntrinsicKind.Callable => new() { Declaration = BindingFailure.InvalidConstraint }, // Bound as a Callable Constraint, never a Contract one.
-        IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint, ConformanceJudged = true },
+        IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint },
         IntrinsicKind.ObjectPayload => new() { Judged = true, Declaration = BindingFailure.InvalidSelfClause, SelfRequirement = true }, // Never granted.
         IntrinsicKind.PrimitiveInteger => new() { Judged = true, Declaration = BindingFailure.ClosedContractConformance }, // Twelve integer Types (8.7.4).
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
@@ -82,6 +82,7 @@ public enum CompilerFunctionKind : byte
     StorageIndexBounds,
     StorageDestroyValues,
     StorageErasedReserve,
+    StorageFormatFloat,
     StorageStride,
     RawAllocate,
     RawRelease,
@@ -176,6 +177,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
         CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
         CompilerFunctionKind.StorageErasedReserve => Intrinsic(IntrinsicId.ErasedReserve),
+        CompilerFunctionKind.StorageFormatFloat => Intrinsic(IntrinsicId.FormatFloat),
         CompilerFunctionKind.StorageStride => Intrinsic(IntrinsicId.Stride),
         CompilerFunctionKind.RawAllocate => Intrinsic(IntrinsicId.RawAllocate),
         CompilerFunctionKind.RawRelease => Intrinsic(IntrinsicId.RawRelease),

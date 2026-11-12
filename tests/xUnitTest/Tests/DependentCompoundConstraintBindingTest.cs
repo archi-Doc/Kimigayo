@@ -75,14 +75,14 @@ public class DependentCompoundConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("(T.Origin.Item, i32) is Copy", "i32", true)]
-    [InlineData("(T.Origin.Item, i32) is Copy", "string", false)]
-    [InlineData("[2 of T.Origin.Item] is Copy", "i32", true)]
-    [InlineData("[2 of T.Origin.Item] is Copy", "string", false)]
+    [InlineData("(T.(Origin).Item, i32) is Copy", "i32", true)]
+    [InlineData("(T.(Origin).Item, i32) is Copy", "string", false)]
+    [InlineData("[2 of T.(Origin).Item] is Copy", "i32", true)]
+    [InlineData("[2 of T.(Origin).Item] is Copy", "string", false)]
     public void ProjectionInputsAreBoundAfterTheirRootPremises(string constructed, string item, bool valid)
     {
         AssertRejected(Projected(constructed, item));
-        var c = MinimalEmissionTest.Analyze(Projected("T.Origin.Item is Copy", item));
+        var c = MinimalEmissionTest.Analyze(Projected("T.(Origin).Item is Copy", item));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());

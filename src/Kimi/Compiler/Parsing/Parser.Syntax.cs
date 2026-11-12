@@ -253,7 +253,7 @@ public static partial class Parser
                 continue;
             }
 
-            if (!IsTypeConstraintStart(ref reader, declarationContext: true))
+            if (!IsTypeConstraintStart(ref reader))
             {
                 reader.Expect(SyntaxForm.Constraint);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
@@ -616,7 +616,7 @@ public static partial class Parser
 
         var tuple = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, end), KotoKind.EnumCase, payload ? "(" : string.Empty, fields.ToArray(), suffix: payload ? ")" : string.Empty);
         var declaration = new SyntaxFormKoto(ref reader, tuple.Span, KotoKind.EnumCase, string.Empty, [name, tuple], separator: string.Empty);
-        reader.Document(declaration, tuple.Span);
+        reader.Document(declaration, tuple.Span.End);
         ParseAttachedOriginBlock(ref reader, declaration);
         return declaration;
     }

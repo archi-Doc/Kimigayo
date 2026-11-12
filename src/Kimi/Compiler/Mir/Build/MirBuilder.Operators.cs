@@ -232,7 +232,7 @@ internal sealed partial class MirBuilder
     {
         var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
         var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
-        var payload = this.Follow(operand, 1);
+        var payload = this.FollowLayers(operand, 1);
         if (this.Unlent(payload, plan.Target) is { } derived)
         {
             this.Set(destination, derived, conversion);

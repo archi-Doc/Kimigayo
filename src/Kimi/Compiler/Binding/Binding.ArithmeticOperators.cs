@@ -42,7 +42,7 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
                     ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
-                    this.AvailableConstraintFact(environment, fact))
+                    this.AvailableConstraintFact(environment, fact, out _))
                 {
                     return true;
                 }
@@ -63,7 +63,8 @@ public sealed partial class Binding
             return false;
         }
 
-        var leftLiteral = IsUnfittedLiteral(binary.Left);
+        // A compound assignment's left is its destination (CompleteRoutedUpdate), never a literal waiting for a Type.
+        var leftLiteral = !compound && IsUnfittedLiteral(binary.Left);
         var rightLiteral = IsUnfittedLiteral(binary.Right);
         var left = leftLiteral ? null : this.BindIndependentOperand(binary.Left, scope);
         var leftCore = left is null ? null : this.OperandTerminal(binary.Left, left);
@@ -132,27 +133,11 @@ public sealed partial class Binding
         var requirement = selected.Contract!.MembersByName[ArithmeticContractSyntax.Method(id)][0];
         plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, requirement.Contract, requirement.Symbol, scope);
         plan.Active = plan.Call.BoundCall is not null;
-        if (compound && plan.Active)
+        // A compound assignment's route gives its result; BindBinary completes the assignment at its destination (CompleteRoutedUpdate).
+        result = plan.Active ? plan.Call.BoundType : null;
+        if (!compound)
         {
-            if (!this.ValidPropertyWritePath(binary.Left, scope) || (!Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null))
-            {
-                result = this.FailWrite(binary, binary.Left);
-            }
-            else if (left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ReferenceBindingAssignment(binary.Left) is { } referenceFailure)
-            {
-                result = this.Fail(binary, referenceFailure);
-            }
-            else
-            {
-                var destination = this.PropertyUpdateDestination(binary.Left) ?? left;
-                var failure = ComparisonFailure.Shape;
-                result = destination is not null && this.FitsValueAt(plan.Call.BoundType!, destination, binary, binary, out failure)
-                    ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, plan.Call.BoundType!, destination!, failure);
-            }
-        }
-        else
-        {
-            result = Complete(binary, plan.Active ? plan.Call.BoundType : null);
+            Complete(binary, result);
         }
 
         return true;
@@ -218,7 +203,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     Add(this.AppliedAssociatedContract(fact, self), this.ArithmeticFactUse(fact, current));
                 }
