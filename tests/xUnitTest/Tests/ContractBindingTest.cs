@@ -37,6 +37,10 @@ public class ContractBindingTest
     private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
     private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
     private const string ViewIsL = "struct View {source}\n    Self is L\n    let data: ref/i32 during source\n";
+    private const string MeetView = "struct View {source, other}\n    Self is ";
+    private const string MeetFields = "\n    public let item: ref/i32 during (source and other)\n    let rest: ref/i32 during other";
+    private const string InheritedItem = "open struct Base {a}\n    public let item: ref/i32 during a\n    public init(item: ref/i32 during a) => self.item = item\n" +
+        "struct Derived {b}: Base during b\n    Self is L\n    public init(item: ref/i32 during b) : base(item) => ()";
 
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
@@ -782,9 +786,14 @@ public class ContractBindingTest
     // during `source` gives at least the required guarantee, as Slice's `index` does (SPEC 4.7.1). The premise relates `source` to `self`
     // alone: never to `static`, to another input or to a requirement without a receiver, and never the reverse. A standard access
     // bridge is an implementation too (11.9.1, 11.9.2): a stored Field's Copy, its shared borrow (`during self`) and its `set` fit in the
-    // same comparison, so variance still applies and a setter input never outlives `source` by it.
+    // same comparison, so variance still applies and a setter input never outlives `source` by it. A meet of slots fits only where each
+    // slot does (8.1), and an inherited Field fits as projected through its conformance path.
     [Theory]
     [InlineData("contract L\n    property item: ref/i32 has get\n" + ViewIsL + "    public let item: ref/i32 during source", "")]
+    [InlineData("contract L\n    property item: ref/i32 has get\n" + MeetView + "L" + MeetFields, "")]
+    [InlineData("contract L<G>\n    property item: G has get\n" + MeetView + "L<ref/i32 during source>" + MeetFields, "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    property item: ref/i32 has get\n" + InheritedItem, "")]
+    [InlineData("contract L\n    property item: ref/i32 during static has get\n" + InheritedItem, "IncompatibleContractImplementation_Kd")]
     [InlineData("contract L\n    property item: ref/(ref/i32) has get\n" + ViewIsL + "    public let item: ref/i32 during source", "")]
     [InlineData("struct View {source}\n    Self is Copy\n    let data: ref/i32 during source\ncontract L\n    property inner: View has get\nstruct Outer {source}\n    Self is L\n    public let inner: View during source", "")]
     [InlineData("struct View {source}\n    let data: ref/i32 during source\ncontract L\n    property inner: ref/View has get\nstruct Outer {source}\n    Self is L\n    public let inner: View during source", "")]

@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // The whole-contract comparison of a witness with a requirement as substituted (SPEC 8.6.3, 11.9.1, 15.3.7, 15.6.1; DECISIONS BU-93).
 // - Responsibility: CompareCallableContracts judges a written implementation (a function, an accessor) over the CallableContract
 //   view; RequirementComparison forms the comparison every witness kind is judged in, 11.9.2's bridges included.
-// - Invariant: a witness's fit is judged with IsSubtypeAt in that comparison, whose premises are the substituted signature's own;
-//   no site judges a witness with a relation that reads no premises.
+// - Invariant: a witness's fit is judged with IsSubtypeAt in that comparison, whose premises are the substituted signature's own and
+//   those of the requirement's binder (the walk's `use`), its admitted sets read in the conformance scope (8.8.2); no site judges a
+//   witness with a relation that reads no premises.
 public sealed partial class Binding
 {
     private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
