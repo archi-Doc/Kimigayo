@@ -5961,11 +5961,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rule names without issuing a Loan (a raw address or Storage of a Place of its region, or a read of a by-value input's pointer part)
     runs A5, for this rule.
   - Silence (O-62 (a)), as STATUS's Raw pointers row names it: a fact lost at a join, a loop head, a part read or part store, a call
-    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store, non-shared
-    borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a storage record
-    Binding joins with another position that lets the input by Value; storage reached through an own step (an object payload, `during
-    self` storage; PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's receiver;
-    `unsafe` scopes.
+    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store,
+    non-shared borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a
+    storage record Binding joins with another position that lets the input by Value; at a destination with a raw layer stating an
+    Origin (all-stated or mixed), storage reached through an own step is read as the layer's referent, as before the own-step item
+    (the owner's O-190 (b)): an invalid store of the input's own value into such a destination's unstated layer passes as a
+    self-link (PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's
+    receiver; `unsafe` scopes.
+  - Own step (PLAN G581's own-step item; the owner's O-124 (a), O-190 (b); commits 6006c205d, 36aec0284, 464ce958a, aac23c8a6,
+    0d739af21): the landing fact publishes a depth-1 storage reached past the layer through an own step (an obj/rc/arc payload, SPEC
+    15.6.2) under its layer's part encoded below -1, which no layer's part matches, so it gives no self-link (SPEC 5.2.1: not
+    through an own step). The rule applies the own step only where the destination's own address holds raw layers none of which
+    states an Origin (`MirBorrows.PunKeys`' `AnyStated` over `TyCtxt.OwnLayers`, `static` counted as stated); at any other
+    destination both parts read as their layer's, the judgment before the item (O-190 (b)), so dev's false errors at stated layers
+    (ra1, ra2, c16, c13, c09) stay open for G692. Rejected: a silence at any stated destination (O-188 (a), superseded: it newly
+    accepted invalid stores dev rejects); a single own-step part (dev's reading needs the layer's part back).
   - Cost (review 2's N7): about 3.4 µs warm and 2.2 KB cold per gated body, allocation linear in the gated bodies (the cold Analyze step
     at 400 stores is garbage-collection timing).
   - Rejected: a chain-local landing kill (it re-arms at chain heads, so a redirect before a join or loop head, by a call or through a
