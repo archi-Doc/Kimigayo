@@ -361,7 +361,7 @@ public sealed partial class Binding
         }
 
         binder = null;
-        return argument.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection
+        return argument.IsAbstractType
             ? SemanticsMask.None : CaseSemantics(argument);
     }
 

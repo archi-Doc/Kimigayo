@@ -19,7 +19,7 @@ public partial class TypeDagScalingTest
         "struct Point\n    Self is Equatable\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.x == other.x\n" +
         "struct Q\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
-        "func g(v: ref/i32) -> i32 => 0\n";
+        "func g(v: ref/i32) -> i32 => 0\nfunc h(v: i32) -> i32 => v\n";
 
     private const string LayerMain = "public func main()\n    Console.writeLine(\"p\")\n";
 
@@ -122,6 +122,8 @@ public partial class TypeDagScalingTest
             "eq" => ("Point", "Q", "bool", "    return x == x\n"),
             "lt" => ("i32", "bool", "bool", "    return x < x\n"),
             "argref" => ("i32", "bool", "i32", "    return g(x)\n"),
+            "let" => ("i32", "bool", "i32", "    let v: i32 = x\n    return v\n"),
+            "argval" => ("i32", "bool", "i32", "    return h(x)\n"),
             "streq" => ("string", "i32", "bool", "    return x == \"a\"\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(form)),
         };
