@@ -8,8 +8,9 @@ using Xunit;
 namespace XunitTest;
 
 // The owning interpolation's rows of MIR code generation (R5 C9c, C9d; SPEC 22.7, 22.10.3, 22.10.5; DECISIONS R3-10, R5-M133):
-// FormatBuffer, FormatSegment and FormatFinish over each instance's estimate, a segment step's literal text after its hint, deferred when
-// a value follows, and a direct bounded line within the windows-x64 limit on its MIR region (R8-W2 a2: a fixed array, Text.fixed's).
+// FormatBuffer, FormatSegment and FormatFinish over each instance's estimate, a literal position's text a library call after its step's
+// hint, deferred when a value follows (R8-W2 c1), and a direct bounded line within the windows-x64 limit on its MIR region (R8-W2 a2: a
+// fixed array, Text.fixed's).
 public sealed partial class FunctionCodegenTest
 {
     // A Library of owning interpolations: direct and bounded (the stack), not direct, unbounded without literal text, with an early exit
@@ -48,7 +49,7 @@ public sealed partial class FunctionCodegenTest
                 x == ir.Function("__kimi_write_line"));
     }
 
-    // SPEC 22.10.5 (DECISIONS R5-M131): a bounded interpolation that is not passed directly to writeLine, and an unbounded one, format on the
+    // SPEC 22.10.5 (DECISIONS R8-M24): a bounded interpolation that is not passed directly to writeLine, and an unbounded one, format on the
     // heap, the first allocating its estimate once, the second starting unallocated; both end with the heap form.
     [Theory]
     [InlineData("ipOwned", 33, new[] { 20L, 0L })]
@@ -121,40 +122,41 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(FlagsOf(function));
     }
 
-    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): each FormatSegment step gives its hint, then writes its literal text with the string's kind
-    // and checks the adapter: deferred to the next reservation (__kimi_format_literal) when a value follows, written (the built-in write) at
-    // the end, where no value follows; a value's write follows its step: Utf8Writer.write's instance at the value's Type (R8-W1b-4),
-    // "body", the witness table's (fail-before: C9c's interim record at FormatBuffer and no text step).
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1): each FormatSegment step gives its hint, then the position's write follows: a
+    // literal's text is a library body's call, Utf8Writer.deferLiteral where a value follows (kept for the next reservation), string's
+    // built-in format at the end, where no value follows; a value's is Utf8Writer.write's instance at the value's Type (R8-W1b-4), the
+    // witness table's. No module holds the formatting runtime's literal routines, and its check is only its end's (fail-before: the
+    // text was the step's, __kimi_format_literal or the built-in write with the string's kind, then __kimi_format_check).
     [Theory]
-    [InlineData("ipPrefix", new[] { "hint 12", "literal 16", "check", "hint 12", "write body", "hint 11", "literal 16", "check", "hint 0", "write body" })]
-    [InlineData("ipTail", new[] { "hint 1", "write body", "hint 0", "write 16", "check" })]
-    public void ASegmentWritesItsLiteralTextAfterItsHint(string name, string[] steps)
+    [InlineData("ipPrefix", new[] { "hint 12", "deferLiteral", "hint 12", "write", "hint 11", "deferLiteral", "hint 0", "write" })]
+    [InlineData("ipTail", new[] { "hint 1", "write", "hint 0", "format" })]
+    public void ALiteralsTextIsALibraryCallAfterItsHint(string name, string[] steps)
     {
         var c = Analyze(Interpolations, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var function = Assert.Single(FunctionsOf(ir, c, name));
-        var routines = new Dictionary<IrFunction, string>
+        var routines = new Dictionary<IrFunction, string> { [ir.Function("__kimi_format_hint")] = "hint" };
+        foreach (var body in new[] { "write", "deferLiteral", "format" })
         {
-            [ir.Function("__kimi_format_hint")] = "hint",
-            [ir.Function("__kimi_format_literal")] = "literal",
-            [ir.Function("__kimi_writer_write_builtin")] = "write",
-            [ir.Function("__kimi_format_check")] = "check",
-        };
-        foreach (var write in FunctionsOf(ir, c, "write"))
-        {
-            routines[write] = "write body";
+            foreach (var instance in FunctionsOf(ir, c, body))
+            {
+                routines[instance] = body;
+            }
         }
 
         Assert.Equal(
             steps,
             CallsOf(function).Where(x => x.Callee is { } callee && routines.ContainsKey(callee))
-                .Select(x => routines[x.Callee!] + Regex.Match(x.Shape, @"^call void @\(ptr %, (?:i64 (\d+)\)|ptr %, ptr %, i32 (\d+),)") switch
-                {
-                    { Groups: [_, { Success: true } hint, _] } => " " + hint.Value,
-                    { Groups: [_, _, { Success: true } kind] } => " " + kind.Value,
-                    _ => string.Empty,
-                }));
+                .Select(x => routines[x.Callee!] + (Regex.Match(x.Shape, @"^call void @\(ptr %, i64 (\d+)\)") is { Success: true } hint ? " " + hint.Groups[1].Value : string.Empty)));
+        foreach (var routine in new[] { "__kimi_format_literal", "__kimi_writer_write_builtin", "__kimi_format_builtin", "__kimi_format_bytes" })
+        {
+            Assert.DoesNotContain(routine, text, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(
+            [ir.Function("__kimi_format_finish")],
+            ir.Functions.Where(x => CalleesOf(x).Contains(ir.Function("__kimi_format_check"))));
     }
 
     // The shape of a direct line's region, a fixed array of bytes, up to its length.

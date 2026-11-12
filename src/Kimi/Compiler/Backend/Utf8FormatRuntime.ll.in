@@ -35,42 +35,6 @@ entry:
   ret void
 }
 
-; Only compiler-created owning roots use this entry. Literal size is checked
-; immediately, before the next expression, even when its physical copy is delayed.
-define internal void @__kimi_format_literal(ptr %ret, ptr %self, ptr %value, i32 %kind, ptr %location, i64 %location_length) #0 {
-entry:
-  %buffer = load ptr, ptr %self, align 8
-  %lengthp = getelementptr i8, ptr %buffer, i64 16
-  %length = load i64, ptr %lengthp, align 8
-  %pendingp = getelementptr i8, ptr %self, i64 40
-  %pending = load i64, ptr %pendingp, align 8
-  %literalp = getelementptr i8, ptr %value, i64 8
-  %literal = load i64, ptr %literalp, align 8
-  %room0 = sub i64 9223372036854775807, %length
-  %room = sub i64 %room0, %pending
-  %overflow = icmp ugt i64 %literal, %room
-  br i1 %overflow, label %size_failure, label %append
-append:
-  %data = load ptr, ptr %value, align 8
-  %empty = icmp eq i64 %pending, 0
-  br i1 %empty, label %defer, label %flush
-defer:
-  %datap = getelementptr i8, ptr %self, i64 32
-  store ptr %data, ptr %datap, align 8
-  store i64 %literal, ptr %pendingp, align 8
-  %logicalp = getelementptr i8, ptr %self, i64 48
-  %logical = add i64 %length, %literal
-  store i64 %logical, ptr %logicalp, align 8
-  store i32 0, ptr %ret, align 4
-  ret void
-flush:
-  call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %data, i64 %literal, ptr %location, i64 %location_length)
-  ret void
-size_failure:
-  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-  unreachable
-}
-
 define internal void @__kimi_format_finish(ptr %ret, ptr %buffer, ptr %writer, ptr %location, i64 %location_length) #0 {
 entry:
   %reservation = alloca [40 x i8], align 8
@@ -178,64 +142,4 @@ validated:
   br label %done
 done:
   ret void
-}
-
-define internal void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %data, i64 %length, ptr %location, i64 %location_length) #0 {
-entry:
-  %reservation = alloca [40 x i8], align 8
-  %empty = icmp eq i64 %length, 0
-  br i1 %empty, label %success, label %reserve
-reserve:
-  call void @__kimi_writer_reserve(ptr %reservation, ptr %self, i64 %length, ptr %location, i64 %location_length)
-  %tag = load i32, ptr %reservation, align 4
-  %ok = icmp eq i32 %tag, 0
-  br i1 %ok, label %copy, label %failure
-copy:
-  %window = getelementptr i8, ptr %reservation, i64 8
-  %destination = call ptr @__kimi_window_address(ptr %window)
-  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %data, i64 %length, i1 false)
-  call void @__kimi_utf8_commit(ptr %window, i64 %length)
-  br label %success
-success:
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-{{__kimi_writer_write_builtin}}
-entry:
-  %failedp = getelementptr i8, ptr %self, i64 56
-  %failed = load i8, ptr %failedp, align 1
-  %stopped = icmp ne i8 %failed, 0
-  br i1 %stopped, label %failure, label %format
-format:
-  call void @__kimi_format_builtin(ptr %ret, ptr %value, ptr %self, i32 %kind, ptr %location, i64 %location_length)
-  %tag = load i32, ptr %ret, align 4
-  %nested = load i8, ptr %failedp, align 1
-  %bad = icmp ne i32 %tag, 0
-  %nestedbad = icmp ne i8 %nested, 0
-  %any = or i1 %bad, %nestedbad
-  br i1 %any, label %failure, label %done
-failure:
-  call void @__kimi_writer_fail(ptr %ret, ptr %self)
-  br label %done
-done:
-  ret void
-}
-
-define internal void @__kimi_format_builtin(ptr %ret, ptr %value, ptr %self, i32 %kind, ptr %location, i64 %location_length) #0 {
-entry:
-  switch i32 %kind, label %invalid [
-    i32 16, label %bytes
-  ]
-bytes:
-  %data = load ptr, ptr %value, align 8
-  %lengthp = getelementptr i8, ptr %value, i64 8
-  %length = load i64, ptr %lengthp, align 8
-  call void @__kimi_format_bytes(ptr %ret, ptr %self, ptr %data, i64 %length, ptr %location, i64 %location_length)
-  ret void
-invalid:
-  unreachable
 }

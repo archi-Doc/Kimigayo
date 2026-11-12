@@ -102,14 +102,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             {
                 IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.WriteStdout, IntrinsicId.MakeObj,
                 IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone, IntrinsicId.TestRequireAbort, IntrinsicId.StaticEnsure,
-                IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+                IntrinsicId.FormatBuffer, IntrinsicId.FormatFinish, // FormatSegment only stores its hint since R8-W2 c1.
             },
             Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Abort) != 0));
         Assert.Equal(
             new[]
             {
                 IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.TryAllocateBytes, IntrinsicId.MakeObj, IntrinsicId.MakeRc,
-                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory, IntrinsicId.FormatBuffer, IntrinsicId.FormatSegment, IntrinsicId.FormatFinish,
+                IntrinsicId.MakeArc, IntrinsicId.TestTempDirectory, IntrinsicId.FormatBuffer, IntrinsicId.FormatFinish,
             },
             Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Allocation) != 0));
     }
@@ -762,13 +762,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R3-10 (PLAN G157 (37)): an owning interpolation's steps carry their constants, which code generation reads unchecked, each of its
-    // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, a segment's text a string): the built bodies
-    // are valid, a nested interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step
-    // (fail-before: none for another kind). FormatFinish takes only its adapter since R8-W2 a2 (R5-M131's pairing went with the stack form).
+    // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple): the built bodies are valid, a nested
+    // interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for
+    // another kind). FormatFinish takes only its adapter since R8-W2 a2 (R5-M131's pairing went with the stack form), and a
+    // FormatSegment no text since R8-W2 c1 (ALiteralPositionsTextIsAConstantRecord).
     [Theory]
     [InlineData(null, false)]
     [InlineData(null, true)]
-    [InlineData("text", false)]
     [InlineData("later", false)]
     [InlineData("segment", false)]
     [InlineData("buffer", false)]
@@ -780,9 +780,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         var (id, at) = broken switch
         {
-            "text" => (IntrinsicId.FormatSegment, 1),
-            "later" => (IntrinsicId.FormatSegment, 2),
-            "segment" => (IntrinsicId.FormatSegment, 3),
+            "later" => (IntrinsicId.FormatSegment, 1),
+            "segment" => (IntrinsicId.FormatSegment, 2),
             _ => (IntrinsicId.FormatBuffer, 1),
         };
         MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
@@ -795,7 +794,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         {
             MirConst constant = broken switch
             {
-                "text" => new(MirConstKind.Integer, BoundType.ISize, 0),
                 "later" => new(MirConstKind.Bool, BoundType.Boolean, 1),
                 _ => new(MirConstKind.TypeToken, BoundType.I32),
             };
@@ -806,6 +804,63 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 3.1.2, 22.10.3, 22.10.5 (DECISIONS R8-M7; R8-W2 c1): an owning interpolation's literal positions are the second producer of
+    // constant records: the literal's record is admitted at Utf8Writer.deferLiteral's text and at string's built-in format's self, ref/string
+    // parameters that keep nothing of it, with no finding. The same record at a callee that keeps its input, Text.utf8, is an Operation
+    // finding (the record rule, unchanged), and so is anything but a constant record as deferLiteral's text, whose bytes it keeps as
+    // static storage: a copy of a ref/string parameter, well typed there, which only Defers rejects (fail-before: the built body
+    // had no such call, and no rule read deferLiteral's text). A deferLiteral call without its text is the signature's Arity finding
+    // alone: each fault is reported once (fail-before: Defers' Operation beside it).
+    [Theory]
+    [InlineData(null)]
+    [InlineData("retained")]
+    [InlineData("borrowed")]
+    [InlineData("short")]
+    public void ALiteralPositionsTextIsAConstantRecord(string? broken)
+    {
+        var c = MirBuildTest.Compile(
+            "func f(s: ref/string, n: i32) -> string => \"n=\\(n)!\"\nfunc g(s: ref/string) -> isize => Text.utf8(s).length\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == (broken == "retained" ? "g" : "f"));
+        MirTerminator Call(string name) => Assert.Single(
+            body.Blocks.ToArray().Select(static x => x.Terminator),
+            x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Symbol.Name: var callee } } && callee == name);
+        if (broken == "retained")
+        {
+            // Text.utf8(text: ref/string) -> Utf8Slice keeps its input: the same constant at its parameter.
+            var record = new MirConst(MirConstKind.String, c.Types.Reference(SemanticsKind.Ref, BoundType.String), Value: "n=");
+            Unsafe.AsRef(in body.Operands[Call("utf8").Start]) = MirOperand.Const(body.Const(record));
+        }
+        else
+        {
+            var (defer, format) = (Call("deferLiteral"), Call("format"));
+            Assert.Equal(
+                (KimiDeclarationId.WriterDeferLiteral, KimiDeclarationId.StringWitnessFormat),
+                (defer.Callee.Symbol!.LibraryDeclaration, format.Callee.Symbol!.LibraryDeclaration));
+            Assert.Equal(
+                ["n=", "!"],
+                new[] { body.Operands[defer.Start + 1], body.Operands[format.Start] }
+                    .Select(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord ? body.Consts[x.Arg].Value : null));
+            if (broken == "borrowed")
+            {
+                // The parameter s, a ref/string no record: its bytes are its referent's, not static storage.
+                var s = Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == "s");
+                Unsafe.AsRef(in body.Operands[defer.Start + 1]) = MirOperand.Copy(new(s));
+            }
+            else if (broken == "short")
+            {
+                var at = Array.FindIndex(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Start == defer.Start);
+                Unsafe.AsRef(in body.Blocks[at]).Terminator = defer with { Count = 1 }; // The adapter alone.
+            }
+        }
+
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        MirViolation[] expected = broken switch { null => [], "short" => [MirViolation.Arity], _ => [MirViolation.Operation] };
+        Assert.Equal(expected, findings.Select(static x => x.Rule));
     }
 
     // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its

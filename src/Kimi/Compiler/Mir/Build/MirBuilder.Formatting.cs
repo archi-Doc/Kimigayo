@@ -11,16 +11,18 @@ internal sealed partial class MirBuilder
 {
     private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
 
-    // The literal bytes of a write position (SPEC 22.10.5): its text's, the string constant Literal makes (Text), where it writes text
-    // (Binding.WritesText); -1 at a value's, whose bound its instance decides.
-    private int Bytes(CallPlan write, in MirOperand text)
-        => Binding.WritesText(write) ? Encoding.UTF8.GetByteCount((string)this.body.Consts[text.Arg].Value!) : -1;
+    // The literal bytes of a write position (SPEC 22.10.5): its text's, the string constant the one literal rule makes (Literal), where it
+    // writes text (Binding.WritesText: a literal segment, or an embedded string literal); -1 at a value's, whose bound its instance decides.
+    private int Bytes(CallPlan write)
+    {
+        if (!Binding.WritesText(write))
+        {
+            return -1;
+        }
 
-    // The literal text of a write position of an owning interpolation (SPEC 3.1, 22.10.3), its FormatSegment's operand: where it writes text
-    // (a literal segment, or an embedded string literal), that literal's constant through the one literal rule (Literal); the empty text at
-    // a value's position, whose write follows.
-    private MirOperand Text(CallPlan write) => Binding.WritesText(write) ? this.Literal(write.ArgumentOperations[1].Source!)
-        : MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: string.Empty)));
+        var text = this.Literal(write.ArgumentOperations[1].Source!); // Made before the constants are read.
+        return Encoding.UTF8.GetByteCount((string)this.body.Consts[text.Arg].Value!);
+    }
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, its status tested before a first segment
@@ -262,7 +264,7 @@ internal sealed partial class MirBuilder
         var bytes = 0L;
         for (var i = 2; CallPlan.Of(node, i) is { } write; i++)
         {
-            if (this.Bytes(write, this.Text(write)) is var count and >= 0)
+            if (this.Bytes(write) is var count and >= 0)
             {
                 bytes += count;
             }
@@ -283,28 +285,50 @@ internal sealed partial class MirBuilder
     }
 
     // An owning interpolation's write positions (SPEC 22.10.3), each a FormatSegment step, the hint of the later literal bytes and values'
-    // Types, then the position's literal text: a literal segment is its step's text and no write (SPEC 22.10.3 passes only embedded
-    // expressions to write; R5-M133), and so is an embedded string literal, as if written (a constant has no effect, and string's built-in
-    // formatting writes its bytes with the same failure); a value's position has the empty text, whose write follows, a failure going to
-    // done.
+    // Types, then the position's write, a failure going to done: a value's is its plan's write; a literal segment's is no write (SPEC
+    // 22.10.3 passes only embedded expressions to write; R5-M133) but its text through the library (Text), and so is an embedded string
+    // literal's, as if written (a constant has no effect, and string's built-in formatting writes its bytes with the same failure).
     private void Writes(Koto node, MirPlace writer, MirPlace unit, long bytes, int start, ref int done)
     {
         var storage = CallPlan.Of(node, 2)!.ArgumentOperations[0].Source!;
         var (later, values) = (bytes, start);
         for (var k = 2; CallPlan.Of(node, k) is { } write; k++)
         {
-            var text = this.Text(write);
-            var count = this.Bytes(write, text);
+            var count = this.Bytes(write);
             var at = this.arguments.Count;
             (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
             this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
-            this.arguments.Add(text);
             this.Estimate(unit, IntrinsicId.FormatSegment, later, values, at, node);
             if (count < 0)
             {
-                this.Tested(write, this.Done(ref done), node, storage, writer); // A value's write; a text is its step's.
+                this.Tested(write, this.Done(ref done), node, storage, writer);
+            }
+            else
+            {
+                this.Text(write, writer, values < this.formatTypes.Count, this.Done(ref done), node);
             }
         }
+    }
+
+    // A literal position's text through the library (SPEC 22.10.3, 22.10.5; DECISIONS R8-M7): before a later value of the template (the
+    // plan's fact: a value Type left in formatTypes), Utf8Writer.deferLiteral, which keeps the static bytes for the adapter's next reservation
+    // (one allocation for a first unbounded value); else string's built-in format (StringWitness.format), which writes them. The text is
+    // the literal's constant record (MirConst.IsRecord), which no Place holds, at a ref/string parameter that keeps nothing of it
+    // (MirValidator.ConstantRecords): no temporary, Loan or destruction. The call's Result is tested as a write's.
+    private void Text(CallPlan write, MirPlace writer, bool deferred, int done, Koto node)
+    {
+        var target = compilation.Library.GetSymbol(deferred ? KimiDeclarationId.WriterDeferLiteral : KimiDeclarationId.StringWitnessFormat)!;
+        var subst = compilation.Types.Synthesized(target, deferred ? this.body.TypeOf(writer) : null, [], []);
+        var result = this.Hold(TyCtxt.Signature(target, subst, -1, out _)!, node);
+        var discriminant = this.Hold(BoundType.ISize, node);
+        var record = this.Viewed(this.Literal(write.ArgumentOperations[1].Source!), BoundType.String, node);
+        var adapter = this.Borrow(SemanticsKind.Uniq, writer, node);
+        var at = this.arguments.Count;
+        this.arguments.Add(deferred ? adapter : record); // deferLiteral(self, text); format(self: ref/string, writer).
+        this.arguments.Add(deferred ? record : adapter);
+        this.Invoke(result, new(MirCalleeKind.Fn, target, subst), at, node);
+        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
+        this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
     }
 
     // An owning interpolation's failed writes' block, made by the first branch to it, failing with KIMI_E_FORMAT.

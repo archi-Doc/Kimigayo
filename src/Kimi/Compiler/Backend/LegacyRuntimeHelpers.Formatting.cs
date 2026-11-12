@@ -40,10 +40,6 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer and formatting runtime (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
-    /// <summary>The formatting runtime's kind of string: SegmentText's and FormatLiteral's kind Context and <c>__kimi_format_builtin</c>'s
-    /// one arm (DECISIONS R8-M30, temporary 5), removed with them at R8-W2.</summary>
-    internal const int StringFormatKind = 16;
-
     /// <summary>The runtime's hint of an internal adapter (<c>__kimi_format_hint</c>, SPEC 22.10.5): the bytes its later writes may still
     /// reserve, which a growth adds.</summary>
     internal static readonly FunctionAbi FormatHint = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
@@ -54,21 +50,6 @@ internal static partial class LegacyRuntimeHelpers
         "__kimi_format_finish",
         "void",
         [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
-
-    /// <summary>The runtime's check of an internal adapter after a write (<c>__kimi_format_check</c>, SPEC 22.10.3): a recorded failure
-    /// Aborts with <c>KIMI_E_FORMAT</c> at the interpolation's location.</summary>
-    internal static readonly FunctionAbi FormatCheck =
-        new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
-
-    /// <summary>The runtime's built-in write (<c>__kimi_writer_write_builtin</c>, SPEC 22.10.1): the adapter's frame around the built-in
-    /// formatting of a value of a kind (StringFormatKind), which an owning interpolation's literal text (SegmentText) calls. Temporary
-    /// (DECISIONS R8-M18): removed when SegmentText and FormatLiteral leave the runtime (R8-W2).</summary>
-    internal static readonly FunctionAbi WriteBuiltin = Slotted(
-        "__kimi_writer_write_builtin",
-        [
-            new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1),
-            new("i32", "kind", AbiParameterKind.Context), RuntimeAbi.Location, RuntimeAbi.LocationLength,
-        ]);
 
     /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): the HeapBuffer's construction in FormatHeap's routine (a
     /// direct line's region is Text.fixed's body since R8-W2 a2). Text.fixed is a body; this is a second statement of its construction,
@@ -83,11 +64,6 @@ internal static partial class LegacyRuntimeHelpers
     internal static readonly FunctionAbi FormatHeap = Slotted(
         "__kimi_text_heap",
         [new("ptr", "ret", AbiParameterKind.ResultSlot), new("i64", "capacity", LogicalIndex: 0), RuntimeAbi.Location, RuntimeAbi.LocationLength]);
-
-    /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): the built-in
-    /// write's ABI (WriteBuiltin) under its own name; the text's size is checked at once and its static bytes kept at the adapter until its
-    /// next reservation or its end. Initialized after WriteBuiltin.</summary>
-    internal static FunctionAbi FormatLiteral { get; } = WriteBuiltin.Named("__kimi_format_literal");
 
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
     /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
@@ -119,8 +95,8 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        // The built-in write and the fixed and heap buffers; the erased writer's kept runtime defines Text.writer's routine.
-        return ExpandRuntime(string.Join('\n', parts), [WriteBuiltin, FormatFixed, FormatHeap]);
+        // The fixed and heap buffers; the erased writer's kept runtime defines Text.writer's routine.
+        return ExpandRuntime(string.Join('\n', parts), [FormatFixed, FormatHeap]);
     }
 
     // A signature that writes the caller's result slot.

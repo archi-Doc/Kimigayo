@@ -118,6 +118,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.WriterStatus, "status", SourceFunction: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterWriteUtf8, "writeUtf8", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
+        new(KimiDeclarationId.WriterDeferLiteral, "deferLiteral", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, SourceFunction: true, CallerLocation: true, Overload: 0),
         new(KimiDeclarationId.BoolFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "BoolFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.CharFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "CharFormat"), // SPEC 22.5.1 until G1.

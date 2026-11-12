@@ -42,7 +42,7 @@ internal enum IntrinsicWriter : byte
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
     Buffer, // FormatBuffer: an owning interpolation's private buffer on the heap, of its estimate's capacity (FunctionCodegen.Interpolation).
-    Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
+    Segment, // FormatSegment: the hint routine given its estimate's hint (FunctionCodegen.Interpolation).
     Finish, // FormatFinish: the routine over the adapter and its buffer (FunctionCodegen.Interpolation).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }

@@ -110,8 +110,9 @@ public partial class KimiLibraryShapeTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
-        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2).
-        Assert.Equal(192, KimiLibraryCatalog.Entries.Length);
+        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
+        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1).
+        Assert.Equal(193, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -530,7 +531,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]

@@ -481,7 +481,7 @@ public sealed partial class MirBuildTest
             steps);
     }
 
-    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35)): a $tryWrite evaluates an embedded expression only after a test that its
     // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
     // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
     [Theory]
@@ -538,23 +538,29 @@ public sealed partial class MirBuildTest
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
-    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
-    // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
-    // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists
-    // only where a write is tested, so text alone builds without validator findings (fail-before: each literal was a write<string> after
-    // FormatHint; then text alone left that block unreachable). A $tryWrite's text stays a write (above).
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1): an owning interpolation is one FormatSegment step per write position, the later
+    // literal bytes and values' Types its hint, then the position's write: a value's is its write; a literal segment's is no write but
+    // its text's constant record through the library, Utf8Writer.deferLiteral where a value follows in the template, else string's
+    // built-in format, and so is an embedded string literal's (as if written: a constant has no effect). Each is tested, so text alone
+    // has the failed block too (fail-before: the text was its FormatSegment's operand, written by the formatting runtime; before
+    // R5-M133 each literal was a write<string>). A $tryWrite's text stays a write (above).
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish" })]
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "FormatFinish" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"lit\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish" })]
-    [InlineData("func f() -> string => \"\\(\"only\")\"\n", new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"only\" 0 0", "FormatFinish" })]
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+    [InlineData(
+        "func f() -> string => \"\\(\"only\")\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "FormatFinish" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"x\" 2 0", "FormatSegment \"y\" 1 0", "FormatSegment \"z\" 0 0", "FormatFinish" })]
-    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "FormatFinish" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+    public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
     // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
@@ -567,18 +573,18 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
         "[13 of u8]",
-        new[] { "fixed", "ErasedWriter", "FormatSegment \"n=\" 0 1", "FormatSegment \"\" 0 0", "write", "text", "writeLine" },
-        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine" })]
+        new[] { "fixed", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"n=\"", "FormatSegment 0 0", "write", "text", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "text", "write", "writeLine" })]
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"s=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "write", "writeLine" })]
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "write", "writeLine" })]
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"v=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine", "writeLine" })]
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "text", "write", "writeLine", "writeLine" })]
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
         var body = Body(source, "f");
@@ -604,8 +610,8 @@ public sealed partial class MirBuildTest
     }
 
     // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
-    // continue it. An intrinsic is named by its id, a FormatSegment with its text, later bytes and later values' count; another call by its
-    // function's name.
+    // continue it. An intrinsic is named by its id, a FormatSegment with its later bytes and later values' count; another call by its
+    // function's name, with the text of a constant record among its operands (a literal position's).
     private static List<string> HealthyPath(MirBody body, int count)
     {
         var path = new List<string>();
@@ -628,19 +634,20 @@ public sealed partial class MirBuildTest
         return path;
     }
 
-    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its text, later bytes and later values' count; another call
-    // by its function's name.
+    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its later bytes and later values' count; another call by
+    // its function's name, with the text of a constant record among its operands.
     private static string Step(MirBody body, in MirTerminator call)
     {
+        var operands = body.Operands.Slice(call.Start, call.Count).ToArray();
         if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
-            return call.Callee.Symbol!.Name;
+            var records = operands.Where(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord).Select(x => $" \"{body.Consts[x.Arg].Value}\"");
+            return call.Callee.Symbol!.Name + string.Concat(records);
         }
 
         var id = (IntrinsicId)call.Callee.Arg;
-        var operands = body.Operands.Slice(call.Start, call.Count);
         return id != IntrinsicId.FormatSegment ? id.ToString()
-            : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+            : $"{id} {body.Consts[operands[1].Arg].Bits} {body.Consts[operands[2].Arg].Type.Components.Count}";
     }
 
     // A function f of the temporaries' program that runs a statement, built without validator findings.
