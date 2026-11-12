@@ -104,7 +104,7 @@ internal sealed partial class MirBorrows
     }
 
     // After the replay of a template view, at each Loan's site: R26-borrow's decided verdict; else R26-access (D4 (2)) for an exclusive
-    // slot-rooted Loan, whose failure no layout decides; else R26-borrow's undecided verdict, the limit record (R4-M198's undecided class).
+    // slot-rooted Loan, whose failure holds in every layout; else R26-borrow's undecided verdict, the limit record (R4-M198's class).
     private void DefaultAccesses()
     {
         if (this.body.Key.Kind != MirBodyKind.DefaultTemplate)
