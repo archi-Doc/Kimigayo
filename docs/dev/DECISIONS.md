@@ -12098,7 +12098,8 @@ resumed by R4-M86 (2026-10-20).
     element Type (read from the argument's value Type, FitComposite's `SourceType`) is a located `Unsupported_Kd` and the call rests
     on it, finally (`FailBorrowedElements`, `Binding.ArgumentKinds.Rows`, called once by `Binding.Calls` before
     `CompleteArguments`): its Origin is no input of the call's solve, and its completion and lowering are unverified. A function
-    value's call completes it as before; a join so borrowed stays `NoApplicableOverload_Kd` (G729).
+    value's call completes it as before; a join so borrowed stays `NoApplicableOverload_Kd` (G729). Superseded by BU-187 (PLAN G585):
+    the interim is removed.
   - **Rejected:** stripping `ref/` inside the fit's recursion (a second copy of `FitComposite`'s row); `ConstructedAt` in
     `ChildPattern` (design review 1 B1: it changed every walk); accepting the nested forms that happen to complete (t-lit, t-gen,
     a-fill: a narrow subset, AGENTS Diagnostics); the nested temporary's Origin input here (not one path with the root Literal's
@@ -12505,6 +12506,39 @@ resumed by R4-M86 (2026-10-20).
     (`rest-effect-target.patch`) but waits for PLAN G799 (a valid program is rejected on the rebind after the append). (2) The
     unqualified `associate Item is R` whose Contract is missing is definite before the supply (probe a3): PLAN G726 keeps it; its
     exit needs the owner's pending conformances, not a node of the clause.
+- **BU-187 A literal source at a reference is one borrowed temporary of U at every position (PLAN G585)** (2026-11-12; Front,
+  Binding; Major, an acceptance mover: valid forms newly accepted (Q17 class 3), class 1 moves (the family of a fill or mixed range
+  at a `ref/U` other than its own Type), invalid twins keep their rejection with the lifetime or relation record; supersedes
+  BU-165's Interim item; the owner's O-201 (1) (a), (2) (a); K's K1-K4) SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3, 3.6, 4.3.3, 4.6.2,
+  15.3.6.
+  - **Rule.** `TemporaryTarget` (`Binding.ArgumentKinds.Fit`), one row with one gate: at `ref/U`, a Tuple or array literal (not a
+    fill), an untyped literal or a literal-only expression (`null` included), or an unbound selection, `do` or `loop` whose survey
+    holds such a source (nested included), is the owner temporary of `U`, materialized once at its own position and shared-borrowed.
+    No fit test and no Type gate: each source is fitted to `U` as at an expected `U`, so a misfit is its own record at `U` (K1). A
+    form delivering its operand (a label, an expression body) passes the position on. Readers: `FitLiteral` (it tests the fit on
+    top: the applicability of a call); `FitComposite`: a fill or mixed range at `ref/U` is no temporary of `U` (`TemporaryTarget`
+    gives none), so it is typed with no expected Type, as binding it at a let types it, and fits only where that Type is `U`.
+    `HasTypeWithoutExpectation` reads this after the probe fitted the shape: a Literal part at any depth keeps its default
+    (`PartDefault`: a Tuple's or nested fill's elements, a literal join), a literal-only boundary takes its other boundary's Type,
+    `T` for `FromEnd<T>`, else `i32` (`OtherBoundaryType`, SPEC 4.6.2 rules 2 and 3, the function the late default of a mixed range
+    reads too); `BindAndAdaptNode` at every expected Type (the part is bound at `U`, the common adaptation records the borrow; a
+    join resting on a failed source keeps Type `U` so its kept sources take the borrow); the evidence walk and a value call's solve.
+  - **Input.** `InferTemporary` (`SlotSolution`): the temporary's Place Origin is matched to the position's Origin and is a
+    covariant bound of it (`AddInputBound`, the one covariant row, which `CollectOriginInference` calls too), for a root or nested
+    composite and a Literal at a fixed position; `SolveValueCallOrigins` adds the same bound (`AddTemporaryBound`) for the root row
+    and every child row that waits at `ref/U during a` as a borrowed temporary: an Aggregate part (a Tuple or array literal, a fill,
+    a mixed range: `InferComposite`'s key for such a part) or a source the rule names (`InferLiteral`'s key). A part of Join kind at
+    `ref/(...)`, which `InferComposite` borrows too (**The one exception**, PLAN G729), is no key of a value call: whether a value
+    call takes it is the question of a temporary carried out of its arm (review 2 N8's owner question).
+  - **Raw.** `AdaptInput` borrows a `raw/U` value as an owner's (raw is no reference or handle slot, 10.2): `null` at
+    `ref/(raw/i32)` (K4); a raw Place at `ref/(raw/U)` is borrowed too.
+  - **The one exception.** `FitComposite` and `InferComposite` also borrow a join its call classifies part by part (PartKind Join)
+    at `ref/(...)`, with the join's Place Origin as the bound: that join is G729's (R7-I2 d), not this rule's.
+  - **Deleted.** `FailBorrowedElements` (BU-165's interim) and its call; `CallSelection.Candidates`' root-only `InferInput` for a
+    borrowed Literal; FitLiteral's copy of the Type gate.
+  - **Rejected:** `ConstructedAt` in `ChildPattern` (BU-165 B1); a per-element operation table (a side table); a fits-gated join row
+    (K1); one temporary per arm (O-201 (2) (b)); two per-form arms in the fit (`FitsOwnTypeAt`: a fill's direct literal element, a
+    range with `S == E`; review 1 B1); a bound only for `TemporaryTarget` leaves of a value call (review 1 B2).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
