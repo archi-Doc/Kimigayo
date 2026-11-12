@@ -35,7 +35,7 @@ public class BindingBenchmark
             "ConditionalConformances" => "contract A\n    associate E is i32\n    property item: E has get\ncontract B: A\n",
             "ConditionalMembers" => "contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n",
             "InheritedReceivers" => "contract C\n    func f(x: i32) -> i32\n    property item: i32 has get\nopen struct Base<T>\n    public var item: i32\n    public func f(x: i32) -> i32 => x\n    public func f<U>(x: U) -> i32 => 1\n",
-            _ => "func identity<T>(value: T) -> T => value\n",
+            _ => "func identity<T>(value: T) -> T => value@move\n",
         });
         for (var i = 0; i < this.Calls; i++)
         {
@@ -53,7 +53,7 @@ public class BindingBenchmark
             }
             else if (this.Scenario == "ConditionalMembers")
             {
-                source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
+                source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32\n    let inner = S").Append(i).Append("<i32>.f(1@i32)\n    return S").Append(i).Append("<i32>.f(inner)\n");
             }
             else if (this.Scenario == "ConditionalConformances")
             {
