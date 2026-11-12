@@ -194,7 +194,7 @@ public partial class KimiLibraryShapeTest
         var path = entry.Owner ?? entry.Container switch
         {
             KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer or KimiLibraryContainer.Utf8Slice => "Text." + entry.Container,
+            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
             KimiLibraryContainer.FixedArray => "Storage.FixedArray",
             _ => entry.Container.ToString(),
         };

@@ -38,7 +38,7 @@ public sealed partial class KimiLibrary
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
-        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.Utf8Slice })
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
         {
             if (this.FormattingContainer(kind) is { } container)
             {

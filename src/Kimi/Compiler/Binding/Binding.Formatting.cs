@@ -123,7 +123,7 @@ public sealed partial class Binding
         }
 
         // The witness table (WitnessGroup) is the one statement of which built-in Types format through a library body (bool, char and Unit,
-        // R8-S2a; f32 and f64, R8-S2c; string and Wrapping<T>, R8-S2d1; the integers, R8-S2b1 and R8-S2b2; Utf8Slice declares its own).
+        // R8-S2a; f32 and f64, R8-S2c; string and Wrapping<T>, R8-S2d1; the integers, R8-S2b1 and R8-S2b2; the view, Utf8SliceFormat).
         // No Type takes builtinFormat any more, so this narrowing is dead (DECISIONS R8-M30, temporary 1); R8-S2d2 removes it with the
         // shim.
         return self is not null && FormattingTypes.IsBuiltin(self) && WitnessGroup(self, KimiDeclarationId.Utf8Format) is null &&
