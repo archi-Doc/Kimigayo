@@ -42,9 +42,10 @@ public static partial class Parser
             return Omitted(ref reader, anonymous);
         }
 
-        var genericArguments = reader.CurrentTokenKind == TokenKind.LessThan
-            ? ParseGenericArguments(ref reader, allowLength: true, specialization: specialization)
-            : null;
+        // The header's form selects the list's production: a specialization's TypeArguments, else GenericParameters (SPEC F.6.3).
+        var genericArguments = reader.CurrentTokenKind != TokenKind.LessThan ? null
+            : specialization ? ParseSpecializationArguments(ref reader)
+            : ParseGenericParameters(ref reader, allowLength: true);
         RejectCallableOriginList(ref reader);
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) ||
             !TryParseParameterList(ref reader, anonymous, constructor, specialization, out var parameters, out var nameBoundary, out var closeParenthesisRange))
