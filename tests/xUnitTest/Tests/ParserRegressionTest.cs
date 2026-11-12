@@ -924,7 +924,7 @@ public class ParserRegressionTest
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         Assert.Contains(TestDiagnostics.Of(compilation, restoredFunction.CodeContext.SourceDocument!), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
-        Assert.Empty(restoredGroup.ChildNodes);
+        Assert.Empty(restoredGroup.Children());
     }
 
     [Fact]
