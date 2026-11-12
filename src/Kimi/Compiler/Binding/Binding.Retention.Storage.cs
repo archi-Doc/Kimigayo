@@ -57,7 +57,7 @@ public sealed partial class Binding
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
-    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder)> storageHolds = new();
+    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -146,7 +146,7 @@ public sealed partial class Binding
             this.Position(environment, type, at.Storage);
             if (at.Storage != ResultStorage)
             {
-                this.storageHolds.Add((type, at.Written, at.Holder));
+                this.storageHolds.Add((type, at.Written, at.Holder, at.Storage));
             }
         }
 
