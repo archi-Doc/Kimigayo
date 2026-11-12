@@ -461,8 +461,9 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
-        // SPEC 23.2.2: a preparation that established no source module (Compilation.AnalyzesNoModule) leaves no input to establish and
-        // no phase to run; the check is Completed, rejected by the Error that preparation recorded.
+        // SPEC 23.2.2: a preparation that established no source module (Compilation.AnalyzesNoModule) leaves no source to establish or
+        // parse and no phase to run; in Test mode the root's TestSources are skipped too (IMPL 21.3.2: its sources are not checked).
+        // The check is Completed, rejected by the Error that preparation recorded.
         if (compilation.AnalyzesNoModule)
         {
             if (context is not null)

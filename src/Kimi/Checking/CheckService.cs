@@ -114,7 +114,9 @@ internal static class CheckService
     {
         var finder = new MarkerFinder();
         finder.Visit(compilation.Kotonoha.RootKoto);
-        return finder.Found ? TestPresence.Yes : compilation.AnalyzesNoModule || compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown : TestPresence.No;
+        return finder.Found ? TestPresence.Yes
+            : compilation.AnalyzesNoModule || compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown
+            : TestPresence.No;
     }
 
     // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
