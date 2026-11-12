@@ -50,9 +50,9 @@ public sealed partial class Binding
     // not generic, so their rows have no parameter (no Contract holds exactly f32 and f64, and SPEC 13.5.4's bit conversion needs a
     // closed Type); Wrapping<T>'s Utf8Format (SPEC 3.1.1) over its argument I, a wrapping scalar's integer or the construction's
     // abstract T, which SPEC 3.1.1's formation proves PrimitiveInteger, so the row proves an abstract Wrapping<T>'s conformance too; and
-    // every concrete integer Type's Utf8Format up to 64 bits (R8-S2b1), one generic body over I. A bare Type parameter has no shape to key
-    // on, so an abstract `I is PrimitiveInteger` keeps SPEC 8.7.4's premise, as for Position. The width condition is DECISIONS R8-M30's
-    // temporary 7: i128 and u128 still take builtinFormat until R8-S2b2 adds their specializations over formatInteger128 and removes it.
+    // every concrete integer Type's Utf8Format (R8-S2b1, R8-S2b2), one generic body over I whose i128 and u128 specializations format
+    // through formatInteger128. A bare Type parameter has no shape to key on, so an abstract `I is PrimitiveInteger` keeps SPEC 8.7.4's
+    // premise, as for Position.
     internal static LibraryWitnessGroup? WitnessGroup(BoundType? self, KimiDeclarationId? contract) => self switch
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
@@ -60,7 +60,7 @@ public sealed partial class Binding
             => new(WitnessMembers.FixedArray, "E", self.Components[0], "N"),
         { IsInteger: true, Semantics: SemanticsKind.Owner } when contract == KimiDeclarationId.Position
             => new(WitnessMembers.IntegerPosition, "I", self, null),
-        { IsInteger: true, Semantics: SemanticsKind.Owner, Width: <= 64 } when contract == KimiDeclarationId.Utf8Format
+        { IsInteger: true, Semantics: SemanticsKind.Owner } when contract == KimiDeclarationId.Utf8Format
             => new(WitnessMembers.IntegerFormat, "I", self, null),
         _ when ReferenceEquals(self, BoundType.String) &&
             contract is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format
@@ -117,8 +117,8 @@ public sealed partial class Binding
     // or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at most one
     // layer, so a bare string passes too, though nothing else reaches this; bool, char, Unit, f32 and f64, which the formatting bodies
     // write as `ref/bool`, `ref/char`, `ref/()`, `ref/f32` and `ref/f64` (SPEC 22.10.2), likewise; some `Wrapping<I>`, a wrapping scalar
-    // or the construction the body writes as `ref/Wrapping<I>` (SPEC 3.1.1); the integers' formatting body's `ref/I`, a Type parameter
-    // (R8-S2b1; S2b2's specializations add the integer form). A new group states its own; none is another's by default.
+    // or the construction the body writes as `ref/Wrapping<I>` (SPEC 3.1.1); the integers' formatting body's `ref/I`, a Type parameter, and
+    // its specializations' `ref/i128` and `ref/u128` (R8-S2b1, R8-S2b2). A new group states its own; none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
@@ -132,7 +132,8 @@ public sealed partial class Binding
         WitnessMembers.F64Format => ReferenceEquals(EffectiveCore(type), BoundType.F64),
         WitnessMembers.WrappingFormat => EffectiveCore(type) is { IsWrappingInteger: true } or
             { Kind: BoundTypeKind.Constructed, Symbol.LibraryDeclaration: KimiDeclarationId.Wrapping },
-        WitnessMembers.IntegerFormat => EffectiveCore(type) is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner },
+        WitnessMembers.IntegerFormat
+            => EffectiveCore(type) is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner },
         _ => throw new InvalidOperationException($"The group {members} states no receiver."),
     };
 

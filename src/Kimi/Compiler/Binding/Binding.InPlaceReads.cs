@@ -86,7 +86,7 @@ public sealed partial class Binding
     private void CompareInPlace(Koto operand)
     {
         if (ElementAccess.IsUserIndex(operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
-            SharedReadTypes.BorrowSemantics(published) is { } placeSemantics)
+            this.SharedBorrowSemantics(published, operand) is { } placeSemantics)
         {
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
             // its selected call returns, continued through the layers it stores as any in-place read of it (ElementRead).
@@ -104,7 +104,7 @@ public sealed partial class Binding
 
         // PLAN G59: an owned fixed-array element at a runtime index is compared in place like an element of a borrowed receiver.
         this.CompareInPlace(selection.Left);
-        if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)) || ElementAccess.IsRuntimeFixedElement(selection))
+        if (ElementAccess.IsBorrowedReceiver(selection.Left) || ElementAccess.IsRuntimeFixedElement(selection))
         {
             this.SharedElement(operand, selection.BoundType);
         }
@@ -123,7 +123,7 @@ public sealed partial class Binding
     // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver.
     private void SharedElement(Koto node, BoundType? element)
     {
-        if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
+        if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && this.SharedBorrowSemantics(element, node) is { } semantics)
         {
             var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
