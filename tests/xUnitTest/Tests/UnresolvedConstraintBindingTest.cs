@@ -151,6 +151,27 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future and Copy", "public contract Future", true)]
     [InlineData("public struct Target<T>\n    Self is Future when T is Copy", "public struct Future", false)]
     [InlineData("public struct Target<T>\n    Self is Future\n    Self is Future when T is Copy", "public contract Future", false)]
+    // A subject rooted in an enclosing parameter whose projection qualifier is missing can still complete (SPEC 7.5, 8.5.2, 8.8.1), in
+    // a `when` list, a function's region and a member's region rooted in the declaring Type's parameter.
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future, T.(Future).Item is Copy", "public contract Future\n    associate Item", true)]
+    [InlineData("group G\n    func take<T>()\n        T is Future\n        T.(Future).Item is Copy\n        ()", "public contract Future\n    associate Item", true)]
+    [InlineData("public struct Target<T>\n    public func m(self: ref/Self)\n        T is Future\n        T.(Future).Item is Copy\n        ()", "public contract Future\n    associate Item", true)]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future, T.(Future).Item is Copy", "public contract Future", false)]
+    // The unqualified projection (SPEC 8.5.2) finds its associated Type under the pending Constraint, in a function and a `when` list.
+    [InlineData("func take<T>()\n    T is Future\n    T.Item is Copy\n    ()", "public contract Future\n    associate Item", true)]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future, T.Item is Copy", "public contract Future\n    associate Item", true)]
+    // A bound Contract reference whose Type argument or Contract is missing (SPEC 8.4.3, 8.6.1, 9.7.1), in every form.
+    [InlineData("public contract C<U>\npublic struct Target<T>\n    Self is C<Future> when T is Copy", "public struct Future", true)]
+    [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>", "public struct Future", true)]
+    [InlineData("public contract C<U>\ngroup G\n    func take<T>()\n        T is C<Future>\n        ()", "public struct Future", true)]
+    [InlineData("public contract C<U>\npublic contract Target: C<Future>", "public struct Future", true)]
+    [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>", "public group Future\n    func z() -> i32 => 0", false)]
+    // An associate selector (SPEC 8.5.1) is a Contract reference too: a missing Contract or Type argument.
+    [InlineData("public struct Target\n    Self is Future\n    associate Future.Item is i32", "public contract Future\n    associate Item", true)]
+    [InlineData("public contract C<U>\n    associate Item\npublic struct Target\n    Self is C<Future>\n    associate C<Future>.Item is i32", "public struct Future", true)]
+    [InlineData("public struct Target\n    Self is Future\n    associate Future.Item is i32", "public contract Future", false)]
+    // SPEC 6.1.2: a later fragment of the group declares the selector's Contract.
+    [InlineData("public group G\n    func z() -> i32 => 0\npublic struct Target\n    Self is G.Future\n    associate G.Future.Item is i32", "public group G\n    public contract Future\n        associate Item", true)]
     public void MissingDeclarationsRemainUnresolvedUntilFinalBinding(string source, string generated, bool valid)
     {
         var c = Parse(source);
@@ -174,6 +195,10 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public group Invalid\npublic struct Target\n    Invalid is Copy")]
     [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
     [InlineData("public struct Future\npublic struct Target<T>\n    Self is Future when T is Copy")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future, T.(Future).Item is Copy")]
+    [InlineData("group G\n    func take<T>()\n        T is Future\n        T.(Future).Item is Copy\n        ()")]
+    [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>")]
+    [InlineData("public struct Target\n    Self is Future\n    associate Future.Item is i32")]
     public void FinalBindingRejectsNamesThatRemainMissing(string source)
     {
         var c = Parse(source);
@@ -191,6 +216,18 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when i32 is Future")]
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future or Copy")]
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is not Future")]
+    // SPEC 7.5, 8.8.1: a projection rooted in a missing name is rooted in no enclosing parameter whatever the name finds; an arity is
+    // decided by the written list (9.7.1).
+    [InlineData("group G\n    func take<T>()\n        U.(Future).Item is Copy\n        ()")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when U.(Future).Item is Copy")]
+    [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future, Other>")]
+    [InlineData("public contract C<U>\npublic contract Target: C<Future, Other>")]
+    // SPEC 7.5: a local function's subject is never rooted in its enclosing function's parameter; 9.7.1: a Contract without Type
+    // parameters takes no argument list.
+    [InlineData("func outer<T>()\n    T is Future\n    func inner()\n        T.(Future).Item is Copy\n        ()\n    ()")]
+    [InlineData("public contract C\nfunc take<T>()\n    T is C<Future>\n    ()")]
+    // A selector naming an available Contract that is no conformance of the owner (8.5.1) is decided by what is written.
+    [InlineData("public contract C\n    associate Item\npublic contract D\n    associate Item\npublic struct Target\n    Self is C\n    associate D.Item is i32")]
     public void AvailableViolationsRemainInvalidInProvisionalBinding(string source)
     {
         var c = Parse(source);

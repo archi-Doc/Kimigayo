@@ -284,14 +284,10 @@ public sealed partial class Binding
             var generic = ContractApplication(name);
             var parentPath = this.NamePath(name, this.scopes[contract]);
             var parent = parentPath.Symbol;
-            if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
+            if (parent is null && generic is null && this.PendingReference(syntax, null, this.scopes[contract]))
             {
-                this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax))
-                {
-                    shape.HasUnresolvedParents = true;
-                    continue;
-                }
+                shape.HasUnresolvedParents = true;
+                continue;
             }
 
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
@@ -318,6 +314,12 @@ public sealed partial class Binding
             // (contract UniqIndexable<Key>: Indexable<Key>).
             var selection = parent;
             parent = this.BindContractReference(name, selection, this.scopes[contract]);
+            if (parent is null && this.PendingReference(syntax, selection, this.scopes[contract]))
+            {
+                shape.HasUnresolvedParents = true; // A Type argument is missing (SPEC 9.7.1): pending as a missing parent is.
+                continue;
+            }
+
             if (parent is null)
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
