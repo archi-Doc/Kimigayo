@@ -19565,6 +19565,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     run-time-length memcpy. No validation and no second reserve on either side; B's IR with only the leaf marked `alwaysinline`
     gives the constant store back. Removal condition: PLAN G779's unit lands with Interpolation within A=A (its mechanism, per the
     owner-reported O-196: `noinline` on the slow path `Utf8Writer.reserve` rather than `alwaysinline` on the leaf).
+  - Closed by R8-M36 (PLAN G779, 2026-11-12): T-163's closing pair (A a7cafaad4 before S2d1, B the change on S2d1 alone) puts
+    Interpolation within its A=A: R5-M135's aligned control 1.009 within 0.953-1.030, one-sided (B not slower than A), not the
+    corpus column's two-sided 0.989-1.009.
   - **Owner, S2b1.** Every concrete integer Type of at most 64 bits (i8 to i64, u8 to u64, isize, usize) has its Utf8Format through
     a generic table row `IntegerFormat` (`{ IsInteger: true, Semantics: Owner, Width: <= 64 }`, argument the Type itself), body
     `IntegerFormat.format<I>` in `Formatting.kimi`. The body writes the ASCII decimal digits into a local `[20 of u8]` from the end,
@@ -19843,6 +19846,37 @@ R8-M* and R9-M* by the stage of the recording unit.
     it asserts completion, which also holds before). Open for S2d1 (I-N1): f32/f64 rows in
     `FunctionCodegenTest.ATableBodyWriteReportsItsCallersLocation` (the IR layer of revision 3's CallerLocation rule); S2c pins it
     by the native Abort rows.
+- **R8-M36 The writer's reservation is kept out of line; the library's out-of-line rows are a closed catalog table** (Back,
+  2026-11-12; PLAN G779; the owner's O-195 (a), O-196; design `back\leaf-inline\design.md` Revision 1, design reviews 1 REVISE, 2
+  ACCEPT).
+  - Cause: `Utf8Writer.reserve`, the writer's whole reservation (kind dispatch, the fixed buffer's fast path, the heap buffer's
+    growth, the erased writer, the deferred literal), has one library caller, the leaf `writeUtf8`; LLVM's last-call bonus folds it
+    into the leaf, which then stays out of line at every caller (T-152: Interpolation O2 B/A 1.128).
+  - Decision: `KimiLibraryCatalog.OutOfLineRows = [WriterReserve]` in `KimiLibraryCatalog.Rows.cs`, read by
+    `KimiLibraryCatalog.KeepsOutOfLine`; `ModuleCodegen.Signature` sets `Abi.Flags.OutOfLine` from the body's own declaration (a
+    fact of the definition's body; the caller location is a call-contract fact read through `TyCtxt.Original`);
+    `FunctionAbi.OutOfLine` writes `noinline` in the definition header; the flag is one of `Abi.Recorded`, the flags a `FunctionAbi`
+    keeps as given in one field (`FunctionAbi.Flags`, a behaviour-preserving restructuring first, G779 1/2), which `Abi.Matches`
+    compares as one value: part of its identity because `Define` reuses a signature and `GetDefinition` caches its text, and one
+    operand of its chain however many flags join; calls are unchanged; inert at O0 (no opt pass).
+  - Closed set: a row needs a measured O2 reason named in its commit with its kernel (a single-caller function absorbed into a hot
+    leaf); revisit the row at a second library caller of the reservation, R8-W2's adapter replacement, or a fast-path split.
+  - Trade (loop probe, review R2-N3): a program whose only write is one site in a hot loop pays one call per write to the
+    reservation, where S2d1's leaf had the whole chain inlined (one call site at every level); A, the runtime path, also called its
+    reserve once per write there, so this is no cost against A. S2d1's advantage there is smaller than the call count says: with the
+    whole chain inlined, O2 also dropped the literal's bytes, which that program never reads (no store at all), so the probe shows B
+    doing less work, not a cheaper write.
+  - Rejected: `alwaysinline` on the leaf (with one leaf caller the body only moves up a level: the single-caller probe); `cold`
+    (every write calls it); a SPEC attribute (`AttributeKind` is at its maximum, and it would be a user surface); a Backend table (a
+    second copy of a library fact); an `Entry` column (the constructor is over CR-R2, ed9c3e2fa's form instead).
+  - Measured: (i) T-163 (`artifacts\benchmarks\r8-leaf-close-o2-20261112-222914`; A a7cafaad4 before S2d1, B ba55e05d9, the change
+    on S2d1's 7e4392941 alone, whose emitted text equals round 2's): Interpolation within A=A (corpus 1.036 [0.944, 1.112]; R5-M135
+    plain 1.031 within 0.949-1.120, aligned 1.009 within 0.953-1.030), which closes R8-S2d1's exception, one-sided; Strings plain
+    1.012, code placement (aligned 1.000 within 0.940-1.040). (ii) T-162 (`artifacts\benchmarks\r8-leaf-o2-20261112-194449`; A
+    91f71aa54, R8-S2b2's head, B 797237824): Interpolation faster, 0.902 [0.829, 0.960] (R5-M135 plain 0.892, aligned 0.896 against
+    A=A 0.964-1.041 / 0.983-1.011; R5-M147 matched pairs 0.876-0.912 against A=A 0.981-1.012); Strings within A=A (0.992);
+    Iterators, ErasedCalls, Array and Dictionary code placement by the aligned control (R5-M135); compile cost
+    (`r8-k1a-20261112-200848`) every column within 0.95-1.02 of A and A', warm 0 B.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
