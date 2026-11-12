@@ -95,11 +95,13 @@ public class AssociatedOriginBindingTest
     }
 
     // SPEC 23.1.2, 8.5.4 (PLAN G747, G324): an associated Type application binds its target and every Origin argument; it reports its own
-    // failure (no family, an arity mismatch) beside the arguments' records and otherwise rests on its first failed part.
+    // failure (no family, an arity mismatch) beside the arguments' records and otherwise rests on its first failed part (`U.L` of
+    // `U.L.Item` is an ordinary path, 8.5.2; its twin names the projection).
     [Theory]
     [InlineData("func g(p: Q.Item(static))\n    ()\n", "UnresolvedBinding_Kd")]
     [InlineData("func g()\n    let p: Q.Item(static)? = .None\n    ()\n", "UnresolvedBinding_Kd")]
-    [InlineData("func g<U>(p: U.L.Item(static))\n    U is L\n    ()\n", "InvalidAssociatedType_Kd")]
+    [InlineData("func g<U>(p: U.L.Item(static))\n    U is L\n    ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("func g<U>(p: U.(L).Item(static))\n    U is L\n    ()\n", "")]
     [InlineData("func g(p: Q.Item((missing)))\n    ()\n", "UnresolvedBinding_Kd MissingOriginBinding_Kd")]
     [InlineData("func g() -> S.Nope((missing)) => 1\n", "InvalidAssociatedType_Kd MissingOriginBinding_Kd")]
     [InlineData("func g() -> S.Item((missing), static) => 1\n", "InvalidAssociatedType_Kd MissingOriginBinding_Kd")]

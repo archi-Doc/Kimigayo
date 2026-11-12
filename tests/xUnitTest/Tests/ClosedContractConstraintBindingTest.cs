@@ -11,8 +11,8 @@ public class ClosedContractConstraintBindingTest
     [Theory]
     [InlineData("i32 is Copy", true)]
     [InlineData("string is Copy", false)]
-    [InlineData("Source.Origin.Item is i32", true)]
-    [InlineData("Source.Origin.Item is string", false)]
+    [InlineData("Source.(Origin).Item is i32", true)]
+    [InlineData("Source.(Origin).Item is string", false)]
     [InlineData("i32 is Copy and Owned", true)]
     [InlineData("i32 is string or Copy", true)]
     [InlineData("string is not Copy", true)]
@@ -47,7 +47,7 @@ public class ClosedContractConstraintBindingTest
     [InlineData(true)]
     public void LateFailureInvalidatesContractRefinementsInEitherSourceOrder(bool reverse)
     {
-        const string contract = "public contract R\n    Source.Origin.Item is i32\npublic contract Child: R\npublic struct Impl\n    Self is Child\n";
+        const string contract = "public contract R\n    Source.(Origin).Item is i32\npublic contract Child: R\npublic struct Impl\n    Self is Child\n";
         const string source = "public struct Source\n    string is Copy\n    Self is Origin\n    associate Origin.Item is i32\n";
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\n" + (reverse ? contract + source : source + contract));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
