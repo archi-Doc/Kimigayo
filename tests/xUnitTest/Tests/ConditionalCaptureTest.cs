@@ -19,7 +19,7 @@ public sealed class ConditionalCaptureTest
     private const string Family = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n" +
         "    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n";
 
-    // SPEC 7.7.2, 8.14, 3.5.2 (PLAN G721): an entry of a pair target or a projection acquires as its initialization would in each
+    // SPEC 7.7.2, 8.14, 3.5.2 (DECISIONS BU-184): an entry of a pair target or a projection acquires as its initialization would in each
     // case: Copy where Copy is proven, otherwise the entry's TransferRequired_Kd; `@move` transfers it, and a later Move is MovedPlace_Kd.
     [Theory]
     [InlineData("func f<s/T>(m: s/T, t: T) -> i32\n    s is owner or ref\n    T is Copy\n    let g = func [t] () => ()\n    g()\n    return 0\n", "")]
@@ -32,7 +32,7 @@ public sealed class ConditionalCaptureTest
     public void AnEntryOfAPairTargetOrAProjectionAcquiresAsItsInitialization(string function, string codes)
         => Assert.Equal(codes, Codes(function));
 
-    // SPEC 7.7.2, 8.14 (PLAN G721, reading G755's one plan): a pair layer whose bare acquisition Copies in every admitted case is captured
+    // SPEC 7.7.2, 8.14 (DECISIONS BU-184 on G755's one plan): a pair layer whose bare acquisition Copies in every admitted case is captured
     // as its initialization would be: a bare entry and an omitted list Copy; a case with no plan is the entry's TransferRequired_Kd.
     [Theory]
     [InlineData(Pair + "    s is owner or ref\n    let g = func [p] () -> i32 => 0\n    return g()\n", "")]
@@ -43,8 +43,8 @@ public sealed class ConditionalCaptureTest
     public void APairLayerThatNeverReborrowsIsCaptured(string function, string codes)
         => Assert.Equal(codes, Codes(function));
 
-    // Interim (PLAN G721): (1) until PLAN G254's unit, a pair layer other than the original `s/T` (an application `s/i32`, `s/U`, or an
-    // adaptation family `p@s`) whose bare acquisition Reborrows in some admitted case is not captured: a located Unsupported_Kd at a
+    // Interim (DECISIONS BU-184): (1) until PLAN G254's unit, a pair layer other than the original `s/T` (an application `s/i32`, `s/U`,
+    // or an adaptation family `p@s`) whose bare acquisition Reborrows in some admitted case is not captured: a located Unsupported_Kd at a
     // written entry whatever its form, since a body's bare use of it would Reborrow there and escape the call receiver (G254's missing
     // containment), as r23 and r24 would; an omitted list's use of one reports InvalidCaptureBinding_Kd. (2) Until PLAN G170's identity
     // query, a pair target or a projection is not captured where an identity premise is available in scope (t14: `T is r/i32 during a`),
