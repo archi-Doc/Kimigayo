@@ -190,6 +190,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(count);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         Array.Clear(origins, 0, originCount);
         try
         {
@@ -364,6 +365,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.lengthScratch.Return(fixedLengths, clearArray: true);
             this.typeScratch.Return(fixedTypes, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);

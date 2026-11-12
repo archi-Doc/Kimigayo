@@ -80,14 +80,14 @@ public class InferredPropertyAccessBindingTest
     public void NoSignatureAnswerIsKeptBeforeTheFirstConformanceValidation(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]
-    [InlineData("1@Source.C.Element")]
-    [InlineData("(1, 1@Source.C.Element)")]
+    [InlineData("1@Source.(C).Element")]
+    [InlineData("(1, 1@Source.(C).Element)")]
     [InlineData("makeArray()")]
     [InlineData("make()")]
     [InlineData("(make(), 1)")]
     public void InitializerOnlyProjectionDoesNotExposeItsSpelling(string expression)
     {
-        Check("contract C\n    associate Element\npublic struct Source\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public let item = " + expression + "\n    private func make() -> Source.C.Element => 1\n    private func makeArray() -> [2 of Source.C.Element] => [1, 2]", true);
+        Check("contract C\n    associate Element\npublic struct Source\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public let item = " + expression + "\n    private func make() -> Source.(C).Element => 1\n    private func makeArray() -> [2 of Source.(C).Element] => [1, 2]", true);
     }
 
     [Theory]
@@ -99,7 +99,7 @@ public class InferredPropertyAccessBindingTest
     [InlineData("make()", "private", true)]
     public void InferredConcreteTypesStillUseThePropertyDomain(string expression, string access, bool valid)
     {
-        var c = Check("enum Hidden\n    A\ncontract C\n    associate Element\nstruct Source\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    " + access + " let item = " + expression + "\n    private func make() -> Source.C.Element => Hidden.A\n    private func makeArray() -> [2 of Hidden] => [Hidden.A, Hidden.A]", valid);
+        var c = Check("enum Hidden\n    A\ncontract C\n    associate Element\nstruct Source\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    " + access + " let item = " + expression + "\n    private func make() -> Source.(C).Element => Hidden.A\n    private func makeArray() -> [2 of Hidden] => [Hidden.A, Hidden.A]", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -131,7 +131,7 @@ public class InferredPropertyAccessBindingTest
     [Fact]
     public void WarmInferredPropertyAccessAllocatesNothing()
     {
-        var c = Check("contract C\n    associate Element\npublic struct Source\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public let item = (1, 1@Source.C.Element)", true);
+        var c = Check("contract C\n    associate Element\npublic struct Source\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public let item = (1, 1@Source.(C).Element)", true);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
