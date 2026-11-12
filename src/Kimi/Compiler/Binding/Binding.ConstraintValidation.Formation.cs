@@ -103,7 +103,7 @@ public sealed partial class Binding
         {
             for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
             {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments), true);
+                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope), true);
             }
         }
 
