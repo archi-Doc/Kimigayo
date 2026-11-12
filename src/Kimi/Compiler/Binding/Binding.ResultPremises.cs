@@ -454,7 +454,9 @@ public sealed partial class Binding
 
     // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a part that waits at `ref/U during a` for a value call's solve is a borrowed owner temporary,
     // of U (TemporaryTarget) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
-    // `a`, by the key of a named call's evidence walk (InferComposite, InferLiteral: InferTemporary).
+    // `a`, by the key of a named call's evidence walk (InferComposite's Aggregate part, InferLiteral: InferTemporary). A part of Join
+    // kind at `ref/(...)`, which InferComposite borrows too, is PLAN G729's exception and no key here: whether a value call takes it
+    // is the question of a temporary carried out of its arm.
     private void AddTemporaryBound(Koto part, BoundType pattern, OriginInference inference, BindingScope scope)
     {
         if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } origin } &&
