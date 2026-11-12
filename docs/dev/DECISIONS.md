@@ -6261,6 +6261,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
         covEnumNumBranchOk under R4-M198's undecided class: the verdict their concrete controls (covArr32U8StoreRests,
         covEnumNumU16Rests) already get on dev, and the one O-205 (a) prescribes for an abstract write (A5 reads no size or Case at
         the store).
+      - one valid program that dev already rejects (PLAN G416's self-row;
+        `DictionaryIndexTest.GenericIndexUsesTheConcreteEqualityWitness`): its false ComparisonLoanConflict_Kd is kept and a second
+        record, `Unsupported_Kd`, is added at the same subject: of the two checks the self-row fails (`owned`'s destruction and its
+        storage's end), the second now finds the Loan only in sets carrying Φ_U, the store `owned[key] = value@move` of an abstract
+        V through `indexUniq`'s `uniq/V` being an undecided write at `owned` as its concrete control's is on dev (R4-M198's
+        set-level named limit through R4-M199's closure, PLAN G599 (b); no acceptance move).
     - Rejected: a Position-free answer (review 1's B1); a clause per form at the gate (B2); Erased read as the unknown write
       (dFnStoreOk, dFnPutOk are valid); a pun decided by a binding's assumed size (review 2's B4, O-205 (a)); encoding the abstract
       part as `Extent.Open`, which means a length that is no constant (limit (c)), while an abstract part is a Scalar for some
