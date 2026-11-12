@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The Types the compiler's built-in formatting conformance answers (IsBuiltin), SPEC 22.10.5's bounded ones and rule L's stack limit
+// SPEC 22.10.2's Types whose Utf8Format conformance is built in (IsBuiltin), SPEC 22.10.5's bounded ones and rule L's stack limit
 // (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables every phase reads by Type. A bound is the
 // implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or library formatter's Type, a
 // string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row).
@@ -14,12 +14,11 @@ internal static class FormattingTypes
     /// bytes is formatted on a stack region of exactly that sum, after substitution as before; any other uses the heap buffer.</summary>
     internal const int StackLimit = 1024;
 
-    /// <summary>Gets whether the compiler states a Type's Utf8Format conformance, which no declaration states: the scalars, Unit and
-    /// string. Each is a witness table row (the integers since R8-S2b1 and R8-S2b2), which this proof still answers first (DECISIONS
-    /// R8-M30, temporary 2), until R8-S2d2 deletes this meaning.
-    /// Utf8Slice declares its conformance, so it is not one (R8-S2d1).</summary>
+    /// <summary>Gets whether a Type is one of SPEC 22.10.2's Types whose Utf8Format conformance is built in (the scalars, Unit and
+    /// string), except Utf8Slice, which declares its own (R8-S2d1); each is a witness table row, which states and proves it (DECISIONS
+    /// R8-M30). Read by RequirementMember's member gathering until PLAN G776 deletes it.</summary>
     /// <param name="type">A Type.</param>
-    /// <returns>Whether the built-in conformance answers it.</returns>
+    /// <returns>Whether it is one.</returns>
     internal static bool IsBuiltin(BoundType type) => type.Semantics == SemanticsKind.Owner &&
         (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String));
 

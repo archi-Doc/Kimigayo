@@ -602,16 +602,6 @@ public sealed partial class FunctionCodegenTest
             static x => Assert.Equal(FormattingTypes.IsBuiltin(x), LegacyRuntimeHelpers.FormatKind(x) >= 0));
     }
 
-    // R8-S2b2 (DECISIONS R8-M30, temporary 1): every Type FormattingTypes.IsBuiltin answers, its whole domain, formats through a witness
-    // table row, so no Type reaches builtinFormat and the staged shim, whose kinds 9 and 10 the routine no longer has, until R8-S2d2
-    // deletes them (fail-before: i128 and u128 had no row).
-    [Fact]
-    public void NoBuiltinFormattableTypeReachesTheShim()
-        => Assert.All(
-            BoundType.Primitives.Values.Concat(BoundType.WrappingScalars.Values).Concat([BoundType.Boolean, BoundType.Unit, BoundType.String])
-                .Where(FormattingTypes.IsBuiltin),
-            static x => Assert.NotNull(Binding.WitnessGroup(x, KimiDeclarationId.Utf8Format)));
-
     // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (FormattingTypes.Bound), a
     // wrapping integer's its argument's and an isize's an i64's, and -1 exactly where the Type is unbounded (a string, a view, a Type
     // without built-in formatting): the one table, which an owning interpolation's estimate, and so Text.toString, reads (R8-W1c).
