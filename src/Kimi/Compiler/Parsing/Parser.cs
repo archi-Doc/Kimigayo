@@ -52,6 +52,9 @@ public static partial class Parser
 
     private static readonly bool[] IsExpressionBoundaryKind = new bool[TokenHelper.MaxTokens];
 
+    // The first words of SPEC F.10.2's LabelableConstruct: a label's targets and, with `func`, the body-bearing expressions of F.4.4.
+    private static readonly bool[] IsLabelableConstruct = new bool[TokenHelper.MaxTokens];
+
     private static readonly HeaderWord[] HeaderWords = new HeaderWord[TokenHelper.MaxTokens];
 
     static Parser()
@@ -90,6 +93,11 @@ public static partial class Parser
                 TokenKind.Separator, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
                 TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
             ],
+            true);
+
+        Mark(
+            IsLabelableConstruct,
+            [TokenKind.If, TokenKind.Match, TokenKind.For, TokenKind.While, TokenKind.Loop, TokenKind.Do],
             true);
 
         Mark(

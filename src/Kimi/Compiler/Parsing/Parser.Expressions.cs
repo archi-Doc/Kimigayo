@@ -256,8 +256,10 @@ public static partial class Parser
     {
 ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
-        if (reader.HeaderRegion && tokenKind is TokenKind.If or TokenKind.Match or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func)
+        if (reader.HeaderRegion && (IsLabelableConstruct[(byte)tokenKind] || tokenKind == TokenKind.Func))
         {
+            // A body-bearing expression in a header expression (SPEC F.4.4): a LabelableConstruct or an anonymous function. A labeled
+            // one is ParseLabeledExpression's.
             var cause = reader.Unexpected(SyntaxForm.HeaderBodyExpression);
             if (reader.IndentedBodyFollows())
             {
@@ -297,9 +299,11 @@ ProcessPrefix:
 
             // Formatting roots require literal syntax so their embedded evaluation can be deferred.
             if (tokenKind == TokenKind.Dollar &&
-                (!((operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "abort" }, ArgumentNodes.Count: 1 } abort && abort.GetArgumentLabel(0) is null) ||
+                (!((operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "abort" }, ArgumentNodes.Count: 1 } abort &&
+                   abort.GetArgumentLabel(0) is null) ||
                    (operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" }, ArgumentNodes.Count: 2 } write &&
-                   write.GetArgumentLabel(0) is null && write.GetArgumentLabel(1) is null && write.ArgumentNodes[1] is StringLiteralKoto or InterpolatedStringKoto)) ||
+                   write.GetArgumentLabel(0) is null && write.GetArgumentLabel(1) is null &&
+                   write.ArgumentNodes[1] is StringLiteralKoto or InterpolatedStringKoto)) ||
                  (reader.PeekKind(-1) == TokenKind.CloseParenthesis && reader.PeekKind(-2) == TokenKind.Comma)))
             {
                 // The prefix marks nothing Binding can select; the node rests on the Error and its operand is checked on its own.
@@ -312,7 +316,9 @@ ProcessPrefix:
                 return dollar;
             }
 
-            return tokenKind == TokenKind.Try ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand) : KotoHelper.NewUnaryKoto(ref reader, token, operand);
+            return tokenKind == TokenKind.Try
+                ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand)
+                : KotoHelper.NewUnaryKoto(ref reader, token, operand);
         }
 
         return ParsePrimaryExpression(ref reader);
