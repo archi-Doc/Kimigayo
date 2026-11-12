@@ -866,8 +866,8 @@ public class PairFollowTest
 
     // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
     // through a qualifying pair layer below ref or uniq layers, and an index key through one (SPEC 4.7.1: a Dictionary's and a user
-    // Type's ref/Key). Below a met layer the slot of an owner- or uniq-admitting pair is implied by well-formedness, so `during x` holds
-    // in every case and `during m0` only where ref alone is admitted.
+    // Type's ref/Key), as a Non-Copy key through two concrete layers is. Below a met layer the slot of an owner- or uniq-admitting pair is
+    // implied by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    return 0")]
@@ -888,6 +888,7 @@ public class PairFollowTest
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v")]
     [InlineData("func f<s/T>(d: uniq/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    d[k] = 5\n    return 0")]
     [InlineData(TwoKeys + "func f<s/T>(m: ref/M, k: ref/(s/i32 during m0), n: s/T) -> i32\n    s is owner or ref\n    return m[k] + 0")]
+    [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/string during m0)) -> i32\n    return d[k] + 0")]
     public void LayeredPairReadsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);
@@ -908,6 +909,7 @@ public class PairFollowTest
     [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or uniq\n    for e in items\n        e@follow = 0\n    return 0", DiagnosticCode.Unsupported_Kd)]
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i64 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/i32 during m0)) -> i32\n    return d[k] + 0", DiagnosticCode.TypeMismatch_Kd)]
     public void LayeredPairReadsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);
