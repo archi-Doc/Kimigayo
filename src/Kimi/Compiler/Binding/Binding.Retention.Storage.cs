@@ -245,8 +245,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var argument in at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [])
+            var arguments = at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [];
+            for (var j = 0; j < arguments.Count; j++)
             {
+                var argument = arguments[j];
                 var node = this.PremiseNode(environment, argument);
                 this.storagePositions.AddRange([(at.Storage, node, null), (AbstractStorage, node, null)]);
                 this.storageTargets.AddRange([(at.Storage, node), (AbstractStorage, node)]);
@@ -426,8 +428,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type.Components)
+        for (var i = 0; i < type.Components.Count; i++)
         {
+            var part = type.Components[i];
             this.AbstractPositions(environment, part, position);
         }
     }
@@ -462,8 +465,9 @@ public sealed partial class Binding
             nodes.Add(this.PremiseNode(environment, origin));
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
+            var argument = type.OriginArguments[i];
             nodes.Add(this.PremiseNode(environment, argument));
         }
 
@@ -509,8 +513,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type!.Components)
+        for (var i = 0; i < type!.Components.Count; i++)
         {
+            var part = type!.Components[i];
             this.Occurrences(environment, part, nodes, callable);
         }
     }
@@ -540,8 +545,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type!.Components)
+        for (var i = 0; i < type!.Components.Count; i++)
         {
+            var part = type!.Components[i];
             this.OwnOccurrences(environment, part, nodes, callable);
         }
     }
@@ -568,8 +574,9 @@ public sealed partial class Binding
             nodes.Add(this.PremiseNode(environment, origin));
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
+            var argument = type.OriginArguments[i];
             nodes.Add(this.PremiseNode(environment, argument));
         }
 
