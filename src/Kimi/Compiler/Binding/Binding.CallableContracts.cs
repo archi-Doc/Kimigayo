@@ -62,11 +62,7 @@ public sealed partial class Binding
                 this.CollectOriginInference(projected, expected, inference, result: true);
             }
 
-            // SPEC 15.3.7, 15.6.1, the owner's (a): a whole-contract comparison; each of its proofs, its solve's too, assumes the own
-            // well-formedness of the requirement as substituted (Self, the Type's arguments), as 10.7's does (ContractFits).
-            var demandedInputs = count == 0 ? BoundType.Unit : this.types.Tuple(demanded.AsSpan(0, count));
-            var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, expected ?? BoundType.Unit]);
-            var comparison = new CallableInstance(null, null, signature, requirement.Binder, null);
+            var comparison = this.RequirementComparison(demanded.AsSpan(0, count), expected, requirement.Binder);
             inference.Comparison = comparison;
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
@@ -132,6 +128,16 @@ public sealed partial class Binding
             substituted = this.SubstituteStoredOrigins(substituted, implementation.Binder, origins.AsSpan(0, implementation.OriginCount), inputs.AsSpan(0, InputOriginCount(implementation.Binder)), requirement.Binder);
             return this.ContractType(substituted, scope, self);
         }
+    }
+
+    // SPEC 15.3.7, 15.6.1, the owner's (a): the whole-contract comparison of a witness with `binder`'s requirement as substituted (Self,
+    // the Type's arguments): each of its proofs, its solve's too, assumes that signature's own well-formedness, as 10.7's does
+    // (ContractFits). The one place a witness comparison is formed; AddRequiredPremises reads its premises from it (DECISIONS BU-93).
+    private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder)
+    {
+        var demandedInputs = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);
+        var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, result ?? BoundType.Unit]);
+        return new CallableInstance(null, null, signature, binder, null);
     }
 
     private BoundType? ProjectCallableType(BoundType type, BoundType? declaringType)
