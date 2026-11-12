@@ -347,6 +347,12 @@ public class PairFollowTest
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
         "func g(v: ref/i32) -> i32 => v + 0\nfunc both(a: ref/i32, b: uniq/i32) -> i32 => 0\n";
 
+    // SPEC 4.7.1: a struct with two Key conformances, whose key Type below the key's layers selects one.
+    private const string TwoKeys =
+        "struct M\n    Self is Indexable<i32>\n    Self is Indexable<bool>\n    associate Indexable<i32>.Element is i32\n    associate Indexable<bool>.Element is i64\n" +
+        "    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n" +
+        "    public func index(self, key: ref/i32) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/bool) -> ref/i64 during self => self.large@ref\n";
+
     // PLAN G794 (SPEC 10.2, 3.4.3, 7.3, 14.6.2): the shared-reference row at a let, an argument and a result, a ref/Self receiver and a
     // borrowing `for` through a qualifying pair layer below a ref layer, in an owner instance and a ref instance of each.
     private const string LayeredRow = Layered +
@@ -859,8 +865,9 @@ public class PairFollowTest
             ContextualCaptureTest.PublishedRecords("struct Animal\n    public var age: i32 = 0\n    public init() => ()\nfunc f<s/T>(v: obj/Animal, m: s/T) -> bool\n    s is owner or ref\n    return v is (s/T)\npublic func main() => ()\n").Select(static x => x.Code));
 
     // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
-    // through a qualifying pair layer below ref or uniq layers. Below a met layer the slot of an owner- or uniq-admitting pair is implied
-    // by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
+    // through a qualifying pair layer below ref or uniq layers, and an index key through one (SPEC 4.7.1: a Dictionary's and a user
+    // Type's ref/Key). Below a met layer the slot of an owner- or uniq-admitting pair is implied by well-formedness, so `during x` holds
+    // in every case and `during m0` only where ref alone is admitted.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    return 0")]
@@ -876,6 +883,11 @@ public class PairFollowTest
     [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or ref\n    var total: i32 = 0\n    for e in items\n        total += e\n    return total")]
     [InlineData("func f<s/T>(x: uniq/(s/Node during m0), m: s/T) -> ref/i32 during x\n    s is owner or uniq\n    return x.weight@ref")]
     [InlineData("func f<s/T>(x: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    let v = r + 0\n    x@follow@follow = 2\n    return v")]
+    [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v")]
+    [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is ref\n    let v = d[k]\n    return v")]
+    [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v")]
+    [InlineData("func f<s/T>(d: uniq/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    d[k] = 5\n    return 0")]
+    [InlineData(TwoKeys + "func f<s/T>(m: ref/M, k: ref/(s/i32 during m0), n: s/T) -> i32\n    s is owner or ref\n    return m[k] + 0")]
     public void LayeredPairReadsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);
@@ -894,6 +906,8 @@ public class PairFollowTest
     [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or ref\n    for e in items\n        e@follow = 0\n    return 0", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f<s/T>(items: ref/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or raw\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or uniq\n    for e in items\n        e@follow = 0\n    return 0", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i64 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     public void LayeredPairReadsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);

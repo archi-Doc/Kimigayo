@@ -62,22 +62,12 @@ public sealed partial class Binding
     private static BoundType? LentElement(InvocationKoto? call)
         => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
 
-    // SPEC 4.7.1: the Type a key selects a conformance by, a borrowed key's referent (the key parameter is ref/Key); null for `null`
+    // SPEC 4.7.1: the written Type of a key that selects a conformance (ConformanceForKey reads it below its layers); null for `null`
     // or an unfitted number literal, which could fit several keys.
     private static BoundType? KeyType(Koto keyNode)
     {
         var key = KotoHelper.UnwrapParentheses(keyNode);
-        if (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null || key.BoundType is not { } type)
-        {
-            return null;
-        }
-
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            type = type.Components[0];
-        }
-
-        return type;
+        return key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null ? null : key.BoundType;
     }
 
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
@@ -194,14 +184,16 @@ public sealed partial class Binding
     }
 
     // SPEC 4.7.1, 8.6.1: the one conformance of the receiver's declaration to a bound reference of `contract` that names the key's
-    // reference (`contract` with the key's Type as its argument) for `core` in `scope` (NamesReference), or null for none or several.
+    // reference (`contract` with the key's Type below its safe value-reference layers as its argument, LayersTerminal; the key parameter
+    // is ref/Key) for `core` in `scope` (NamesReference), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
     {
-        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
+        if (KeyType(keyNode) is not { } written || core.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }
 
+        var type = this.LayersTerminal(written, scope);
         BoundConformance? found = null;
         for (var i = 0; i < identities.Count; i++)
         {

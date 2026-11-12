@@ -16,14 +16,12 @@ public sealed partial class Binding
             {
                 var key = dictionary.Components[0];
                 var actual = this.BindNode(source.Right, scope, key);
-                // A lookup borrows K itself, including when K is a reference value.
-                // An existing ref/K is reborrowed; it is never read into a key snapshot.
-                var written = source.Right.BoundType;
-                if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-                    !IsSubtype(written, key) && IsSubtype(written.Components[0], key))
+                // A lookup borrows K itself, including when K is a reference value. A key whose layers reach K is the index call's
+                // ref/K argument (KeyBelowLayers); it is never read into a key snapshot.
+                if (this.KeyBelowLayers(source.Right.BoundType, key, scope) is { } reached)
                 {
                     this.adaptations.Remove(source.Right);
-                    actual = written.Components[0];
+                    actual = reached;
                 }
 
                 if (actual is null)
@@ -136,5 +134,26 @@ public sealed partial class Binding
         }
 
         return Complete(source, element);
+    }
+
+    // SPEC 4.7.1, 3.4.3, 10.2: the Type below the safe value-reference layers of a written key (LayerBelow) that first fits the key
+    // Type K, where the key itself does not: the index call's ref/K parameter then takes the key as one shared reference to it (an
+    // existing ref/K Reborrowed, more layers by the shared-reference row); null for a key of Type K or one whose layers never reach it.
+    private BoundType? KeyBelowLayers(BoundType? written, BoundType key, BindingScope scope)
+    {
+        if (written is null || IsSubtype(written, key))
+        {
+            return null;
+        }
+
+        for (var type = written; this.LayerBelow(type, scope) is { } below; type = below)
+        {
+            if (IsSubtype(below, key))
+            {
+                return below;
+            }
+        }
+
+        return null;
     }
 }
