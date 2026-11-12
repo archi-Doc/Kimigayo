@@ -146,6 +146,10 @@
     Description="a Container is declared where Containers nest"
     Phrase="Container declaration"
 
+  + Name="Syntax.SpecializationDeclaration"
+    Description="a specialization is declared at the source root or in a group, struct or enum body"
+    Phrase="specialization declaration"
+
   + Name="Syntax.CompileTimeDirective"
     Description="a compile-time directive selects whole items"
     Phrase="compile-time directive"
