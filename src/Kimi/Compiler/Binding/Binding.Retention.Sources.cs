@@ -72,7 +72,7 @@ public sealed partial class Binding
     // a Type once per path (`at.Source.Path`, an interned id), so one reached through two layers forms the borrows of both.
     private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
-        var referent = this.Referent(run, out var exclusive);
+        var referent = this.Referent(run, out var exclusive)?.Part;
         if (!at.Source.Held && !exclusive)
         {
             return -1;
@@ -135,7 +135,8 @@ public sealed partial class Binding
     private bool CanHold(BoundType? position, in RetentionSource source)
     {
         this.retentionParts.Clear();
-        if (position is null || Abstract(position) || (source.Own is { } own && (Abstract(own) || this.Holds(position, own, carried: true, 0))))
+        if (position is null || Abstract(position) ||
+            (source.Own is { } own && (Abstract(own) || this.Holds(position, new(own, HoldStep.Inline, HoldContent.Its, HoldFlags.None, null, null), 0))))
         {
             return true;
         }
@@ -173,7 +174,7 @@ public sealed partial class Binding
         if (this.Referent(run, out _) is { } target)
         {
             this.retentionParts.Clear();
-            borrows = this.Holds(referent, target, carried: false, 0);
+            borrows = this.Holds(referent, target, 0); // The layer's entry asks for a Place of its Part.
         }
         else
         {
@@ -189,11 +190,12 @@ public sealed partial class Binding
         return borrows;
     }
 
-    // Whether a storage holds a value of a Type as itself or a part (its entries; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
-    // and raw storage a value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
-    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
-    private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
+    // Whether a storage holds what an entry asks, as itself or a part (its entries): an Inline entry a value of its Part (a value stored
+    // there, also as a shared handle's payload, which a new value built there carries), a dereference (Referent's) a Place of its Part.
+    // An abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36) and raw storage a
+    // value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part, as an
+    // implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
+    private bool Holds(BoundType? storage, in Hold asked, int depth)
     {
         if (storage is null)
         {
@@ -205,18 +207,19 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.Fits(storage, value))
+        if (this.Fits(storage, asked.Part!))
         {
             return true;
         }
 
+        var stored = asked.Step == HoldStep.Inline;
         var run = this.BodyRun(storage, null, null, out _);
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
             var part = this.retentionHeld[i];
             holds = part.Step == HoldStep.Abstract || RawStorage(part) ||
-                ((this.ByValue(storage, part) || (carried && (part.Flags & HoldFlags.ReadOnly) != 0)) && this.Holds(part.Part, value, carried, depth + 1));
+                ((this.ByValue(storage, part) || (stored && (part.Flags & HoldFlags.ReadOnly) != 0)) && this.Holds(part.Part, asked, depth + 1));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
