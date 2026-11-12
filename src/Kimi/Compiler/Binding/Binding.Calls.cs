@@ -177,6 +177,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(candidateCount * argumentCount);
         var childSlices = this.indexScratch.Rent(candidateCount * 2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -497,6 +498,19 @@ public sealed partial class Binding
                 }
             }
 
+            Koto? borrowedElement = null;
+            for (var i = 0; i < argumentCount; i++)
+            {
+                var element = this.FailBorrowedElements(call.ArgumentNodes[i], selectedOperations[i].SourceType);
+                borrowedElement ??= element;
+            }
+
+            if (borrowedElement is not null)
+            {
+                this.AddPrerequisite(call, borrowedElement); // Interim until PLAN G585: the call rests on its borrowed element.
+                return this.Fail(call, BindingFailure.Unsupported);
+            }
+
             var completed = this.CompleteArguments(call, scope, selectedOperations);
             var formed = this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), selectedOperations, out defaults);
             if (!completed)
@@ -569,6 +583,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlices);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);

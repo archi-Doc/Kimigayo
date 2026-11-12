@@ -161,7 +161,7 @@ public class InheritedNameBindingTest
     [InlineData("open struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Q\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.far()", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("open struct E\n    protected open struct M\n        public init() => ()\n    public init() => ()\nopen struct D: E\n    public init() => ()\nstruct U: D.M\n    public init() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("open struct W<T>: T\nopen struct V<T>: T\nopen struct X<T>: T\nopen struct Z\n    public func z(self) -> i32 => 1\n    public init() => ()\nfunc f(a: ref/V<W<X<V<Z>>>>) -> i32 => a.z()", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("contract C\n    associate Next\nopen struct L<T>: T.C.Next\nstruct A\n    Self is C\n    associate C.Next is L<B>\nstruct B\n    Self is C\n    associate C.Next is L<A>\nfunc f(a: ref/L<A>) -> i32 => a.nope()", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("contract C\n    associate Next\nopen struct L<T>: T.(C).Next\nstruct A\n    Self is C\n    associate C.Next is L<B>\nstruct B\n    Self is C\n    associate C.Next is L<A>\nfunc f(a: ref/L<A>) -> i32 => a.nope()", DiagnosticCode.InvalidTypeFormation_Kd)]
     public void AClauseThatNeedsItsOwnLayersIsRejected(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

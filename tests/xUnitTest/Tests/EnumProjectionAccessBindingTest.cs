@@ -13,7 +13,7 @@ public class EnumProjectionAccessBindingTest
     [InlineData("internal", "public")]
     public void NormalizationCannotHidePayloadProjectionAccess(string typeAccess, string contractAccess)
     {
-        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct Source\n    Self is C\n    associate C.Element is i32\npublic enum Api\n    Item(Source.C.Element)");
+        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct Source\n    Self is C\n    associate C.Element is i32\npublic enum Api\n    Item(Source.(C).Element)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
@@ -22,10 +22,10 @@ public class EnumProjectionAccessBindingTest
 
     [Theory]
     [InlineData("Source.Element")]
-    [InlineData("(i32, Source.C.Element)")]
-    [InlineData("[2 of Source.C.Element]")]
-    [InlineData("Box<Source.C.Element>")]
-    [InlineData("(Source.C.Element) -> ()")]
+    [InlineData("(i32, Source.(C).Element)")]
+    [InlineData("[2 of Source.(C).Element]")]
+    [InlineData("Box<Source.(C).Element>")]
+    [InlineData("(Source.(C).Element) -> ()")]
     public void NestedPayloadProjectionsRetainAccess(string payload)
         => Check(Prefix + "public struct Box<T>\npublic enum Api\n    Item(" + payload + ")", false);
 
@@ -35,13 +35,13 @@ public class EnumProjectionAccessBindingTest
     [InlineData("public", "internal", true)]
     [InlineData("public", "public", false)]
     public void PayloadUsesEffectiveEnumDomain(string outerAccess, string enumAccess, bool valid)
-        => Check(Prefix + outerAccess + " group Outer\n    " + enumAccess + " enum Api\n        Item(Source.C.Element)", valid);
+        => Check(Prefix + outerAccess + " group Outer\n    " + enumAccess + " enum Api\n        Item(Source.(C).Element)", valid);
 
     [Theory]
     [InlineData("internal", false)]
     [InlineData("public", true)]
     public void DependentPayloadRetainsContractDomain(string access, bool valid)
-        => Check(access + " contract C\n    associate Element\npublic enum Api<T>\n    T is C\n    Item(T.C.Element)", valid);
+        => Check(access + " contract C\n    associate Element\npublic enum Api<T>\n    T is C\n    Item(T.(C).Element)", valid);
 
     [Theory]
     [InlineData(false)]
@@ -49,7 +49,7 @@ public class EnumProjectionAccessBindingTest
     public void InvalidPayloadCannotCertifyConstructionOrConformance(bool property)
     {
         var consumer = property ? "private let value = Api.Item(1)" : "private func value() -> Api => Api.Item(1)";
-        var c = Check(Prefix + "public contract Marker\npublic enum Api\n    Item(Source.C.Element)\n    Self is Marker\npublic group Consumer\n    " + consumer, false);
+        var c = Check(Prefix + "public contract Marker\npublic enum Api\n    Item(Source.(C).Element)\n    Self is Marker\npublic group Consumer\n    " + consumer, false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
         Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.SymbolOf()!)?.IsVerified ?? false);
@@ -61,7 +61,7 @@ public class EnumProjectionAccessBindingTest
     [InlineData("internal", true)]
     public void ReloadAndRebindRetainPayloadAccess(string access, bool valid)
     {
-        var c = Check(Prefix + access + " enum Api\n    Item(Source.C.Element)", valid);
+        var c = Check(Prefix + access + " enum Api\n    Item(Source.(C).Element)", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -75,7 +75,7 @@ public class EnumProjectionAccessBindingTest
     [Fact]
     public void ReplacingPayloadRechecksProjectionAccess()
     {
-        var c = Check(Prefix + "public enum Api\n    Item(Source.C.Element)", false);
+        var c = Check(Prefix + "public enum Api\n    Item(Source.(C).Element)", false);
         var original = Payload(c).Operands[0];
         var replacement = Payload(Check("public enum Api\n    Item(i32)", true)).Operands[0];
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
@@ -90,7 +90,7 @@ public class EnumProjectionAccessBindingTest
     [Fact]
     public void WarmPayloadAccessChecksAllocateNothing()
     {
-        var c = Check(Prefix + "internal enum Api\n    Item((Source.C.Element, [2 of Source.C.Element]))", true);
+        var c = Check(Prefix + "internal enum Api\n    Item((Source.(C).Element, [2 of Source.(C).Element]))", true);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

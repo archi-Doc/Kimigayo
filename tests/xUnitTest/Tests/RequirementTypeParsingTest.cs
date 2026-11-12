@@ -12,16 +12,16 @@ public class RequirementTypeParsingTest
     [Theory]
     [InlineData("()")]
     [InlineData("(i32,)")]
-    [InlineData("(i32, [1 of S.C.Element])")]
+    [InlineData("(i32, [1 of S.(C).Element])")]
     [InlineData("((i32, string), [1 of (bool, i32)])")]
-    [InlineData("Box<i32>.C.Element")]
-    [InlineData("Box<Box<i32>>.C.Element")]
-    [InlineData("(Box<i32>.C.Element or (i32, string))")]
-    [InlineData("not (i32, string) or Box<i32>.C.Element")]
+    [InlineData("Box<i32>.(C).Element")]
+    [InlineData("Box<Box<i32>>.(C).Element")]
+    [InlineData("(Box<i32>.(C).Element or (i32, string))")]
+    [InlineData("not (i32, string) or Box<i32>.(C).Element")]
     [InlineData("(((i32,)))")]
     [InlineData("(Pair<i32, string> or [1 of (bool, i32)])")]
-    [InlineData("(::Api.Box<(i32, string)>.C.Element and Copy)")]
-    [InlineData("(i32, string) and not Box<i32>.C.Element")]
+    [InlineData("(::Api.Box<(i32, string)>.(C).Element and Copy)")]
+    [InlineData("(i32, string) and not Box<i32>.(C).Element")]
     [InlineData("(S{k}).Item")]
     [InlineData("(S{k}).(C).Item")]
     [InlineData("((S{k}).Item or i32)")]
@@ -58,7 +58,7 @@ public class RequirementTypeParsingTest
     [Fact]
     public void RequirementPrecedenceIsUnchanged()
     {
-        var function = ParseTestHelper.ParseSingleFunction("func use<T>(value: T)\n    T is not (i32,) or Box<i32>.C.Element and Copy\n    ()");
+        var function = ParseTestHelper.ParseSingleFunction("func use<T>(value: T)\n    T is not (i32,) or Box<i32>.(C).Element and Copy\n    ()");
         var root = ParseTestHelper.Unary(KotoKind.Not, Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
         var either = ParseTestHelper.Binary(KotoKind.Or, root.Operand);
         Assert.IsType<TupleTypeKoto>(either.Left);
@@ -89,12 +89,12 @@ public class RequirementTypeParsingTest
     }
 
     [Theory]
-    [InlineData("(i32, [1 of S.C.Element])", "public", true)]
-    [InlineData("(i32, [1 of S.C.Element])", "internal", false)]
-    [InlineData("Box<i32>.C.Element", "public", true)]
-    [InlineData("Box<i32>.C.Element", "internal", false)]
-    [InlineData("Box<Box<i32>>.C.Element", "public", true)]
-    [InlineData("Box<Box<i32>>.C.Element", "internal", false)]
+    [InlineData("(i32, [1 of S.(C).Element])", "public", true)]
+    [InlineData("(i32, [1 of S.(C).Element])", "internal", false)]
+    [InlineData("Box<i32>.(C).Element", "public", true)]
+    [InlineData("Box<i32>.(C).Element", "internal", false)]
+    [InlineData("Box<Box<i32>>.(C).Element", "public", true)]
+    [InlineData("Box<Box<i32>>.(C).Element", "internal", false)]
     public void NewRequirementFormsRetainAccessAcrossRebindingAndReload(string requirement, string contractAccess, bool valid)
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is {requirement}\n        ()");
@@ -119,7 +119,7 @@ public class RequirementTypeParsingTest
     [Fact]
     public void ConstructedQualifierCannotHideARestrictedArgument()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.C.Element\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.(C).Element\n        ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
@@ -191,9 +191,9 @@ public class RequirementTypeParsingTest
     [InlineData("(i32 and string, bool)")]
     [InlineData("(i32, string or bool)")]
     [InlineData("Box<i32>.")]
-    [InlineData("Box<i32>.C.")]
-    [InlineData("Box<i32.C.Element")]
-    [InlineData("(Box<i32>.C.Element or)")]
+    [InlineData("Box<i32>.(C).")]
+    [InlineData("Box<i32.(C).Element")]
+    [InlineData("(Box<i32>.(C).Element or)")]
     public void MalformedRequirementsReportSourceErrorsAndCannotEmit(string requirement)
     {
         var source = $"func use<T>(value: T)\n    T is {requirement}\n    ()";
@@ -207,7 +207,7 @@ public class RequirementTypeParsingTest
     [Fact]
     public void WarmTupleAndConstructedProjectionBindingAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is (Box<i32>.C.Element, string)\n        ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is (Box<i32>.(C).Element, string)\n        ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
