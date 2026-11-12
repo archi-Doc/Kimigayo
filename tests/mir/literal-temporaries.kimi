@@ -55,3 +55,6 @@ func rawPlace() -> i32
     var p: raw/i32 = null
     let a: ref/(raw/i32) = p
     return useRaw(a)
+func closureElement() -> i32
+    let k = func (p: (ref/i32, i32)) -> i32 => p.0
+    return k((1, 2))

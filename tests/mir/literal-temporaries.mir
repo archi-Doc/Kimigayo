@@ -689,3 +689,61 @@ fn rawPlace @335
       StorageDead(_2) @343 s1
       StorageDead(_1) @338 s1
       unreachable @337
+fn closureElement @354
+  _0: i32 return @355
+  _1: closure ((ref/i32, i32)) -> i32 var k @357 s1
+  _2: i32 temp @369 s1
+  _3: ref/closure ((ref/i32, i32)) -> i32 temp @370 s1
+  _4: (ref/i32, i32) temp @371 s1
+  _5: i32 temp @372 s1
+  _6: ref/i32 temp @372 s1
+  _7: i32 temp (Result) @354
+  s1: lexical in s0 @356
+  bb0:
+      StorageLive(_1) @357 s1
+    * _1 = Closure(): closure ((ref/i32, i32)) -> i32 @359 s1
+      StorageLive(_2) @369 s1
+      StorageLive(_3) @370 s1
+    * _3 = &_1: ref/closure ((ref/i32, i32)) -> i32 @370 s1
+      StorageLive(_4) @371 s1
+      StorageLive(_5) @372 s1
+      _5 = const 1_i32 @372 s1
+      StorageLive(_6) @372 s1
+      _6 = &_5: ref/i32 @372 s1
+      _4 = Tuple(move _6, const 2_i32): (ref/i32, i32) @371 s1
+      _2 = value const type ((ref/i32, i32)) -> i32 move _3(move _4) -> bb1 @369 s1
+  bb1:
+      goto bb6 check bb7 @368 s1
+  bb2:
+      return @354
+  bb3:
+      _0 = move _7 @354
+      goto bb2 @354
+  bb4:
+      StorageDead(_1) @357 s1
+      goto bb3 @354
+  bb5:
+      StorageDead(_6) @372 s1
+      StorageDead(_5) @372 s1
+      StorageDead(_4) @371 s1
+      StorageDead(_3) @370 s1
+      StorageDead(_2) @369 s1
+      goto bb4 @354
+  bb6:
+      _7 = move _2 @368 s1
+      goto bb5 @368 s1
+  bb7:
+      StorageDead(_6) @372 s1
+      StorageDead(_5) @372 s1
+      StorageDead(_4) @371 s1
+      StorageDead(_3) @370 s1
+      StorageDead(_2) @369 s1
+      StorageDead(_1) @357 s1
+      unreachable @356
+closure @359
+  _0: i32 return @364
+  _1: ref/closure ((ref/i32, i32)) -> i32 arg @359
+  _2: (ref/i32, i32) arg p @360
+  bb0:
+    * _0 = copy (*_2.0) @365
+      return @365
