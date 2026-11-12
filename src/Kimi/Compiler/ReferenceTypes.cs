@@ -104,7 +104,7 @@ internal static class ReferenceTypes
     // SPEC 13.4: a string comparison operand is a string or safe reference layers ending in one.
     internal static bool EndsInString(BoundType? type)
     {
-        for (var depth = 0; depth < 64 && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; depth++)
+        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             type = type.Components[0];
         }

@@ -23,7 +23,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.True(tree.Compilation.Bind().IsComplete);
         var function = Assert.IsType<FunctionKoto>(comment.Declaration);
         Assert.Equal(-1, function.SymbolOf()!.ReceiverIndex);
-        var classified = doc.ClassifyItems(DeclarationParameters(function)).ToArray();
+        var classified = doc.ClassifyItems(DocumentationMarkdown.Parameters(function)).ToArray();
         Assert.Equal(new[] { "by", "factor", "note", "self", "s", "T", "N", "a", "return", "note" }, classified.Select(x => x.Name));
         Assert.Equal(new[] { DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Unknown, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Standard, DocumentationMarkdownItemKind.Standard }, classified.Select(x => x.Kind));
         Assert.All(doc.GetItemCandidates().ToArray().Take(9), item => Assert.Equal(DocumentationMarkdownItemKind.Unclassified, item.Kind));
@@ -40,7 +40,7 @@ public class DocumentationMarkdownIntegrationTest
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var declaration = Assert.IsType<FunctionKoto>(comment.Declaration);
         Assert.Equal(receiver ? 0 : -1, declaration.SymbolOf()!.ReceiverIndex);
-        var items = DocumentationMarkdownDocument.Parse(comment).ClassifyItems(DeclarationParameters(declaration)).ToArray();
+        var items = DocumentationMarkdownDocument.Parse(comment).ClassifyItems(DocumentationMarkdown.Parameters(declaration)).ToArray();
         Assert.Equal(receiver ? DocumentationMarkdownItemKind.Unknown : DocumentationMarkdownItemKind.Parameter, items[0].Kind);
         Assert.Equal(DocumentationMarkdownItemKind.Parameter, items[1].Kind);
     }
@@ -52,7 +52,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var doc = DocumentationMarkdownDocument.Parse(comment);
-        var items = doc.ClassifyItems(DeclarationParameters(comment.Declaration!)).ToArray();
+        var items = doc.ClassifyItems(DocumentationMarkdown.Parameters(comment.Declaration!)).ToArray();
         Assert.Equal(DocumentationMarkdownItemKind.Ambiguous, items[0].Kind);
         Assert.Equal(2, items[0].ParameterMatchCount);
         Assert.Equal(DocumentationMarkdownItemKind.Standard, items[1].Kind);
@@ -99,7 +99,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.True(compilation.Bind().IsComplete);
         var original = Selected(compilation.Kotonoha);
         var oldDocument = DocumentationMarkdownDocument.Parse(original);
-        var oldItems = oldDocument.ClassifyItems(DeclarationParameters(original.Declaration!)).ToArray();
+        var oldItems = oldDocument.ClassifyItems(DocumentationMarkdown.Parameters(original.Declaration!)).ToArray();
         var target = Compilation.CreateForTest();
         target.CollectDocumentation = true;
         Assert.True(target.Prepare("x86_64-unknown-linux-gnu"));
@@ -115,7 +115,7 @@ public class DocumentationMarkdownIntegrationTest
         var editedComment = Selected(edited);
         var editedDocument = DocumentationMarkdownDocument.Parse(editedComment);
         Assert.Equal(oldDocument.Text, editedDocument.Text);
-        Assert.Equal(DocumentationMarkdownItemKind.Unknown, Assert.Single(editedDocument.ClassifyItems(DeclarationParameters(editedComment.Declaration!)).ToArray()).Kind);
+        Assert.Equal(DocumentationMarkdownItemKind.Unknown, Assert.Single(editedDocument.ClassifyItems(DocumentationMarkdown.Parameters(editedComment.Declaration!)).ToArray()).Kind);
         Assert.Equal(DocumentationMarkdownItemKind.Parameter, Assert.Single(oldItems).Kind);
         Assert.NotEqual(oldDocument.Root, editedDocument.Root);
     }
@@ -151,33 +151,4 @@ public class DocumentationMarkdownIntegrationTest
     private static string Comment(string text, string indent = "") => string.Concat(text.Split('\n').Select(line => indent + "/// " + line + "\n"));
 
     private static DocumentationComment Selected(Kotonoha tree) => Assert.Single(Assert.Single(tree.DocumentationSources).Comments, x => x.IsSelected && x.Declaration is not null);
-
-    // Test adapter: consume real Binding receiver roles, not the spelling "self".
-    // Product publication/classification wiring remains a later migration step.
-    private static DocumentationMarkdownParameter[] DeclarationParameters(Koto declaration)
-    {
-        var result = new List<DocumentationMarkdownParameter>();
-        var generics = declaration is FunctionKoto function ? function.GenericArguments : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
-        foreach (var generic in generics)
-        {
-            result.Add(new(generic.Identifier));
-            if (generic.SemanticsParameter is { } semantics)
-            {
-                result.Add(new(semantics));
-            }
-        }
-
-        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : [];
-        result.AddRange(origins.Select(name => new DocumentationMarkdownParameter(name)));
-        if (declaration is FunctionKoto f)
-        {
-            Assert.NotNull(f.SymbolOf());
-            for (var index = 0; index < f.Parameters.Count; index++)
-            {
-                result.Add(new(f.Parameters[index].ExternalName, index == f.SymbolOf()!.ReceiverIndex));
-            }
-        }
-
-        return result.ToArray();
-    }
 }
