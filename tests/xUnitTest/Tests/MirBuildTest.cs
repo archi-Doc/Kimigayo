@@ -217,6 +217,24 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Contains("opaque", first, StringComparison.Ordinal);
     }
 
+    // PLAN G796: a location's scope is its index in the body's scope table, an int like the table's own (MirScope.Outer), so no count of
+    // scopes changes it. 65,540 sibling `do` Bodies in one function (SPEC 14.3; no limit of IMPL 21.3.2 counts them) each hold their
+    // assignment in a scope of their own. Fails before G796: the index was narrowed to 16 bits, so the Bodies past the 65,536th joined
+    // the body's first scopes, an Unsafe Block's (A5's storing rule skipped) or an inline default copy's included.
+    [Fact]
+    public void ALocationPastThe65536thScopeKeepsItsScope()
+    {
+        const int Count = 65_540;
+        var body = Body("func f()\n    var n: i32 = 0\n" + string.Concat(Enumerable.Repeat("    do\n        n = 1\n", Count)), "f");
+        var used = new HashSet<int>();
+        foreach (ref readonly var statement in body.Statements)
+        {
+            used.Add(statement.Source.Scope);
+        }
+
+        Assert.True(used.Count >= Count && body.Scopes.Length > Count, $"{used.Count} scopes hold a statement of {body.Scopes.Length}");
+    }
+
     // R8-L1 M-B1: the library's bodies hold the ordinals 0 to LibraryCount - 1 and the program's follow, a default template and a Closure
     // included, each the body its ordinal reads, in the first build and after a rebind.
     [Fact]

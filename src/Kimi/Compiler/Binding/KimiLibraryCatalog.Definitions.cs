@@ -176,6 +176,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageErasedReserve, "erasedReserve", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageErasedReserve),
         new(KimiDeclarationId.StorageFormatFloat, "formatFloat", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatFloat),
+        new(KimiDeclarationId.StorageFormatInteger128, "formatInteger128", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatInteger128),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyDictionary, "destroyDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),

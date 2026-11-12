@@ -52,7 +52,8 @@ internal sealed partial class ModuleCodegen
     private readonly LlvmConstantPool constants = new();
     private readonly HashSet<Problem> reported = new();
     private readonly FunctionCodegen bodies;
-    private readonly TyCtxt types; // Its erasure and Copy proofs, which the object descriptors read (ModuleCodegen.Objects).
+    private readonly TyCtxt types; // Its erasure and Copy proofs, which the object descriptors read (ModuleCodegen.Objects), and a
+    // specialization's original, whose ABI its body keeps (Signature).
     private readonly IReadOnlyList<LibraryImport> imports; // Binding's validated #LibraryImport declarations (F2b).
     private readonly List<ExternalFunction> externals = []; // The imports the latest Write's definitions call, one per symbol (Import).
     private int writes; // The number of Writes.

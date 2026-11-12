@@ -656,11 +656,26 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
     }
 
+    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
+    // Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
+    // allocates nor Aborts), and its signature's `uniq` destination states the one write (fail-before: the kind did not exist, the
+    // descriptor's arity was -1).
+    [Fact]
+    public void AFormatInteger128CallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
+        Assert.Equal(
+            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
+            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+    }
+
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64
     // the IntegerFormat body at i64, whose comparison and conversions on its I are built-in operators, no calls; each leaf write reaches
     // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
-    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer (pins: the
-    // i64 rows pass through builtinFormat before R8-S2b1).
+    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer; an i128's and a
+    // u128's write runs IntegerFormat's specialization, whose Storage.formatInteger128 call is classed Inputs (R8-S2b2) (pins: the i64
+    // rows pass through builtinFormat before R8-S2b1, the 128-bit rows before R8-S2b2).
     [Theory]
     // A growing writer, Text.heap(0): allocation permitted (SPEC 8.11.2), nothing reported.
     [InlineData("        var buffer = Text.heap(0)\n", "true")]
@@ -668,12 +683,17 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "true")]
     [InlineData("        var buffer = Text.heap(0)\n", "-12345@i64")]
     [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "-12345@i64")]
+    [InlineData("        var buffer = Text.heap(0)\n", "-170141183460469231731687303715884105728@i128")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "-170141183460469231731687303715884105728@i128")]
+    [InlineData("        var buffer = Text.heap(0)\n", "340282366920938463463374607431768211455@u128")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "340282366920938463463374607431768211455@u128")]
     public void AConfinedLeafWriteReportsNothing(string buffer, string value)
         => Assert.Empty(Problems(Sink + Loud + Witness + buffer + $"        var writer = Text.writer(buffer@uniq)\n        _ = writer.write({value})\n        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers up
-    // to 64 bits (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is
-    // the same at every instance; pins, which pass through builtinFormat before it), for bool, char and Unit (R8-S2a), for f32 and f64
+    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers
+    // (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is the same
+    // at every instance; R8-S2b2: the summary also holds the i128 and u128 specializations, SPEC 15.6.4, whose Storage.formatInteger128
+    // call is classed Inputs; pins, which pass through builtinFormat before them), for bool, char and Unit (R8-S2a), for f32 and f64
     // (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's Allocation and Abort are permitted under confined, SPEC 8.11.2,
     // so no record) and for string and Wrapping<i32> (R8-S2d1), the view's declared one (R8-S2d1; the view of a local string, since a
     // temporary's ends with its statement, SPEC 3.6), Shown's printing one, also in an interpolation (fail-before: the earlier rows, a
@@ -688,6 +708,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        let index = value@isize\n        _ = \"\\(index)\"\n", "")]
     [InlineData("        _ = Text.toString(9@usize)\n", "")]
     [InlineData("        let size = 9@usize\n        _ = \"\\(size)\"\n", "")]
+    [InlineData("        _ = Text.toString(-7@i128)\n        let huge = value@i128\n        _ = \"\\(huge)\"\n", "")]
+    [InlineData("        _ = Text.toString(7@u128)\n        let wide = value@u128\n        _ = \"\\(wide)\"\n", "")]
     [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
     [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
     [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]

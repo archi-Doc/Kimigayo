@@ -193,10 +193,10 @@ internal sealed partial class MirBuilder
 
     // A block's items before its last one, in its MIR scope and its scope of locals and defers, which its builder leaves (Block,
     // TargetBlock); the MIR scope around it.
-    private ushort Lead(CodeBlockKoto block, MirScopeKind kind)
+    private int Lead(CodeBlockKoto block, MirScopeKind kind)
     {
         var outer = this.scope;
-        this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
+        this.scope = this.body.AddScope(outer, kind, SourceRef.Of(block));
         this.OpenScope(block: true);
         for (var i = 0; i < block.Items.Count - 1; i++)
         {
@@ -209,7 +209,7 @@ internal sealed partial class MirBuilder
     // SPEC 14.2, 16.2: a block's last item, its result, or its container's Unit; the locals and defers it registers are cleaned up when
     // it is left. Its last item's temporaries are those of the Body it is (SPEC 3.6, 16.2.2 step 3): an arm's, an if clause's or a do's,
     // the function's, else the enclosing statement's. Whether it ends in that item's value; the MIR scope around it restored.
-    private bool Last(MirPlace destination, CodeBlockKoto block, ushort outer)
+    private bool Last(MirPlace destination, CodeBlockKoto block, int outer)
     {
         var valued = false;
         if (block.Items.Count > 0)
