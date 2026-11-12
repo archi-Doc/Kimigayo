@@ -6228,6 +6228,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
     compared at the stage exit.
   - Removes: PLAN G667's (B1), (B2) and R1 from G667b's held rule, and G667b's zero-length puns (written and holder); supersedes
     nothing. Open: PLAN G732-G737.
+  - Amended by R4-M199 (PLAN G775): the undecided class's Limit tier holds through the gather's closure: a gather read has one tier
+    (`MirBorrows.Candidates.ReadTier`), a holder a Limit read reaches is read at Limit under its own read key, and the set-level
+    named limit (PLAN G599 (b)) reaches through the closure too.
+- **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
+  one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
+  gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
+  - Rule: a gather read has a tier, fixed once before its memos and its scan: its read key's, Limit where the state read carries Φ_U
+    (`MirBorrows.Candidates.ReadTier`). A holder a read at Limit reaches has its own read key (slot + holderCount) at that tier, and
+    a reach at the pass's tier reads it again. Every memo of a gather read is keyed by its read key or the read's tier (Reach's
+    marks, `pending`, `Took`, `MirBorrows.States.Scanned`), and a read is scanned at the tier its memos are keyed by, so the verdict
+    does not depend on the order the gather reads holders in. As the dataflow's union keeps Φ_U through Content and Chain, the read
+    key keeps it through the gather.
+  - Record selection (Q13, the Middle's rulings): limit (a) with G736 (kClosurePtrStoreBad, mEnvTwoPtrsBothBad; removal G732, G736);
+    R4-M198's set-level named limit, now also through the closure (dEscBesideRestedBad, dClosureEscBesideBad, rLaterWriteEscBad,
+    cutHhFirstBad: a holder whose state, or the set naming it, carries Φ_U is read at Limit even where its own content is decided;
+    still rejected; removal G599 (b)). A decided verdict stays decided except where its Loan is found only in a set carrying Φ_U or
+    in a holder reached only through one.
+  - Record moves (Q13; dev to the unit, by program; no acceptance move): kClosureMixedStoreRests, kTupleBorrowStoreRests,
+    kClosureMixedDestRests, mEnv3Rests, mTuple3BorrowRests (unsettled): ComparisonLoanConflict_Kd -> `Unsupported_Kd` at the same
+    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (labelled valid in G775's reviews; PLAN
+    G788's triage reads them unsettled by SPEC 15.6 Holders and 15.6.4, an independent label check pending):
+    ComparisonLoanConflict_Kd -> `Unsupported_Kd`; the six invalid programs of the record selection: ComparisonLoanConflict_Kd ->
+    `Unsupported_Kd` (still rejected); sTookPerTierBad, sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second
+    record at `var p` ComparisonLoanConflict_Kd -> `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class);
+    hOwnRested2Bad (invalid): `Unsupported_Kd` -> ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather
+    read holders in).
+  - Not covered: R26-borrow (`MirBorrows.Defaults.DefaultBorrows`) does not read the tier; it reports every slot-rooted candidate
+    whatever its `Outcome` (PLAN G793; twin rKeepRestsU). The own-step Warning and Activations' scans keep R4-M198's named limit.
+  - Cost: per pass instance at most two reads of a holder's state and stores (one per read key), a Shared set read in full by two
+    vias per tier, a transit value taken once per tier; `Restamp` one more holderCount per view; warm 0 B.
+  - Rejected: tagging W's stores past a resting holder with Φ_U (every conflict such a store implies also holds in the pun layout,
+    where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
+    dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
+    the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10811,6 +10845,8 @@ resumed by R4-M86 (2026-10-20).
     through ambient state, and each further reader needs its own setting); an explicit reference parameter of `CheckConstraints`
     (over the parameter limit; a second mechanism beside the trial's field); setting the field around the effect uses (it brings the
     caller-context read of a written Type argument under the requirement's reference).
+  - Amended by BU-182 (PLAN G707): `CandidateBindings` holds the candidate's substitution as one `CallSubstitution`, in place of its
+    Slots and Lengths columns; the rule is unchanged.
 - **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
   「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
   conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
@@ -11927,6 +11963,7 @@ resumed by R4-M86 (2026-10-20).
     (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
     empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
     1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
+  - Partly superseded by BU-178 (G769): one rejection per item.
 
 - **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
   design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
@@ -12049,6 +12086,8 @@ resumed by R4-M86 (2026-10-20).
     itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
     C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
     a revisit on the path ends the walk.
+  - Amended by BU-181 (PLAN G703): the walk of `OperandTerminal`, a site above, is now `Binding.LayersTerminal`, which
+    `OperandTerminal` (after its premises) and `ReadTypeReferent` call; the rule is unchanged.
 - **BU-167 A qualifier with its own list omitted before `.init` or a Case reference is one inferred construction target (PLAN
   G745)** (2026-11-11; Front, Binding; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation review ACCEPT) SPEC 9.7, 9.7.1,
   6.5.2.
@@ -12126,6 +12165,98 @@ resumed by R4-M86 (2026-10-20).
     O-167); a consumer walk to the clause (B3); the projection range through the requirement (B6).
   - Closes PLAN G507 with the failed-subject records (x01, x02, r01, i04, i12), except P1's parenthesized function-type head (the
     limit above, PLAN G767).
+- **BU-181 Two Type predicates state what the Kind lists asked; the value read's terminal is the operand walk** (Front, 2026-11-11;
+  PLAN G703; Major; design reviews 1 and 2 REVISE, 3 ACCEPT; the Middle's RP17 consent C-219; on R8-M9 and BU-175 (G647)) SPEC
+  8.2.3, 8.7.3, 8.7.4, 8.1.1, 3.4.3, 3.5.3, 10.2, 13.5.2, 13.6.4.
+  - **Rule.** `BoundType.IsProofDecided` (SPEC 8.7.3): a proof alone decides the Type's built-in conformances and roles: an abstract
+    Type by a premise, or a pair's own `s/T` by its admitted set (Parameter, TargetProjection, AssociatedProjection).
+    `BoundType.IsAbstractType` (SPEC 8.2.3): a Type parameter, a pair target, a Contract's Self, an unresolved projection: the first
+    set without a pair's own `s/T`. No reader holds a Kind list or reads the admitted set.
+  - **Each site's read.** `IsProofDecided`: `IsGenericInteger`, `IntegerApplicability`, `ShiftCountApplicability`,
+    `NegationApplicability`, `IsReadType` (they omitted the pair target: G703's cause C1); `Binding.Types`' Object Target
+    obligation, `Binding.InlineLayouts`' projection subject, `Binding.ContractCalls.RequirementMember` (each asks a proof; a pair's
+    own `s/T` under one admitted Semantics was not shown unreachable, so their set is unchanged). `IsAbstractType`:
+    `Binding.AssociatedFormation.AssociatedOriginsOutlive`, `HoverBuilder.Variables`, `Binding.OriginRequirements` (each excluded
+    the pair before the list), `Binding.RuntimeTypeTests` (SPEC 13.6.4; the pair target enters, the pair's own Type cannot be
+    written as a target). `MirOrigins.Causes.FixedOrigins` keeps its own meaning ("a Type an instance decides"; the Middle's
+    commit).
+  - **The proof site.** A pair of one admitted Semantics is identified with its head in `Binding.Capabilities.SymbolicCapability`:
+    under a Semantics fact whose mask is `owner`, the proof of `s/T is C` for an intrinsic capability C (or of an application `s/U`)
+    is the proof of its target. It is the only place that reads the admitted set for this question.
+  - **Invariant.** `Binding.TryPairLayer` decomposes every Parameter whose symbol is a `SemanticsTarget`; one it cannot is
+    `InvalidOperationException` (InternalInvariant), since `IsAbstractType` excludes a pair by its symbol alone.
+  - **The read terminal.** `Binding.LayersTerminal(type, scope)` is the one walk of SPEC 3.4.3's safe value-reference layers (ref,
+    uniq, qualifying pair layers, any order, count-free as G647 made `OperandTerminal`); `OperandTerminal` applies its premises and
+    calls it, `ReadTypeReferent` calls it for the value read (SPEC 3.5.3, 10.2) and ends in `IsReadType`, which now answers a
+    primitive Scalar too. `ReadReferent` is one read of `ReadTypeReferent` (its `ScalarReferent` arm and its pair arm are deleted).
+    A conversion's operand is read before a case is selected (`Binding.Conversions`; SPEC 13.5.2).
+  - **Temporary structure.** `SharedReferenceThroughLayers` (SPEC 10.2's shared-reference row) still walks ref and uniq layers
+    itself. Removal condition: it takes its layers from `LayersTerminal`'s walk and meets a pair layer's slot per case, and
+    `let r: ref/i32 = x` with `x: ref/(s/i32 during a)` is accepted (its own A5-moving unit, after G647; PLAN G794).
+  - **Rejected.** `or TargetProjection` at each list (one more case of an open family at five sites); one predicate for both
+    questions (design review 2: it rejected `let v: s/T = 1` under `s is owner`); the read terminal through `OperandTerminal` with
+    its premises (its forms are G542's and G355's).
+
+- **BU-178 A misplaced effect item's selector is judged on its own (PLAN G769)** (2026-11-12; Front, Binding; Major; design review 1
+  REVISE (B1), design review 2 ACCEPT, implementation review 1 REVISE (B1), implementation review 2 ACCEPT (notes N3, N4 optional);
+  commits 611178cc2 and c8f9a7f6a on `claude/f-g769`; extends BU-173) SPEC 8.11.1, F.6.2, 23.1.2; DIAGNOSTICS 4.3.
+  - Rule: `SelectorReference` (from `EffectTarget`: one lookup, `WrittenReference`, `QualifierReference`) reads the selector and its
+    scope only. An applying item reads it in `EffectTarget`; a misplaced item (`BindEffectBound`) records its position, then judges
+    its selector on its own; a fault is kept under the selector and published as the item's second record (condition 1). No verdict
+    of the item reads that judgment, so it runs with no consultation frame open (`SuspendConsultation`), as an applying item's
+    (`PrepareEffectBounds`) and a Callable list's (`PrepareCallableEffects`) do: the misplacement never rests on the selector
+    (implementation review 1's B1: inside the item's `BindNode` frame, a syntax Error among the selector's Type arguments made both
+    records derived).
+  - Moves: records on invalid programs only (Q13): +1 independent `InvalidEffectBound_Kd` per misplaced item with a faulty selector
+    (`((A))`, `(ref/A)`, a non-Contract, an unknown name, a bare generic); dependent, counted by code: +1 `InvalidEffectBound_Kd`
+    per misplaced item whose selector holds a syntax Error (`()`, `(P<>)`, `(P<[i32; 2]>)`).
+  - Rejected: the selector as its own subject (moves every applying record to the selector); a parser rejection of `((A))` (BU-162);
+    two causes in one record (DIAGNOSTICS 4.3).
+  - Supersedes, in part, BU-173's rejected option "judging every item's selector in Binding" (F, design review 1's B1): of its two
+    reasons, "an item holds one rejection" no longer holds (DIAGNOSTICS 4.3 condition 1 lets one node hold several independent
+    problems; `ReportParameterShapes` is the precedent), so a misplaced item's selector fault is the item's second record; "Binding
+    records no syntax code" still holds: the selector's syntax faults (an empty group, a list) stay the parser's, and Binding judges
+    only the Contract reference's form, kind and formation. BU-173 gains the line "Partly superseded by BU-178 (G769): one rejection
+    per item".
+- **BU-182 The substitution of a call is one value: `CallSubstitution` (PLAN G707, G700)** (2026-11-10; Front, Binding; Major, an
+  acceptance mover; design reviews 1 REJECT and 2 ACCEPT, implementation reviews 1 REVISE and 2 ACCEPT; on BU-136) SPEC 15.6.4, 10.1
+  step 5, 15.3.7, 15.3.1.
+  - Cause: a call's substitution has two binders (the occurrence of the Type declaring the callee, and the callee) and six columns
+    (the first's Type slots and Origin slots; the second's Type slots, lengths, declared Origins and input Origins), and no value
+    held it. The signature (`CallType`, `StorageInstance`) and every site judging a callee's clause (`StepFiveConjunction` in the
+    trial and at the plan, `ResolvedClauseUnknown`, `CheckCallableEffectUses`, `CheckConstraints` for a function reference and an
+    override, `CompatibleRequirement`, `SubstituteClauseOrigin`, OriginProof's `Substitute`, `ForwardOrigin`) composed it from two
+    substitution steps, in its own order and with its own subset of the columns. No order of two steps is the substitution (the
+    declaring occurrence's arguments are read again under the callee, or the call's images under the declaring Type), and the
+    subsets missed the declared Origins, the inputs or both.
+  - Rule: `CallSubstitution` (Binder, SlotOwner, Types, Lengths, Origins, Images, Declaring; `Binding.CallSubstitution.cs`) is built
+    once per candidate or use by one builder (`SubstitutionOf`) and applied in one pass over the callee's binder and the declaring
+    occurrence's: a slot or atom takes its image under the callee, else under the declaring occurrence, and no image is substituted
+    again. The substitution core takes the value, not its columns. A call's signature, its Constraints, its declared Origin
+    relations and a witness comparison read it, and none of them composes two substitution steps. BU-136's `CandidateBindings`
+    carries it in place of its Slots and Lengths columns; `CompatibleRequirement` builds it after `CompareCallableContracts` has
+    solved the implementation's Origins and inputs (G700; SPEC 15.3.7).
+  - Moves (Q17 classes 3 and 1). Valid, newly accepted: a call whose clause names a call Origin, a parameter's elided Origin or the
+    declaring Type's slot (was `UnprovenConstraint_Kd` or `UnsatisfiedEffectBound_Kd`; G417's `c_call`; the Middle's D-266 (2)
+    probes n1, n2, n5, n6 and n7 lose that record); G457 (R1)'s `d_decl_ok`, also through MIR; G700's O2, O2k, O2b, O2kb, O2in,
+    O2inm and O2d, whose invalid twins stay `UnprovenConstraint_Kd`. Invalid, newly rejected: a recursive call that swaps two
+    Origins, declared or input; a clause naming the struct's own slot at a call on another value of the struct; Gp1i, a clause
+    `U is Box<T>` whose struct slot `T` is mapped twice, also through a nested Type (Ns1i, `Outer<i32>.Inner`) and at a function
+    reference (Fg1i, `G<i32>.put2<Box<T>>` inside `G<T>`).
+  - Cost: the value allocates nothing (a `ref struct` of spans and references); `SubstituteFamilyArgument` rebuilds the declaring
+    occurrence once per case when a Semantics family's slot is the declaring Type's; a warm Bind allocates nothing.
+  - Kept two-step reads, none a call's substitution and none a model for a new site, each named in the file's contract: pattern
+    reads before the callee's slots have images (the trial's `CallMemberPattern`, OriginInference's `Project`, PropertyCalls'
+    `Signature`, FunctionReferences' `InferReferenceSlots`), a function item's signature (FunctionItems' `SubstitutedItemType`,
+    FunctionReferences' `Formed`), signature comparisons (`ContractFits`' `Bound`, CallableContracts' `Translate`,
+    ContractMatching's parameter read, `BindContractType` / `BindContractOrigin`) and an associated Type's formation
+    (AssociatedOrigins). The pattern reads and the function item's signature are open under PLAN G457 (R1).
+  - Rejected: per-site columns (the first design: the inputs stay out and the second pass in); one order at every site (still two
+    passes, so the signature's capture would hold for clauses too); renaming the callee's atoms apart (a second representation of a
+    binder, an allocation per candidate); interning the value per candidate (a hash and array copies for candidates that mostly
+    lose; `Subst` stays the interned form after selection).
+  - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
+    (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

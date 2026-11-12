@@ -110,6 +110,32 @@ public class EffectBoundDeclarationTest
         }
     }
 
+    // SPEC 23.1.2: a ContractSelector's reference (F.6.2) reads the selector alone, never the item's position, so a misplaced item's
+    // selector is judged on its own and its fault is the item's second record, beside the misplacement (PLAN G769); a misplaced item
+    // with a valid selector keeps one record (RejectsInvalidEffectItems). A syntax Error among the selector's Type arguments is the
+    // parser's record; the item's misplacement never rests on it in any position, and the selector's judgment reads it (a dependent).
+    [Theory]
+    [InlineData("struct S\n    effect ((Source)).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "((Source)) names no Contract")]
+    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect ((Source)).take confined\n", Misplaced, "((Source)) names no Contract")]
+    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (ref/Source).take confined\n    return\n", Misplaced, "(ref/Source) names no Contract")]
+    [InlineData("struct Plain\nenum E\n    A\n    effect (Plain).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(Plain) names no Contract")]
+    [InlineData(Override + "effect Missing.take confined\n        return 2\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "Missing names no Contract")]
+    [InlineData(Generic + "struct S\n    effect (P).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P) is not a reference to P")]
+    [InlineData(Generic + "struct S\n    effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "enum E\n    A\n    effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "contract Q: P<i32>\n    func own(self: ref/Self) -> ()\n        effect (P<>).value confined\n", Misplaced, "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "contract Same\n    func same(self: ref/Self) -> bool\nstruct Box<T>\n    public var item: T\n    Self is Same when T is Copy\n        public func same(self: ref/Self) -> bool => true\n        effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (P<>).value confined\n    return\n", Misplaced, "(P<Error>) is not a reference to P", true)]
+    public void JudgesAMisplacedItemsSelectorOnItsOwn(string declarations, string position, string selector, bool syntaxError = false)
+    {
+        var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
+        c.Binding.ReportDiagnostics();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        Assert.Equal([position, selector], errors.Where(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Label).ToArray());
+        string[] parser = syntaxError ? [nameof(DiagnosticCode.ExpectedSyntax_Kd)] : [];
+        Assert.Equal(parser, errors.Where(static x => x.Code != nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Code).ToArray());
+    }
+
     // SPEC 8.11.1, 8.11.4: a rejected item relates the declaration it bounds, by its kind (a function requirement, an original
     // virtual slot or the Constraint of a Callable effect list; DECISIONS G223), and a duplicate the earlier bound in every position;
     // restating an ancestor's bound is valid (AcceptsClausesAndSpecifications).

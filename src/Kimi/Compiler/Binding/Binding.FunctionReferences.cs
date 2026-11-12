@@ -546,7 +546,7 @@ public sealed partial class Binding
     private ConstraintProof ReferenceArgumentProof(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? container, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var count = function.GenericArguments.Count;
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments[..count], scope, declaringType: container, lengths: lengths.IsEmpty ? default : lengths[..count]);
+        var proof = this.CheckConstraints(function.TypeConstraints, SubstitutionOf(function, container, arguments[..count], lengths.IsEmpty ? default : lengths[..count]), scope);
         var clauses = this.TakeUnknownFact(); // The clause list's U fact, for the reference's record.
         var held = this.HoldClause(null); // Each clause list's clause fact (G351a), for the reference's record and its trial's (G352).
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope), true);
