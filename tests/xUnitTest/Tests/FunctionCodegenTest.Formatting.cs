@@ -12,7 +12,7 @@ namespace XunitTest;
 // Text operations, the buffers, the windows, the adapter's write, the conversions and writeLine of a view are bodies, called with their
 // operands, result slot and, for a CallerLocation row, the caller's location, at a direct call, an Item's Value call and an adapter's
 // entry; the formatting runtime is written once on request; a user formatter runs through the bodies; every built-in Type's witness is a
-// witness table body (no Type reaches the BuiltinFormat shim since R8-S2b2); Text.writer gives its destination's writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering.
+// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering.
 public sealed partial class FunctionCodegenTest
 {
     // A Library without a formatting row: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
@@ -583,23 +583,6 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotMatch(@"(?m)^define internal [^@]+ @__kimi_(decimal_div10|format_integer)", text);
         Assert.DoesNotContain(LlvmModuleText.FormatFloatRuntime, text, StringComparison.Ordinal);
         Assert.DoesNotContain(LlvmModuleText.FormatInteger128Runtime, text, StringComparison.Ordinal);
-    }
-
-    // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
-    // char, bool, Unit and string; -1 exactly for a Type FormattingTypes.IsBuiltin does not answer, the Types whose Utf8Format conformance the
-    // compiler states (a declared one, as the view's since R8-S2d1, has no kind). The routine's one arm is 16 (R8-S2b2); the other numbers
-    // stay while IsBuiltin answers them (DECISIONS R8-M30, temporary 3's note).
-    [Fact]
-    public void FormatKindsAreTheRuntimesNumbering()
-    {
-        string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 11, 12, 13], names.Select(static x => LegacyRuntimeHelpers.FormatKind(BoundType.Primitives[x])));
-        Assert.Equal([14, 15, 16], new[] { BoundType.Boolean, BoundType.Unit, BoundType.String }.Select(LegacyRuntimeHelpers.FormatKind));
-        Assert.Equal(2, LegacyRuntimeHelpers.FormatKind(BoundType.WrappingOf(BoundType.Primitives["u8"])));
-        Assert.Equal(-1, LegacyRuntimeHelpers.FormatKind(BoundType.Range));
-        Assert.All(
-            BoundType.Primitives.Values.Concat(BoundType.WrappingScalars.Values),
-            static x => Assert.Equal(FormattingTypes.IsBuiltin(x), LegacyRuntimeHelpers.FormatKind(x) >= 0));
     }
 
     // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (FormattingTypes.Bound), a

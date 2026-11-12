@@ -47,6 +47,10 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer and formatting runtime (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
+    /// <summary>The formatting runtime's kind of string: SegmentText's and FormatLiteral's kind Context and <c>__kimi_format_builtin</c>'s
+    /// one arm (DECISIONS R8-M30, temporary 5), removed with them at R8-W2.</summary>
+    internal const int StringFormatKind = 16;
+
     /// <summary>The runtime's hint of an internal adapter (<c>__kimi_format_hint</c>, SPEC 22.10.5): the bytes its later writes may still
     /// reserve, which a growth adds.</summary>
     internal static readonly FunctionAbi FormatHint = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
@@ -64,8 +68,8 @@ internal static partial class LegacyRuntimeHelpers
         new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
 
     /// <summary>The runtime's built-in write (<c>__kimi_writer_write_builtin</c>, SPEC 22.10.1): the adapter's frame around the built-in
-    /// formatting of a value of a kind (FormatKind), which an owning interpolation's literal text (SegmentText) calls. Temporary (DECISIONS
-    /// R8-M18): removed when SegmentText and FormatLiteral leave the runtime (R8-W2).</summary>
+    /// formatting of a value of a kind (StringFormatKind), which an owning interpolation's literal text (SegmentText) calls. Temporary
+    /// (DECISIONS R8-M18): removed when SegmentText and FormatLiteral leave the runtime (R8-W2).</summary>
     internal static readonly FunctionAbi WriteBuiltin = Slotted(
         "__kimi_writer_write_builtin",
         [
@@ -97,7 +101,7 @@ internal static partial class LegacyRuntimeHelpers
 
     /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
     /// <param name="kind">The compiler function.</param>
-    /// <returns>The kind's row, or null when the kind is outside the formatting family (TextWriter through BuiltinFormat).</returns>
+    /// <returns>The kind's row, or null when the kind is outside the formatting family (TextWriter alone).</returns>
     internal static FormattingHelperRow? FormattingRow(CompilerFunctionKind kind)
     {
         var index = (uint)(kind - CompilerFunctionKind.TextWriter);
@@ -107,36 +111,6 @@ internal static partial class LegacyRuntimeHelpers
         }
 
         return FormattingRows[index] is { } row && row.Kind == kind ? row : throw new InvalidOperationException("A formatting compiler function has no row.");
-    }
-
-    /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
-    /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
-    /// integer's by its width and signedness, then f32, f64, char, bool, Unit and string. The one table code generation reads. The
-    /// integers, f32, f64, char, bool, Unit, string and the wrapping integers format through the witness table's bodies (R8-S2a,
-    /// R8-S2b1, R8-S2b2, R8-S2c, R8-S2d1), so the routine has no arm but string's 16, which serves only SegmentText's literal text
-    /// (until R8-W2). The other numbers stay while
-    /// FormattingTypes.IsBuiltin answers them, which FormatKindsAreTheRuntimesNumbering ties to this table (until R8-S2d2). A view
-    /// declares its conformance (R8-S2d1), so it has none.</summary>
-    /// <param name="type">A closed Type.</param>
-    /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
-    internal static int FormatKind(BoundType type)
-    {
-        var width = type.Width;
-        if (width != 0)
-        {
-            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (type.IsSigned ? 1 : 2);
-        }
-
-        return type switch
-        {
-            _ when ReferenceEquals(type, BoundType.F32) => 11,
-            _ when ReferenceEquals(type, BoundType.F64) => 12,
-            _ when ReferenceEquals(type, BoundType.Char) => 13,
-            _ when ReferenceEquals(type, BoundType.Boolean) => 14,
-            _ when ReferenceEquals(type, BoundType.Unit) => 15,
-            _ when ReferenceEquals(type, BoundType.String) => 16,
-            _ => -1,
-        };
     }
 
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
@@ -161,20 +135,12 @@ internal static partial class LegacyRuntimeHelpers
     private static FormattingHelperRow[] CreateFormattingRows()
     {
         const HelperNeeds Runtime = HelperNeeds.FormattingRuntime;
-        var rows = new FormattingHelperRow[CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextWriter + 1];
+        var rows = new FormattingHelperRow[1];
         var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
         var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
-        var value = new AbiParameter("ptr", "value", LogicalIndex: 0);
-        var builtin = new AbiParameter("i32", "kind", AbiParameterKind.Context);
-        var location = RuntimeAbi.Location;
-        var length = RuntimeAbi.LocationLength;
         Add(
             CompilerFunctionKind.TextWriter,
             Slotted("__kimi_text_writer", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)]),
-            Runtime);
-        Add(
-            CompilerFunctionKind.BuiltinFormat,
-            Slotted("__kimi_format_builtin", [ret, value, new("ptr", "self", LogicalIndex: 1), builtin, location, length]),
             Runtime);
         return rows;
 
