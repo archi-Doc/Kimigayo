@@ -321,7 +321,15 @@ public sealed partial class Binding
             return null;
         }
 
-        if (this.BindAssociatedName(clause, scope, owner) is not { Symbol: { } associated } projection)
+        var projection = this.BindAssociatedName(clause, scope, owner, out var pending);
+        if (pending)
+        {
+            // The requirement binds against no subject and keeps its own records, as under a pending subject (BindConstraint).
+            var open = this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
+            return open.Kind == ConstraintKind.Error ? open : this.InternConstraint(new(ConstraintKind.Unresolved));
+        }
+
+        if (projection is not { Symbol: { } associated })
         {
             return null;
         }
@@ -342,9 +350,11 @@ public sealed partial class Binding
     // selector (`C.X`, `(C).X`, `::C.X`) is looked up once in its own row (UseRow) and names, with its Type arguments (QualifierReference
     // on the reference WrittenReference reads), a direct conformance or an ancestor of the owner, judged on the selector
     // itself (SelectorQualifies); the Name is found among that Contract's associated Types, an unqualified Name among all available ones;
-    // the Origin parameters repeat the count. Null after the clause's failure.
-    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner)
+    // the Origin parameters repeat the count. Null after the clause's failure, or with pending set and the clause unfailed when its
+    // selector formed no reference for a missing name (PendingReference).
+    private BoundType? BindAssociatedName(IsKoto clause, BindingScope scope, BindingSymbol owner, out bool pending)
     {
+        pending = false;
         var self = this.DeclarationSelf(owner);
         var head = AssociatedHead(clause);
         var applied = head as OriginApplicationKoto;
@@ -354,9 +364,15 @@ public sealed partial class Binding
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || WrittenReference(member.Left) is not { } written ||
-                this.QualifierReference(written, selection, scope) is not { } bound ||
-                !this.SelectorQualifies(owner, self, bound))
+            var selection = this.TypeName(member.Left, scope);
+            if (selection is not { IsContract: true } || WrittenReference(member.Left) is not { } written ||
+                this.QualifierReference(written, selection, scope) is not { } bound)
+            {
+                pending = this.PendingReference(member.Left, selection, scope);
+                return pending ? null : this.Fail(clause, BindingFailure.InvalidAssociatedType);
+            }
+
+            if (!this.SelectorQualifies(owner, self, bound))
             {
                 return this.Fail(clause, BindingFailure.InvalidAssociatedType);
             }
