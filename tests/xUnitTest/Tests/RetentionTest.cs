@@ -1108,6 +1108,29 @@ public sealed partial class RetentionTest
         Assert.Equal("result {0 Value}", Declared(c, "lens"));
     }
 
+    // SPEC 15.6.4 (PLAN G734): a raw layer the call writes reaches storage the body does not own in the storage whose positions hold it at
+    // or below, exclusive layers included, not in every storage of the output, and an abstract Type's hidden layers add none. `wa`'s
+    // write through `raw/(raw/T)` unties the root (x's raw/T) only: the T storage, the Abstract one and All stay tied; through
+    // `raw/(raw/(raw/u8))` it unties the root and the raw/u8 storage, not the u8 storage past it, and All. A storage of
+    // `uniq/(raw/u8)` is untied by the layer below its borrow (the Front's review, C2: A5 maps a holder past another by the Type of the
+    // Place its Loan names).
+    [Fact]
+    public void AStorageIsUntiedByItsOwnLayers()
+    {
+        var c = Bind("func wa<U>(p: raw/U) => ()\nfunc g<T>(v: T)\n    var x: raw/T = null\n    wa(x@raw)\n" +
+            "func h()\n    var y: raw/(raw/u8) = null\n    wa(y@raw)\n    var m: u8 = 1\n    var q: raw/u8 = m@raw\n    var z: uniq/(raw/u8) = q@uniq\n    wa(z@raw)\n");
+        Assert.Equal(
+            ["own untied; Parameter -, Abstract -; all -", "own untied; Semantics untied, Primitive -; all untied", "own untied; Semantics untied, Primitive -; all untied"],
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: x.CallOf())).Where(static x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == "wa")
+                .Select(x => Untied(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray());
+
+        static string Untied(CallRetention retention)
+            => string.Join(" | ", retention.Writes.ToArray().Select(static x => $"own {Flag(x.Own)}; " +
+                string.Join(", ", x.Reached.ToArray().Select(static e => $"{(e.Type is null ? "Abstract" : e.Type.Kind.ToString())} {Flag(e.Retention)}")) + $"; all {Flag(x.All)}"));
+
+        static string Flag(StorageRetention record) => record.Untied ? "untied" : "-";
+    }
+
     // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30; the G160-2c reviews' B1, R2, R4's F1 and B2): a value a call stores
     // at a writable position brings its whole Type (BU-1), so one walk reaches every layer below a hold, in a held struct's stored content
     // as at a position: an exclusive borrow (`S.r`, written as `s.r@follow = p`), a raw layer stepping Unstated or Static (`R.q`, written

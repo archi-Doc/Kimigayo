@@ -164,8 +164,9 @@ internal sealed partial class MirBorrows
     }
 
     // The value a holder W reached receives through one output (DECISIONS R4-M154): each input's value by its kinds in the records of the
-    // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where the output is untied. Past another
-    // holder, the record is the Reached entry of the storage the reaching Loan's Place names (PastEntry; Revision 8), E's All.
+    // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where one of those records is untied (Binding
+    // unties each storage, PLAN G734). Past another holder, the record is the Reached entry of the storage the reaching Loan's Place names
+    // (PastEntry; Revision 8), E's All.
     private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
     {
         var via = this.writingVia[target];
@@ -177,7 +178,7 @@ internal sealed partial class MirBorrows
             _ => null,
         };
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
-        return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
+        return own?.Untied == true || past?.Untied == true ? this.sets.Union(value, this.escapedSet) : value;
     }
 
     // What one record stores: each input's value by its kinds, its pairs judged (Solved); none for no record.

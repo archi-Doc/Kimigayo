@@ -1038,6 +1038,98 @@ public sealed partial class MirBorrowsTest
                     inspect(res)
                 """));
 
+    // SPEC 15.6.4, 15.6, 4.3.3 (PLAN G734): an untied pointer lands only in the storage that holds the raw layer the call writes. A call
+    // writing through `raw/(raw/T)` at a holder of no element (`[0 of ptr]`) writes a T there, whose hidden layers add no reach, so the
+    // holder carries nothing untied and stash's store through h[0] keeps spare in a local (zeroHolderUnknownOk; the same through a Tuple
+    // root, tupleRootOk; beside a u16 view, tupleTwoWaysOk; a struct showing only a Scalar beside T, shownScalarOk). A view that shows a
+    // raw layer there (`raw/(raw/(raw/u8))`, a Tuple element of that view, a struct Field) may receive one reaching storage the body
+    // does not own, at any length (zeroHolderPtrBad, tupleTwoWaysBad, shownRawBad).
+    [Fact]
+    public void AnUntiedPointerLandsOnlyWhereTheCallWritesARawLayer()
+        => Assert.Equal(
+            ["zeroHolderPtrBad: kk = 2", "tupleTwoWaysBad: kk = 2", "shownRawBad: kk = 2"],
+            Problems("""
+                func stashAt(slot: raw/(raw/u8), value: raw/u8) => ()
+                func writeAt<U>(p: raw/U) => ()
+                struct ShownS<T>
+                    public var t: T
+                    public var n: u16
+                struct ShownR<T>
+                    public var t: T
+                    public var q: raw/(raw/u8)
+                func zeroHolderUnknownOk<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: raw/T = h@raw@raw/T
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func zeroHolderPtrBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: raw/(raw/(raw/u8)) = h@raw@raw/(raw/(raw/u8))
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func tupleRootOk<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: raw/T = h@raw@raw/T
+                    var u: (raw/T, u8) = (x, 0)
+                    writeAt(u@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func tupleTwoWaysOk<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: (raw/T, raw/u16) = (h@raw@raw/T, h@raw@raw/u16)
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func tupleTwoWaysBad<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: (raw/T, raw/(raw/(raw/u8))) = (h@raw@raw/T, h@raw@raw/(raw/(raw/u8)))
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func shownScalarOk<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: raw/ShownS<T> = h@raw@raw/ShownS<T>
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                func shownRawBad<T>(v: T)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+                    var x: raw/ShownR<T> = h@raw@raw/ShownR<T>
+                    writeAt(x@raw)
+                    stashAt(h[0], spare)
+                    kk = 2
+                """));
+
     // SPEC 15.6 (a raw pointer that reaches no holder reaches only storage the body does not own, where what is stored may be used after
     // every point; condition 5; DECISIONS R4-M120's departure 1, B1): what that storage holds may refer to it, so a pointer read through a
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,

@@ -58,7 +58,8 @@
 // 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage
 // (each position of it, a by-value input's included, DECISIONS BU-52; a consuming callee's cleanup of the input writes only there, so
 // its drop's rows are among these, SPEC 15.6.4 "including callee cleanup"), retains every input by what any chain of reads through it
-// carries (Chain) and every input but j by its own value (Value), and unties that output (its records' Untied), as a `static` layer
+// carries (Chain) and every input but j by its own value (Value), and unties the storages of that output whose positions it lies at or
+// below, exclusive layers included (their records' Untied; the Abstract record never, PLAN G734), as a `static` layer
 // does without these rows; one behind a borrow in the result (a Slice's or UniqSlice's elements included, and a result raw layer
 // stating a borrow's Origin, which retains as that borrow would) is lent, not written: it retains only the raw inputs, by Value and
 // Chain, and unties nothing (R′). A published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation
@@ -105,7 +106,8 @@ internal enum RetentionKind : byte
 /// <summary>What a call may retain in one storage (DECISIONS R4-M154): per input its kinds (<see cref="Kinds"/>, by the input slots
 /// <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, a Callable signature's input positions, or a destruction's
 /// input 0), whether it may receive a pointer tied to no input (<see cref="Untied"/>: a raw layer stepping Unstated or Static that the
-/// call may write there, or for the result an atom reached from no input, design A3's Φ_E), and the conditions under which an input not
+/// call may write at or below one of its positions, exclusive layers included, never for what an abstract part hides; or for the result
+/// an atom reached from no input, design A3's Φ_E), and the conditions under which an input not
 /// Value in <see cref="Kinds"/> is Value (<see cref="Pairs"/>: conjunctions, each of an input and the pairs of two Origins of the call's
 /// Type arguments, Self or declaring Type whose relations `Longer outlives Shorter` the fit needs and the premises do not prove, one per
 /// layer of a source's path the position's closure misses, the call's solved Origins' to judge; a pair `Joined` continues the previous
