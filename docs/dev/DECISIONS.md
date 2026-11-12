@@ -6228,6 +6228,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
     compared at the stage exit.
   - Removes: PLAN G667's (B1), (B2) and R1 from G667b's held rule, and G667b's zero-length puns (written and holder); supersedes
     nothing. Open: PLAN G732-G737.
+  - Amended by R4-M199 (PLAN G775): the undecided class's Limit tier holds through the gather's closure: a gather read has one tier
+    (`MirBorrows.Candidates.ReadTier`), a holder a Limit read reaches is read at Limit under its own read key, and the set-level
+    named limit (PLAN G599 (b)) reaches through the closure too.
+- **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
+  one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
+  gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
+  - Rule: a gather read has a tier, fixed once before its memos and its scan: its read key's, Limit where the state read carries Φ_U
+    (`MirBorrows.Candidates.ReadTier`). A holder a read at Limit reaches has its own read key (slot + holderCount) at that tier, and
+    a reach at the pass's tier reads it again. Every memo of a gather read is keyed by its read key or the read's tier (Reach's
+    marks, `pending`, `Took`, `MirBorrows.States.Scanned`), and a read is scanned at the tier its memos are keyed by, so the verdict
+    does not depend on the order the gather reads holders in. As the dataflow's union keeps Φ_U through Content and Chain, the read
+    key keeps it through the gather.
+  - Record selection (Q13, the Middle's rulings): limit (a) with G736 (kClosurePtrStoreBad, mEnvTwoPtrsBothBad; removal G732, G736);
+    R4-M198's set-level named limit, now also through the closure (dEscBesideRestedBad, dClosureEscBesideBad, rLaterWriteEscBad,
+    cutHhFirstBad: a holder whose state, or the set naming it, carries Φ_U is read at Limit even where its own content is decided;
+    still rejected; removal G599 (b)). A decided verdict stays decided except where its Loan is found only in a set carrying Φ_U or
+    in a holder reached only through one.
+  - Record moves (Q13; dev to the unit, by program; no acceptance move): kClosureMixedStoreRests, kTupleBorrowStoreRests,
+    kClosureMixedDestRests, mEnv3Rests, mTuple3BorrowRests (unsettled): ComparisonLoanConflict_Kd -> `Unsupported_Kd` at the same
+    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (labelled valid in G775's reviews; PLAN
+    G788's triage reads them unsettled by SPEC 15.6 Holders and 15.6.4, an independent label check pending):
+    ComparisonLoanConflict_Kd -> `Unsupported_Kd`; the six invalid programs of the record selection: ComparisonLoanConflict_Kd ->
+    `Unsupported_Kd` (still rejected); sTookPerTierBad, sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second
+    record at `var p` ComparisonLoanConflict_Kd -> `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class);
+    hOwnRested2Bad (invalid): `Unsupported_Kd` -> ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather
+    read holders in).
+  - Not covered: R26-borrow (`MirBorrows.Defaults.DefaultBorrows`) does not read the tier; it reports every slot-rooted candidate
+    whatever its `Outcome` (PLAN G793; twin rKeepRestsU). The own-step Warning and Activations' scans keep R4-M198's named limit.
+  - Cost: per pass instance at most two reads of a holder's state and stores (one per read key), a Shared set read in full by two
+    vias per tier, a transit value taken once per tier; `Restamp` one more holderCount per view; warm 0 B.
+  - Rejected: tagging W's stores past a resting holder with Φ_U (every conflict such a store implies also holds in the pun layout,
+    where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
+    dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
+    the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
