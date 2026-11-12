@@ -1382,6 +1382,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Remove` scans its smaller operand, returning the set itself when it removes nothing. Rejected: dense holder × Loan bits (cubic:
   heads × holders × Loans); a per-Loan traversal (a check walks every Loan); persistent tree sets (no int identity, an allocation
   per insertion); `Remove` by element (one call per ended Loan and holder) or by predicate (no memo key). Not temporary.
+  - Amended by PLAN G768 (2026-11-12): `Remove` of two nonempty sets that lie apart (one's greatest element below the other's least)
+    returns the set in O(1), before the memo, with no entry or scan, so E8's visits of holders whose sets lie apart from the ended
+    set cost no memo; the visits themselves stay R4-M57's dense term.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; its check sets amended by R4-M66: a
   borrow's stored value only seeding and 1b-3's CS_call over
   live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by R4-M70;
