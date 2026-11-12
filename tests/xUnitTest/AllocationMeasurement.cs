@@ -117,8 +117,15 @@ internal static class AllocationMeasurement
     // the runtime's first instantiations) falls in no measured run and every size is measured in the same process state, alone or after
     // other tests (R5-M172). That one-time cost stays measured and bounded on the check path by its owner,
     // MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild. A series has no warm-up of its own. Its runs compare only in one
-    // process state (G650): the test process runs without tiered compilation (xUnitTest.csproj), and the series runs in
-    // AllocationIsolationCollection, where no other collection runs beside it, or it refuses before it makes any state.
+    // process state (G650): the test process runs without tiered compilation (xUnitTest.csproj), the series runs in
+    // AllocationIsolationCollection, where no other collection runs beside it, or it refuses before it makes any state, and each
+    // run, the unmeasured one too, has a new compiler thread, whose own pooled buffers are empty. A thread's pooled buffers are
+    // process state that the series does not control: ArrayPool<T>.Shared empties them when it trims under High memory pressure,
+    // and they hold what the thread ran before, so on one thread a run paid a buffer that its neighbours found pooled. On a new
+    // thread every run pays every pooled buffer it rents, a constant or the size's own. Cost: one thread per run, and a run's
+    // buffers become garbage with it (a Bind's syntax numbering chain, about 0.69 MB of it on the large object heap). Left: a
+    // High-pressure trim inside one run, between two rents of one length, adds that buffer to the run. The states are still
+    // made on one pooled worker, outside every run.
     internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
     {
         ArgumentNullException.ThrowIfNull(fresh);
@@ -132,14 +139,16 @@ internal static class AllocationMeasurement
             return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
         }
 
-        fresh(0)();
+        Run(fresh(0));
         var allocated = new long[count];
         for (var i = 0; i < count; i++)
         {
-            allocated[i] = MeasureOnce(fresh(i));
+            allocated[i] = Run(fresh(i));
         }
 
         return allocated;
+
+        static long Run(Action run) => OnNewThread(() => MeasureOnce(run));
     }
 
     // The allocation of a warm hop (CompilerThread.Run), on its caller and on its worker, which no window on a compiler thread takes:
