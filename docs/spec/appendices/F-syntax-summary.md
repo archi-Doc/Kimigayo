@@ -488,7 +488,7 @@ Initializer          := "noinit" | Expression
 - `ReceiverShorthand` is valid only where [§7.3](../07-functions-and-callable-values.md#73-receivers) allows a receiver; the `!` boundary is defined in [§7.2.1](../07-functions-and-callable-values.md#721-argument-name-boundary).
 - Which lists admit the task slot is defined in [§24.2.1](../24-suspension-and-asynchronous-tasks.md#2421-form).
 - A BodilessFunctionDeclaration has no body and appears only where [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports) (an import) or [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) (a Kimi declaration without a definition) allows; a Body that holds only a leading region is a FunctionBody. Explicit specializations follow [§8.13](../08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization), constructors [§6.3](../06-declarations-and-containers.md#63-constructors), and `drop` [§16.3](../16-scope-exit-and-destruction.md#163-destruction-declarations).
-- An OverrideDeclaration is valid only as a member of a derived struct, directly or in a conditional-conformance Block, and its leading region redeclares no Constraint or effect ([§6.4.1](../06-declarations-and-containers.md#641-declarations)).
+- An OverrideDeclaration is valid only as a member of a derived struct, directly or in a conditional-conformance Block ([§6.4.3](../06-declarations-and-containers.md#643-calls-and-conditional-slots)), and its leading region holds no ConstraintClause or EffectClause ([§6.4.1](../06-declarations-and-containers.md#641-declarations)).
 - After `func`, a Name starts a function definition and `(` or `[` starts a FunctionExpression ([§F.9.1](#f91-productions)).
 
 ```kimi
