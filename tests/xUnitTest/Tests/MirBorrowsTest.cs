@@ -278,6 +278,119 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(e)
                 """));
 
+    // SPEC 4.8.4, 5.6, 15.6 (DECISIONS R4-M40, R4-M63's amendment): `x[r]` is `x.slice(r)`, a Slice during the shared borrow of an array
+    // or during a Slice's source, so a range selection's Slice reaches what its backing reaches and no storage the body does not own of
+    // its own; a written `Raw.slice`, whose result Origin is a fresh anchor tied to no argument, reaches it, and so does a Slice of a
+    // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
+    // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
+    // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
+    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
+    [Fact]
+    public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
+        => Assert.Equal(
+            ["usedAfter: kk = 2", "subUsedAfter: kk = 2", "readAfter: kk = 2", "written: kk = 2", "writtenSub: kk = 2", "parameter: kk = 2",
+                "parameterArray: kk = 2"],
+            Problems("""
+                func stash(slot: raw/(raw/u8), value: raw/u8) => ()
+                func usev(v: ref/[2 of raw/u8]) => ()
+                func direct()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func usedAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    usev(values@ref)
+                func tuple()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    var o = (sl, other@raw)
+                    stash(o.1, spare)
+                    kk = 2
+                func subUsedAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[0..1]
+                    let p = part[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    usev(values@ref)
+                func dynamic()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: Array<raw/u8> = [null, null]
+                    let sl = values[0..1]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func readAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    let z = sl[1]
+                func written()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    unsafe
+                        let sl = Raw.slice(values[0]@raw, 2)
+                        let p = sl[0]@raw
+                        stash(p, spare)
+                    kk = 2
+                func writtenSub()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    unsafe
+                        let sl = Raw.slice(values[0]@raw, 2)
+                        let part = sl[0..1]
+                        let p = part[0]@raw
+                        stash(p, spare)
+                    kk = 2
+                func parameter(src: Slice<raw/u8>)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let part = src[0..1]
+                    let p = part[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func parameterArray(arr: ref/[2 of raw/u8])
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let sl = arr@follow[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                """));
+
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
     // disjoint.

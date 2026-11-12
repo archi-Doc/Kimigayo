@@ -529,8 +529,9 @@ public struct ResolvedRange
     public func intoIterator(self: Self) -> RangeIterator<isize>
         return RangeIterator<isize>.unchecked(self.start, self.end)
 
-// SPEC 13.4.1, 22.1: the bodies of string's built-in conformances to Equatable and Comparable: the witness table's
-// String row selects them (Binding.WitnessGroup), and every comparison of strings calls them; string gains no members.
+// SPEC 13.4.1, 22.10.2, 22.1: the bodies of string's built-in conformances to Equatable, Comparable and Utf8Format: the
+// witness table's String row selects them (Binding.WitnessGroup), and every comparison and write of a string calls them;
+// string gains no members.
 internal group StringWitness
     func equals(self: ref/string, other: ref/string) -> bool
         unsafe
@@ -543,6 +544,11 @@ internal group StringWitness
             let left = self@follow@raw@raw/Storage.StringRepr
             let right = other@follow@raw@raw/Storage.StringRepr
             return StringBytes.order((*left).data, (*left).length, (*right).data, (*right).length)
+
+    /// Writes the string's bytes, valid UTF-8 (SPEC 3.1.2), once through the writer's leaf; its catalog row's
+    /// CallerLocation passes the user's location to the leaf (SPEC 22.5.1, until G1).
+    func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return writer.writeUtf8(Text.utf8(self))
 
 // The byte comparisons of two strings' storage. A string's bytes have no alignment, so whole words are read as byte
 // copies into a local, which O2 folds into one load; no u64 or u32 Place is read at a string's address.

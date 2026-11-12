@@ -34,6 +34,22 @@ public sealed partial class MirBuildTest
         Assert.Equal(expected, Views(program, "h"));
     }
 
+    // PLAN G647 (SPEC 3.4.3, 8.15.3): a key below reference layers is followed to its value Place, whatever their number: the view is
+    // the one its Type builds, past the 16 layers the builder once counted. The two other walks to a value Place (a Property's storage
+    // and a Closure's environment binding) start at a body's own receiver, which no program nests.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(33)]
+    public void AKeyBelowReferenceLayersIsFollowedToItsValue(int layers)
+    {
+        var c = Compile($"func h(v: ref/Array<i32>, r: {TypeDagScalingTest.RefLayers(layers, "Range<isize, End>")}) -> isize\n    return v[r].length\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        Assert.Equal("_ = storage((*_))|_ = Add(copy _, copy _) proven", Views(program, "h"));
+    }
+
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
     // is located (SPEC 4.7.4: copied first where a boundary builds code); nothing backs a written Raw.slice, so its backing is Unit.
