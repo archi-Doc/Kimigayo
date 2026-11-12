@@ -9008,6 +9008,9 @@ resumed by R4-M86 (2026-10-20).
     reads this fact (PLAN G293). Rejected: one use per interned Type (a struct's `T` is shared by methods with different premises); the
     binding's written Type as the fact (misses `let u = t` and the primitive and Tuple subjects); re-running the conformance proof at
     the capture (a consumer re-running a check); Binding's null for a rejected projection (R5-M155 (c)).
+  - Superseded in part by BU-184 (PLAN G721): its fact (`projectionForms`, `ProjectionUseOf`), its reader in `Capture` and its
+    "Open" are deleted with the capture Type allowlist; no capture rests on a projection use. The `AddPendingPrerequisite` stance
+    stays.
 
 - **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
   its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
@@ -12257,6 +12260,44 @@ resumed by R4-M86 (2026-10-20).
     lose; `Subst` stays the interned form after selection).
   - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
     (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
+- **BU-184 An environment binding holds any captured Type but a pair layer whose plan Reborrows by case (until G254) and a pair
+  target or projection under an identity premise (until G170)** (2026-11-11; PLAN G721, G254, G170; Front, Binding; Major, an
+  acceptance mover; design reviews 1-3 REVISE, 4 ACCEPT, implementation review 1 ACCEPT; the owner's O-166 (a) and O-171 (a); on
+  BU-168's plan; supersedes BU-61's fact and its reader) SPEC 7.7.2, 8.2.3, 8.14, 13.5.5, 15.6.3, 15.8.2.
+  - `Binding.Capture`'s Type allowlist (e1e9ebb16, written for the emitter before MIR) admitted one abstract Type kind, a Type
+    parameter, so a capture of a pair target `T`, of an abstract projection `T.Tag` or of a pair layer was a located
+    `Unsupported_Kd` at the entry. The allowlist is deleted: instance lowering stores an environment field at its case Type as it
+    stores a local.
+  - Interim row (1), removal condition PLAN G254's unit: a pair layer (`BoundType.IsPairLayer`, published as one definition with
+    `ContainsPairLayer`) other than the original `s/T` whose one plan (BU-168) Reborrows in some admitted case, the owner case
+    included (`BareReborrows`), is not captured: a body's bare use of it would Reborrow there, and no rule contains that Reborrow in
+    the call receiver (G254). The original `s/T` was captured before and reaches that gap already (G254's own forms). A pair layer
+    whose plan never Reborrows is captured, and an omitted list over it Copies by `CopiesInEveryCase` (BU-168).
+  - Interim row (2), removal condition PLAN G170's identity query: a pair target or a projection (an abstract Type other than a Type
+    parameter and a pair layer) is not captured where a Type-identity premise is available in scope: `ConstraintEnvironment`
+    publishes `HasTypeIdentity`, set where `ConstraintEnvironment.Add` registers the premise, beside `HasParameterIdentity`; an
+    Invalid environment is not read. A premise may make such a Type a pair layer that no plan reads (O-171 (a)); conservative, no
+    Type comparison or identity walk. Grounds other than a written identity premise (associated-Type requirements, completed
+    bindings) are not read; none was found to make a pair target a pair layer.
+  - Records: a written entry gets a located `Unsupported_Kd`; an omitted list's use gets `InvalidCaptureBinding_Kd` (the
+    function-level `Unsupported` surfaces no record): on an invalid program for row (1), and a pre-existing Language error on a
+    valid omitted list over a premise-made pair target for row (2).
+  - Moves (Q17 class 3). Valid, newly accepted: a capture of a pair target, of an abstract projection and of a pair layer whose plan
+    never Reborrows (r09, r12, r14, r16, r25, r27, r29v, r31v, q07, t11, y17o), an omitted list over one included (r21, r22: `s/i32`
+    under `owner or ref` and `ref`). Records moved on programs rejected before, dependent under rule W and no Q13 regression: t01
+    and t01m (an ill-formed premise, `MissingOriginBinding_Kd`) lose the entry's `Unsupported_Kd`; y11 and y11u gain
+    `TransferRequired_Kd` beside `InvalidConstraint_Kd`; y17, y17v and y17r take their concrete twin's `UnprovenOriginRelation_Kd`.
+    No invalid program is newly accepted.
+  - BU-61's projection-use fact (`projectionForms`, `ProjectionUseOf`), read only by the allowlist's projection branch, is deleted
+    with it. BU-61's "Open" reader (the annotated local's initializer `TypeMismatch_Kd`, PLAN G293, no longer a PLAN row) is dropped
+    with the fact; a later fix of that record forms its own fact. BU-61's `AddPendingPrerequisite` stance stays for
+    OwnedConversions. A bare `[t]` of a rejected projection now gets `TransferRequired_Kd t`, as `let u = t` does (BU-84; counted
+    under rule W).
+  - Rejected: widening the allowlist (a shape allowlist MIR does not need); the row as one representation kind (missed the family,
+    design review 2, B2); a row on every pair layer but the original (keeps valid Copy-only captures at `Unsupported_Kd` once BU-168
+    plans them); a node fact alone (misses premise-made pair targets, design review 3, B3); deleting the gate for pair layers too
+    (widens G254, B1); a located `Unsupported_Kd` at each use that Reborrows by case (C-235's interim: 18 valid `s/T` programs).
+  - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
