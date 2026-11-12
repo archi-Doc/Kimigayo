@@ -497,10 +497,18 @@ public sealed partial class Binding
         if (!recovery && Misplaced(effect) is { } position)
         {
             // SPEC 23.1.2: the selector's reference reads no position, so a misplaced item's selector is judged on its own, its own record.
+            // No verdict of the item reads that judgment, so it runs with no frame open (SuspendConsultation), as an applying item's and a
+            // Callable list's do: nothing it reads (a syntax Error among its Type arguments) becomes the item's prerequisite.
             this.RejectEffectBound(effect, new(position));
-            if (effect.Selector is { } written && this.SelectorReference(written, this.ConstraintScope(effect), out _, out _) is { } fault)
+            if (effect.Selector is { } written)
             {
-                this.RejectEffectBound(written, fault);
+                var frame = this.SuspendConsultation();
+                var fault = this.SelectorReference(written, this.ConstraintScope(effect), out _, out _);
+                this.ResumeConsultation(frame);
+                if (fault is { } own)
+                {
+                    this.RejectEffectBound(written, own);
+                }
             }
         }
 
