@@ -15,7 +15,8 @@ namespace Kimi.Compiler.Mir;
 // row's: typed. Any other write is a pun only where it must overlap a raw pointer of the Place (SPEC 15.6: a write through its address
 // is in it): the Place's grid rows end at a raw pointer (every byte of it is a pointer's), or, on, its chain ends at one and the
 // written Type's at a Scalar (the write's first byte is a Scalar's on the pointer's first), every length on the way a constant above
-// 0. Else it is undecided, a pun or none as the layout places it (IMPL 21.1). One step rule (Step) keeps or loses a Position.
+// 0; an abstract written part is a Scalar there (Punnable) and no other row decides it. Else it is undecided, a pun or none as the
+// layout places it (IMPL 21.1). One step rule (Step) keeps or loses a Position.
 // Two walks reach a Type's inline parts, by what a missing part would cost. Pointered and Punnable answer what bytes a Type has: a
 // part they miss would remove a holder or a written Scalar, so they read only the stored Types a Type's own structure fixes
 // (Components, AdtDef's Fields, base and Case payloads) with Sized. For Pointered every other Type answers "may" (Extent.Open), a
@@ -61,42 +62,37 @@ internal sealed partial class MirBorrows
 
     // Whether a Type is punnable (SPEC 5.2: the `owner` Scalars of 3.1, ScalarTypes' one definition; raw pointers; Tuples and fixed arrays
     // of them) and how much of a Scalar it holds inline: an array its element's, by its own extent at most (Sized); a Tuple its
-    // components' most. An abstract part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them): punnable, a Scalar
-    // surely, and Hidden, which the judge reads at a written Type's grid end (Designated); any other Type is not punnable.
-    private static (bool Punnable, Extent Scalar, bool Hidden) Punnable(BoundType type)
+    // components' most. An abstract part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them): punnable and a
+    // Scalar surely, judged as one at its Position (Designated); any other Type is not punnable.
+    private static (bool Punnable, Extent Scalar) Punnable(BoundType type)
     {
-        if (ScalarTypes.Supports(type))
+        if (ScalarTypes.Supports(type) || type.IsAbstract)
         {
-            return (true, Extent.Positive, false);
-        }
-
-        if (type.IsAbstract)
-        {
-            return (true, Extent.Positive, true);
+            return (true, Extent.Positive);
         }
 
         switch (type.Kind)
         {
             case BoundTypeKind.Semantics when type.Semantics == SemanticsKind.Raw:
-                return (true, Extent.None, false);
+                return (true, Extent.None);
             case BoundTypeKind.Semantics when type.Semantics == SemanticsKind.Owner && type.Components.Count > 0:
                 return Punnable(type.Components[0]);
             case BoundTypeKind.FixedArray:
-                var (punnable, scalar, _) = Punnable(type.Components[0]);
-                return (punnable, scalar < Sized(type) ? scalar : Sized(type), false);
+                var (punnable, scalar) = Punnable(type.Components[0]);
+                return (punnable, scalar < Sized(type) ? scalar : Sized(type));
             case BoundTypeKind.Tuple:
                 var (all, most) = (true, Extent.None);
 
                 // By index: a foreach over the interface would allocate an enumerator per call.
                 for (var i = 0; i < type.Components.Count; i++)
                 {
-                    var (p, s, _) = Punnable(type.Components[i]);
+                    var (p, s) = Punnable(type.Components[i]);
                     (all, most) = (all && p, Most(most, s));
                 }
 
-                return (all, all ? most : Extent.None, false);
+                return (all, all ? most : Extent.None);
             default:
-                return (false, Extent.None, false);
+                return (false, Extent.None);
         }
     }
 
@@ -215,10 +211,9 @@ internal sealed partial class MirBorrows
     // Type (off the Place's address it leaves the Place's storage, undefined), or, on, a chain row's: typed. Else a pun only where the
     // write must overlap a raw pointer of the Place, which holds a byte (Holder): every byte of the Place is a pointer's (its grid rows
     // end at a raw pointer), or the write's first byte is a Scalar's on a pointer's first (on, the Place's chain ends at a raw pointer and
-    // the written Type's at a Scalar), or, on, every byte of the write is a binding's (its grid rows end at an abstract part, Punnable's
-    // Hidden: SPEC 8.15.1 admits one as long as the Place) and the Place surely holds a pointer's byte (Pointered), every length on the
-    // way a constant above 0 and the written Type surely holding a Scalar (Extent.Positive). Else undecided: the layout, or a length that
-    // is no constant, decides what it covers (off the Place's address, an abstract write too).
+    // the written Type's at a Scalar), every length on the way a constant above 0 and the written Type surely holding a Scalar
+    // (Extent.Positive; an abstract part is a Scalar of a binding's size, Punnable, so it is a pun only where these rows establish the
+    // overlap, the owner's O-205 (a)). Else undecided: the layout, or a length that is no constant, decides what it covers.
     private PunWrite Designated(BoundType place, BoundType write, bool on)
     {
         if (types.SameStructure(place, write) || (on && this.Leads(place, write, grid: false)))
@@ -231,11 +226,10 @@ internal sealed partial class MirBorrows
             return PunWrite.Undecided;
         }
 
-        // On, at the chain's end: the written Type's first byte is a Scalar's; or the write covers the Place from its address.
+        // On, at the chain's end: the written Type's first byte is a Scalar's.
         var first = on && Pointer(this.End(place, grid: false)) && this.End(write, grid: false) is { Kind: not BoundTypeKind.Tuple } led &&
             Punnable(led).Scalar == Extent.Positive;
-        var covers = on && this.End(write, grid: true) is { } row && Punnable(row).Hidden && this.Pointered(place) == Extent.Positive;
-        return first || covers || Pointer(this.End(place, grid: true)) ? PunWrite.Pun : PunWrite.Undecided;
+        return first || Pointer(this.End(place, grid: true)) ? PunWrite.Pun : PunWrite.Undecided;
 
         static bool Pointer(BoundType? row) => row is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
