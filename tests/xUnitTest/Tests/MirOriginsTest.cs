@@ -335,7 +335,7 @@ public sealed partial class MirOriginsTest
     }
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
-    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, PLAN G195: a call's Origins
+    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, closed by G216 (a) U3a-r: a call's Origins
     // are its call regions, AValidChainHasNoOriginProblem). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested
     // result's row with a per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
     // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
