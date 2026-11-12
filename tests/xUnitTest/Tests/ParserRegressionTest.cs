@@ -1095,38 +1095,40 @@ public class ParserRegressionTest
         Assert.Contains($"'{modifier}'", duplicate.Message);
     }
 
-    // SPEC 7.5 (G507): the leading region is decided on the one parse of each item's operand, so a body's parse allocation grows
-    // linearly with its leading Constraints and the items after them: doubling both doubles the increment.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void ALongLeadingRegionParsesInLinearAllocation()
-    {
-        static long Allocation(int count)
-        {
-            var source = new System.Text.StringBuilder("func f<T>(h: H)\n");
-            for (var i = 0; i < count; i++)
-            {
-                source.Append("    T.(C).X").Append(i).Append("(a) is Copy\n");
-            }
-
-            for (var i = 0; i < count; i++)
-            {
-                source.Append("    h.peek(").Append(i).Append(")\n");
-            }
-
-            var text = source.Append("    ()\n").ToString();
-            return AllocationMeasurement.MeasureOnce(() => ParseTestHelper.Parse(text));
-        }
-
-        var small = Allocation(100);
-        var medium = Allocation(200);
-        var large = Allocation(400);
-        Assert.True(large - medium <= (medium - small) * 5 / 2, $"{small} {medium} {large}");
-    }
-
     private static (GroupKoto Root, TestDiagnostic[] Diagnostics) Parse(string source)
     {
         var kotonoha = ParseTestHelper.Parse(source);
         return (kotonoha.RootKoto, TestDiagnostics.Of(kotonoha));
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // SPEC 7.5 (G507): the leading region is decided on the one parse of each item's operand, so a body's parse allocation grows
+        // linearly with its leading Constraints and the items after them: doubling both doubles the increment.
+        [Fact]
+        public void ALongLeadingRegionParsesInLinearAllocation()
+        {
+            int[] counts = [100, 200, 400];
+            var bytes = AllocationMeasurement.MeasureSeries(counts.Length, index =>
+            {
+                var source = new System.Text.StringBuilder("func f<T>(h: H)\n");
+                for (var i = 0; i < counts[index]; i++)
+                {
+                    source.Append("    T.(C).X").Append(i).Append("(a) is Copy\n");
+                }
+
+                for (var i = 0; i < counts[index]; i++)
+                {
+                    source.Append("    h.peek(").Append(i).Append(")\n");
+                }
+
+                var text = source.Append("    ()\n").ToString();
+                return () => ParseTestHelper.Parse(text);
+            });
+            var (small, medium, large) = (bytes[0], bytes[1], bytes[2]);
+            Assert.True(large - medium <= (medium - small) * 5 / 2, $"{small} {medium} {large}");
+        }
     }
 }
