@@ -2541,6 +2541,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the walk). Rejected: a static `MirSteps`
     with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and A4 too); `MirBorrows` members made
     internal for `MirOrigins` (couples Origin judgment to Loan state).
+  - Amended by PLAN G774 (Q-338, 2f9209532, 2026-11-12; behaviour-preserving): `MirSteps.Walk` reads its body from `MirCases.Body`
+    (the selected view's body, as its Types already did) and takes no body argument; `Prepared(body, root)` keeps its explicit body
+    (it reads no view and runs outside walks). One `MirSteps.Index` holds the Index-step rule for Walk and `Element`. Reason no
+    longer holding: "the body (per call)" was `MirBorrows.Walk`'s `this.body`, moved verbatim, while every caller's body is the one
+    `MirCases` selects (MirAnalysis.Borrows, MirOrigins.Judge).
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
   part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
   part by BU-102: the view's throw, an atom's part its forming unit's)

@@ -268,7 +268,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     {
         ref readonly var found = ref this.refs[r];
         var place = this.body.Statements[found.Statement].Rvalue.Place;
-        var count = this.steps.Walk(this.body, place, reborrow: false, ref this.walk);
+        var count = this.steps.Walk(place, reborrow: false, ref this.walk);
         for (var i = count - 1; i >= 0; i--)
         {
             var step = this.walk[i];
