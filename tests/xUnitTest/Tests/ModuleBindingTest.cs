@@ -9,6 +9,13 @@ namespace XunitTest;
 
 public partial class ModuleBindingTest
 {
+    private const string HolderLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Holder\n        associate Item\n    protected struct Token\n";
+    private const string MakerLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Maker\n        func tag() -> i32\n    protected func tag() -> i32 => 1\n";
+    private const string HolderMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Holder\n    associate Lib.Base.Holder.Item is ";
+    private const string MakerMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Maker\n";
+    private const string HolderOuter = "public open struct Outer: Lib.Base\n    public init(): base() => ()\n";
+    private const string HolderNested = " struct Mine\n        Self is Lib.Base.Holder\n        associate Lib.Base.Holder.Item is ";
+
     [Theory]
     [InlineData("public func main() => Lib.Api.value()", true)]
     [InlineData("alias Lib.Api\npublic func main() => value()", true)]
@@ -418,6 +425,29 @@ public partial class ModuleBindingTest
             {
                 Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, structure) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
             }
+        }
+    }
+
+    // SPEC 9.4.2, 9.4.6: Access(Mine) ∩ Access(Contract) over two Kotonoha (KA, KL). An intersection that holds a Kotonoha or Body atom
+    // of each is empty; Derived(Base) is of neither (PLAN G610). The Contract is a protected internal member of Lib's open Base
+    // (KL ∪ Body(Base) ∪ Derived(Base)); the binding or the implementation is a protected member (Body(Base) ∪ Derived(Base)).
+    [Theory]
+    [InlineData(HolderMine + "Lib.Base.Token\n", HolderLibrary, true)] // KA∩KL, KA∩Body(Base) are empty; Derived(Base) is in U
+    [InlineData("public " + HolderMine + "Lib.Base.Token\n", HolderLibrary, false)] // a public Mine: KL alone is not empty
+    [InlineData(HolderMine + "Own\n    private struct Own\n", HolderLibrary, false)] // KA∩Derived(Base) is not empty, U is Body(Mine)
+    [InlineData(MakerMine, MakerLibrary, true)] // the inherited protected tag implements the requirement
+    [InlineData("public " + MakerMine, MakerLibrary, false)]
+    [InlineData(HolderOuter + "    protected internal" + HolderNested + "Lib.Base.Token\n", HolderLibrary, true)] // each chain's Derived atom is in U
+    [InlineData(HolderOuter + "    private struct Own\n    protected" + HolderNested + "Own\n", HolderLibrary, false)] // Derived(Outer)∩KL is not empty
+    [InlineData(HolderOuter + "    protected struct Own2\n    protected internal" + HolderNested + "Own2\n", HolderLibrary, false)] // KA∩Derived(Base) is not empty
+    [InlineData("", HolderLibrary + "struct Mine: Base\n    public init(): base() => ()\n    Self is Base.Holder\n    associate Base.Holder.Item is Base.Token\n", false)] // one Kotonoha: K∩K is not empty
+    public void ConformanceDomainsOverTwoKotonohaReadEmptyIntersections(string root, string library, bool valid)
+    {
+        var c = Create(root, library);
+        Assert.Equal(valid, c.Bind().IsComplete);
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.InaccessibleBinding_Kd or DiagnosticCode.IncompatibleContractImplementation_Kd);
         }
     }
 
