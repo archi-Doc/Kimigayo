@@ -100,6 +100,12 @@ internal sealed partial class MirBorrows
         }
     }
 
+    // What a Holdings entry that names no stored part writes, as the written side's fold reads it (Within; Scalared: whether it may
+    // write): a form with no row undecided (Holdings' contract: each reader's undecided outcome); none for an erased environment (no raw
+    // Place lies within a Function value, SPEC 5.2), a layer or an abstract part's own entry (Punnable's row reads the part); null for
+    // an Inline part, which the fold reads by its Type.
+    private static PunWrite? Unstated(in Hold entry) => entry.Step == HoldStep.Unsupported ? PunWrite.Undecided : null;
+
     // How much of a raw pointer's byte a Place of a Type holds inline, by the Type's own structure and the one reading of a length
     // (Sized): the bytes a Place has (SPEC 4.1, 5.2), which is not what its value carries: Binding's holdings state the Loans and layers
     // carried, and an array of no element keeps its element's (SPEC 4.3.3: `[0 of v]` keeps v's Loans), so RawInline is true of a Place
@@ -144,12 +150,6 @@ internal sealed partial class MirBorrows
 
         return most != Extent.Positive && AdtDef.Base(type) is { } parent ? Most(most, this.Pointered(cases.Type(parent))) : most;
     }
-
-    // What a Holdings entry that names no stored part writes, as the written side's fold reads it (Within; Scalared: whether it may
-    // write): a form with no row undecided (Holdings' contract: each reader's undecided outcome); none for an erased environment (no raw
-    // Place lies within a Function value, SPEC 5.2), a layer or an abstract part's own entry (Punnable's row reads the part); null for
-    // an Inline part, which the fold reads by its Type.
-    private static PunWrite? Unstated(in Hold entry) => entry.Step == HoldStep.Unsupported ? PunWrite.Undecided : null;
 
     // The leading chain's one step under the case view (TyCtxt.Leading, Binding's): the part the specification places at the address of
     // a value of the row's Type, `element` whether it is a fixed array's element (SPEC 4.1: element i at offset i * stride), else a
