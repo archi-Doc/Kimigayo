@@ -116,8 +116,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) holds
-    // when one union of a's or b's chain has every atom included in U; the unions of a chain intersect.
+    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) must
+    // hold: every intersection of a's and b's unions is empty (atoms of two Kotonoha) or has an atom included in U (UnionCovered); the
+    // unions of a chain intersect.
     private bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
         foreach (var (level, union) in new AccessUnions(member, memberAccess))
