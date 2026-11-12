@@ -147,10 +147,10 @@ internal sealed partial class MirBorrows
         }
         else
         {
-            this.Referents(this.argValues[position]);
+            this.Referents(this.argValues[position], input);
         }
 
-        var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position]);
+        var (limited, deepHolder) = stored ? default : this.Writes(state);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
         for (var t = 0; t < this.targets.Count; t++)
@@ -170,15 +170,30 @@ internal sealed partial class MirBorrows
     {
         var via = this.writingVia[target];
         var own = (via & ViaRoot) != 0 ? written.Own : null;
-        var past = (target, via & ViaPast) switch
-        {
-            (Escaped, _) => written.All,
-            (_, not 0) => this.PastEntry(written, target),
-            _ => null,
-        };
+        var past = target == Escaped ? ((via & (ViaRoot | ViaPast)) != 0 ? written.All : null) // E on a converted route only: its view's.
+            : (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
-        return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
+        var untied = (own ?? past)?.Untied == true;
+        if ((via & ViaView) != 0)
+        {
+            // On a converted route, each view key's record (MirBorrows.Reach's ViewSteps), All where the view is unknown.
+            var head = this.writingView[target];
+            for (var node = head; node >= 0 || node == UnknownView; node = node >= 0 ? this.viewNodes[node].Next : EmptyView)
+            {
+                var record = node != UnknownView && this.viewNodes[node].Type is { } type ? this.Viewing(written, types.Erase(type)) : written.All;
+                value = this.sets.Union(value, this.RecordValue(state, call, record, checks));
+                untied |= record?.Untied == true;
+            }
+        }
+
+        return untied ? this.sets.Union(value, this.escapedSet) : value;
     }
+
+    // The record of the Type a callee views a storage at (SPEC 5.7 Calls: through a raw layer a call stores what its pointee Type admits):
+    // none where that Type holds no Loan, a Loan-free view storing nothing that carries one; else its Reached entry, All where none names
+    // it (Revision 8: a stated layer's write fact names no Place Type).
+    private StorageRetention? Viewing(OutputRetention written, BoundType type)
+        => this.Holds(type, out _) ? this.ReachedEntry(written, type) ?? written.All : null;
 
     // What one record stores: each input's value by its kinds, its pairs judged (Solved); none for no record.
     private int RecordValue(ulong[] state, in MirTerminator call, StorageRetention? record, bool checks)
@@ -275,7 +290,7 @@ internal sealed partial class MirBorrows
     // The record a holder W reached past another holder receives (DECISIONS R4-M154, Revision 8): a written storage is the Place a Loan
     // reaching the holder names, the holder its root, so the holder takes the Reached entry of that Place's Type (ReachedEntry); All
     // where none names it, or where Loans naming Places of several Types reach it (All joins every entry, so it bounds their join).
-    private StorageRetention PastEntry(OutputRetention written, int target)
+    private StorageRetention? PastEntry(OutputRetention written, int target)
         => this.writingPlace[target] is (BoundType place, false) ? this.ReachedEntry(written, place) ?? written.All : written.All;
 
     // The Reached entry of a Place's erased case Type (PastEntry): the entries whose Types, in the view's case (MirCases.Type) and

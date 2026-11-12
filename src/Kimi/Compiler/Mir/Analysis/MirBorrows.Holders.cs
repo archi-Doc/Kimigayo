@@ -11,6 +11,7 @@ internal sealed partial class MirBorrows
 {
     private readonly List<(int Slot, int Local)> drops = []; // The view's drop slots, each with its holder's local.
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
+    private int[] holderLocals = []; // Each slot's local, -1 for E and a drop slot (MirBorrows.Reach's W).
     private int[] dropSlots = []; // By local: its drop slot, -1 for none; set where the view has drop slots.
     private bool[] reserves = []; // By slot: whether a two-phase Loan is issued into it, its reservation holder.
     private int holderCount; // The slots, E's included.
@@ -47,6 +48,16 @@ internal sealed partial class MirBorrows
             }
 
             this.flowCount = pass == 0 ? this.holderCount : this.flowCount;
+        }
+
+        MirDataflow.Grow(ref this.holderLocals, this.holderCount);
+        Array.Fill(this.holderLocals, -1, 0, this.holderCount);
+        for (var i = 0; i < locals.Length; i++)
+        {
+            if (this.slots[i] >= 0)
+            {
+                this.holderLocals[this.slots[i]] = i;
+            }
         }
 
         MirDataflow.Grow(ref this.reserves, this.holderCount);

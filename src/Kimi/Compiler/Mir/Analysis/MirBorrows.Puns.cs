@@ -183,8 +183,10 @@ internal sealed partial class MirBorrows
     }
 
     // A set's scan (memoized per run): the set is a value the parameter's key `view` (an index) types: its entries' holders to pun
-    // against that key's write Types; and the (holder, key) pairs they lead to: each Past key of `view` with a writable layer or an
-    // abstract part (the callee may read a pointer there), and `view` itself where its chain is unknown past an abstract part.
+    // against that key's write Types; and the (holder, key) pairs they lead to, the callee's view of each (the one walk of that relation,
+    // which W's converted route reads too, MirBorrows.Reach's ViewSteps): each Past key of `view` that is a step of the view (IsViewStep:
+    // a writable layer or an abstract part, where the callee may read a pointer, or a Type holding a Loan, which a store may keep), and
+    // `view` itself where its chain is unknown past an abstract part.
     private int Scan(int set, int view)
     {
         if (this.pastScans.TryGetValue((set, view), out var start))
@@ -225,7 +227,7 @@ internal sealed partial class MirBorrows
             for (var p = facts.PastStart; p < facts.PastStart + facts.PastCount; p++)
             {
                 var past = this.Key(this.punPastKeys[p]);
-                if (this.punKeys[past] is { FirstCount: > 0 } or { FirstUnknown: true })
+                if (this.IsViewStep(past, this.punViewTypes[facts.FirstStart + (p - facts.PastStart)]))
                 {
                     this.scanChildren.Add(this.loans[entry].Named);
                     this.scanChildren.Add(past);

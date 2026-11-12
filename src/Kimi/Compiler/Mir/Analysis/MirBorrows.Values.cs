@@ -21,7 +21,7 @@ internal sealed partial class MirBorrows
         {
             var kept = this.Operand(state, rvalue.Start);
             var displaced = rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, cases.TypeOf(this.body.Operands[rvalue.Start])) : kept;
-            return (displaced, 0); // Δ off a grid (MirBorrows.Puns).
+            return (this.Converts(rvalue) && displaced != 0 ? this.sets.Union(displaced, this.convertedSet) : displaced, 0); // Δ off a grid (MirBorrows.Puns); Κ.
         }
 
         switch (rvalue.Kind)
@@ -58,6 +58,14 @@ internal sealed partial class MirBorrows
             cases.TypeOf(this.body.Operands[rvalue.Start]).Semantics == SemanticsKind.Raw,
         _ => false,
     };
+
+    // Whether an rvalue converts a raw pointer to another pointee Type (SPEC 5.4: not the same Type after normalization), the route
+    // conversion a W walk reads (Κ; MirBorrows.Reach).
+    private bool Converts(in MirRvalue rvalue)
+        => rvalue is { Kind: MirRvalueKind.Cast, Type: { Semantics: SemanticsKind.Raw, Components: [var to, ..] } } &&
+            (MirCastKind)rvalue.Op == MirCastKind.Pointer &&
+            cases.TypeOf(this.body.Operands[rvalue.Start]) is { Semantics: SemanticsKind.Raw, Components: [var from, ..] } &&
+            !ReferenceEquals(types.Erase(cases.Type(to)), types.Erase(cases.Type(from)));
 
     // An operand's value: a constant's none, a Place's read (a PairAcquire's that Copies; one that Reborrows is its Use's issue, Plan).
     private int Operand(ulong[] state, int index)
@@ -110,7 +118,7 @@ internal sealed partial class MirBorrows
             (parents, layer) = this.walk[i].Class switch
             {
                 MirStepClass.Shared => (pointer, this.Content(state, pointer)),
-                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer))), // A fresh anchor (5.2.2); no reference (rule W).
+                MirStepClass.Raw => (pointer, this.Punned(pointer, this.Indirect(this.Content(state, pointer)))), // A fresh anchor (5.2.2); no reference (rule W).
                 MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
                 _ => (parents, this.Indirect(layer)), // Rule W: a part of a holder is no Copy of a borrow it holds.
             };
@@ -118,6 +126,9 @@ internal sealed partial class MirBorrows
 
         return (layer, parents);
     }
+
+    // A read through a raw pointer carrying Κ: a punned read, its pointers viewed at the converted Type, so Κ with them.
+    private int Punned(int pointer, int read) => read != 0 && this.sets.Contains(pointer, Converted) ? this.sets.Union(read, this.convertedSet) : read;
 
     // The value a Deref step of the walk buffer goes through, on the layer and parents of the prefix it applies to: a borrow's, that layer; a
     // raw pointer's, the prefix's read (Layered): the addresses and Loans it carries.

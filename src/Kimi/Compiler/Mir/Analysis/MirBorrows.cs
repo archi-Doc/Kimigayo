@@ -80,7 +80,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private const int Offgrid = 3; // The element of the marker Δ: a pointer A5 saw displaced off an element grid (MirBorrows.Puns), read by no check.
     private const int Maybe = 4; // The element of the marker Φ_M: the value's Φ_E rests on an undecided write (MirBorrows.Puns).
     private const int Undecided = 5; // The element of the marker Φ_U: the set's content rests on one, which a check's gather reads (MirBorrows.Puns).
-    private const int Markers = 6; // The element of local 0's marker, after Φ_E to Φ_U: local L's is Markers + L, which its role decides (Marker).
+    private const int Converted = 6; // The element of the marker Κ: a pointer converted to another pointee Type, or read through one; a
+                                     // W walk then reaches what it names on a converted route (MirBorrows.Reach; PROTO-F2R1), read by no check.
+    private const int Markers = 7; // The element of local 0's marker, after Φ_E to Κ: local L's is Markers + L, which its role decides (Marker).
 
     private readonly MirLoanSets sets = new();
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
@@ -95,6 +97,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private int offgridSet; // The set {Δ} (MirBorrows.Puns).
     private int maybeSet; // The set {Φ_E, Φ_W, Φ_M}, an undecided write's holder's (MirBorrows.Puns).
     private int undecidedSet; // The set {Φ_U} (MirBorrows.Puns).
+    private int convertedSet; // The set {Κ} (MirBorrows.Values, .Reach; PROTO-F2R1).
 
     /// <summary>What a local's marker, element <see cref="Markers"/> plus the local, is: the role table of the per-local markers (R4-M70),
     /// by the local's role (<see cref="MarkerOf"/>).</summary>
