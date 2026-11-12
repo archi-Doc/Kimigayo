@@ -141,7 +141,7 @@ internal sealed partial class MirBorrows
     // `&raw P[i]` takes after them (MirSteps.Element), so that a Storage is exactly a raw Ref of an element of its Place (O-92 (a)).
     private int AddressWalk(MirPlace place, int location)
     {
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
         return location < this.body.Statements.Length && this.body.Statements[location] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Storage }
             ? this.placeSteps.Element(place, count, ref this.walk) : count;
     }
@@ -183,7 +183,7 @@ internal sealed partial class MirBorrows
             return entry;
         }
 
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
         var direct = true;
         for (var i = 0; i < count; i++)
         {

@@ -95,7 +95,7 @@ internal sealed partial class MirBorrows
     // R26-access (D4 (1)): a write to a slot-rooted Place, an Assign's or a Call's destination, at the write.
     private void DefaultWrite(MirPlace place, MirLocation at)
     {
-        if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk) is var count &&
+        if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(place, reborrow: false, ref this.walk) is var count &&
             this.SlotRooted(place.Root, this.walk.AsSpan(0, count)))
         {
             this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Subject(at), place.Root);
