@@ -1479,12 +1479,15 @@ public sealed partial class MirBorrowsTest
     // (SPEC 5.5), and a read of `cell` after `kk = 2` keeps the Loan live (the Bad twins). The narrowing follows the declaration, not its
     // signature: a user function of Raw.slice's shape may store through its storage (userBad, 15.6.4's public contract). `released`
     // releases a stack element's address and `initializedBad` initializes an Initialized Place: both break 5.6's run-time preconditions
-    // and only probe the analysis. Fails on dev 63878b639: range, written and released conflict (Raw.slice's storage took rule A's
-    // untied store).
+    // and only probe the analysis. A reslice's range selection stores nothing through its backing either, its Slice tied to that backing
+    // (DECISIONS R4-M63's amendment): subRange `sl[0..1]`, nested `values[..][1..]`, whole `sl[..]` and ending `sl[..1]` are valid while
+    // `values` is dead after `kk = 2`; nestedReadAfter reads it after (ARangeSelectionsSliceReachesWhatItsBackingReaches holds the other
+    // twins). Fails on dev 63878b639: range, written and released conflict (Raw.slice's storage took rule A's untied store); the
+    // reslices on dev 3dc197857.
     [Fact]
     public void ASliceOrReleaseStoresNothingThroughItsStorage()
         => Assert.Equal(
-            ["rangeBad: kk = 2", "writtenBad: kk = 2", "userBad: kk = 2", "initializedBad: kk = 2"],
+            ["rangeBad: kk = 2", "writtenBad: kk = 2", "userBad: kk = 2", "initializedBad: kk = 2", "nestedReadAfter: kk = 2"],
             Problems("""
                 func keep(slot: raw/(raw/u8), value: raw/u8) => ()
                 func mine(storage: raw/(raw/(raw/u8)), length: isize) => ()
@@ -1558,6 +1561,55 @@ public sealed partial class MirBorrowsTest
                         Raw.initialize(values[0]@raw, q)
                     keep(values[0], spare)
                     kk = 2
+                func subRange()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[0..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nested()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func whole()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func ending()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nestedReadAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                    let z = part[0]
 
                 """));
 
