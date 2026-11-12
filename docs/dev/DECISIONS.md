@@ -2508,6 +2508,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
+  - Amended by R4-M200 (PLAN G793, 2026-11-12): D3's slot-rooted Loan is `DefaultArgumentBorrow_Kd` only where its tier is decided,
+    recorded after the replay; D4 (2) takes an exclusive Loan that R26-borrow did not decide; any other Loan found is the located
+    `Unsupported_Kd` (R4-M198's undecided class).
 - **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the
   proposal written at the owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals
   に提案書として書いてください。」; answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`.
@@ -6256,12 +6259,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
     read holders in).
   - Not covered: R26-borrow (`MirBorrows.Defaults.DefaultBorrows`) does not read the tier; it reports every slot-rooted candidate
     whatever its `Outcome` (PLAN G793; twin rKeepRestsU). The own-step Warning and Activations' scans keep R4-M198's named limit.
+  - Amended by R4-M200 (PLAN G793, 2026-11-12): R26-borrow reads the tier too.
   - Cost: per pass instance at most two reads of a holder's state and stores (one per read key), a Shared set read in full by two
     vias per tier, a transit value taken once per tier; `Restamp` one more holderCount per view; warm 0 B.
   - Rejected: tagging W's stores past a resting holder with Φ_U (every conflict such a store implies also holds in the pun layout,
     where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
     dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
     the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
+- **R4-M200 R26-borrow reads its Loans' tier** (2026-11-12; Middle, A5; Minor; PLAN G793; the Middle's Q13 ruling) SPEC 7.2.3,
+  23.1.1; extends R4-M198's undecided class to R26-borrow; amends R4-M98 D3 and D4 (2) and R4-M199's "Not covered"; removes PLAN
+  G793 and R26-borrow from the readers that do not read the tier.
+  - Rule: R26-borrow's verdict per Loan is the Join (`MirOutcome`) of its candidates' `Outcome` over the view's Returns
+    (`MirBorrows.Defaults.DefaultBorrows`; the check takes no value, `TakesStores`), recorded after the replay at the Loan's site
+    (`DefaultAccesses`): decided, `DefaultArgumentBorrow_Kd`; else an exclusive slot-rooted Loan, R26-access's
+    `DefaultArgumentAccess_Kd` (D4 (2) now takes a Loan R26-borrow did not decide); else Limit, a Loan found only in sets carrying
+    Φ_U, the located `Unsupported_Kd` (`MirBorrows.Limit`).
+  - Record selection (Q13, the Middle's ruling): an exclusive slot-rooted Loan found only at Limit is `DefaultArgumentAccess_Kd`
+    alone (rKeepUniqRestsBad): SPEC 7.2.3's access rule fails in every layout, the Loan's mode and its slot root being facts of the
+    Loan, not of a write; only the code R4-M98 D4's one code per failure picks rests on the write, so no `Unsupported_Kd` is due
+    beside it.
+  - Record moves (Q13; dev to the unit, by program; no acceptance move): rKeepRestsU (unsettled): `DefaultArgumentBorrow_Kd` ->
+    `Unsupported_Kd` at the same subject (due, R4-M198's undecided class); rKeepBesideBad (invalid): the resting Loan's
+    `DefaultArgumentBorrow_Kd` -> `Unsupported_Kd`, the decided Loan's kept (still rejected); rKeepUniqRestsBad (invalid):
+    `DefaultArgumentBorrow_Kd` -> `DefaultArgumentAccess_Kd` at the same subject. R26-borrow's records enter the report after the
+    replay, so within a template a `DefaultArgumentBorrow_Kd` may follow the view's other A5 records in insertion order.
+  - Cost: one Join per slot-rooted candidate at a Return; `defaulted` keeps its array, one byte per Loan; no new walk.
+  - Rejected: recording at each Return (a template has a check Return per non-value end, so a Limit then a decided sighting of one
+    Loan would give two records and the reverse order one).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
