@@ -344,7 +344,7 @@ public static partial class Parser
     /// <returns><see langword="true"/> for a Container declaration.</returns>
     internal static bool IsContainerDeclarationStart(ref TokenReader reader)
     {
-        if (reader.CurrentTokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        if (HeaderWords[(byte)reader.CurrentTokenKind] != HeaderWord.ContainerIntroducer)
         {
             return false;
         }
@@ -358,11 +358,23 @@ public static partial class Parser
         };
     }
 
+    // Whether a declaration follows an executable item's modifiers: the header table's introducers (Appendix F.6.1), a Container
+    // word and `func` only where their declaration starts, and a SpecializationDeclaration's `specialize func` (F.6.3).
+    // `alias` and `rootgroup` are answered apart from the table, as before R9-F6-10: the table holds `rootgroup` and not `alias`,
+    // this reader the reverse. SPEC F.3.2 makes both declaration introducers; the two arms go when both readers read one set.
     private static bool IntroducesDeclaration(ref TokenReader reader)
-        => IsContainerDeclarationStart(ref reader) ||
-            reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
-            IsFunctionDefinitionStart(ref reader) ||
-            (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
+        => reader.CurrentTokenKind switch
+        {
+            TokenKind.Func => IsFunctionDefinitionStart(ref reader),
+            TokenKind.Alias => true,
+            TokenKind.RootGroup => false,
+            var kind => HeaderWords[(byte)kind] switch
+            {
+                HeaderWord.ContainerIntroducer => IsContainerDeclarationStart(ref reader),
+                HeaderWord.DeclarationIntroducer => true,
+                _ => reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func,
+            },
+        };
 
     /// <summary>Whether a named function definition starts here (Appendix F.6.1 FunctionDeclaration, F.10 LocalFunction): <c>func</c>
     /// before a Name. <c>func</c> before a parameter or generic parameter list is an anonymous function, an expression (SPEC 9.4).</summary>
