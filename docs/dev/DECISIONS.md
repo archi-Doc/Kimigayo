@@ -1623,6 +1623,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   "every operand to the result" (wrong for `clone`, which retains its payload's Loans only); every operand beyond a declaration
   reaching the result by rule (the table names the one operand); giving `$abort` parameter symbols for `TyCtxt.Retains` (its Never
   result retains nothing). Not temporary.
+  - Amended by F2b (Q-331, 4d51fbb4c, 2026-11-12): the Retained operand ties the result: a `RawSlice` whose backing is no constant
+    (a range selection, SPEC 4.8.4: `x[r]` is `x.slice(r)`, tied to the receiver's borrow) is not untied and retains its backing's
+    value; only a written `Raw.slice`, whose backing is R4-M40's Unit constant, keeps its declaration's untied result (SPEC 5.6,
+    15.6). The census's "RawSlice (untied, with its backing row)" is the written call's. Reason no longer holding: R4-M63 read the
+    declaration's untied result for both builder forms.
 - **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
   `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
   integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on
