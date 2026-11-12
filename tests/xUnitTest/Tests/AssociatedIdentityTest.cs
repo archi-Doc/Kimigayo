@@ -213,9 +213,10 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         const string Source = "contract C<E>\n    associate Item\nfunc f<U>(x: i32) -> i32\n    U is C<i32>\n    U is C<i64>\n    U.Item is Missing\n    return x\nlet wrong: i32 = true";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding. The clause adds its own
-        // InvalidConstraint_Kd over the ambiguous subject (the Constraint owner's record on this form).
-        Assert.Equal(["AmbiguousBinding_Kd", "InvalidConstraint_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
+        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding. The clause's verdict over
+        // its failed (ambiguous) subject rests on that subject's record (SPEC 23.1.2; G507, the owner's O-169 (a): one record per
+        // invalid subject); the requirement's and the expression's records are independent.
+        Assert.Equal(["AmbiguousBinding_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -118,7 +118,7 @@ internal sealed partial class MirBorrows
     // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
-        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(place, reborrow, ref this.walk);
         var (direct, anchored) = (true, false);
         for (var i = 0; i < count; i++)
         {

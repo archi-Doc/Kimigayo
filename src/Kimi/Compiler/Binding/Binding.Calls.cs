@@ -416,9 +416,9 @@ public sealed partial class Binding
                     out _,
                     out _,
                     out _,
-                    out _,
+                    out var failure,
                     out _);
-                if (state != CandidateApplicability.Applicable)
+                if (AsSelected(state, failure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
