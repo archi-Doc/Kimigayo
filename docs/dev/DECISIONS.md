@@ -12505,6 +12505,40 @@ resumed by R4-M86 (2026-10-20).
     (`rest-effect-target.patch`) but waits for PLAN G799 (a valid program is rejected on the rebind after the append). (2) The
     unqualified `associate Item is R` whose Contract is missing is definite before the supply (probe a3): PLAN G726 keeps it; its
     exit needs the owner's pending conformances, not a node of the clause.
+- **BU-188 A specialization's placement is judged by the item list that reads it** (2026-11-13; Front, Parsing and Binding; Major,
+  an acceptance mover; PLAN G807; design review 3 ACCEPT, implementation review ACCEPT WITH NOTES; the owner approved
+  `SyntaxForm.SpecializationDeclaration`, O-227 (a): 「Both (a)」) SPEC 8.13.1-8.13.2, 6.1.1, 22.4.1-22.4.2, 23.1.2-23.1.3, Appendix
+  F.6.1-F.6.3, F.10.1, F.11, 19.4.
+  - **Rule.** A `SpecializationDeclaration` is an item only of the source root (directive arms included) and of a group, rootgroup,
+    struct or enum body. `GroupKoto.ParseRootItem` reads the root's, and `TryParsePropertyOrFunction` reads a Container member's.
+    Every executable body (`TryParseStatementItem`) and a Contract read it through `Parser.ParseMisplacedSpecialization`:
+    `MisplacedSyntax_Kd` (`SpecializationDeclaration`) at `specialize func`, and the declaration parsed whole (its BU-149 records
+    included). It is kept in its list (BU-169's kept-recovery precedent, not the Container's omission), with its placement Error
+    published as a part: `FunctionKoto.Placement`, an `ErrorKoto` whose cause is that record.
+  - **Binding.** `PrepareSpecializations` runs the written-header checks first (SPEC 8.13.2's defaults and Constraints, the
+    attribute rows). It then rests the specialization on `Placement` (a part prerequisite, a derived failure) before its own binding
+    of the selection key's arguments and their closedness verdict (8.13.1's "outer generic parameter" is relative to the declaration
+    scope), the target search and every target check. The arguments' Names are still resolved with the declaration's other Types, so
+    their own records stay. `BuildContract`'s catch-all skips a member with a `Placement`, so the Contract's verdict does not rest
+    on it.
+  - **Records (Q13).** A Contract specialization restating a default newly reports `IncompatibleContractImplementation_Kd` (8.13.2,
+    independent; base hid it under the catch-all). Dependent on the placement, so no longer reported: `InvalidTypeFormation_Kd` for
+    an outer generic parameter as a Type argument, and `DuplicateBinding_Kd` for two misplaced specializations with one key.
+  - **Moved.** A Contract's specialization used to fall into Binding's catch-all `InvalidConstraint_Kd`, which reported it at the
+    header and again at the Contract. A body's specialization reached `PrepareSpecializations`, which matched a local generic
+    function (accepted) or reported `MissingSpecializationTarget_Kd` as a proxy.
+  - **Acceptance moves (Q17 class 1).** Two classes are now rejected:
+    - a specialization in an executable body whose scope declares a matching generic function (a root function, method, `init`,
+      `drop` or closure body);
+    - a specialization in an excluded arm of a body or a Contract.
+  - **Removed.** Three copies of the `specialize`-before-`func` test (`Parser.IsSpecializationStart`).
+  - **Stays.** A conditional-conformance block's items stay Binding's whitelist (`ValidateConditionalBlock`), specializations
+    included, until that list has a reader of its own (PLAN G807's remainder).
+  - **Rejected:**
+    - a Binding check of the specialization's scope owner (the placement is grammar; it needs a new code and a dependent target
+      record to suppress);
+    - `SyntaxForm.Declaration` misplaced (it names no kind, and bodies take declarations);
+    - omitting the declaration (design revision 0): it lost the header's records, the startup record and a Repair's verification.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
