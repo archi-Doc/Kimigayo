@@ -652,8 +652,10 @@ public class PairFollowTest
     // limit until PLAN G762; the others are invalid in one case with that case's record: the objref case lends no `objuniq/Node`, the obj
     // case lends its handle exclusively outside a Receiver Expression only when written `@objuniq` (SPEC 15.1.5), and a transferred
     // objuniq reference reaches only its own Type (10.2).
-    // Rows 28-31 capture an object pair layer, an environment entry by the rule of its cases (7.7.2): reads are valid; a write through
-    // the objref case and a capture of the owning `obj or rc` handles are invalid, with the concrete twins' records.
+    // Rows 28-31 capture an object pair layer, an environment entry by the rule of its cases (7.7.2): a read under `objref` is valid and
+    // a capture of the owning `obj or rc` handles is invalid, with the concrete twin's record. Rows 29-30 (`objref or objuniq`, a read,
+    // valid, and a write through the objref case, invalid) are G721's interim row (1), until PLAN G254: a pair layer whose bare
+    // acquisition Reborrows in some case is a located Unsupported_Kd at the entry.
     [Theory]
     [InlineData("o: obj/Node", "s is objref or objuniq", "    var p = o@move\n    let y = p@s\n    let v = y.n\n", "")]
     [InlineData("y: s/Node", "s is objref or objuniq", "    let v = y.n\n", "")]
@@ -683,8 +685,9 @@ public class PairFollowTest
     [InlineData("a: s/Node", "s is obj or objuniq", "    var y = a@move\n    let v = takeU(y)\n", nameof(DiagnosticCode.ExclusiveBorrowRequired_Kd))]
     [InlineData("y: s/Node", "s is objref or objuniq", "    let v = take(y@move)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
     [InlineData("y: s/Node", "s is objref", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", "")]
-    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", "")]
-    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32\n        y.n = 1\n        return 0\n    let v = g()\n", nameof(DiagnosticCode.InvalidAssignment_Kd) + "," + nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    // G721's interim row (1), until PLAN G254 (the next two rows).
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData("y: s/Node", "s is objref or objuniq", "    let g = func [y] () -> i32\n        y.n = 1\n        return 0\n    let v = g()\n", nameof(DiagnosticCode.Unsupported_Kd))]
     [InlineData("y: s/Node", "s is obj or rc", "    let g = func [y] () -> i32 => y.n\n    let v = g()\n", nameof(DiagnosticCode.TransferRequired_Kd))]
     public void AnObjectPairLayerHasItsViewTargetsMembers(string parameter, string premise, string body, string code)
     {
