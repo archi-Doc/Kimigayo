@@ -10237,12 +10237,13 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
   - Amended by R7-N1e1 (2026-11-09; Major; the Front's ruling 1, no design review: option A of the N1e design): a Container's Type
     members are read by name through `MemberTypes(container, name)` (SPEC 9.6, 18.2.1: formal parameters, Origins and `Self` are not
-    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check, `ProjectionQualifier`
-    and the unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default
-    alias's segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto
-    the path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
-    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
-    filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
+    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check,
+    `ProjectionQualifier` (superseded by BU-160: it reads only a parenthesized right, no member by name) and the
+    unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default alias's
+    segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto the
+    path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected:
+    a filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
   - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
     superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
@@ -11408,8 +11409,9 @@ resumed by R4-M86 (2026-10-20).
     library Contract in `[4 of u8].(Indexable<isize>).Element`) now passes the struct and shows g01's two records
     (UnprovenConstraint_Kd, TypeMismatch_Kd): g01, SPEC F.5's own example, is rejected on dev (pre-existing; PLAN G715).
   - Keeps (O-122 (a)): `ProjectionQualifier` reads `T.C.X` as `T.(C).X` (its `C` in the Qualifier row); 8.5.2 makes it an ordinary
-    path; R7-N1e2-2b removes the reading. No test became invalid: the refinement and constraint rows above changed a Provisional
-    expectation, not a program's validity.
+    path; R7-N1e2-2b removes the reading. Superseded by BU-160 (R7-N1e2-2b-1): the reading is gone; only the suffix `.(C).` names a
+    projection's Contract. No test became invalid: the refinement and constraint rows above changed a Provisional expectation, not a
+    program's validity.
   - Removes `Any`, `NoContainer`, `Type`, `Semantics`; the row argument at every `NamePath`/`TypeName` call and
     `LookupAdaptationTarget`; `ResolveAdaptationTarget`'s fallback lookup (NameEvaluationSites ResolvePath.cs 18 -> 17);
     `UseLookup`.
@@ -11624,6 +11626,39 @@ resumed by R4-M86 (2026-10-20).
   - Open: design review 1's N3, triaged 2026-11-11: c01 `keep<() -> u32>(zero)` has G719's cause and joins PLAN G719; c02 is invalid
     as written (SPEC 6.1.1, 9.5: a root function is not visible from a group), so its `UnresolvedBinding_Kd` is correct and its two
     `Unsupported_Kd` are the existing P42 limits (R5-M82).
+- **BU-160 `T.C.X` is an ordinary path; only the suffix `.(C).` names a projection's Contract** (2026-11-11; R7-N1e2-2b-1; Major;
+  design review 1 REVISE, then F's rulings `ruling-e2-2b.md`, `ruling-2b1-filter.md`) SPEC 8.5.2, 9.6, 9.7.3, F.5; the owner's O-101
+  (2)(a), O-122 (a), O-157 (a), verbatim 「すべてa」; PLAN G727.
+  - Rule: `ProjectionQualifier` reads only a parenthesized right, its `C` in the Contract Reference row (BU-151); `T.C.X` and
+    `T.P.C.X` are ordinary paths (9.6), never read as `T.(C).X`. Removed: the group recursion, the unqualified `C`, the
+    `out receiver` (the receiver is the qualifier's left) and `BindAssociatedProjection`'s "unparenthesized with Origins" failure
+    (dead). With G701 (BU-150) the selection test is `IsContract`.
+  - Moves (review condition 6): invalid, accepted before, now UnresolvedBinding_Kd: `T.C.Item` (r04), `T.L.C.Item` (r06),
+    `let p: S.K.Item` (r06f), `T.P.C.E`, `T.K.Item` where `Outer`'s `K` declares no `Item` (q02x); invalid, accepted before, now
+    TypeMismatch_Kd: `return v` at `v: T.K.Item` (q03; dev read it as `T.(K).Item`). Valid, rejected before, now accepted:
+    `T.(C).X.Y` with a `contract X` in scope (q01), `T.K.Item` through T's associated `K` (q02); valid, CheckFaulted_Kd before, now
+    accepted: `T.(C).X.(D).Y` (q01p). Records: `S.C.Item(source)` stays rejected, now as an ordinary path (UnresolvedBinding_Kd at
+    `S.C`); its twin `S.(C).Item(source)` is valid. Likewise G747's
+    AssociatedOriginBindingTest.AnApplicationRestsOnItsFirstFailedPart row `U.L.Item(static)` (`U is L`, written after 2b-1's base):
+    InvalidAssociatedType_Kd before (that deleted Origins failure), now UnresolvedBinding_Kd at `U.L` (the application rests on its
+    failed target); its twin `U.(L).Item(static)` is valid. Milestone20 and the Benchmark corpus are respelled, so the snapshot has
+    no difference.
+  - Tests (the owner's O-157 (a)): every row dev read in the unparenthesized form is respelled `T.(C).X` in behavior-preserving
+    commits first, found by a throwaway trace of that reading over the whole suite (every purpose), the snapshot corpus and the
+    Benchmark corpora: 704 rows in 57 classes, Milestone20 (x6), `Iterators.kimi`, BindingBenchmark "Contracts", and
+    RequirementTypeParsingTest's three syntax-only methods. Expectations that print or key on the spelling follow it:
+    InheritedConformanceTest (3 strings), ConditionalMemberBindingTest, ContractBindingTest, VirtualAssociatedHeaderTest, and
+    ConstraintProjectionApiAccessBindingTest's subject filter (`T.(C).Element` is a Type node wrapping the member access). Kept:
+    `associate C.X` and `P.C.X` heads, `Self is P.C`, StructuredConstraintSubjectBindingTest's `W<Y>.C.A` and `Q.L.Item(a)` (that
+    method pins both spellings) and AssociatedOriginBindingTest's `S.C.Item(source)` row. Rows with each valid twin:
+    AssociatedTypeFormationBindingTest.OnlyTheParenthesizedSuffixNamesAProjectionsContract. Refresh onto dev 4f70e6bd1: the trace
+    rerun on the merged tree read three more rows, G683's
+    ApiAccessBindingTest.AContractsAssociatedSpecificationUsesTheContractsDomain (`Source.Hidden.Element`), respelled
+    `Source.(Hidden).Element` (707 rows in 57 classes); as written they are newly invalid tests (the valid row, public `Hidden`, is
+    rejected, and the two invalid rows lose their Access record). Refresh 2 onto dev 3f391cb35: a scan of every line dev added since
+    4f70e6bd1 finds G747's `U.L.Item(static)` row, kept with its record moved and its valid twin added (Moves).
+  - Rejected: keeping the reading for a module-qualified `C` (a second rule for one form); finding the rewrite set by failing rows
+    (misses rows that pass for another cause and Allocation rows) or by a text grep (nested paths, module paths, `associate` heads).
 - **BU-162 An associate item is read once for every owner (PLAN G683)** (2026-11-11; Front, Parsing and Binding; Major; design
   revision 2, design review 2 and implementation review ACCEPT; the owner's O-160 (a)) SPEC F.6.2, 8.5.1, 8.5.3, 8.5.4, F.5.
   - Rule: `associate` before any start of an AssociatedTypeName introduces the item (`StartsType`, the one start predicate of
