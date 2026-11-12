@@ -9082,6 +9082,9 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by BU-184 (PLAN G721): its fact (`projectionForms`, `ProjectionUseOf`), its reader in `Capture` and its
     "Open" are deleted with the capture Type allowlist; no capture rests on a projection use. The `AddPendingPrerequisite` stance
     stays.
+  - Amended by BU-185 (R7-N1e2-2b-2): `ConstructorMember` keeps this entry's stance without its fact: a missing constructor on a
+    projection qualifier that stays a projection rests on the projection qualifier it formed (the node in hand). Open: the call's
+    own `UnsatisfiedConstraint_Kd` beside a projection whose conformance fails does not rest yet (PLAN G724).
 
 - **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
   its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
@@ -12505,6 +12508,51 @@ resumed by R4-M86 (2026-10-20).
     (`rest-effect-target.patch`) but waits for PLAN G799 (a valid program is rejected on the rebind after the append). (2) The
     unqualified `associate Item is R` whose Contract is missing is definite before the supply (probe a3): PLAN G726 keeps it; its
     exit needs the owner's pending conformances, not a node of the clause.
+- **BU-185 A path's projection is its walk's end (`PathEnd.Projection`); 9.7.3 is judged where a nested Type's reference is formed;
+  a member access publishes its side** (2026-11-12; R7-N1e2-2b-2; Major; design reviews 1-3, the owner's O-186 (a)) SPEC 8.5.2,
+  8.8.1, 8.8.2, 9.6, 9.7.1, 9.7.3, 6.3.2, 23.1.2; PLAN G724, G728.
+  - Projection end: `PathEnd.Projection` is the walk's end for `.(C)` whatever Type its left is, decided once from the left walk's
+    end (`ResolveMember`): after a projection, a selected Core, or an Unresolved left (a built-in, a tuple, an array or a missing
+    name, which the former binds by `BindType` with its own records); Ambiguous and QualificationStop keep their ends; a selected
+    group or Contract is no base (SPEC 8.5.2, F.5). It is also the end for a Name a Core declares no member Type of (unless the Core
+    is a declared struct or enum whose registered conformances name no associated Type of it: then the missing member), and for a
+    Name after a projection. One former, `BindAssociatedProjection`: `BindNamedType` forms the projection on that end (its fallback
+    goes); `ConstructorMember` constructs a projection qualifier's normal form (a projection that stays one names no structure, and
+    its constructor's absence rests on the projection qualifier it formed: the node in hand, a pending prerequisite; BU-184 removed
+    BU-61's fact, so no table is read); `Member`'s projection qualifier is a located `Unsupported_Kd` at the member. A failed `.(C)`
+    reference is the projection's one record (a `.(C)` naming no Contract is missing there). An unresolved walk records at its
+    failing qualifier (`S.Missing` of `S.Missing.X`). `FindAssociated` is split into `SearchAssociated` (no record; the walk's
+    question and 9.7.3's evidence, with its source conformance) and its recording caller.
+  - 9.7.3: one judgment, `AlsoAssociated`, in `BindContainerReference` after the qualifier is applied (9.7.1 step 3), so Type
+    positions, construction and expression qualifiers, inherited members, `::`, `Self` and a nested enum's qualifier
+    (`EnumQualifierType` forms a member-path qualifier through `ConstructionTargetType`, which calls it; a top-level generic enum
+    named by a member path with its own list omitted is G745's inferred construction target) all pass it; the selection stands, the
+    reference fails `AmbiguousBinding_Kd` at the path. Evidence: a premise, or a conformance with a declared path without premises,
+    holds for every binding (8.8.1); a conditional conformance only where its condition is proven for the written arguments (8.8.2,
+    "Refuted: No conformance from this path"). Before the conformances register the read joins G621's early list
+    (`NoteEarlyProjection`, one helper); `VerifyEarlyProjections` judges a noted nested Type again by `AlsoAssociated`.
+  - Member sides: a member access publishes its side (`memberSides`, `MemberSide` Type or Value; its own fact beside the lookup's
+    `MemberSelection`, because a constructor access has a side and no selection), written by `Member`'s tail (`SelectMember`),
+    `BaseMember` and `ConstructorMember`; read (`MemberSideOf`) by `CallReceiver`, `BindEnumConstruction` (a Case named on the Type
+    side) and `BindRequirementItem`. A read of a member access without a published side breaks the formers' contract (an internal
+    error; `MemberSideOf` throws). The table is cleared each pass and sized library-only (`KimiLibrarySize.Stated.MemberSides`).
+  - Moves: valid construction through a projection qualifier newly accepted (b1, n01, k24, r01-r06g, r14v); invalid programs newly
+    rejected `AmbiguousBinding_Kd` (r14, r14b, x06, x07, y01, y02, y03, y07, y14, y16, z03-z07) or G621's `Unsupported_Kd` (x01,
+    x02, y08); a Type function, a Case or a requirement member through a projection qualifier `Unsupported_Kd` (b2, n02, r01b, r11,
+    b5, r16; z13 and y11 under BU-117's found-both interim); UseLookupTest's `(P).(C).Item` over contract P records at `(P).(C)`.
+  - Remaining: a Type-side member other than `.init` through a projection qualifier, and a Name after a projection that names a
+    member Type of its normal form (x08), stay located `Unsupported_Kd`; b1x and r10 record a duplicate `UnsatisfiedConstraint_Kd`
+    at the call, BU-61's open gap, and change when it is fixed (PLAN G724). 9.7.3 is not judged for a conditional conformance's
+    associated Type named only in a signature or a header, where every proof is Unknown before the conformances are validated (y04x,
+    y17: accepted as on dev; PLAN G728).
+  - Removes: `BindNamedType`'s projection fallback, `RequirementGroup.TypeAccess`, `CallReceiver`'s symbol-kind list and
+    `BindEnumConstruction`'s own qualifier-kind test.
+  - Rejected: a projection fallback gated on the left's published end (still a try-then-fallback, a case per form); the walk
+    deciding both readings by declared names (an associated Type's existence needs the base's Type and its Constraints); Type
+    positions only, with expression qualifiers `Unsupported_Kd` until R7-N1 c; 9.7.3 at NamePath's publication (misses qualifiers,
+    x06 and x07) or in the walk (no applied Type, y04); BaseLayers' early reads for the conformance table; the side as a
+    `MemberSelection` field (a constructor selection changes `CallDeclaringType` and `ReferenceDeclaringType`); a HIR column (a byte
+    per node).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
