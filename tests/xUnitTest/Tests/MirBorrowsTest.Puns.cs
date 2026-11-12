@@ -938,7 +938,7 @@ public sealed partial class MirBorrowsTest
     // an enum whose only pointers are in one (zeroInTupleHolderOk, zeroPayloadBranchOk: bytes held, not Loans carried, 4.3.3),
     // holds no pointer, and a write at its address, seen or a call's, is no pun (zeroHolder*Ok, zeroNestBranchOk, lengthZeroNestOk;
     // 4.1, 5.2; the write is undefined when it runs, which is no compile-time error, 1.3).
-    // An abstract written part (PLAN G734's F1; SPEC 8.15.1: every binding, a Scalar of any size among them) is a punnable write that
+    // An abstract written part (PLAN G792, F1; SPEC 8.15.1: every binding, a Scalar of any size among them) is a punnable write that
     // surely holds a Scalar, judged at its Position: over a pointer, a seen store, a call's write, a Field or an exclusive borrow of it
     // is the conflict (absTakeBackBad, absCallBad, absTupleStoreBad, absArrayStoreBad, absArrayCallBad, absFieldStoreBad,
     // absFieldCallBad, absUniqBorrowBad; off the grid of an all-pointer holder, absOffGridBad). Over a Tuple or an enum that holds a
