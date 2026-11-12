@@ -19,34 +19,26 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 8.2.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, in the operand's scope, in
     // one order: its Type as the scope's premises make it (CallableContractType: its associated projections normalized, then its identity
-    // premises substituted, the premising MirTypes.Premised reads through TyCtxt.Premised), then below each qualifying pair layer, then
-    // below its ref and uniq layers: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a
-    // premised parameter or projection (DECISIONS BU-72). Premises change only abstract parts, so a Type without one is its own image; the
-    // Contract environment's rewrite of a closed Type's Origins alone is not applied, as no premise is in it (MirTypes.Agree ignores Origins).
+    // premises substituted, the premising MirTypes.Premised reads through TyCtxt.Premised), then below each of its ref, uniq and qualifying
+    // pair layers: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a premised parameter
+    // or projection (DECISIONS BU-72). Premises change only abstract parts, so a Type without one is its own image; the Contract
+    // environment's rewrite of a closed Type's Origins alone is not applied, as no premise is in it (MirTypes.Agree ignores Origins). Each
+    // step descends into a component of the Type, so the walk ends within the Type's height (IMPL A.4) and needs no limit of its own.
     internal BoundType OperandTerminal(Koto operand, BoundType type)
     {
-        var premised = type.HasAbstractPart ? this.CallableContractType(type, this.ConstraintScope(operand)) : type;
-        return ComparisonReferent(this.ComparisonThroughPairs(operand, premised));
-    }
-
-    // SPEC 13.4, 13.5.5: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
-    // then shared-borrowed through the layer where a reference to it is required. The operand's scope is read only at a pair layer.
-    private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
-    {
-        BindingScope? scope = null;
-        for (var depth = 0; depth < 8; depth++)
+        var scope = type.HasAbstractPart ? this.ConstraintScope(operand) : null;
+        type = scope is null ? type : this.CallableContractType(type, scope);
+        while (true)
         {
-            var terminal = ComparisonReferent(type);
-            if (!TryPairLayer(terminal, out _, out _) ||
-                this.FollowablePair(terminal, scope ??= this.ConstraintScope(operand), out var target) == SemanticsMask.None)
+            type = ComparisonReferent(type);
+            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope ??= this.ConstraintScope(operand), out var target) == SemanticsMask.None)
             {
-                return depth == 0 ? type : terminal;
+                return type;
             }
 
+            this.termWalks++;
             type = target;
         }
-
-        return type;
     }
 
     private BoundType? CompleteComparison(

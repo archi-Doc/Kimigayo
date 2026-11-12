@@ -134,7 +134,7 @@ public sealed partial class Binding
             var lengths = bindings.Lengths;
             for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
             {
-                var slot = own[i] is LengthParameterKoto ? (i < lengths.Length && lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown)
+                var slot = own[i] is LengthParameterKoto ? ((i < lengths.Length && lengths[i] is not null) || bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown)
                     : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
                     : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
                 proof = CombineProof(proof, slot, true);
