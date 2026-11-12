@@ -188,7 +188,7 @@ internal sealed partial class HoverBuilder
             return name + " — Semantics parameter." + (constraints is null ? string.Empty : "\n" + constraints);
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
+        if (type.IsAbstractType)
         {
             return "Undetermined for " + this.TypeName(type) + ". See the declared constraints.";
         }
