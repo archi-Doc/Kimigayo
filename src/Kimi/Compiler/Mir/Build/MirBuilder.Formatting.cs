@@ -31,8 +31,7 @@ internal sealed partial class MirBuilder
     // continue (SPEC 14.10.3; DECISIONS R4-M62). An owning interpolation's is the internal adapter (its second call, Adapt) over an exclusive
     // borrow of the private buffer (its first call, Heap), its writes Writes' steps, and FormatFinish ends the adapter and takes the
     // buffer's bytes as the string, which leaves the buffer empty for its cleanup. The two intrinsics are temporary (owner, 2026-10-11)
-    // until R8 writes the internal adapter in Kimigayo. The block a failed write (and a $tryWrite's end) goes to is made by the first
-    // branch to it, so an interpolation of text alone has none.
+    // until R8 writes the internal adapter in Kimigayo.
     private void Format(MirPlace destination, Koto node)
     {
         var mark = this.located.Count;

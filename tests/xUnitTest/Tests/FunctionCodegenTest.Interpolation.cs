@@ -49,10 +49,10 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 22.10.5 (DECISIONS R8-M24; R8-W2 c3b): a bounded interpolation that is not passed directly to writeLine, and an unbounded one,
-    // format on the heap, each buffer the library's Text.heap of capacity 0, which allocates nothing: the adapter's first reservation grows
-    // it once by its bytes, a deferred literal and its hint. Both end with the heap form, and no module holds the runtime's second
-    // statement of the buffers (fail-before: FormatBuffer's __kimi_text_heap of the instance's estimate, 33 for ipOwned, over
-    // __kimi_text_fixed).
+    // format on the heap, each buffer the library's Text.heap of capacity 0 with its caller location (SPEC 22.5.1), which allocates
+    // nothing: the adapter's first reservation grows it once by its bytes, a deferred literal and its hint. Both end with the heap form,
+    // and no module holds the runtime's second statement of the buffers (fail-before: FormatBuffer's __kimi_text_heap of the instance's
+    // estimate, 33 for ipOwned, over __kimi_text_fixed).
     [Theory]
     [InlineData("ipOwned", new[] { 20L, 0L })]
     [InlineData("ipPlain", new[] { 0L })]
@@ -63,7 +63,7 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var function = Assert.Single(FunctionsOf(ir, c, name));
         var heap = Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "heap").Contains(x.Callee));
-        Assert.StartsWith("call void @(ptr %, i64 0", heap.Shape, StringComparison.Ordinal);
+        Assert.Matches(@"^call void @\(ptr %, i64 0, ptr @, i64 \d+\)$", heap.Shape);
         Assert.Equal(
             hints.Select(static x => $"call void @(ptr %, i64 {x})"),
             CallsOf(function).Where(x => x.Callee == ir.Function("__kimi_format_hint")).Select(static x => x.Shape));
@@ -90,7 +90,7 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([FunctionsOf(ir, c, "fixed")[0], Assert.Single(FunctionsOf(ir, c, "writeLine"))], Ends(ir, c, at));
         var past = Assert.Single(FunctionsOf(ir, c, "pastLimit"));
         var heap = Assert.Single(FunctionsOf(ir, c, "heap"));
-        Assert.StartsWith("call void @(ptr %, i64 0", Assert.Single(CallsOf(past), x => x.Callee == heap).Shape, StringComparison.Ordinal);
+        Assert.Matches(@"^call void @\(ptr %, i64 0, ptr @, i64 \d+\)$", Assert.Single(CallsOf(past), x => x.Callee == heap).Shape);
         Assert.Equal([heap, ir.Function("__kimi_format_finish"), ir.Function("__kimi_write_line")], Ends(ir, c, past));
         var generic = Analyze(Interpolations, OutputKind.Library);
         var instances = GeneratedIr.Parse(Generate(generic));
