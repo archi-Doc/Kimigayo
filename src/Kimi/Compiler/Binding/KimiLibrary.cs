@@ -38,7 +38,7 @@ public sealed partial class KimiLibrary
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
-        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.Utf8Slice })
         {
             if (this.FormattingContainer(kind) is { } container)
             {
@@ -186,8 +186,8 @@ public sealed partial class KimiLibrary
     /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
     internal DeclarationContainerKoto? IntegerPositionMembers { get; private set; }
 
-    /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison bodies (SPEC 13.4.1), which the witness
-    /// table's String row selects; string gains no members from it.</summary>
+    /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison and formatting bodies (SPEC 13.4.1,
+    /// 22.10.2), which the witness table's String row selects; string gains no members from it.</summary>
     internal DeclarationContainerKoto? StringWitnessMembers { get; private set; }
 
     /// <summary>Gets the internal Kimi group whose receiver function is bool's built-in formatting body (SPEC 22.10.2), which the witness
@@ -210,6 +210,10 @@ public sealed partial class KimiLibrary
     /// table's F64Format row selects; f64 gains no members from it.</summary>
     internal DeclarationContainerKoto? F64FormatMembers { get; private set; }
 
+    /// <summary>Gets the internal Kimi group whose receiver function is the wrapping integers' built-in formatting body (SPEC 3.1.1,
+    /// 22.10.2), which the witness table's WrappingFormat row selects; <c>Wrapping&lt;T&gt;</c> gains no members from it.</summary>
+    internal DeclarationContainerKoto? WrappingFormatMembers { get; private set; }
+
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
@@ -229,6 +233,7 @@ public sealed partial class KimiLibrary
         WitnessMembers.UnitFormat => this.UnitFormatMembers,
         WitnessMembers.F32Format => this.F32FormatMembers,
         WitnessMembers.F64Format => this.F64FormatMembers,
+        WitnessMembers.WrappingFormat => this.WrappingFormatMembers,
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
@@ -439,6 +444,7 @@ public sealed partial class KimiLibrary
         this.UnitFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "UnitFormat", false) as DeclarationContainerKoto;
         this.F32FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F32Format", false) as DeclarationContainerKoto;
         this.F64FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F64Format", false) as DeclarationContainerKoto;
+        this.WrappingFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "WrappingFormat", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
     }
 
