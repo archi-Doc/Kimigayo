@@ -24,6 +24,20 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
+    private static bool HasTypeIdentity(BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is { Invalid: false, HasTypeIdentity: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     private static void ClearIdentityPremise(Koto node)
