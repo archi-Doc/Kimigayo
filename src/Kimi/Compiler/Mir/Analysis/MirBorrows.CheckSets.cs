@@ -10,13 +10,18 @@ namespace Kimi.Compiler.Mir;
 // live), in passes: the live holders (Based); the location's stores into a holder live after it or made live by the closure, or into E,
 // and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
-// reverse, so it keeps the last. A pass scans a holder's state once (its Shared set until two vias read it, MirBorrows.States' Scanned)
-// and a value it takes once per holder it is found under (a later take
-// tags nothing more; Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length),
-// and the location's entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its
-// root's Loans. After every pass, the drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot
-// (MirBorrows.Liveness), its Based and Stored passes again, marked DropTier, with that holder as their via; a slot an earlier pass read is
-// not read again. The elements a pass finds become candidates in MirBorrows.Candidates.
+// reverse, so it keeps the last. A read has a tier (MirBorrows.Candidates' ReadTier): its read key's, Limit where the state read carries
+// Φ_U. The closure keeps it (R4-M198's Φ_U, PLAN G775), as the dataflow's union keeps Φ_U through Content and Chain: a holder a read at
+// Limit reaches has its own read key (slot + holderCount), under which its state and, in the Stored pass, its stores are read at that
+// tier, and a reach at the pass's tier reads the holder again. Every memo of a gather read is keyed by its read key or tier: a pass
+// scans a holder's state once per read key (its Shared set until two vias read it at that tier, MirBorrows.States' Scanned), reads its
+// stores once per read key (pending), and takes a value once per holder it is found under and tier (a later take tags nothing more;
+// Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length); the location's
+// entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its root's Loans.
+// After every pass, the drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot
+// (MirBorrows.Liveness), its Based and Stored passes again, marked DropTier, with that holder as their via; a read key an earlier pass
+// read is not read again, so a holder the passes read only at its Limit key is read again at Deep (more Work, no other record: a Limit
+// tag outranks a Deep one). The elements a pass finds become candidates in MirBorrows.Candidates.
 internal sealed partial class MirBorrows
 {
     private const byte Based = 1;
@@ -39,14 +44,14 @@ internal sealed partial class MirBorrows
     private const int TakesValue = -3;
     private const int Activating = -4;
 
-    private readonly List<int> pending = []; // Slots reached in the Based or Stored passes whose stores are still to read.
-    private readonly List<int> scanning = []; // Slots whose states are still to read in the pass.
+    private readonly List<int> pending = []; // Read keys reached in the Based or Stored passes whose stores are still to read.
+    private readonly List<int> scanning = []; // Read keys whose states are still to read in the pass.
     private readonly List<MirOperand> operating = []; // The location's operands, in operand order.
-    private (int Value, byte Pass, int Next)[] taken = []; // The values the check's passes took, listed by holder (Took).
-    private int[] reached = []; // By slot: the check that reached it.
-    private byte[] slotFlags = []; // By slot: the passes that read its state at the check.
-    private int[] slotValue = []; // By slot: the first operand whose value read its state.
-    private int[] slotRoot = []; // By slot: the last operand whose root read its state.
+    private (int Value, byte Pass, MirOutcome Tier, int Next)[] taken = []; // The values the check's passes took, listed by holder (Took).
+    private int[] reached = []; // By read key (a slot; slot + holderCount at the Limit tier): the check that reached it.
+    private byte[] slotFlags = []; // By read key: the passes that read its state at the check.
+    private int[] slotValue = []; // By read key: the first operand whose value read its state.
+    private int[] slotRoot = []; // By read key: the last operand whose root read its state.
     private int[] listed = []; // By slot + 1 (0: no holder): the check whose entry and taken lists it heads.
     private int[] entryFirst = []; // By slot + 1: the first of the location's entries into its holder at that check (None: none).
     private int[] takenFirst = []; // By slot + 1: the last value a pass took under its holder at that check (None: none).
@@ -66,10 +71,10 @@ internal sealed partial class MirBorrows
     {
         this.stamp = 0;
         var keys = this.body.Locals.Length + this.body.Statics.Length;
-        MirDataflow.Grow(ref this.reached, this.holderCount);
-        MirDataflow.Grow(ref this.slotFlags, this.holderCount);
-        MirDataflow.Grow(ref this.slotValue, this.holderCount);
-        MirDataflow.Grow(ref this.slotRoot, this.holderCount);
+        MirDataflow.Grow(ref this.reached, 2 * this.holderCount);
+        MirDataflow.Grow(ref this.slotFlags, 2 * this.holderCount);
+        MirDataflow.Grow(ref this.slotValue, 2 * this.holderCount);
+        MirDataflow.Grow(ref this.slotRoot, 2 * this.holderCount);
         MirDataflow.Grow(ref this.loanMarks, 2 * this.loanCount);
         MirDataflow.Grow(ref this.candidateAt, 2 * this.loanCount);
         MirDataflow.Grow(ref this.rootMarks, keys);
@@ -82,14 +87,14 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.listed, this.holderCount + 1);
         MirDataflow.Grow(ref this.entryFirst, this.holderCount + 1);
         MirDataflow.Grow(ref this.takenFirst, this.holderCount + 1);
-        this.reached.AsSpan(0, this.holderCount).Clear();
+        this.reached.AsSpan(0, 2 * this.holderCount).Clear();
         this.loanMarks.AsSpan(0, 2 * this.loanCount).Clear();
         this.rootMarks.AsSpan(0, keys).Clear();
         this.markSeen.AsSpan(0, this.loanBase).Clear();
         this.markKept.AsSpan(0, this.loanBase).Clear();
         this.markRested.AsSpan(0, this.loanBase).Clear();
         this.listed.AsSpan(0, this.holderCount + 1).Clear();
-        this.Work += (2 * this.holderCount) + 1 + (2 * this.loanCount) + keys + (2 * this.loanBase);
+        this.Work += (3 * this.holderCount) + 1 + (2 * this.loanCount) + keys + (2 * this.loanBase);
         if (this.ownEntries > 0)
         {
             this.RestampOwnSteps(keys);
@@ -126,20 +131,20 @@ internal sealed partial class MirBorrows
     }
 
     // A Stored pass (plain or of the drop tier): the stores into each holder an earlier pass of the gather reached and has not yet read
-    // them for.
+    // them for, at its read key's tier.
     private void StoredPass(ulong[] state, byte pass)
     {
         this.Pass(pass);
         while (this.pending.Count > 0)
         {
-            var slot = this.pending[^1];
+            var key = this.pending[^1];
             this.pending.RemoveAt(this.pending.Count - 1);
-            for (var e = this.entryFirst[this.Lists(slot)]; e != None; e = this.entryNext[e])
+            for (var e = this.entryFirst[this.Lists(this.SlotOf(key))]; e != None; e = this.entryNext[e])
             {
                 this.Work++;
                 if (this.entries[e].Op != Cleared)
                 {
-                    this.StoredValue(this.entries[e]);
+                    this.StoredValue(this.entries[e], this.TierOf(key));
                 }
             }
 
@@ -208,7 +213,7 @@ internal sealed partial class MirBorrows
         this.Pass(Seeded);
         foreach (var (local, _, _) in this.reserving)
         {
-            this.Seed(this.Set(state[this.slots[local]]));
+            this.Seed(this.Set(state[this.slots[local]]), this.PassTier);
             this.Drain(state);
         }
 
@@ -272,31 +277,31 @@ internal sealed partial class MirBorrows
     private void Value(ulong[] state, int value, int root)
     {
         var via = root >= 0 ? this.slots[root] : -1;
-        if (this.Took(value, via))
+        if (this.Took(value, via, this.PassTier))
         {
             return;
         }
 
-        this.Scan(State(value, 0), via);
+        this.Scan(State(value, 0), via, this.ReadTier(State(value, 0), this.PassTier));
         this.Drain(state);
     }
 
-    // Whether the pass took a value under a holder (-1: none) before at the check, else records it: a later take tags its Loans no
-    // further (a Valued pass keeps the least operand, the other passes' tags do not depend on it), so the pass reads it once.
-    private bool Took(int value, int via)
+    // Whether the pass took a value under a holder (-1: none) at a tier before at the check, else records it: a later take tags its Loans
+    // no further (a Valued pass keeps the least operand, the other passes' tags do not depend on it), so the pass reads it once per tier.
+    private bool Took(int value, int via, MirOutcome at)
     {
         var key = this.Lists(via);
         for (var t = this.takenFirst[key]; t != None; t = this.taken[t].Next)
         {
             this.Work++;
-            if (this.taken[t].Value == value && this.taken[t].Pass == this.pass)
+            if (this.taken[t].Value == value && this.taken[t].Pass == this.pass && this.taken[t].Tier.IsLimit == at.IsLimit)
             {
                 return true;
             }
         }
 
         MirDataflow.Grow(ref this.taken, this.takenCount + 1);
-        this.taken[this.takenCount] = (value, this.pass, this.takenFirst[key]);
+        this.taken[this.takenCount] = (value, this.pass, at, this.takenFirst[key]);
         this.takenFirst[key] = this.takenCount++;
         return false;
     }
@@ -312,44 +317,75 @@ internal sealed partial class MirBorrows
         return slot + 1;
     }
 
-    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex, this.instance) = (pass, index, this.instance + 1);
+    // Starts a pass instance, at the pass's tier until a read fixes its own (a reach outside a read takes the pass's read key).
+    private void Pass(byte pass, int index = 0)
+    {
+        (this.pass, this.passIndex, this.instance) = (pass, index, this.instance + 1);
+        this.tier = this.PassTier;
+    }
 
-    // A holder reached at the check: in the Based and Stored passes, the drop tier's included, its stores count, and its state is read where
-    // the pass reads it first (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
+    // A holder's read key at the reaching read's tier (R4-M198's undecided class, PLAN G775): reached by a read at the Limit tier (through
+    // a set carrying Φ_U, MirBorrows.Puns), it rests on the undecided write: slot + holderCount; else the slot.
+    private int KeyOf(int slot) => this.tier.IsLimit ? slot + this.holderCount : slot;
+
+    // A read key's holder.
+    private int SlotOf(int key) => key < this.holderCount ? key : key - this.holderCount;
+
+    // A read key's tier: Limit for one reached only through a set carrying Φ_U, else the pass's.
+    private MirOutcome TierOf(int key) => key < this.holderCount ? this.PassTier : MirOutcome.Limit;
+
+    // A holder reached at the check, under its read key (KeyOf): in the Based and Stored passes, the drop tier's included, its stores count
+    // at the key's tier, and its state is read at that tier where the pass reads the key first (a Based read stands for every pass, a
+    // Valued one for the later operands and a Rooted one for the earlier); a Limit key only where the pass has not read the slot's own
+    // key, and a reach at the pass's tier later in the pass reads it again. The drop tier's reach at Deep reads the slot's own key, so it
+    // may read again a holder the passes read at Limit: more Work, no other record (a Limit tag outranks a Deep one, Candidate.Outcome).
     private void Reach(int slot, bool scan)
     {
-        if (this.reached[slot] != this.stamp)
+        var key = this.KeyOf(slot);
+        if (this.Starts(key) && (this.pass & ~DropTier) is Based or Stored)
         {
-            (this.reached[slot], this.slotFlags[slot], this.slotValue[slot], this.slotRoot[slot]) = (this.stamp, 0, int.MaxValue, -1);
-            if ((this.pass & ~DropTier) is Based or Stored)
-            {
-                this.pending.Add(slot);
-            }
+            this.pending.Add(key);
         }
 
-        var reads = scan && (this.slotFlags[slot] & Based) == 0 && this.pass switch
+        if (scan && this.Reads(key) && (key == slot || this.Reads(slot)))
         {
-            Valued => this.slotValue[slot] > this.passIndex,
-            Rooted => this.slotRoot[slot] < this.passIndex,
-            _ => (this.slotFlags[slot] & this.pass) == 0,
-        };
-        if (reads)
-        {
-            this.slotFlags[slot] |= this.pass is Valued or Rooted ? (byte)0 : this.pass;
-            this.slotValue[slot] = this.pass == Valued ? this.passIndex : this.slotValue[slot];
-            this.slotRoot[slot] = this.pass == Rooted ? this.passIndex : this.slotRoot[slot];
-            this.scanning.Add(slot);
+            this.slotFlags[key] |= this.pass is Valued or Rooted ? (byte)0 : this.pass;
+            this.slotValue[key] = this.pass == Valued ? this.passIndex : this.slotValue[key];
+            this.slotRoot[key] = this.pass == Rooted ? this.passIndex : this.slotRoot[key];
+            this.scanning.Add(key);
         }
     }
 
-    // Reads the pass's holder states, each element found in its holder.
+    // Starts a read key's marks at the check; whether it was not reached there before.
+    private bool Starts(int key)
+    {
+        if (this.reached[key] == this.stamp)
+        {
+            return false;
+        }
+
+        (this.reached[key], this.slotFlags[key], this.slotValue[key], this.slotRoot[key]) = (this.stamp, 0, int.MaxValue, -1);
+        return true;
+    }
+
+    // Whether the pass reads a read key's state first at the check (a key not reached there yet: yes).
+    private bool Reads(int key) => this.reached[key] != this.stamp || ((this.slotFlags[key] & Based) == 0 && this.pass switch
+    {
+        Valued => this.slotValue[key] > this.passIndex,
+        Rooted => this.slotRoot[key] < this.passIndex,
+        _ => (this.slotFlags[key] & this.pass) == 0,
+    });
+
+    // Reads the pass's holder states, each element found in its holder at its read key's tier.
     private void Drain(ulong[] state)
     {
         while (this.scanning.Count > 0)
         {
-            var slot = this.scanning[^1];
+            var key = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            this.Scan(this.Scanned(state[slot], slot), slot);
+            var slot = this.SlotOf(key);
+            var at = this.ReadTier(state[slot], this.TierOf(key)); // Of σ(h): the tier Scanned keys and its cut is read at.
+            this.Scan(this.Scanned(state[slot], slot, at), slot, at);
             this.Work++;
         }
     }
@@ -368,21 +404,23 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // A stored value at the check (transit): a flow's Loans are candidates; the holders a borrow's parents and every issued Loan name seed the
-    // closure (E5).
-    private void StoredValue(in Entry entry)
+    // A stored value at the check (transit), at its holder's read key's tier `at`: a flow's Loans are candidates; the holders a borrow's
+    // parents and every issued Loan name seed the closure (E5).
+    private void StoredValue(in Entry entry, MirOutcome at)
     {
-        if (!entry.Issue && !this.Took(entry.Value, -1))
+        if (!entry.Issue && !this.Took(entry.Value, -1, at))
         {
-            this.Scan(State(entry.Value, 0), -1);
+            this.Scan(State(entry.Value, 0), -1, this.ReadTier(State(entry.Value, 0), at));
         }
 
-        this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);
+        this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own, at);
     }
 
-    // E5's seed: the holders a set's direct Loans name, and E where it carries Φ_E, are read.
-    private void Seed(int set)
+    // E5's seed: the holders a set's direct Loans name, and E where it carries Φ_E, are read, at the read's tier (MirBorrows.Candidates'
+    // ReadTier) of the set at its holder's tier `at`.
+    private void Seed(int set, MirOutcome at)
     {
+        this.tier = this.ReadTier(State(set, 0), at);
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {

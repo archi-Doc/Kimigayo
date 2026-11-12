@@ -39,8 +39,7 @@ public sealed partial class Binding
             var bindings = new CandidateBindings(
                 function,
                 target,
-                call.TypeArguments,
-                call.LengthArguments,
+                SubstitutionOf(function, call),
                 call.ConformingType,
                 call.DeclaringType,
                 call.DeclaringType,
@@ -104,18 +103,7 @@ public sealed partial class Binding
         {
             var function = bindings.Function;
             var open = !bindings.Unbound.IsEmpty;
-            var clauseOwner = bindings.InfersOwner ? null : bindings.DeclaringType; // A constructor inferring its owner's slots (10.8.1) has none yet.
-            var proof = this.CheckConstraints(
-                function.TypeConstraints,
-                function,
-                bindings.Slots,
-                scope,
-                bindings.Self,
-                clauseOwner,
-                bindings.Lengths,
-                incomplete: incomplete || open,
-                skipUnresolved: open,
-                slotOwner: slotOwner);
+            var proof = this.CheckConstraints(function.TypeConstraints, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
             if (bindings.Owner is { } owner)
             {
                 proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
@@ -126,7 +114,7 @@ public sealed partial class Binding
                 proof = CombineProof(
                     proof,
                     this.CheckConstraints(
-                        openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                        openOwner.ConstraintNodes, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
                     true);
             }
 
@@ -162,7 +150,8 @@ public sealed partial class Binding
     // SPEC 10.1 steps 3 to 5 (DECISIONS: G572 U2a): a candidate's bindings as inference leaves them and the selected call publishes
     // them; the one input of step 5's conjunction (StepFiveConjunction).
     // - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CheckCallTypeConstraints, CallPlan's columns).
-    // - Invariants: Slots holds the call's slots, the callee's own first (CallOwnSlots), a constructor's owner slots after them; a null Type
+    // - Invariants: Substitution is the candidate's one substitution (Binding.CallSubstitution), the value its signature is read under;
+    //   Slots (its Types) holds the call's slots, the callee's own first (CallOwnSlots), a constructor's owner slots after them; a null Type
     //   slot is unsolved, and Unbound lists those 10.8 leaves unbound (none in a plan); Lengths is per slot; DeclaringType is the Type the
     //   member is found in, Owner its closed formation (a constructor's ConstructionType), null while its slots are open; Reference is the
     //   bound Contract reference a requirement candidate is called through (SPEC 8.6.4), null for any other candidate: in a trial the
@@ -174,8 +163,7 @@ public sealed partial class Binding
         internal CandidateBindings(
             FunctionKoto function,
             BindingSymbol target,
-            ReadOnlySpan<BoundType?> slots,
-            ReadOnlySpan<BoundLength?> lengths,
+            CallSubstitution substitution,
             BoundType? self,
             BoundType? declaringType,
             BoundType? owner,
@@ -186,8 +174,7 @@ public sealed partial class Binding
             this.Reference = reference;
             this.Function = function;
             this.Target = target;
-            this.Slots = slots;
-            this.Lengths = lengths;
+            this.Substitution = substitution;
             this.Self = self;
             this.DeclaringType = declaringType;
             this.Owner = owner;
@@ -199,9 +186,12 @@ public sealed partial class Binding
 
         internal BindingSymbol Target { get; }
 
-        internal ReadOnlySpan<BoundType?> Slots { get; }
+        // The candidate's substitution (Binding.CallSubstitution), which its signature is read under too (CallType).
+        internal CallSubstitution Substitution { get; }
 
-        internal ReadOnlySpan<BoundLength?> Lengths { get; }
+        internal ReadOnlySpan<BoundType?> Slots => this.Substitution.Types;
+
+        internal ReadOnlySpan<BoundLength?> Lengths => this.Substitution.Lengths;
 
         internal BoundType? Self { get; }
 
