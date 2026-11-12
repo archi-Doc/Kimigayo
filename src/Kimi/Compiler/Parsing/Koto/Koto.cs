@@ -375,7 +375,7 @@ public enum KotoKind : byte
 /// </summary>
 /// <remarks>
 /// Attachment establishes the current module and diagnostic target; source documents and spans retain provenance.
-/// Concrete nodes enumerate their children through <see cref="ChildNodes"/>.
+/// Concrete nodes walk their children through <see cref="VisitChildren"/>, the one walk.
 /// </remarks>
 public abstract partial class Koto
 {
@@ -386,18 +386,6 @@ public abstract partial class Koto
 
     /// <summary>Gets the concrete node kind.</summary>
     public abstract KotoKind Akind { get; }
-
-    /// <summary>Gets the direct syntax-tree children of this node, in the order <see cref="VisitChildren"/> visits them.</summary>
-    public IEnumerable<Koto> ChildNodes
-    {
-        get
-        {
-            var children = new List<Koto>();
-            var slots = new ChildSlots(children);
-            this.ForEachSlot(ref slots);
-            return children;
-        }
-    }
 
     /// <summary>Gets the attributes attached to this node.</summary>
     public AttributeKoto? AttributeChain { get; internal set; }

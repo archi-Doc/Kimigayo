@@ -18,7 +18,8 @@ internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 // than its receiver that its element storage retains at a raw layer without an Origin (the transfer rule, Binding.Retention.Transfers.cs).
 internal readonly record struct AddedRow(KimiDeclarationId Id, byte Mask);
 
-// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i).
+// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i);
+// read by call retention (no output there, TyCtxt.Retention.cs) and the pun rule (no store there), one meaning.
 internal readonly record struct NoStoreRow(KimiDeclarationId Id, byte Mask);
 
 // The rows a library operation publishes beyond its signature, by its catalog ID (the recognition entries,

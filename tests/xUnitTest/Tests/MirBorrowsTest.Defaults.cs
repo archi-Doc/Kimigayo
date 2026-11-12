@@ -307,6 +307,86 @@ public sealed partial class MirBorrowsTest
                 ) => ()
                 """));
 
+    // R26-borrow reads its Loans' tier (R4-M198's undecided class; PLAN G793): a Reborrow of the slot that a Closure stores through its
+    // environment's pointer reaches storage the body does not own only where a u16 written at the Closure's address (its layout is not
+    // promised, IMPL 21.1.2) puns that pointer (SPEC 5.2), so the verdict rests on the write, the located Unsupported_Kd at its site (keepU);
+    // a second Reborrow the result keeps is decided beside it (keepB), as is the one Loan the result also keeps (keepS); an exclusive Borrow
+    // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE).
+    [Fact]
+    public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
+        => Assert.Equal(
+            [
+                "keepU: z Unsupported_Kd", "keepE: z DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
+                "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd",
+            ],
+            AllProblems("""
+                func keepU(z: uniq/i32 during a, y: i32 = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    let rz: ref/i32 = z
+                    c(rz@follow@raw)
+                    exit to w 0
+                ) => ()
+                func keepN(z: uniq/i32 during a, y: i32 = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    let rz: ref/i32 = z
+                    c(rz@follow@raw)
+                    exit to w 0
+                ) => ()
+                func keepE(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w 0
+                ) => ()
+                func keepB(z: uniq/i32 during a, y: ref/i32 during a = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    let rz: ref/i32 = z
+                    c(rz@follow@raw)
+                    let rw: ref/i32 during a = z
+                    exit to w rw
+                ) => ()
+                func keepS(z: uniq/i32 during a, y: ref/i32 during a = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    let rz: ref/i32 during a = z
+                    c(rz@follow@raw)
+                    exit to w rz
+                ) => ()
+                func keepX(z: uniq/i32 during a, y: i32 = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    let rz: uniq/i32 = z@follow@uniq
+                    c(rz@follow@raw)
+                    exit to w 0
+                ) => ()
+                """));
+
     // SPEC 7.2.3: a default may read a preceding slot, Copy a stored shared borrow and inspect a reserved input through a shared Borrow
     // that ends inside it: DefaultAccessTest's :16–:20 and the plan base's :44 (equalOrigins); a Borrow past a shared Deref forms no Loan
     // (:28, fd: valid by SPEC 15.6.3, PD15 (i); the old path's Borrow is OldRule); SPEC 7.2.3's label and erased; a shared capture entry
