@@ -78,50 +78,7 @@ public static partial class Parser
                     break;
                 }
 
-                var token2 = reader.Read();
-                var operationSpan = reader.CanRead ? reader.TokenSpanAt(reader.Position) : default;
-                Koto typeKoto;
-                if (IsExpressionBoundary(ref reader))
-                {
-                    reader.Expect(SyntaxForm.Type);
-                    typeKoto = reader.NewErrorKoto();
-                }
-                else if (IsBareOperationTarget(ref reader))
-                {
-                    // A bare built-in Semantics shorthand, @move or @copy completes the target (SPEC §13.5.1);
-                    // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move(), p@copy.x.
-                    typeKoto = ParseBareOperationTarget(ref reader);
-                }
-                else
-                {
-                    // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
-                    typeKoto = ParseType(ref reader, TypeContext.Target);
-                    if (CheckAdaptationOrigins(typeKoto) is { } annotated)
-                    {
-                        typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
-                    }
-
-                    typeKoto = ConversionOperationTarget(ref reader, typeKoto);
-                }
-
-                if (reader.IsCurrentIdentifier("during"))
-                {
-                    reader.Unexpected(SyntaxForm.AdaptationDuring);
-                    reader.Advance();
-                    _ = ParseOriginAtom(ref reader);
-                }
-
-                left = new ConversionKoto(
-                    ref reader,
-                    SourceSpan.FromBounds(left.Span.Start, Math.Max(token2.Span.End, typeKoto.Span.End)),
-                    left,
-                    typeKoto);
-                if (typeKoto is TypeSemanticsKoto { HoverOperation: not null })
-                {
-                    reader.Hover(left, token2.Span);
-                    reader.Hover(left, operationSpan);
-                }
-
+                left = ParseAdaptation(ref reader, left);
                 continue;
             }
 
@@ -201,6 +158,60 @@ public static partial class Parser
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
             ((left is BinaryKoto comparison && IsComparisonKind[(int)comparison.Akind]) || (runtimeIs && left is IsKoto));
+    }
+
+    /// <summary>Parses one adaptation of SPEC F.9.1 Adapted, <c>"@" (ClosedTarget | OpenTarget)</c> (F.9.4), over its parsed operand.
+    /// The caller has tested the binding power; a ClosedTarget's postfix suffixes are read by the caller's loop.</summary>
+    /// <param name="reader">The token reader at the <c>@</c>.</param>
+    /// <param name="left">The parsed operand.</param>
+    /// <returns>The adaptation's node; an ErrorKoto is its target when the target is missing or rejected.</returns>
+    private static Koto ParseAdaptation(ref TokenReader reader, Koto left)
+    {
+        var atToken = reader.Read();
+        var operationSpan = reader.CanRead ? reader.TokenSpanAt(reader.Position) : default;
+        Koto typeKoto;
+        if (IsExpressionBoundary(ref reader))
+        {
+            reader.Expect(SyntaxForm.Type);
+            typeKoto = reader.NewErrorKoto();
+        }
+        else if (IsBareOperationTarget(ref reader))
+        {
+            // A bare built-in Semantics shorthand, @move or @copy completes the target (SPEC §13.5.1);
+            // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move(), p@copy.x.
+            typeKoto = ParseBareOperationTarget(ref reader);
+        }
+        else
+        {
+            // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
+            typeKoto = ParseType(ref reader, TypeContext.Target);
+            if (CheckAdaptationOrigins(typeKoto) is { } annotated)
+            {
+                typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
+            }
+
+            typeKoto = ConversionOperationTarget(ref reader, typeKoto);
+        }
+
+        if (reader.IsCurrentIdentifier("during"))
+        {
+            reader.Unexpected(SyntaxForm.AdaptationDuring);
+            reader.Advance();
+            _ = ParseOriginAtom(ref reader);
+        }
+
+        var conversion = new ConversionKoto(
+            ref reader,
+            SourceSpan.FromBounds(left.Span.Start, Math.Max(atToken.Span.End, typeKoto.Span.End)),
+            left,
+            typeKoto);
+        if (typeKoto is TypeSemanticsKoto { HoverOperation: not null })
+        {
+            reader.Hover(conversion, atToken.Span);
+            reader.Hover(conversion, operationSpan);
+        }
+
+        return conversion;
     }
 
     /// <summary>
