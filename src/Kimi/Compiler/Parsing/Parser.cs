@@ -14,7 +14,7 @@ namespace Kimi.Compiler;
 // omission records in the CodeContext; Hover and documentation anchors.
 // Invariants: a source error is reported where it is read and the parse goes on, what was read kept as a recovery where a check could read it
 // (DIAGNOSTICS.md §4.3, §4.4); excluded syntax takes the same grammar and registers nothing (SPEC 19.4); the tables are filled once, by the
-// static constructor, and only read after it.
+// static constructor, and only read after it; the constructor itself reads each infix row it has just written, to fill IsComparisonKind.
 // Prohibitions: no name resolution or Type judgment, since Binding judges what the parser keeps; the exceptions are a directive's Condition,
 // evaluated for selection (SPEC 19, CompileTimeConditionEvaluator), and a body's Constraint prefix, which reads its function's parameter Names.
 // No message text at a reporting site.

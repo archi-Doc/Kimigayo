@@ -505,7 +505,7 @@ public static partial class Parser
             TokenKind.Underscore => new IdentifierNameKoto(ref reader, reader.Read(), "_"),
             TokenKind.Let or TokenKind.Var => ParseBindingPattern(ref reader),
             TokenKind.OpenParenthesis => ParseGroupedPattern(ref reader),
-            var kind when kind.IsLiteral() || kind is TokenKind.True or TokenKind.False or TokenKind.Minus => ParseLiteralPattern(ref reader),
+            var kind when kind.IsLiteralToken() || kind is TokenKind.True or TokenKind.False or TokenKind.Minus => ParseLiteralPattern(ref reader),
             _ => ParseCasePattern(ref reader),
         };
 

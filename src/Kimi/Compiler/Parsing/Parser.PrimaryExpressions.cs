@@ -438,7 +438,8 @@ public static partial class Parser
         return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), entries);
     }
 
-    // The Expression of an Array element or of a DictionaryEntry's key or value (F.9.1); an Error where a "," or "]" stands in its place.
+    // The Expression of an Array element or of a DictionaryEntry's key or value (F.9.1); an Error where a "," or "]" stands in its place
+    // or the input ends.
     private static Koto ParseLiteralElement(ref TokenReader reader)
     {
         if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)

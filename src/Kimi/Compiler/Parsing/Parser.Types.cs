@@ -180,7 +180,7 @@ public static partial class Parser
             // the Type was written and is consumed with the report; any other token is left to end the enclosing construct.
             var cause = reader.Expect(SyntaxForm.Type);
             var span = reader.InsertionSpan;
-            if ((token.Kind.IsLiteral() || token.Kind is TokenKind.Underscore or TokenKind.Invalid) && reader.CanRead)
+            if ((token.Kind.IsLiteralToken() || token.Kind is TokenKind.Underscore or TokenKind.Invalid) && reader.CanRead)
             {
                 reader.Advance();
             }
