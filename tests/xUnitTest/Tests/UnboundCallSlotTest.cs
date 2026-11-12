@@ -150,11 +150,40 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\npublic func main() -> ()\n    let r = run(func (n) => n + 1, true)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n) => n + 1, true)")]
     [InlineData("func run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
     [InlineData("func f<T>(x: T) => ()\npublic func main() -> ()\n    f(3000000000)\n", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "3000000000")]
-    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "fi(1.5)")]
+    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "fi(1.5)")]
     public void OneRecordPerIndependentProblem(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+    }
+
+    // SPEC 10.1, 10.2.1 (PLAN G680): a Constraint that fails only once the defaults apply is the selected call's obligation, Refuted as
+    // Unknown: its clause record at the call, never "no applicable candidate", and no other candidate is selected past it. A slot the
+    // defaults leave unbound is still the inference boundary. The null rows are the valid counterparts: the default satisfies the clause.
+    [Theory]
+    [InlineData("contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\nfunc run<C>(c: uniq/C)\n    C is Put<bool>\n    c.put(5)\npublic func main() -> () => ()\n", "c.put(5)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\nfunc run<C, V>(c: uniq/C, v: V)\n    C is Put<V>\n    c.put(5)\npublic func main() -> () => ()\n", "c.put(5)", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    [InlineData("func put<U>(u: U)\n    U is bool\n    return\npublic func main() -> ()\n    put(5)\n", "put(5)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("func put<U>(u: U)\n    U is i32\n    return\npublic func main() -> ()\n    put(5)\n", "put(5)", null)]
+    [InlineData("struct Quiet\n    public var n: i32 = 0\nfunc put<U>(u: U, r: uniq/(uniq/Quiet during a) during b)\n    U is bool\n    return\nfunc put(u: i64, r: ref/Quiet) => ()\nfunc run(x: uniq/(uniq/Quiet during a) during b) => put(5, x)\npublic func main() -> () => ()\n", "put(5, x)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("struct Quiet\n    public var n: i32 = 0\nfunc put<U>(u: U, r: uniq/(uniq/Quiet during a) during b)\n    U is i32\n    return\nfunc put(u: i64, r: ref/Quiet) => ()\nfunc run(x: uniq/(uniq/Quiet during a) during b) => put(5, x)\npublic func main() -> () => ()\n", "put(5, x)", null)]
+    [InlineData("func w<U, F>(u: U, f: ref/F)\n    U is bool\n    F is Callable<(i64) -> i64>\n    return\npublic func main() -> ()\n    w(5, func (n) => n)\n", "w(5, func (n) => n)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("func w<U, F>(u: U, f: ref/F)\n    U is i32\n    F is Callable<(i64) -> i64>\n    return\npublic func main() -> ()\n    w(5, func (n) => n)\n", "w(5, func (n) => n)", null)]
+    public void AConstraintThatFailsOnlyAfterTheDefaultsIsTheSelectedCallsRecord(string source, string at, string? code)
+    {
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(code is null ? [] : new[] { (code, at) }, errors.Select(x => (x.Code, Text(source, x.Span))).ToArray());
+        Assert.All(errors, static x => Assert.DoesNotContain(x.Related ?? [], static r => r.Role == "candidate"));
+    }
+
+    // SPEC 10.2.1: a slot that the defaults leave unbound is the inference boundary even when a Constraint also fails after them.
+    [Fact]
+    public void ASlotTheDefaultsLeaveUnboundStaysTheInferenceBoundary()
+    {
+        var source = "func h<U, W>(u: U, w: Option<W>)\n    U is bool\n    return\npublic func main() -> ()\n    h(5, .None)\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Contains((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "h(5, .None)"), errors);
+        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.NoApplicableOverload_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd));
     }
 
     // SPEC 10.5.1, 10.5.3, 10.5.4 (D4; owner decision 2026-10-18): a nested call or construction whose slot only a waiting callable binds

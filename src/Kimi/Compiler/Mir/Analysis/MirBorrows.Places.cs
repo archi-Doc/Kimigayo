@@ -11,7 +11,7 @@ internal sealed partial class MirBorrows
     // Whether a Place passes a borrow or raw Deref, so writing it uses its root.
     private bool Through(MirPlace place)
     {
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             if (this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw)

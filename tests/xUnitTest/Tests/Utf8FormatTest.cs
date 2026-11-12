@@ -19,6 +19,8 @@ public class Utf8FormatTest
     [InlineData("I128Min", "-170141183460469231731687303715884105728@i128", "-170141183460469231731687303715884105728")]
     [InlineData("U128Max", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455")]
     [InlineData("Zero", "0@isize", "0")]
+    [InlineData("IsizeMin", "-9223372036854775808@isize", "-9223372036854775808")]
+    [InlineData("UsizeMax", "18446744073709551615@usize", "18446744073709551615")]
     [InlineData("True", "true", "true")]
     [InlineData("False", "false", "false")]
     [InlineData("Unit", "()", "()")]
