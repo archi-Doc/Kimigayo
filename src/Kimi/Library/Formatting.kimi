@@ -466,9 +466,10 @@ public group Console
             Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
             Console.writeStdout(feed@raw, 1)
 
-// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's and Wrapping<T>'s built-in conformances to
-// Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format and WrappingFormat
-// rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi), the view's its own member (above).
+// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's, Wrapping<T>'s and the integers' (up to 64 bits)
+// built-in conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format,
+// WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi), the view's
+// its own member (above).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
 // catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
 internal group BoolFormat
@@ -531,3 +532,31 @@ internal group WrappingFormat
         I is PrimitiveInteger
         let value = self@follow@I
         return writer.write(value)
+
+internal group IntegerFormat
+    /// Writes the integer in ASCII decimal, `-` only before a negative value (SPEC 22.10.2): its digits produced into a
+    /// local array from the end, then written once at their exact length (SPEC 22.10.5). The comparison and conversions
+    /// on `I` are built-in operators (SPEC 8.7.4), no requirement calls, so the body's effects are the same at every
+    /// instance. i128 and u128 are R8-S2b2's.
+    func format<I>(self: ref/I, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        I is PrimitiveInteger
+        let value = self@follow
+        // A negative value of at most 64 bits has `-(value + 1) <= 2^63 - 1`, so its magnitude fits u64 without overflow.
+        var magnitude: u64 = 0
+        if value < 0
+            magnitude = (-(value@i64 + 1))@u64 + 1
+        else
+            magnitude = value@u64
+        // u64's maximum has 20 digits, i64's minimum 19 and its `-`.
+        var digits = [20 of 0@u8]
+        var index: isize = 20
+        loop
+            index -= 1
+            digits[index] = (magnitude % 10)@u8 + 48
+            magnitude /= 10
+            if magnitude == 0 => exit
+        if value < 0
+            index -= 1
+            digits[index] = 45
+        // ASCII digits and `-` are valid UTF-8 (Utf8Slice.init's contract).
+        return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))
