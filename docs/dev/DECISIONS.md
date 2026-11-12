@@ -6262,6 +6262,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
     dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
     the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
+- **R4-M202 A location's scope is the scope table's `int` index (PLAN G796)** (2026-11-12; Middle, MIR build; Major, small; a shared
+  representation; design and implementation review ACCEPT WITH NOTES) IMPL A.4.
+  - Rule: `SourceInfo.Scope` is the scope table's `int` index, no longer a `ushort` narrowed unchecked at five builder sites (a body
+    past 65,535 scopes joined later locations to one of its first scopes); the builder's scope fields and saved copies follow, and
+    `MirValidator`'s per-location scope check also refuses a negative index.
+  - No scopes-per-body limit: nothing packs the index, and every other body table is `int`-indexed, unlike G761's module ordinal
+    (the owner's O-215 (a)), whose 16 bits are a packed, shared identity.
+  - Cost: `SourceInfo` 12 -> 16 B (`MirStatement` stays 64 B, `MirTerminator` 88 -> 96, `MirBlock` 96 -> 104, `MirLocal` 32 -> 40);
+    a CLI `check` allocates +0.76 to +0.81% on the 44 milestone programs; the `Purpose=Allocation` tests are unchanged.
+  - Rejected: an IMPL A.4 scopes-per-body limit (a Resource record; it would refuse valid programs at a bound three orders below the
+    other body tables); both the limit and the wider index.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
