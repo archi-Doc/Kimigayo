@@ -45,8 +45,8 @@ Outside Mir/Build, the phases after Binding read no syntax, HIR or plans; the do
 Testing catalog and the benchmarks read a node's Binding facts through `HirTables`, never a Koto slot (DECISIONS R5-M193). Syntax
 must not read Binding; Hover uses SemanticQuery.
 The former exact allow/deny inventory remains in `2e341155^:src/Kimi/CodeRules.globalconfig` as review evidence;
-its removal does not authorize new dependencies. Global forbidden child-walk members are VisitChildrenCore,
-GetChildNodes, ReplaceChildCore and ReplaceInList; the canonical walk remains ForEachChildSlot.
+its removal does not authorize new dependencies. Global forbidden child-walk members are VisitChildrenCore, GetChildNodes,
+ChildNodes, ReplaceChildCore and ReplaceInList; the canonical walk remains ForEachChildSlot, read through VisitChildren.
 
 ## Closed vocabularies
 

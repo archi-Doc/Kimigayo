@@ -12270,6 +12270,33 @@ resumed by R4-M86 (2026-10-20).
     lose; `Subst` stays the interned form after selection).
   - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
     (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
+
+- **BU-180 A list is read by index, a node's children by the one walk (PLAN G609)** (2026-11-11; Front, Binding and Parsing; Major;
+  redesigned one level up by its first review's B1; design `front\G609\design-r2.md` and its review ACCEPT, implementation review
+  ACCEPT) No SPEC rule; the warm contract (G89-2, for a rejected program too).
+  - Cause: a warm rebind allocates nothing, but `foreach` over an interface-typed list calls `IEnumerable<T>.GetEnumerator`, which
+    boxes a `List<T>` enumerator (40 B) or allocates an array's (32 B) whenever the list is nonempty; `Koto.ChildNodes` built a
+    `List<Koto>` per read, a second traversal beside `ChildSlots`. Valid programs (`ValidateInheritedNames`, the test message check)
+    and rejected ones (`BindUnappliedArguments`, `MarkOmittedHeaders`) allocated on a warm rebind.
+  - Rule: the compiler reads a published list by index and a node's children only through `Koto.VisitChildren`, the one walk
+    (`ChildSlots` over the node's `ForEachChildSlot`).
+  - Sites: 21 Binding loops and `TyCtxt.RequirementSignatures` read by index. The three `ChildNodes` readers walk: the
+    recovered-ExpressionKoto arm calls `BindUnknownChildren`, the test message check is a cached `KotoVisitor` (`MessageTransfers`,
+    whose `Root` is set only during its walk) and `CompileTimeConditionEvaluator`'s recovered form a visitor.
+    `Kotonoha.DocumentationSources` publishes `IReadOnlyList<DocumentationSource>` (same storage).
+  - Check: `ArchitectureRulesTest.InterfaceEnumerationsStayAtTheirSites` reads the IL of every `Kimi.Compiler` type and holds its
+    interface `GetEnumerator` calls at ten listed cold methods (parsing, printing, adding sources, MIR dumps), keyed by top-level
+    type and method (a lambda's, local function's or state machine's under its declaring method), by set equality: every other
+    `Kimi.Compiler` method calls none, Compilation's pipeline included, since the cause's first fix (52dc76fd1, R6-check H5 T61) was
+    there and not in Binding. Limit: an enumeration a library method makes for the compiler (LINQ over an interface, `AddRange`,
+    `string.Join` or a constructor over an `IEnumerable<T>`) is not seen; review reads those.
+  - Deleted: `Koto.ChildNodes` (COMPILER_ARCHITECTURE's forbidden child-walk members now name it); `ChildSlots`' collect mode (its
+    field, constructor and two branches); the recursive `ValidMessageTransfers`; the recovered arm's own loop. Tests collect through
+    `KotoTree.Children`. Supersedes the per-site fixes 52dc76fd1 (its index reads stay, now held by the rule) and
+    `claude/f-g609`@4a9ad04d2 (held).
+  - Rejected: a non-boxing published list type (a struct boxes wherever it is passed as `IReadOnlyList<T>`, a span cannot be stored
+    or captured; about 48 properties and their consumers); a rule over `box` instructions (no closed family: diagnostic causes
+    passed as `object`; a constrained call boxes without one).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

@@ -94,8 +94,8 @@ public class ParserOptimizationTest
             Assert.Equal(Math.Max(1, count), generics.TypeArguments.Count);
             Assert.Equal(count, invocation.ArgumentNodes.Count);
             Assert.Equal($"call<{types}>({arguments})", invocation.ToString());
-            Assert.All(invocation.ChildNodes, child => Assert.Same(invocation, child.Parent));
-            Assert.All(generics.ChildNodes, child => Assert.Same(generics, child.Parent));
+            Assert.All(invocation.Children(), child => Assert.Same(invocation, child.Parent));
+            Assert.All(generics.Children(), child => Assert.Same(generics, child.Parent));
             Assert.Same(function, body.Parent);
             Assert.Same(body, invocation.Parent);
 
@@ -127,8 +127,8 @@ public class ParserOptimizationTest
         var type = ParseTestHelper.Detach(secondGeneric.TypeArguments[0], new CodeBlockKoto(secondGeneric.CodeContext));
         Assert.True(KotoHelper.Replace(firstGeneric, firstGeneric.TypeArguments[0], type));
         Assert.Equal("call<B>(1)", first.ToString());
-        var oldArgument = first.ChildNodes.Last();
-        var replacementArgument = second.ChildNodes.Last();
+        var oldArgument = first.Children().Last();
+        var replacementArgument = second.Children().Last();
         ParseTestHelper.Detach(replacementArgument, new CodeBlockKoto(replacementArgument.CodeContext));
         Assert.True(KotoHelper.Replace(first, oldArgument, replacementArgument));
         Assert.Null(oldArgument.Parent);
