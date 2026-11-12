@@ -3,9 +3,9 @@
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
 // it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
 // Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
-// Interim (PLAN G721; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until PLAN G254's
-// unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located Unsupported_Kd at
-// a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
+// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
+// PLAN G254's unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located
+// Unsupported_Kd at a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
