@@ -17177,6 +17177,19 @@ structure is recorded here by the unit that first implements it.
     measures each size's fresh state in one `MeasureOnce` window, so a process's one-time initialization falls in no measured run and every
     size is measured in the same process state; no retry, excuse or bound. Every cold scaling series goes through it (R5's `DefaultCopies`,
     `DropTrees`, `Bodies`; R4's `RequireEnds`, `Unions`, `DropFlags`, `Initialization`, `Summaries`), each window's scope unchanged.
+  - Amended 2026-11-12 (G650 (B); the owner's O-218 (a); the Back's consent C-278): Rule 2's one process state includes a new
+    compiler thread for each run, the unmeasured one too, because a thread's own pooled buffers are process state that a series does
+    not control: `ArrayPool<T>.Shared` empties them when it trims under High memory pressure, and they hold what the thread ran
+    before. A new thread's own pooled buffers are empty, so a run pays the pooled buffers it rents, as observed on every series; the
+    rule guarantees only the thread's own buffers. The series' states are still made on one pooled worker, outside every run. The
+    reason the runs shared that worker (one hop for the series) no longer holds. No retry, excuse, warm-up or bound is added; no
+    bound changed. Rejected: detecting trims and measuring again (needs the excuse and retry this rule forbids), a GC setting that
+    hides the machine's memory load from the test process (leaves the worker's history, changes every test's GC), subtracting pooled
+    bytes (a side table of element sizes), keeping the compiler's walk buffer out of the shared pool (compiler code changed for a
+    test artifact), a new thread per series (a trim between two runs still reaches it). Left, stated, neither observed: a
+    High-pressure trim inside one run, between two rents of one length, adds that buffer to the run; and a run finds free a buffer
+    that another thread left in the pool's shared stacks, by returning it while its own slot of that length was full (no series'
+    path does).
   - The reading adopted with the owner's (A): this unmeasured run is not the forbidden warm-up, because the one-time cost it excludes is
     measured by its own test with a stated bound (R4's conditions: one contract naming the run, its reason and the owning test, no per-test
     warm-up loop; the owning test fails when the first build's extra allocation grows past its stated 64 KB bound). Any other added warm-up
