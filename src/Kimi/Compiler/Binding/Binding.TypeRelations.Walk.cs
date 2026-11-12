@@ -148,10 +148,10 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter);
+                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
             }
 
-            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use) : 0;
+            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
             if (outer == OuterOriginFit.Mismatch)
             {
                 return this.End(instance);
@@ -195,7 +195,7 @@ public sealed partial class Binding
             if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
             {
                 // A Function component is one comparison: its first failure is one fact of the walk that reached it.
-                if (this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing)))
+                if (this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance)))
                 {
                     return holds;
                 }
@@ -224,7 +224,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding), instance: instance))
+                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding, this.use, instance), instance: instance))
                 {
                     holds = false;
                     if (!this.Goes(instance))

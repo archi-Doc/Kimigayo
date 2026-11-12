@@ -128,7 +128,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (IsInvariantLayer(actual, this))
+            if (IsInvariantLayer(actual, this, use, default))
             {
                 if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure))
                 {

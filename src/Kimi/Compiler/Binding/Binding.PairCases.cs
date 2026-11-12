@@ -39,6 +39,28 @@ public sealed partial class Binding
         }
     }
 
+    /// <summary>Gets the point whose Semantics premises give one pair binder's admitted set where a relation is judged (SPEC 8.3.4,
+    /// 8.8.2; PLAN G801): the relation's scope (<see cref="RelationScope"/>) when the binder is in scope there, its declaring scope on
+    /// that scope's chain (a conforming Type's binder in its conformance scope, a body's or its Type's binder at a use). Any other
+    /// binder a relation meets belongs to another signature (a requirement's own, an implementation's own before correspondence, a
+    /// callee's), whose clauses are all its premises: its declaring scope. A declaration's own relation has no scope and reads that
+    /// scope too.</summary>
+    /// <param name="binder">The pair binder.</param>
+    /// <param name="relation">The relation's scope; none for a declaration's own relation.</param>
+    /// <returns>The scope whose premises give the binder's admitted set.</returns>
+    internal static BindingScope AdmittedScope(BindingSymbol binder, BindingScope? relation)
+    {
+        for (var current = relation; current is not null; current = current.Parent)
+        {
+            if (ReferenceEquals(current, binder.Scope))
+            {
+                return relation!;
+            }
+        }
+
+        return binder.Scope;
+    }
+
     /// <summary>Tells whether a bare acquisition of a pair-layer Place Reborrows in some admitted case (SPEC 8.14): the use is then
     /// exclusive in that case, the strongest a Closure's receiver can be over its cases (SPEC 7.7.3).</summary>
     /// <param name="type">The stored Type of the Place.</param>
@@ -52,10 +74,12 @@ public sealed partial class Binding
 
     /// <summary>Tells whether a pair layer is invariant in its target (SPEC 15.3.5): its binder admits <c>uniq</c>, <c>obj</c>,
     /// <c>objuniq</c> or <c>raw</c>, so a relation between its targets must hold as an equality in a generic body; the admitted set
-    /// is the binder's own, from its declaring scope.</summary>
+    /// is read at the binder's point (<see cref="AdmittedScope"/>).</summary>
     /// <param name="type">A Type.</param>
+    /// <param name="use">The use the relation is judged at; none for a declaration's own relation.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer with an invariant admitted Semantics.</returns>
-    internal bool InvariantAdmitted(BoundType type)
+    internal bool InvariantAdmitted(BoundType type, Koto? use, in CallableInstance comparison)
     {
         const SemanticsMask invariant = SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw;
         if (type.Kind == BoundTypeKind.SemanticsAdaptation)
@@ -64,8 +88,17 @@ public sealed partial class Binding
             return false;
         }
 
-        return (this.LayerAdmitted(type) & invariant) != 0;
+        return TryPairLayer(type, out var whole, out _) && whole.Symbol is { } binder &&
+            (this.AdmittedSemantics(whole, AdmittedScope(binder, this.RelationScope(use, comparison))) & invariant) != 0;
     }
+
+    /// <summary>Gets the scope a relation is judged in (SPEC 8.3.4, 8.8.2; PLAN G801): its comparison's own (a conformance scope),
+    /// else its use's; none for a declaration's own relation.</summary>
+    /// <param name="use">The use the relation is judged at; none for a declaration's own relation.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <returns>The relation's scope, or null.</returns>
+    internal BindingScope? RelationScope(Koto? use, in CallableInstance comparison)
+        => comparison.Scope ?? (use is null ? null : this.ConstraintScope(use));
 
     /// <summary>Gets the admitted set of a pair layer's binder (SPEC 8.3), from its declaring scope, which every occurrence of the layer
     /// shares; None for another Type.</summary>
@@ -107,15 +140,16 @@ public sealed partial class Binding
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
     /// <param name="use">The use whose binders give the bits.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, Koto use)
+    internal ulong? PairSlotCondition(BoundType layer, Koto use, in CallableInstance comparison = default)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {
             return 0;
         }
 
-        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(use));
+        var admitted = this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, this.RelationScope(use, comparison)));
         if ((admitted & SemanticsMask.Borrow) == 0)
         {
             return null;

@@ -20,6 +20,7 @@ public sealed partial class Binding
 
         var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
         var demanded = this.RentTypes(requirement.InputCount);
+        var written = this.RentTypes(requirement.InputCount);
         var count = 0;
         try
         {
@@ -56,19 +57,26 @@ public sealed partial class Binding
                     return ConstraintProof.Refuted;
                 }
 
+                written[count] = actual;
                 demanded[count++] = required;
-                this.MatchInputOrigins(actual, required, implementation.Binder, origins, inputs);
-                this.CollectOriginInference(actual, required, inference);
             }
 
             var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
+
+            var comparison = this.RequirementComparison(demanded.AsSpan(0, count), expected, requirement.Binder, scope);
+            inference.Comparison = comparison;
+
+            // The comparison is formed before any of its judgments, the bounds its solve collects included (PLAN G801).
+            for (var i = 0; i < count; i++)
+            {
+                this.MatchInputOrigins(written[i], demanded[i], implementation.Binder, origins, inputs);
+                this.CollectOriginInference(written[i], demanded[i], inference);
+            }
+
             if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
             {
                 this.CollectOriginInference(projected, expected, inference, result: true);
             }
-
-            var comparison = this.RequirementComparison(demanded.AsSpan(0, count), expected, requirement.Binder);
-            inference.Comparison = comparison;
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
             if (!(implementation.Binder is FunctionKoto solved
@@ -116,6 +124,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
         }
 
@@ -138,12 +147,13 @@ public sealed partial class Binding
     // SPEC 11.9.1, 15.3.7, 15.6.1, the owner's (a): the whole-contract comparison of a witness, a written implementation or a standard
     // access bridge (11.9.2, MatchPropertyOperation), with `binder`'s requirement as substituted (Self, the Type's arguments): each of
     // its proofs, its solve's too, assumes that signature's own well-formedness, as 10.7's does (ContractFits). The one place a witness
-    // comparison is formed, for every witness kind; AddRequiredPremises reads its premises from it (DECISIONS BU-93).
-    private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder)
+    // comparison is formed, for every witness kind; AddRequiredPremises reads its premises from it (DECISIONS BU-93), and its relations
+    // read their admitted sets in `scope`, the conformance scope (SPEC 8.8.2; PLAN G801).
+    private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder, BindingScope scope)
     {
         var demandedInputs = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);
         var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, result ?? BoundType.Unit]);
-        return new CallableInstance(null, null, signature, binder, null);
+        return new CallableInstance(null, null, signature, binder, null) { Scope = scope };
     }
 
     private BoundType? ProjectCallableType(BoundType type, BoundType? declaringType)

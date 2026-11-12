@@ -108,7 +108,7 @@ public sealed partial class Binding
                 return ConstraintProof.Refuted;
             }
 
-            var comparison = this.RequirementComparison(input is null ? [receiver] : [receiver, input], result, requirement.Binder);
+            var comparison = this.RequirementComparison(input is null ? [receiver] : [receiver, input], result, requirement.Binder, scope);
             if (!getter)
             {
                 // Input direction: the required input P fits the Field, P <: F.

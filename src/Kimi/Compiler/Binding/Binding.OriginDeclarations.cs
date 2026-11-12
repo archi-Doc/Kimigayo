@@ -83,7 +83,7 @@ public sealed partial class Binding
     // layers (IsInvariantLayer).
     private static OriginVariance ComponentVariance(BoundType type, int component, Binding? binding) => type.Kind switch
     {
-        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding) => OriginVariance.Invariant,
+        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding, null, default) => OriginVariance.Invariant,
         BoundTypeKind.Function when type.Components.Count == 2 && component == 0 => OriginVariance.Contravariant,
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,

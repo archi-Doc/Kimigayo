@@ -203,7 +203,7 @@ public sealed partial class Binding
                 return first;
             }
 
-            var exclusive = IsInvariantLayer(actual, binding);
+            var exclusive = IsInvariantLayer(actual, binding, use, default);
             for (var i = 0; i < actual.Components.Count && i < expected.Components.Count &&
                 actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
             {

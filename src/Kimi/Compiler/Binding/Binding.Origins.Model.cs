@@ -399,6 +399,10 @@ internal readonly struct CallableInstance
 
     internal ComparisonPremises? Outer => this.outer;
 
+    // SPEC 8.8.2: the scope the comparison is judged in when no syntax gives it, a conformance scope of D, P and the requirement's
+    // premises; null: the scope of the use it is made at (Binding.RelationScope).
+    internal BindingScope? Scope { get; init; }
+
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
