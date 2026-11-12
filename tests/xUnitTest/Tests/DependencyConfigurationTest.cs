@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Tinyhand;
@@ -172,8 +173,9 @@ public class DependencyConfigurationTest
     }
 
     // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
-    // one Resource record at preparation, which still succeeds: the Compilation has no source module, so its check reads no source,
-    // runs no phase and completes rejected (SPEC 23.2.2; Project.CheckFrontEnd).
+    // one Resource record at preparation, which still succeeds and publishes its one outcome, AnalyzesNoModule: the check reads no
+    // source, runs no phase and completes rejected (SPEC 23.2.2; Project.CheckFrontEnd), and its test presence is Unknown, since no
+    // source was parsed (SPEC 23.3).
     [Theory]
     [InlineData(65_535, true)]
     [InlineData(65_536, false)]
@@ -190,6 +192,7 @@ public class DependencyConfigurationTest
 
         Assert.True(c.Prepare(WindowsProfile.Target, new(nodes)));
         Assert.Equal(supported ? count : 0, c.SourceModules.Length);
+        Assert.Equal((!supported, supported ? TestPresence.No : TestPresence.Unknown), (c.AnalyzesNoModule, CheckService.ScanTestPresence(c)));
         if (supported)
         {
             Assert.Empty(TestDiagnostics.Of(c));

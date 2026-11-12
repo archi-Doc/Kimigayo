@@ -461,9 +461,9 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
-        // IMPL 21.3.2: a Compilation over the module count has no source module, so no source is read and no phase runs; its check
-        // completes (SPEC 23.2.2), rejected by the Resource Error its preparation recorded.
-        if (compilation.SourceModules.Length == 0)
+        // SPEC 23.2.2: a preparation that established no source module (Compilation.AnalyzesNoModule) leaves no input to establish and
+        // no phase to run; the check is Completed, rejected by the Error that preparation recorded.
+        if (compilation.AnalyzesNoModule)
         {
             if (context is not null)
             {
@@ -545,7 +545,9 @@ public partial class Project
 
         if (context is not null)
         {
-            context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
+            // SPEC 23.2.2, step 3: every input is established; the front end runs from here on. The check's other Completed end is
+            // AnalyzesNoModule's, above.
+            context.Compilation = compilation;
         }
 
         var accepted = compilation.Check(); // The compilation's phase sequence, from Binding to acceptance and a test build's discovery.

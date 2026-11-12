@@ -18,6 +18,11 @@ public partial class Compilation
 
     internal Kotonoha[] SourceModules { get; private set; }
 
+    /// <summary>Gets a value indicating whether a successful preparation established no source module, the one outcome of a refusal
+    /// that leaves nothing to analyze (IMPL 21.3.2: the module count's). The configuration is checked, no source is read or parsed and
+    /// no phase runs: the check is Completed, rejected by the refusal's Error (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
+    internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
+
     internal static string[] EffectiveAliases(string[] additions)
     {
         if (additions.Length == 0)
@@ -124,7 +129,7 @@ public partial class Compilation
         }
 
         // IMPL A.4, 21.3.2: a module's ordinal is below SyntaxTable.LibraryModule, so a graph of more modules is refused here, before
-        // any ordinal is narrowed: one Resource record at the root project file, and the Compilation has no source module to analyze.
+        // any ordinal is narrowed: one Resource record at the root project file, and no source module is established (AnalyzesNoModule).
         if (modules.Length > SyntaxTable.LibraryModule)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ModuleCountLimit_Kd, this.Project.FilePath, (long)modules.Length, (long)SyntaxTable.LibraryModule);
