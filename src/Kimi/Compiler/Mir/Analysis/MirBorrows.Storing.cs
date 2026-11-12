@@ -389,7 +389,7 @@ internal sealed partial class MirBorrows
         // The own step applies only where the destination holds raw layers and none states an Origin; elsewhere a part reads as its
         // layer's (the owner's O-190 (b)).
         var count = this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
-        var stepped =this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))] is { RawInline: true, AnyStated: false };
+        var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
         foreach (var element in this.sets.Elements(this.mustValue))
