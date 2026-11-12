@@ -125,7 +125,7 @@ public class CompileTimeSwitchParseTest
         Assert.Equal(2, items.Count);
         var outer = Assert.IsType<CompileTimeSwitchKoto>(items[0]);
         Assert.IsType<CompileTimeSwitchKoto>(items[1]);
-        Assert.Empty(outer.ChildNodes);
+        Assert.Empty(outer.Children());
 
         var written = outer.ToString();
         Assert.StartsWith("#switch\n", written);
@@ -253,7 +253,7 @@ public class CompileTimeSwitchParseTest
         var contract = Assert.Single(compilation.Kotonoha.RootKoto.NestedDeclarationContainers);
         // Neither arm is selected; both are excluded syntax and leave only the marker.
         var group = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(contract.Members));
-        Assert.Empty(group.ChildNodes);
+        Assert.Empty(group.Children());
     }
 
     private static string SelectedFieldName(Koto item)

@@ -179,7 +179,7 @@ public partial class OptionalTryDiscardTest
         restored.OnDeserialized(Compilation.CreateForTest());
         ParseTestHelper.AssertValid(restored);
         Assert.Equal(output, restored.RootKoto.ToString());
-        Assert.All(Descendants(restored.RootKoto), n => Assert.All(n.ChildNodes, child => Assert.Same(n, child.Parent)));
+        Assert.All(Descendants(restored.RootKoto), n => Assert.All(n.Children(), child => Assert.Same(n, child.Parent)));
     }
 
     [Theory]
@@ -334,7 +334,7 @@ public partial class OptionalTryDiscardTest
     private static IEnumerable<Koto> Descendants(Koto node)
     {
         yield return node;
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             foreach (var nested in Descendants(child))
             {

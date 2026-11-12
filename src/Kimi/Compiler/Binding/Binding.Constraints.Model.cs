@@ -146,6 +146,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
             this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
+            this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
         }
 
         if (added || availability)
@@ -165,6 +166,10 @@ internal sealed class ConstraintEnvironment : ICheckCause
         }
     }
 
+    /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
+    /// of the identity relation; G721's interim reads it until G170's identity query answers which Types it makes identical.</summary>
+    internal bool HasTypeIdentity { get; set; }
+
     internal void Reset()
     {
         if (this.Facts.Count != 0 || this.Invalid)
@@ -178,5 +183,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.Failed = null;
         this.HasAssociatedProjection = false;
         this.HasParameterIdentity = false;
+        this.HasTypeIdentity = false;
     }
 }
