@@ -185,6 +185,24 @@ public sealed class GenericCaseDiagnosticTest
             errors.Select(static x => x.Span!.Value.Start));
     }
 
+    // SPEC 8.3.4, 8.15.2, 23.1.2 (PLAN G750): a binder whose premises empty its set admits no case, so a Semantics requirement read from
+    // it (a case adaptation's rows) is the emptying environment's Error and adds no record of its own: in a conformance block member whose
+    // `when` premise empties D's set, in an emptied struct's member and in a function whose own clauses empty its set. Only the
+    // environments' InvalidConstraint_Kd stay (BU-161: a use of an Invalid environment keeps its record). Before, the struct member's and
+    // the function's `7@s` were verified in all nine cases (TypeMismatch_Kd from a case the premises exclude) and the struct's init in
+    // some (UninitializedPlace_Kd).
+    [Theory]
+    [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/i32) -> ()\n            _ = 7@s\n")]
+    [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/i32) -> ()\n            let y = x@move@s\n            _ = y\n")]
+    [InlineData("    s is owner\n    s is ref\n", "    public func get(self: ref/Self, x: s/i32) -> ()\n        _ = 7@s\n")]
+    [InlineData(null, "func one<s/T>(x: s/i32) -> ()\n    s is owner\n    s is ref\n    _ = 7@s\n")]
+    public void ASetThatAdmitsNoCaseGivesItsRequirementsNoRecord(string? premises, string members)
+    {
+        var source = (premises is null ? string.Empty : "struct Cell<s/T>\n" + premises + "    public var v: s/T\n    public init(v: s/T) => self.v = v@move\n") +
+            members + "public func main() => ()\n";
+        Assert.Equal([nameof(DiagnosticCode.InvalidConstraint_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Distinct());
+    }
+
     private static string Text(string source, SourceSpan? span)
         => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
 }
