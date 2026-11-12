@@ -707,7 +707,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 8.11.3, 8.7.5, 4.6.1, 3.1.1 (PLAN G771): Position bounds format with confined and a proven PrimitiveInteger supplies Position
     // (SPEC 8.7.4), so a generic's confined put may format its abstract T: through a formatting function's row or called directly, and
     // as an abstract Wrapping<T>, whose WrappingFormat body runs T's format under the bounds guaranteed for T; without formatting, or at
-    // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2).
+    // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2). The rows through write, an
+    // interpolation and toString compose format at the caller by IMPL 21.3.4's rows (PLAN G795); the direct call on T resolves through
+    // member lookup's Position clause (PLAN G776).
     [Theory]
     [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", "")]
     [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", "")]
@@ -727,14 +729,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer + body));
 
     // SPEC 8.11.3, 8.11.1, 4.6.1, 4.6.3 (PLAN G771): a requirement call of format on an abstract P takes the bound of the Contract its
-    // premise proves: confined under Position or PositionRange, through write's row or called directly; none under Utf8Format, which
-    // declares no bound (any formatter may bind P). The bound covers format alone: a call of Plain's put, which bounds nothing, beside a
-    // bounded format keeps its unknown environment effect.
+    // premise proves: confined under Position or PositionRange, and none under Utf8Format, which declares no bound (any formatter may
+    // bind P); each called directly and through a formatting function's row (write, an interpolation, toString), which composes format
+    // at the caller by IMPL 21.3.4's rows (PLAN G795). The bound covers format alone: a call of Plain's put, which bounds nothing, beside
+    // a bounded format keeps its unknown environment effect.
     [Theory]
     [InlineData("Position", "        return writer.write(self.p)\n", "")]
+    [InlineData("Position", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", "")]
+    [InlineData("Position", "        _ = Text.toString(self.p)\n        return .Ok(())\n", "")]
     [InlineData("Position", "        return self.p.format(writer@uniq)\n", "")]
     [InlineData("PositionRange", "        return writer.write(self.p)\n", "")]
     [InlineData("PositionRange", "        return self.p.format(writer@uniq)\n", "")]
+    [InlineData("Utf8Format", "        return writer.write(self.p)\n", Failed)]
+    [InlineData("Utf8Format", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", Failed)]
+    [InlineData("Utf8Format", "        _ = Text.toString(self.p)\n        return .Ok(())\n", Failed)]
     [InlineData("Utf8Format", "        return self.p.format(writer@uniq)\n", Failed)]
     [InlineData("Position", "        _ = self.p.format(writer@uniq)\n        return self.inner.put(value)\n", Failed)]
     public void AnAbstractPositionFormatsUnderItsContractsBound(string premise, string body, string expected)
@@ -744,7 +752,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"struct H<P, U>\n    P is {premise}\n    U is Plain\n    Self is Sink\n    var p: P\n    var inner: U\n" + Put + Writer + body));
 
     // SPEC 15.6.4, 8.11.3 (PLAN G771): a generic function's summary is computed once under its own premises, so its call at u8 from a
-    // confined put is valid where the premise bounds format (PrimitiveInteger, through Position) and a conflict where it is Utf8Format.
+    // confined put is valid where the premise bounds format (PrimitiveInteger, through Position; the member call on T resolves through
+    // member lookup's Position clause, PLAN G776) and a conflict where it is Utf8Format.
     [Theory]
     [InlineData("PrimitiveInteger", "")]
     [InlineData("Utf8Format", Failed)]
@@ -756,16 +765,18 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "        let n = 7@u8\n        return Show.show(n@ref, writer@uniq)\n"));
 
     // SPEC 15.6, 8.11.3 (PLAN G771): the bound makes the format call confined, not its borrow valid: borrowing the writer `uniq` while a
-    // shared Loan of it lives stays a Loan conflict, the program's only failure.
+    // shared Loan of it lives stays a Loan conflict at the call, the program's only problem (the member call on T resolves through
+    // member lookup's Position clause, PLAN G776).
     [Fact]
     public void AConfinedFormatCallKeepsItsLoanConflict()
     {
         var c = MinimalEmissionTest.Analyze(
             Sink + "group Look\n    public func at(writer: ref/Utf8Writer) => ()\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer +
-            "        let v: T = 7\n        let held = writer@ref\n        let result = v.format(writer@uniq)\n        Look.at(held)\n        return result\n");
+            "        let v: T = 7\n        let held = writer@ref\n        let result = v.format(writer@uniq)\n        Look.at(held)\n        return result\n" +
+            "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal("CallActivationConflict_Kd v.format(writer@uniq)", MinimalEmissionTest.Problems(c));
     }
 
     // SPEC 8.11.3 (R8-S2d1, C-252): a generic with no effect bound that formats an abstract Wrapping<T> keeps no record.
