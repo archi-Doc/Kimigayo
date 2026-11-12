@@ -8,8 +8,8 @@
 // Reads of the compiler, exactly these: the association's DocumentationComment with its DocumentationText,
 // DocumentationSource.LogicalName (a comment's Owner) and DocumentationDiagnostic; Core's SourceDocument, the comment's and the text's
 // Source (its SourceText, to map an original CRLF; passed into DocumentationDiagnostic); a declaration's syntax (Koto, FunctionKoto,
-// DeclarationContainerKoto, PropertyAccessorKoto: generic parameters, origins, parameters, modifiers with ModifierKind); its Binding facts
-// only through HirTables.Symbol (bound or not, the receiver index; DECISIONS R5-M193); its Kotonoha, the default project identity;
+// DeclarationContainerKoto: generic parameters, origins, parameters, modifiers with ModifierKind); its Binding facts only through
+// HirTables.Symbol (bound or not, the receiver index; DECISIONS R5-M193); its Kotonoha, the default project identity;
 // Kimi.Diagnostics' SourceSpan; Helper's IntegerTable.
 // Output: documents, items, HTML and link targets; optional DocumentationDiagnostic records, never language diagnostics.
 // Invariants: no file of Compiler/, Testing/ or Diagnostics/ reads a Documentation type; its readers are hover's projection in check and
@@ -148,7 +148,6 @@ public sealed class DocumentationMarkdown
         {
             FunctionKoto function => function.Origins,
             DeclarationContainerKoto container => container.OriginNames,
-            PropertyAccessorKoto accessor => accessor.Origins,
             _ => [],
         };
         foreach (var origin in origins)

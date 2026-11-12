@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using Kimi.Compiler.Lexing;
 using Microsoft.CodeAnalysis;
@@ -93,6 +95,15 @@ public class ArchitectureRulesTest
         @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
 
+    // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
+    private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
+        "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
+        "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
+
+    // The IL opcodes by value (InterfaceEnumerationsStayAtTheirSites).
+    private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
+
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Build", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
@@ -140,7 +151,6 @@ public class ArchitectureRulesTest
     [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
-    [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
     [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
     [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
@@ -374,6 +384,23 @@ public class ArchitectureRulesTest
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
+    // PLAN G609 (RP6): the compiler reads a published list by index and a node's children through the one walk (Koto.VisitChildren), so a
+    // warm rebind allocates nothing: `foreach` over an interface calls its GetEnumerator, which boxes a List<T>'s enumerator or allocates
+    // an array's whenever the list is nonempty. The compiler's IL calls an interface's GetEnumerator only at these cold sites (parsing and
+    // printing syntax, adding sources, dumping MIR), counted by top-level type and method, a lambda's, local function's or state machine's
+    // in its declaring method's; every other Kimi.Compiler method calls none (52dc76fd1's site was Compilation's pipeline, not Binding).
+    // Not seen: an enumeration a library method makes for the compiler (LINQ over an interface, AddRange, string.Join or a constructor
+    // over an IEnumerable<T>); review reads those.
+    [Theory]
+    [InlineData("Kimi.Compiler", InterfaceEnumerationSites)]
+    public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
+    {
+        var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
+            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
     private static string? CalledName(ExpressionSyntax called) => called switch
     {
@@ -381,6 +408,46 @@ public class ArchitectureRulesTest
         IdentifierNameSyntax name => name.Identifier.Text,
         _ => null,
     };
+
+    // The calls of an interface's GetEnumerator in a type's own method bodies, read from their IL, one `TopLevelType.Method` each.
+    private static IEnumerable<string> InterfaceEnumerations(Type type)
+    {
+        const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        var top = type;
+        while (top.DeclaringType is { } outer)
+        {
+            top = outer;
+        }
+
+        foreach (var method in type.GetMethods(Declared).Concat<MethodBase>(type.GetConstructors(Declared)))
+        {
+            // A compiler-generated member (<Name>b__0, <Name>g__Local|0) or state machine (<Name>d__0.MoveNext) names its declaring method.
+            var name = method.Name.StartsWith('<') ? method.Name : type.Name.StartsWith('<') && !type.Name.StartsWith("<>", StringComparison.Ordinal) ? type.Name : method.Name;
+            name = name.StartsWith('<') ? name[1..name.IndexOf('>')] : name;
+            var il = method.GetMethodBody()?.GetILAsByteArray() ?? [];
+            for (var i = 0; i < il.Length;)
+            {
+                var code = OpCodesByValue[il[i] == 0xFE ? (short)(0xFE00 | il[i + 1]) : il[i]];
+                i += code.Size;
+                if (code.OperandType == OperandType.InlineMethod && type.Module.ResolveMethod(
+                    BitConverter.ToInt32(il, i), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null)
+                    is { Name: "GetEnumerator", DeclaringType.IsInterface: true })
+                {
+                    yield return $"{top.Name}.{name}";
+                }
+
+                i += code.OperandType switch
+                {
+                    OperandType.InlineNone => 0,
+                    OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                    OperandType.InlineVar => 2,
+                    OperandType.InlineI8 or OperandType.InlineR => 8,
+                    OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, i)),
+                    _ => 4,
+                };
+            }
+        }
+    }
 
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)

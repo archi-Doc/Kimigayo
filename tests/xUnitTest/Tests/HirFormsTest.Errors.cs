@@ -58,7 +58,7 @@ public sealed partial class HirFormsTest
         Assert.NotEqual(BindingState.Resolved, node.StateOf());
         Assert.Equal(BindingFailure.None, node.FailureOf());
         Assert.Equal(op, HirTables.Op(node).ToString());
-        var keeps = node.ChildNodes.Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
+        var keeps = node.Children().Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
         Assert.True(kept is null || kept == string.Join(" ", keeps.Select(static x => x.ToString())), string.Join(" ", keeps.Select(static x => x.ToString())));
     }
 
