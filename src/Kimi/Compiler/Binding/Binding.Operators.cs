@@ -103,7 +103,7 @@ public sealed partial class Binding
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
-                if (!this.CheckUpdateDestination(unary, operand, scope))
+                if (!this.CheckDestination(unary, unary.Operand, operand, scope) || !this.FitsUpdateResult(unary, unary.Operand, operand))
                 {
                     return this.FailRoute(unary, unary.Operand, operand, null, scope);
                 }
@@ -122,12 +122,13 @@ public sealed partial class Binding
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
     {
         binary.ComparisonActive = false;
+        var kind = binary.Akind;
+        var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         if (this.TryArithmetic(binary, scope, out var arithmeticResult))
         {
-            return arithmeticResult;
+            return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
         }
 
-        var kind = binary.Akind;
         if (kind is KotoKind.Conversion or KotoKind.As or KotoKind.Is)
         {
             this.BindNode(binary.Left, scope);
@@ -135,7 +136,6 @@ public sealed partial class Binding
             return this.Fail(binary, BindingFailure.Unsupported, true);
         }
 
-        var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         var operation = OperatorKind(binary);
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         if (!assignment && !shift && IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right))
@@ -171,7 +171,10 @@ public sealed partial class Binding
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
-        if (assignment && left is not null && right is not null && !this.CheckOperatorDestination(binary, left, scope))
+        // SPEC 23.1.2: whether the destination admits the write does not rest on the value, so a failed value does not hide it. SPEC 5.7: a
+        // write admits a `during self` layer's Place only with null at every layer, which the value decides.
+        if (assignment && left is not null && (!this.CheckDestination(binary, binary.Left, left, scope) || (kind == KotoKind.Equals
+            ? this.HolderPlaceFailure(binary.Left, HolderAccess.Write, binary.Right, binary) : !this.FitsUpdateResult(binary, binary.Left, left))))
         {
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, right, scope);
         }
@@ -235,73 +238,61 @@ public sealed partial class Binding
         return route.Failure == BindingFailure.None ? null : this.FailOperator(operation, operation, route);
     }
 
-    private bool CheckUpdateDestination(UnaryKoto unary, BoundType operand, BindingScope scope)
+    // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
+    // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
+    // Property permissions. It reads the target, never the value's Type. An update of a reference binding names the binding's mode
+    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update reads a `during self` layer's Place (SPEC 5.7).
+    private bool CheckDestination(Koto operation, Koto target, BoundType type, BindingScope scope)
     {
-        if (!this.ValidPropertyWritePath(unary.Operand, scope))
+        if (!this.ValidPropertyWritePath(target, scope))
         {
-            this.FailWrite(unary, unary.Operand);
+            this.FailWrite(operation, target);
             return false;
         }
 
-        if (operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
-            ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
+        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
+        if (!write && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+            ReferenceBindingAssignment(target) is { } referenceBinding)
         {
-            this.Fail(unary, referenceBinding);
+            this.Fail(operation, referenceBinding);
             return false;
         }
 
-        if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
+        if (!Writable(target) && ElementAccess.WritableRoot(target) is null &&
+            !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {
-            this.FailWrite(unary, unary.Operand);
+            this.FailWrite(operation, target);
             return false;
         }
 
-        if (this.HolderPlaceFailure(unary.Operand, HolderAccess.Update, null, unary))
-        {
-            return false;
-        }
-
-        // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
-        if (this.PropertyUpdateDestination(unary.Operand) is { } written &&
-            !this.FitsValueAt(operand, written, unary, unary.Operand, out var failure))
-        {
-            this.FailMismatch(unary, unary.Operand, operand, written, failure);
-            return false;
-        }
-
-        return true;
+        return write || !this.HolderPlaceFailure(target, HolderAccess.Update, null, operation);
     }
 
-    private bool CheckOperatorDestination(BinaryKoto binary, BoundType left, BindingScope scope)
+    // SPEC 13.7.1, 13.7.2: a compound assignment through an arithmetic route (TryArithmetic) has its destination checked whatever the route
+    // gave, then fits the route's result to the destination Type: a Property's setter input, else the Place's.
+    private BoundType? CompleteRoutedUpdate(BinaryKoto binary, BoundType? computed, BindingScope scope)
     {
-        if (!this.ValidPropertyWritePath(binary.Left, scope))
+        if (binary.Left.BoundType is not { } target || !this.CheckDestination(binary, binary.Left, target, scope) || computed is null)
         {
-            this.FailWrite(binary, binary.Left);
-            return false;
+            return Complete(binary, null);
         }
 
-        var initialize = binary.Akind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) ||
-            (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor));
-        if (!Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null && !initialize)
+        var destination = this.PropertyUpdateDestination(binary.Left) ?? target;
+        return this.FitsValueAt(computed, destination, binary, binary, out var failure)
+            ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, computed, destination, failure);
+    }
+
+    // SPEC 13.7.1: compound assignment, increment and decrement compute in the read Type; the result is fitted to a Property's destination
+    // Type. An arithmetic route fits its own result (CompleteRoutedUpdate).
+    private bool FitsUpdateResult(Koto operation, Koto target, BoundType read)
+    {
+        if (this.PropertyUpdateDestination(target) is not { } destination || this.FitsValueAt(read, destination, operation, target, out var failure))
         {
-            this.FailWrite(binary, binary.Left);
-            return false;
+            return true;
         }
 
-        var access = binary.Akind == KotoKind.Equals ? HolderAccess.Write : HolderAccess.Update;
-        if (this.HolderPlaceFailure(binary.Left, access, binary.Right, binary))
-        {
-            return false;
-        }
-
-        if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination &&
-            !this.FitsValueAt(left, destination, binary, binary.Left, out var failure))
-        {
-            this.FailMismatch(binary, binary.Left, left, destination, failure);
-            return false;
-        }
-
-        return true;
+        this.FailMismatch(operation, target, read, destination, failure);
+        return false;
     }
 
     // Completes the already judged operation: fit its other operand, enforce implementation boundaries, or select its existing plan.

@@ -309,7 +309,8 @@ internal sealed class MirBody
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports.</returns>
+    /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
+    /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
     internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
     {
         var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));
