@@ -28,9 +28,19 @@ public sealed partial class Binding
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
+        this.fitRested = false;
         var walk = new RelationWalk(this, use, this.comparisonFacts);
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
+
+        // SPEC 23.1.2 (PLAN G739): a fit that holds by a resting position leaves its positions as rows, as its failing path does. The
+        // query-like callers (ArgumentOperations' try-then-read, ResultPropagation's late fits, an enum's and a control-flow join's) form
+        // them too, on rejected programs only.
+        if (fits && this.fitRested)
+        {
+            _ = this.CheckTypeUse(actual, expected, use, out _);
+        }
+
         return fits;
     }
 
@@ -86,13 +96,14 @@ public sealed partial class Binding
     {
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
         this.comparisonFacts.Clear();
+        this.fitRested = false;
         var walk = new RelationWalk(this, use, this.comparisonFacts);
         var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
         if (!fits)
         {
             failure = walk.Failure;
         }
-        else if (!this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
+        else if (!this.fitRested && !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }
