@@ -60,12 +60,13 @@ windows-x64 is little endian with 64-bit pointers; the built-in Condition `point
 | `Array<T>`, `string` | 24 / 8 / 24 |
 | `Slice<T>` | 16 / 8 / 16 |
 | `Dictionary<K, V>` | 56 / 8 / 56 |
-| Unit, `Loan<T>`, Never | 0 / 1 / 0 |
+| Unit, `Loan<T>`, Never, a Function Item Type | 0 / 1 / 0 |
 
 - A `char` stores a Unicode scalar value as an unsigned 32-bit integer. Neither `char` nor `bool` corresponds to C `char`, `WCHAR` or Windows `BOOL`.
 - A Type that stores Never inline is laid out as if Never were zero-sized, so the C-mode restriction on zero-sized Fields applies to it.
 - `ref/V` and `uniq/V` are one nonnull pointer to the immediate storage of `V`, with no length, count or Loan data. A borrow of a zero-sized `V` holds a nonnull address aligned for `V`.
 - **Nonnull Option representation.** `Option<R>`, where `R` is `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T`, is one pointer-sized word: null is `None`, and every valid value of `R` is `Some`. It does not extend to `Option<Option<R>>`, to structs or Tuples containing references, or to other enums.
+- A Function Item value stores nothing: its Type names one function and instantiation and has no capture environment ([§3.2.1](../spec/03-types-and-values.md#321-callable-value-types)), and its Type arguments belong to the Type.
 - A common function value is 16 bytes with alignment 8. An environment of at most 8 bytes and alignment at most 8 is stored inline; a larger one is allocated when the value is formed ([§7.7.4](../spec/07-functions-and-callable-values.md#774-function-references-and-erasure)).
 - **Handles.** The one component of an `Array<T>`, a `Slice<T>` or a `string` is a Place of an internal `#Layout("C")` struct of the Kimi Kotonoha at the value's address, and a `Dictionary<K, V>`'s is a `DictionaryStorage.Handle`:
 
