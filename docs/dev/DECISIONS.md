@@ -18188,6 +18188,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     T-146, T-147) and stale rows, and kept T-127 (G707, case (2)) and T-138 (R7-N1e2-2b-1, an R7 plan unit).
   - Rejected: RP8's timing for every unit (above); no timing at all (the generated code's O2 guarantees are constraints, and a plan
     unit's design may trade compile time).
+  - Amended by R7-M22 (the owner, 2026-11-12): a behaviour-preserving unit of the R7 plan books no per-unit timing slot; (2)'s "a
+    unit of the R7, R8 or R9 plan" keeps it for R7's behaviour-changing units and for R8's and R9's.
+- **R7-M22 A behaviour-preserving R7 unit rests on the deterministic checks and the checkpoints** (owner, 2026-11-12, in the
+  Coordinator's dialog, verbatim 「C. 動作を変えない R7 単位は、単位ごとの RP8 計時をやめる。のみ適用お願いします。」, adopting option C alone of the Coordinator's four
+  proposals for R7 after R8 and R9; amends R7-M21 (2); plan revision 63).
+  - Rule: a unit of the R7 plan whose design states that it changes no behaviour (a split, a move, a deletion of a dead path, a
+    representation that publishes the same facts: D2's tables, N5's batches, T2's helpers, X1-X3's deletions and their like) books
+    no per-unit RP8 slot. Its gate is the Session's deterministic checks (warm allocation 0 B where a test pins it, the
+    `Purpose=Allocation` tests and the scaling classes, the behaviour-preserving triple of VERIFICATION); its cost is watched by
+    R7-M21 (3)'s checkpoint after every fifth landed window, a stop bisected over the windows' merges.
+  - Kept: a behaviour-preserving R7 unit whose design review states a hot path's complexity change or added per-use work keeps its
+    slot (R7-M21 (2)'s first case; the review names the program that measures it); R7's behaviour-changing units (R7's core chain C
+    and P above all) keep per-unit timing as R7-M3 states it; R8's and R9's units are unchanged.
+  - Reason: a behaviour-preserving unit's cost moves only through the code it restructures, which the checkpoint sees within five
+    windows, while a per-unit slot serializes it behind the windows (20 to 45 minutes each, alternating with them).
+  - Not adopted (the owner chose C alone): the streams of R7 per session, the delegation of R7 design beyond Q18, the seat caps
+    after R8 and R9, and a first Binding-file split stage.
+  - With the decision no booked slot was released: the one booked R7 slot, T-168 (R7-C3a), is R7's core and changes behaviour.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
