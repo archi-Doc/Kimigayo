@@ -66,6 +66,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageErasedReserve,
             "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
         (KimiDeclarationId.StorageFormatFloat, "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
+        (KimiDeclarationId.StorageFormatInteger128, "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
@@ -109,8 +110,8 @@ public partial class KimiLibraryShapeTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
-        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1).
-        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
+        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2).
+        Assert.Equal(192, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -699,7 +700,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // The same-named functions of a container, including those of its conditional conformance blocks, or its same-named
-    // nested declarations, in source order (the order of catalog overload positions).
+    // nested declarations, in source order (the order of catalog overload positions); an explicit specialization has no name
+    // (SPEC 8.13.3), so it is none of them, as in KimiLibrary.FindDeclaration.
     private static List<Koto> Declarations(DeclarationContainerKoto container, string name, bool function)
     {
         var found = new List<Koto>();
@@ -718,7 +720,7 @@ public partial class KimiLibraryShapeTest
 
         void Visit(Koto node)
         {
-            if (node is FunctionKoto member && member.Name == name)
+            if (node is FunctionKoto { IsSpecialization: false } member && member.Name == name)
             {
                 found.Add(member);
             }

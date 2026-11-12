@@ -54,6 +54,10 @@ public class IndexableContractTest
     private const string FirstUniq =
         "func firstUniq<S>(items: uniq/S) -> uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]@uniq\n";
 
+    // SPEC 3.4.3, 4.7.1 (PLAN G179): an Array through two reference layers is a concrete sequence, indexed by position, which Binding does
+    // not reach yet: the located limit for every key, never Array's Indexable conformance (G715's review B1).
+    private const string ThroughTwoLayers = "var values: Array<i32> = [1, 2]\nlet r = values@ref\nlet rr = r@ref\n";
+
     // A Point whose part an element storing a reference to it reaches (SPEC 3.4.3, 10.2; PLAN G147 (2b)).
     private const string Stored = "struct Inner\n    public var x: i32 = 0\n    public init() => ()\nstruct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\n";
 
@@ -71,6 +75,7 @@ public class IndexableContractTest
         { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@follow@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
         { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq)@follow = 40\nfirstUniq(counts@uniq)@follow += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "GenericConformanceReference", Keyed + FirstPlace + "let keyed = Keyed<isize>.init(7)\nrequire firstPlace(keyed) == 7 and keyed[1] == 7 else => $abort(\"keyed\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "GenericArray", FirstPlace + FirstUniq + "var values: Array<i32> = [1, 2]\nfirstUniq(values@uniq)@follow = 40\nrequire firstPlace(values) == 40 and values.index(1)@follow == 2 and values[0] == 40 else => $abort(\"array\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "PlaceComparison", Pair + FirstPlace + "var names = Pair<string>.init(\"a\", \"b\")\nlet held = names[1]@ref\nrequire firstPlace(names) == \"a\" and names[1] == held and firstPlace(names) != held and held == names[1] else => $abort(\"compare\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
 
@@ -91,9 +96,13 @@ public class IndexableContractTest
     [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("func f<S>(items: uniq/S) -> uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq)@follow = 2", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func firstKeyed<S>(items: ref/S) -> ref/S.Element during items\n    S is Indexable<i32>\n    return items[0]@ref\nlet values: Array<i32> = [1, 2]\nlet first = firstKeyed(values)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("struct Two\n    Self is UniqIndexable<isize>\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i64 during self => $abort(\"two\")", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet n: i32 = 7\npair.indexUniq(0) = n", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(ThroughTwoLayers + "let x: i32 = rr[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData(ThroughTwoLayers + "let k: i32 = 1\nlet x: i32 = rr[k]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData(ThroughTwoLayers + "let x: i32 = rr[^1]", DiagnosticCode.Unsupported_Kd)]
     [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1]@follow.inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData(Stored + "func f(entries: uniq/Dictionary<i32, uniq/Point during a>) -> uniq/Inner during a\n    return entries[1].inner@uniq", DiagnosticCode.UnprovenOriginRelation_Kd)]
@@ -103,6 +112,18 @@ public class IndexableContractTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
+    // SPEC 4.7.1, 8.5.2 (PLAN G715): Array conforms to UniqIndexable<isize>, so a projection through it or its parent names the element
+    // Type; another Key names none.
+    [Theory]
+    [InlineData("let byte: Array<u8>.(Indexable<isize>).Element = 7\nlet other: Array<u8>.(UniqIndexable<isize>).Element = 7\nlet bare: Array<u8>.Element = 7", null)]
+    [InlineData("let byte: Array<u8>.(Indexable<i32>).Element = 7", DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    public void ABuiltinSequenceProjectionNamesItsElement(string source, DiagnosticCode? code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(code is null, c.Binding.Result.IsComplete);
+        Assert.True(code is null || c.Binding.Issues.Any(x => x.Code == code), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 13.7.1, 4.7.1, 23.1.2 (PLAN G782): every assignment, plain or compound and whatever its route, has its destination checked
@@ -116,6 +137,9 @@ public class IndexableContractTest
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
     [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.index(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("var names: Dictionary<i64, i32> = [:]\nnames.indexUniq(1) *= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("let names: Dictionary<i64, string> = [:]\nnames[1] = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("func get() -> i32 => 1\nget() += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]

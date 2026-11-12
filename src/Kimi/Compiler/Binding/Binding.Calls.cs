@@ -473,7 +473,7 @@ public sealed partial class Binding
             if (receiverOperation.Source is not null)
             {
                 if (receiverOperation.BasePath is { } objectBase && receiverOperation.ParameterType is { IsObjectBorrow: true } &&
-                    !this.RequireObjectErasure(call, receiverOperation.Source, ReferenceTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
+                    !this.RequireObjectErasure(call, receiverOperation.Source, this.ViewTarget(receiverOperation.SourceType, receiverOperation.Source)!, objectBase.Type))
                 {
                     return null;
                 }
