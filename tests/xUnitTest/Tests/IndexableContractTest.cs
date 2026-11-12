@@ -138,6 +138,8 @@ public class IndexableContractTest
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
     [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
     [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.index(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("var names: Dictionary<i64, i32> = [:]\nnames.indexUniq(1) *= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("let names: Dictionary<i64, string> = [:]\nnames[1] = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("func get() -> i32 => 1\nget() += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
