@@ -244,7 +244,7 @@ public partial class CallableOriginForwardingTest
 
     private const string RawPutK = "func usep<T>(p: raw/T) => ()\nfunc put(target: uniq/(raw/u8) during a, k: ref/u8, q: raw/u8 during a) => ()\n\n";
 
-    private const string Spare ="func g(c: bool)\n    var spare: raw/u8 = null\n    var kk: u8 = 0\n";
+    private const string Spare = "func g(c: bool)\n    var spare: raw/u8 = null\n    var kk: u8 = 0\n";
 
     private const string TwoR = "func twor(x: ref/i32 during a, y: ref/i32 during a) -> ref/i32 during a => x\n\nfunc g(s: ref/i32 during b)\n";
 
