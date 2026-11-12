@@ -370,9 +370,8 @@ public class ConstraintBindingTest
     [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<string, i32>(1, \"s\")", "1*NoApplicableOverload_Kd")]
     public void NeverInARequirementIsFoundByOrdinaryLookup(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // PLAN G615 known limit (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises), accepted
-    // today because no component judges a premise conflict for any Type. dev rejected these four only through G704's unresolved name; R7-C3's
-    // premise-error judge flips them to rejected with G615's other rows.
+    // PLAN G615 (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises). R7-C3a's identity
+    // classes make the class a Conflict: one premise error at f in either order, and a body using both adds no record resting on it.
     [Theory]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is i32\n    ()")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
@@ -380,7 +379,7 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
     [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
     [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
-    public void G615KnownLimitAcceptsNeverWithAConflictingIdentityPremise(string source) => Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
+    public void NeverWithAConflictingIdentityPremiseIsAPremiseError(string source) => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
     public void PropositionIdentityPreservesOrigins()
