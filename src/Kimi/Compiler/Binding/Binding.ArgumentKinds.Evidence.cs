@@ -6,6 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The scratch of a typed position's adapted part Types (SlotSolution.InferAdaptedParts), its one user: nothing reached from AdaptPart
+    // (FixedPattern.Of, AdaptInput) runs an evidence walk, so no InferAdaptedParts re-enters between its Add calls and SelectCommonType.
+    private readonly List<BoundType> adaptedPartTypes = new();
+
     // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
     // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises). At a Signature
     // position whose pattern is a slot, the slot's solution is its contributor's (the premise visits stop there; DECISIONS BU-99); at an
@@ -283,6 +287,35 @@ public sealed partial class Binding
                 ? adapted : null;
         }
 
+        // SPEC 10.5.1, 14.9.2 step 2, 10.2 (DECISIONS BU-43 as amended by G729): a typed position of several parts is one control-flow
+        // argument whose sources are its parts. Each typed part (those PositionType takes; a part awaiting its call has no supplied Type,
+        // so none is deferred) adapts at the pattern as an argument part does (AdaptPart), and the adapted parts' common Type
+        // (SelectCommonType, 14.9.2 step 2) is evidence once (InferFrom): a borrow's Origin is the region covering every part's Loan.
+        private bool InferAdaptedParts(BoundType pattern, int start, int end)
+        {
+            var binding = this.Binding;
+            var adapted = binding.adaptedPartTypes;
+            adapted.Clear();
+            for (var i = start; i < end; i++)
+            {
+                var part = binding.positionParts[i];
+                if (binding.TypedPositionPart(part) is { } actual)
+                {
+                    if (this.AdaptPart(pattern, actual, part) is not { } type)
+                    {
+                        adapted.Clear();
+                        return false;
+                    }
+
+                    adapted.Add(type);
+                }
+            }
+
+            var common = binding.SelectCommonType(adapted, binding.ConstraintScope(binding.positionParts[start]), out _);
+            adapted.Clear();
+            return common is not null && this.InferFrom(pattern, common, new(null, Contribution.Evidence, Relations: false));
+        }
+
         // SPEC 10.8: the evidence of an adapted Type at the pattern of its position. `part` carries the facts the adapted part gives: its
         // node, whose known call signature binds a Function pattern (none for a position of several parts), its contribution, and
         // whether it is a nested call checked against this candidate, which supplies relations for checking, never outer slot evidence.
@@ -328,9 +361,9 @@ public sealed partial class Binding
                 relateLater: true);
         }
 
-        // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
-        // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
-        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
+        // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one by
+        // its typed parts each adapted at the pattern (InferAdaptedParts), in the early pass; a Literal one by its first literal's default
+        // in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
         private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
@@ -341,10 +374,7 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
-                    type = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, type); // As InferAdapted (U1.6g (c)).
-                    binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
-                    pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-                    return binding.Infer(pattern, type, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
+                    return this.InferAdaptedParts(pattern, start, end);
                 default:
                     return true;
             }

@@ -549,4 +549,16 @@ public partial class ApplicabilityChainRegressionTest
         Assert.True(rejected);
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
+
+    // PLAN G729: a joined position of two Places borrowed at `ref/i32 during a` (two Origins, one region covering both Loans) allocates
+    // nothing in a warm rebind (the adapted parts' scratch, SlotSolution.InferAdaptedParts).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmJoinedBorrowPositionAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    let q = pick(if c => (x, 1) else => (y, 2))\n    return q\n()");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
+    }
 }
