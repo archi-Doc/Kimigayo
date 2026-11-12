@@ -102,6 +102,10 @@ public sealed partial class Binding
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
 
+        // The candidate's substitution over `slots`, its Type slots as solved or as a proof supposes them (Binding.CallSubstitution).
+        internal readonly CallSubstitution Substitution(ReadOnlySpan<BoundType?> slots)
+            => SubstitutionOf(this.Binder, this.DeclaringType, slots, this.Lengths, this.Origins, this.Inputs);
+
         // The pattern with the solution substituted, or null while it holds an unbound slot.
         internal readonly BoundType? Type(BoundType pattern)
             => this.Binding.CallType(pattern, this.Binder, this.Types, this.Scope, this.Self, this.Origins, this.Inputs, this.DeclaringType, this.Lengths);
@@ -208,7 +212,7 @@ public sealed partial class Binding
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
             var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
-                function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
+                function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
             proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
