@@ -246,10 +246,17 @@ public sealed partial class Binding
                     valueMember = valueSelection.Member ?? valueMember;
                 }
 
-                // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
-                if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
+                // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target; one admitting no
+                // case rests the selection on the emptying environment (SPEC 8.3.4).
+                if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) is not { } followed)
                 {
                     break;
+                }
+
+                if (followed == SemanticsMask.None)
+                {
+                    this.RestOnEmptiedSet(member, scope);
+                    return null;
                 }
 
                 receiverType = pairTarget;

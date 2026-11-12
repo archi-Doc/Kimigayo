@@ -4,7 +4,8 @@
 // Input: a function or Property definition whose signature is bound. Output: CaseLimit on the definition beyond PairBinder.CaseBound;
 // with no case (a binder admits none, PairBinder.CaseProduct 0), the definition rests on the environment that emptied the set, as beyond
 // the bound but without a record of its own, so every pair binder of a published part admits a case; a Semantics requirement read from
-// that set (a case adaptation's rows) rests on the environment too (RestOnEmptiedSet).
+// that set (a case adaptation's rows, a follow, a selection through the layer: FollowablePair None) rests on the environment too
+// (RestOnEmptiedSet).
 // Decided once per definition and pass, before its parts (defaults, base initializer, bodies, initializer, accessor bodies) are bound;
 // beyond the bound the definition fails with CaseLimit, only as its first failure. Its parts are still bound, so their independent
 // records stay visible (SPEC 23.1.2), but no case of them is verified: a case adaptation in them depends on the failure, and the HIR
@@ -84,7 +85,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.3.4: a Semantics requirement read from a set that admits no case (a case adaptation's rows) is the Error of the environment that emptied it, its one record: the node rests on it, never a record of its own.
+    // SPEC 8.3.4: a Semantics requirement read from a set that admits no case (a case adaptation's rows, a pair layer's follow or
+    // selection) is the Error of the environment that emptied it, its one record: the node rests on it, never a record of its own.
     private BoundType? RestOnEmptiedSet(Koto node, BindingScope scope)
         => this.EmptyingEnvironment(scope) is { } failed ? this.CompleteDependent(node, failed) : this.Fail(node, BindingFailure.Internal);
 

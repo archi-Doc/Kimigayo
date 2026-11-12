@@ -186,14 +186,16 @@ public sealed class GenericCaseDiagnosticTest
     }
 
     // SPEC 8.3.4, 8.15.2, 23.1.2 (PLAN G750): a binder whose premises empty its set admits no case, so a Semantics requirement read from
-    // it (a case adaptation's rows) is the emptying environment's Error and adds no record of its own: in a conformance block member whose
-    // `when` premise empties D's set, in an emptied struct's member and in a function whose own clauses empty its set. Only the
-    // environments' InvalidConstraint_Kd stay (BU-161: a use of an Invalid environment keeps its record). Before, the struct member's and
-    // the function's `7@s` were verified in all nine cases (TypeMismatch_Kd from a case the premises exclude) and the struct's init in
-    // some (UninitializedPlace_Kd).
+    // it (a case adaptation's rows, a pair layer's follow or a selection through it) is the emptying environment's Error and adds no record
+    // of its own: in a conformance block member whose `when` premise empties D's set (also selecting `x.n` through the layer), in an
+    // emptied struct's member and in a function whose own clauses empty its set. Only the environments' InvalidConstraint_Kd stay
+    // (BU-161: a use of an Invalid environment keeps its record). Before, the struct member's and the function's `7@s` were verified in
+    // all nine cases (TypeMismatch_Kd from a case the premises exclude) and the struct's init in some (UninitializedPlace_Kd).
     [Theory]
     [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/i32) -> ()\n            _ = 7@s\n")]
+    [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/i32) -> i32\n            return x@follow\n")]
     [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/i32) -> ()\n            let y = x@move@s\n            _ = y\n")]
+    [InlineData("    s is owner\n", "    Self is Copy when s is ref\n        public func put(x: s/P) -> i32\n            return x.n\nstruct P\n    public var n: i32\n    public init(n: i32) => self.n = n\n")]
     [InlineData("    s is owner\n    s is ref\n", "    public func get(self: ref/Self, x: s/i32) -> ()\n        _ = 7@s\n")]
     [InlineData(null, "func one<s/T>(x: s/i32) -> ()\n    s is owner\n    s is ref\n    _ = 7@s\n")]
     public void ASetThatAdmitsNoCaseGivesItsRequirementsNoRecord(string? premises, string members)
