@@ -12,7 +12,9 @@ namespace Kimi.Compiler.Mir;
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
 // (SPEC 15.6.4 item 1, 5.2.1 condition 3; DECISIONS R4-M177).
 // On the state a location's plan reads, a set's content and chain are each read once (E13 (5)), however many operands and retention rows
-// read them; whether a local is a holder, and its MirWrites, are walked once per distinct case Type and program version (the holding memo,
+// read them; in a W run the memo is one slot per set that also keeps the access Type it was read for (Whole reads it), so a read of the
+// set under another access Type at the location recomputes and replaces it: each read costs at most one computation, as with no memo.
+// Whether a local is a holder, and its MirWrites, are walked once per distinct case Type and program version (the holding memo,
 // DECISIONS R4-M140). Must not form a value or a Loan (MirBorrows.Values).
 internal sealed partial class MirBorrows
 {
@@ -35,8 +37,8 @@ internal sealed partial class MirBorrows
     private readonly List<Hold> holds = []; // HoldsLoans' scratch for the entries it reads.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
-    // By set: its content and its chain at the location, each plus 1 (0: not read there), with the access Type each was read for (Whole).
-    private (int Content, int Chain, BoundType? ContentAccess, BoundType? ChainAccess)[] reads = [];
+    private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
+    private (BoundType? Content, BoundType? Chain)[] accessed = []; // By set, written in a W run only: the access Types reads answers.
     private int[] queuedBy = []; // By holder: the closure that queued it.
     private int[] partlyBy = []; // By holder: the closure that reached it through a part or E (rule W's read-through clause).
     private int[] writableBy = []; // By holder: the closure that reached it through no shared Loan (Φ_W's strip).
@@ -52,26 +54,38 @@ internal sealed partial class MirBorrows
     private bool walkResting; // Whether the W walk read a set that rests on an undecided write (Φ_M, Φ_U; MirBorrows.Puns).
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
-    // The Type an access through a pointer of a Type designates: its referent's (SPEC 5.2), null for a Type with none.
+    // A Semantics Type's value or referent Type, its first component: through a borrow or raw pointer the Type an access designates (SPEC
+    // 5.2, 15.6), the receiving part of a store through it (MirBorrows.Causes' Fixed). Of an owning or object handle (`owner/T` in a pair
+    // case, `obj/T`, `rc/T`, `arc/T`) it is the value's or payload's Type, one layer inside what the handle's entries name: Whole then
+    // answers "not whole" or what the Place alone answers, never a whole value the Place rule would not. Null for any other Type (a view
+    // handle, an aggregate): no access Type is established.
     private static BoundType? Referent(BoundType pointer) => pointer is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
 
     // Whether an access of Type `access` through a direct Loan or address designates its holder's whole value: rule W's read-through
-    // clause reads a Copy through it (Parts), a write through it is a Copy into the holder (WholeTarget). Its Place must be the holder's
-    // root and, in a W run, of the access's Type (SPEC 5.2: a raw Place designates the Place of its Type at its address, Origins treated
-    // as equal; a pointer Cast or a displacement keeps the entry and moves the access onto a part, 4.1, 5.3); `access` null where A5 does
-    // not know the Type (a view handle's, a chain's read past a holder): the Place alone (PLAN G783's residual). Outside a W run the Type
-    // is not read (MirBorrows.Causes: no query).
+    // clause reads a Copy through it (Parts), a write through it is a Copy into the holder (WholeTarget; SPEC 15.6.5). In a W run its
+    // Place is the holder's root and the access's Type is that Place's (SPEC 5.2: an access designates the Place of its Type at its
+    // address, Origins treated as equal): a pointer Cast or a displacement keeps the entry and may move the access onto a part (4.1, 5.3),
+    // and a reborrow or an address formed through a Deref carries the entry as a parent (15.6) and designates the Place its path names, a
+    // part where the path steps past the Deref. Type identity decides a parent only while that path stays in the holder's storage: past
+    // an own step a Place of the holder's own Type may lie (a recursive Type), read whole here (PLAN G783's open row). Where no access
+    // Type is established (null: an aggregate's or a view handle's input, a Chain read past E or a holder that is no pointer), not whole.
+    // Outside a W run the Type is not read (MirBorrows.Causes: no query).
     private bool Whole(in Loan loan, BoundType? access)
-        => loan.Count == 0 && (this.wCount == 0 || access is null || types.SameStructure(cases.TypeOf(loan.Place), access));
+        => loan.Count == 0 && (this.wCount == 0 || (access is not null && types.SameStructure(cases.TypeOf(loan.Place), access)));
+
+    // The access Type of a Chain read past a holder (Whole): a pointer stored in a holder whose local is one borrow or raw pointer is of
+    // the local's Type; E and any other holder hold pointers of Types A5 does not track (null). Read in a W run only.
+    private BoundType? PastAccess(int holder)
+        => this.wCount > 0 && this.holderLocal[holder] is >= 0 and var local ? Referent(cases.TypeOf(new MirPlace(local))) : null;
 
     // content(S) (A3 5) for an access of Type `access` through S: the states of the holders its direct Loans name, and E's where it carries
     // Φ_E or no direct Loan, each read through rule W's clause (Parts), a shared Loan's holder and E for a set without Φ_W read-only, each
-    // distinct Shared set once, joined by one n-ary union (PartsUnion); memoized at the location per set and access Type (in a W run).
+    // distinct Shared set once, joined by one n-ary union (PartsUnion); memoized at the location (in a W run, for its access Type).
     private int Content(ulong[] state, int set, BoundType? access)
     {
-        if (set < this.reads.Length && this.reads[set] is { Content: not 0 } known && (this.wCount == 0 || ReferenceEquals(known.ContentAccess, access)))
+        if (set < this.reads.Length && this.reads[set].Content != 0 && (this.wCount == 0 || ReferenceEquals(this.accessed[set].Content, access)))
         {
-            return known.Content - 1;
+            return this.reads[set].Content - 1;
         }
 
         var (direct, escaped, writable) = (false, false, false);
@@ -99,8 +113,12 @@ internal sealed partial class MirBorrows
         }
 
         var content = this.Rested(this.PartsUnion(), set);
-        ref var memo = ref this.Memo(set);
-        (memo.Content, memo.ContentAccess) = (content + 1, access);
+        this.Memo(set).Content = content + 1;
+        if (this.wCount > 0)
+        {
+            this.accessed[set].Content = access;
+        }
+
         return content;
     }
 
@@ -109,13 +127,13 @@ internal sealed partial class MirBorrows
     // per closure, so a pointer cycle ends, again where a reach of it is the first through no shared Loan (a Shared set read once per
     // closure at each of the two levels, the writable one covering the other), and read through rule W's clause as a whole value only where
     // every reach of it was one, read-only where none was through no shared Loan (Parts); the states are joined by one n-ary union
-    // (PartsUnion); memoized at the location per set and access Type (in a W run), the Type of the first read (`access`; a read past a
-    // holder reads through a pointer whose Type A5 does not track, Whole's null).
+    // (PartsUnion); memoized at the location (in a W run, for the access Type of its first read, `access`; a read past a holder reads
+    // through the pointers stored in it, PastAccess).
     private int Chain(ulong[] state, int set, BoundType? access)
     {
-        if (set < this.reads.Length && this.reads[set] is { Chain: not 0 } known && (this.wCount == 0 || ReferenceEquals(known.ChainAccess, access)))
+        if (set < this.reads.Length && this.reads[set].Chain != 0 && (this.wCount == 0 || ReferenceEquals(this.accessed[set].Chain, access)))
         {
-            return known.Chain - 1;
+            return this.reads[set].Chain - 1;
         }
 
         MirDataflow.Grow(ref this.queuedBy, this.holderCount);
@@ -132,11 +150,11 @@ internal sealed partial class MirBorrows
         for (var i = 0; i < this.chained.Count; i++)
         {
             var holder = this.chained[i];
-            var writable = this.writableBy[holder] == this.closures;
-            this.Queue(Placed(state[holder]), writable, null);
+            var (writable, past) = (this.writableBy[holder] == this.closures, this.PastAccess(holder));
+            this.Queue(Placed(state[holder]), writable, past);
             if (this.Steps(Shared(state[holder]), writable ? 1 : 0))
             {
-                this.Queue(Shared(state[holder]), writable, null);
+                this.Queue(Shared(state[holder]), writable, past);
             }
         }
 
@@ -149,8 +167,12 @@ internal sealed partial class MirBorrows
         }
 
         var chain = this.Rested(this.PartsUnion(), set);
-        ref var memo = ref this.Memo(set);
-        (memo.Chain, memo.ChainAccess) = (chain + 1, access);
+        this.Memo(set).Chain = chain + 1;
+        if (this.wCount > 0)
+        {
+            this.accessed[set].Chain = access;
+        }
+
         return chain;
     }
 
@@ -202,9 +224,14 @@ internal sealed partial class MirBorrows
     }
 
     // A set's memo at the location, listed for Plan's reset when first touched.
-    private ref (int Content, int Chain, BoundType? ContentAccess, BoundType? ChainAccess) Memo(int set)
+    private ref (int Content, int Chain) Memo(int set)
     {
         MirDataflow.Grow(ref this.reads, set + 1);
+        if (this.wCount > 0)
+        {
+            MirDataflow.Grow(ref this.accessed, set + 1); // The access Types it answers (Content, Chain).
+        }
+
         if (this.reads[set] == default)
         {
             this.read.Add(set);

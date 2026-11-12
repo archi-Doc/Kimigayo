@@ -107,8 +107,8 @@ internal sealed partial class MirBorrows
         for (var i = 0; i < end; i++)
         {
             var pointer = this.PointerOf(root, layer, parents, i);
-            var access = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw
-                ? Referent(cases.TypeOf(new MirPlace(root, this.walk[i].Prefix))) : null; // What the Deref designates (Whole).
+            var access = this.wCount > 0 && this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw
+                ? Referent(cases.TypeOf(new MirPlace(root, this.walk[i].Prefix))) : null; // What the Deref designates (Whole, a W run's).
             (parents, layer) = this.walk[i].Class switch
             {
                 MirStepClass.Shared => (pointer, this.Content(state, pointer, access)),

@@ -106,6 +106,12 @@ public sealed partial class MirBorrowsTest
         ["pair-application-null"] = "func write<T>(target: uniq/T during a, q: raw/T during a, v: T) => ()\n" +
             "func pn<s/U>(x: s/i32 during b, m: s/U, t: uniq/(ref/(s/i32 during b) during c) during a)\n" +
             "    s is owner or ref\n    var local = x@copy\n    write(t, null, local@ref)\n",
+        ["raw-round-trip-write"] = "func f(target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n" +
+            "    var x: ref/i32 during a = q\n    let p: raw/(ref/i32 during a) = x@raw@raw/u8@raw/(ref/i32)\n    var r = local@ref\n" +
+            "    unsafe => *p = r\n    target@follow = x\n    local = 2\n",
+        ["chain-raw-whole"] = ChainHolder + Mka + "func mkRA(x: ref/(raw/[2 of ref/i32 during a]) during c) -> Holder during a\n    loop => ()\n" +
+            "func f(q: ref/i32) -> Holder during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n" +
+            "    var h2: raw/[2 of ref/i32 during q] = h@raw\n    return mkRA(h2@ref)\n",
         ["raw-whole-write"] = "func f(target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x: ref/i32 during a = q\n" +
             "    let p = x@raw\n    var r = local@ref\n    unsafe => *p = r\n    target@follow = x\n    local = 2\n",
         ["raw-whole-store"] = Put + "func f(target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n" +
@@ -209,6 +215,32 @@ public sealed partial class MirBorrowsTest
         ["reborrow-element-own-read"] = Mka + "func f(target: uniq/(ref/i32 during a))\n    var local: i32 = 1\n" +
             "    var h: [2 of ref/i32 during a] = mka(local@ref)\n    let r = h@ref\n    let s = r@follow[0]@ref\n    target@follow = s@follow\n" +
             "    local = 2\n",
+        ["raw-zero-write"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x@raw@raw/(ref/i32)", "unsafe => *(p + 0) = r"),
+        ["raw-one-element-write"] = "func f(target: uniq/[1 of ref/i32 during a], q: ref/i32 during a)\n    var local: i32 = 1\n" +
+            "    var x: [1 of ref/i32 during a] = [q]\n    let p: raw/(ref/i32 during a) = x@raw@raw/(ref/i32)\n    var r = local@ref\n" +
+            "    unsafe => *p = r\n    target@follow = x\n    local = 2\n",
+        ["raw-one-field-write"] = "#Layout(\"C\")\nstruct One {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n" +
+            "func f(target: uniq/(One during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x: One during a = One.init(q)\n" +
+            "    let p: raw/(ref/i32 during a) = x@raw@raw/(ref/i32)\n    var r = local@ref\n    unsafe => *p = r\n    target@follow = x@move\n" +
+            "    local = 2\n",
+        ["two-reborrow-element-read"] = "func firstF(r: ref/(ref/i32 during a)) -> ref/i32 during a => r@follow\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n    let r = h@ref\n" +
+            "    let s = r@follow@ref\n    return firstF(s@follow[0]@ref)\n",
+        ["nested-reborrow-read"] = "func firstAr(r: ref/[2 of ref/i32 during a]) -> ref/i32 during a => r@follow[0]\n" +
+            "func mkaa(r: ref/i32 during a) -> [2 of [2 of ref/i32 during a]] => [[r, r], [r, r]]\nfunc f(q: ref/i32) -> ref/i32 during q\n" +
+            "    let local = 1\n    var h: [2 of [2 of ref/i32 during q]] = mkaa(local@ref)\n    let r = h@ref\n    return firstAr(r@follow[0]@ref)\n",
+        ["chain-reborrow-part"] = ChainHolder + Mka + "func f(q: ref/i32) -> Holder during q\n    let local = 1\n" +
+            "    var h: [2 of ref/i32 during q] = mka(local@ref)\n    let r = h@ref\n    var h2 = r@follow[0]@ref\n    return mkE(h2@ref)\n",
+        ["chain-raw-part"] = ChainHolder + Mka + "func mkR(x: ref/(raw/(ref/i32 during a)) during c) -> Holder during a\n    loop => ()\n" +
+            "func f(q: ref/i32) -> Holder during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n" +
+            "    var h2: raw/(ref/i32 during q) = h@raw@raw/(ref/i32)\n    return mkR(h2@ref)\n",
+        ["slice-element-read"] = "func firstS(s: Slice<ref/i32 during a>) -> ref/i32 during a => s[0]\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n    return firstS(h.slice())\n",
+        ["tuple-raw-read"] = "func firstT(t: (raw/(ref/i32 during a), i32)) -> ref/i32 during a\n    unsafe => return *t.0\n" + Mka +
+            "func f(q: ref/i32) -> ref/i32 during q\n    let local = 1\n    var h: [2 of ref/i32 during q] = mka(local@ref)\n" +
+            "    let p: raw/(ref/i32 during q) = h@raw@raw/(ref/i32)\n    return firstT((p, 0))\n",
+        ["tuple-raw-store"] = "func put2(t: (raw/(ref/i32 during a), i32), v: ref/i32 during a)\n    unsafe => *t.0 = v\n" +
+            string.Format(System.Globalization.CultureInfo.InvariantCulture, ElementWrite, "x@raw@raw/(ref/i32)", "put2((p, 0), r)"),
     };
 
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
@@ -223,7 +255,8 @@ public sealed partial class MirBorrowsTest
     // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
     // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
     // fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and the same whole-value write, store and
-    // read through a raw address of the holder's own Type and a reborrow of its whole (SPEC 5.2's designation; PLAN G783's pins). Fail-
+    // read through a raw address of the holder's own Type, a round trip back to it and a reborrow of its whole (SPEC 5.2's designation),
+    // and a Chain row's later read through a holder that is one raw pointer to the whole (its access Type, PLAN G783's pins). Fail-
     // before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
@@ -264,6 +297,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("raw-whole-read", "f: let local = 1 <- firstR(h@raw)")]
     [InlineData("raw-array-read", "f: let local = 1 <- var h: [2 of ref/i32 during q] = mka(local@ref)")]
     [InlineData("reborrow-whole-read", "f: let local = 1 <- var h: [2 of ref/i32 during q] = mka(local@ref)")]
+    [InlineData("raw-round-trip-write", "f: local = 2 <- r")]
+    [InlineData("chain-raw-whole", "f: var h2: raw/[2 of ref/i32 during q] = h@raw | f: let local = 1 <- var h: [2 of ref/i32 during q] = mka(local@ref)")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -276,8 +311,10 @@ public sealed partial class MirBorrowsTest
     // report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes before. A write, a call's store or a
     // read through a pointer that designates a part (SPEC 5.2, 4.1, 5.3: `x@raw@raw/(ref/i32)` designates x[0], its displacement x[1]) or
     // through a reborrow of a part of a whole reference (its value keeps the whole's Loan as a parent) is no Copy of the whole holder
-    // either (PLAN G783; fail-before: derived, as each entry's whole root was read as the access's Place); its part-address and non-raw
-    // twins are pins.
+    // either (PLAN G783; fail-before: derived, as each entry's whole root was read as the access's Place): `p + 0`, `[1 of T]`'s element,
+    // a C struct's one Field, two and nested reborrows, and a Chain row's later read through a holder that is one pointer designating a
+    // part; where no access Type is established (a view handle, an aggregate input) the access is no whole value either (SPEC 23.1.2:
+    // reported). Its part-address and non-raw twins are pins.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -322,6 +359,16 @@ public sealed partial class MirBorrowsTest
     [InlineData("raw-element-read", "f: let local = 1")]
     [InlineData("reborrow-element-read", "f: let local = 1")]
     [InlineData("reborrow-element-own-read", "f: local = 2")]
+    [InlineData("raw-zero-write", "f: local = 2")]
+    [InlineData("raw-one-element-write", "f: local = 2")]
+    [InlineData("raw-one-field-write", "f: local = 2")]
+    [InlineData("two-reborrow-element-read", "f: let local = 1")]
+    [InlineData("nested-reborrow-read", "f: let local = 1")]
+    [InlineData("chain-reborrow-part", "f: var h2 = r@follow[0]@ref | f: var h: [2 of ref/i32 during q] = mka(local@ref) | f: let local = 1")]
+    [InlineData("chain-raw-part", "f: var h2: raw/(ref/i32 during q) = h@raw@raw/(ref/i32) | f: let local = 1")]
+    [InlineData("slice-element-read", "f: let local = 1")]
+    [InlineData("tuple-raw-read", "f: let local = 1")]
+    [InlineData("tuple-raw-store", "f: local = 2")]
     public void AConflictAnotherCarrierKeepsStaysIndependent(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -355,7 +402,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(42, causes);
+        Assert.Equal(44, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
@@ -463,18 +510,18 @@ public sealed partial class MirBorrowsTest
 
     // V16: rule W on a program version it checked before allocates nothing: its elements, markers, memo and causes keep their storage,
     // over derived conflicts of every kind of carrier (a return, two paths, a loop, err(ended), a read-through, a container, a write-through)
-    // and a Chain row's read through E.
+    // and a Chain row's read through E, and a read through a raw address of the holder's Type (its access Type and memo, PLAN G783).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRuleWAllocatesNothing()
     {
         string[] names = ["j-region", "two-flows-v", "loop-store-v", "rv-g-param-i", "content-retention", "f02fb5c218bc", "d4a09871a00b", "merge-two-paths-v",
-            "chain-through-e"];
+            "chain-through-e", "raw-array-read"];
         var c = MirBuildTest.Compile(string.Concat(names.Select(static x => CausedSources[x])) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(9, DerivedProblems(program).Length);
+        Assert.Equal(10, DerivedProblems(program).Length);
     }
 
     // A program's Loan problems as rule W reads them: function, the subject's first line, the code unless a comparison's, and its causes'
