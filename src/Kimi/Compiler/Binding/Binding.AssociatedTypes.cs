@@ -198,9 +198,9 @@ public sealed partial class Binding
             return true;
         }
 
-        foreach (var declared in source.Paths)
+        for (var i = 0; i < source.Paths.Count; i++)
         {
-            if (declared.Premises is null)
+            if (source.Paths[i].Premises is null)
             {
                 return true;
             }
