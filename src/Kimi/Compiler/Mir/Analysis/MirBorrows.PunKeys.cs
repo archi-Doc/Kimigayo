@@ -6,8 +6,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's pun rule, its Place keys (PLAN G667b; contract in MirBorrows.Puns.cs; SPEC 5.7 Calls). Responsibility: Binding's facts at a
 // Place's key (TyCtxt.OwnLayers), folded once per program version (R4-M140): whether a raw layer is at the Place's own address, what
-// its layers state, the Types a write through them writes and the keys past them; an entry's key (TyCtxt.Select, TyCtxt.Base along
-// its Place's steps) once per run; the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
+// its layers state (Stated; AnyStated, which A5's storing rule reads at a store's destination, MirBorrows.Storing), the Types a write through
+// them writes and the keys past them; a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run;
+// the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<PlaceKey, int> punKeyIndex = []; // The version's keys, indexed.
@@ -53,21 +54,27 @@ internal sealed partial class MirBorrows
         }
 
         var loan = this.loans[entry];
-        var key = PlaceKey.Root(this.body.TypeOf(new MirPlace(loan.Place.Root))!);
-        for (var s = loan.Start; s < loan.Start + loan.Count; s++)
-        {
-            key = this.loanSteps[s].Kind == MirProjectionKind.Base ? types.Base(key) : types.Select(key, this.loanSteps[s].Arg);
-        }
-
-        var index = this.Key(key);
+        var index = this.Key(this.KeyOf(loan.Place.Root, this.loanSteps.AsSpan(loan.Start, loan.Count)));
         this.entryKeys[entry] = index + 1;
         return index;
     }
 
+    // A Place's key: its root's, stepped along the Place's steps (TyCtxt.Select, TyCtxt.Base).
+    private PlaceKey KeyOf(int root, ReadOnlySpan<MirStep> steps)
+    {
+        var key = PlaceKey.Root(this.body.TypeOf(new MirPlace(root))!);
+        foreach (var step in steps)
+        {
+            key = step.Kind == MirProjectionKind.Base ? types.Base(key) : types.Select(key, step.Arg);
+        }
+
+        return key;
+    }
+
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
-    // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether one has no answer
-    // (Unsupported); the write Types (the Part past each raw layer and each exclusive borrow) and whether an abstract part leaves them
-    // unknown. A key at Binding's Limit is unknown.
+    // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether any states an Origin,
+    // `static` included (AnyStated, the storing rule's); whether one has no answer (Unsupported); the write Types (the Part past each raw
+    // layer and each exclusive borrow) and whether an abstract part leaves them unknown. A key at Binding's Limit is unknown.
     private int Key(PlaceKey key)
     {
         this.PunRun();
@@ -85,8 +92,12 @@ internal sealed partial class MirBorrows
         {
             if (layer is not null)
             {
-                var stated = facts.Stated && step is HoldStep.Own or HoldStep.Shared or HoldStep.Exclusive;
-                facts = facts with { RawInline = true, Stated = stated, Unsupported = facts.Unsupported || step == HoldStep.Unsupported };
+                var origin = step is HoldStep.Own or HoldStep.Shared or HoldStep.Exclusive; // A stated Origin other than `static`.
+                facts = facts with
+                {
+                    RawInline = true, Stated = facts.Stated && origin, AnyStated = facts.AnyStated || origin || step == HoldStep.Static,
+                    Unsupported = facts.Unsupported || step == HoldStep.Unsupported,
+                };
             }
             else if (step is HoldStep.Abstract or HoldStep.Erased)
             {
@@ -159,12 +170,14 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    /// <summary>A key's pun facts (MirBorrows.Puns).</summary>
+    /// <summary>A key's facts (MirBorrows.Puns; AnyStated: MirBorrows.Storing).</summary>
     private readonly record struct PunKey
     {
         internal bool RawInline { get; init; }
 
         internal bool Stated { get; init; }
+
+        internal bool AnyStated { get; init; }
 
         internal bool Unsupported { get; init; }
 
