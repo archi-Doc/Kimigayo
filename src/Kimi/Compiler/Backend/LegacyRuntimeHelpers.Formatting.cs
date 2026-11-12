@@ -1,17 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable SA1402 // The formatting row and the interpolation estimate are this concern's vocabulary.
+#pragma warning disable SA1402 // The interpolation estimate is this concern's vocabulary.
 
-using System.Runtime.InteropServices;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
-
-/// <summary>The row of one formatting compiler function, readable by kind before any representation exists (X4): the ABI of its
-/// routine in the formatting runtime, whose fixed symbol every call names, and its declared needs, which are what its text needs:
-/// the formatting runtime. No formatting row declares a library callee, since the formatting runtime calls none.</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAbi Abi, HelperNeeds Needs);
 
 /// <summary>The legacy runtime's estimate of an owning interpolation's private buffer (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
 /// DECISIONS R3-10): its literal bytes plus each value's maximum encoded bytes (<see cref="FormattingTypes.Bound"/>), an
@@ -91,27 +84,10 @@ internal static partial class LegacyRuntimeHelpers
         "__kimi_text_heap",
         [new("ptr", "ret", AbiParameterKind.ResultSlot), new("i64", "capacity", LogicalIndex: 0), RuntimeAbi.Location, RuntimeAbi.LocationLength]);
 
-    // One row per formatting compiler function, indexed from TextWriter; a new kind adds a row.
-    private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
-
     /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): the built-in
     /// write's ABI (WriteBuiltin) under its own name; the text's size is checked at once and its static bytes kept at the adapter until its
     /// next reservation or its end. Initialized after WriteBuiltin.</summary>
     internal static FunctionAbi FormatLiteral { get; } = WriteBuiltin.Named("__kimi_format_literal");
-
-    /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
-    /// <param name="kind">The compiler function.</param>
-    /// <returns>The kind's row, or null when the kind is outside the formatting family (TextWriter alone).</returns>
-    internal static FormattingHelperRow? FormattingRow(CompilerFunctionKind kind)
-    {
-        var index = (uint)(kind - CompilerFunctionKind.TextWriter);
-        if (index >= (uint)FormattingRows.Length)
-        {
-            return null;
-        }
-
-        return FormattingRows[index] is { } row && row.Kind == kind ? row : throw new InvalidOperationException("A formatting compiler function has no row.");
-    }
 
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
     /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
@@ -126,29 +102,12 @@ internal static partial class LegacyRuntimeHelpers
         _ => 2,
     };
 
-    /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
+    /// <summary>Writes the formatting runtime: the templates with each marked routine defined once.</summary>
     /// <param name="output">The module text.</param>
     internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.FormattingRuntime);
 
-    // Each row at its kind's index; every row needs the formatting runtime. Rows sharing a symbol share its routine, which the
-    // first of them in kind order defines.
-    private static FormattingHelperRow[] CreateFormattingRows()
-    {
-        const HelperNeeds Runtime = HelperNeeds.FormattingRuntime;
-        var rows = new FormattingHelperRow[1];
-        var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
-        var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
-        Add(
-            CompilerFunctionKind.TextWriter,
-            Slotted("__kimi_text_writer", [ret, reference, new("i64", "kind", AbiParameterKind.Context), new("ptr", "dispatch", AbiParameterKind.Context)]),
-            Runtime);
-        return rows;
-
-        void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextWriter] = new(kind, abi, needs);
-    }
-
     // The buffer and formatting runtimes, joined once and expanded by LlvmModuleText's checked one-scan expansion: each routine's
-    // definition at its marker, from the first row of its symbol. Float formatting is its own part (LlvmModuleText.FormatFloat, R8-S2c).
+    // definition at its marker. Float formatting is its own part (LlvmModuleText.FormatFloat, R8-S2c).
     private static string ReadFormattingRuntime()
     {
         var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime" };
@@ -160,23 +119,8 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        // A routine the erased writer's kept runtime defines is not this text's; the row-less built-in write, fixed and heap buffers are.
-        var symbols = new HashSet<string>(StringComparer.Ordinal) { WriteBuiltin.Name, FormatFixed.Name, FormatHeap.Name };
-        foreach (var kept in LlvmModuleText.ErasedWriterDefinitions)
-        {
-            symbols.Add(kept.Name);
-        }
-
-        var definitions = new List<FunctionAbi>(FormattingRows.Length + 3) { WriteBuiltin, FormatFixed, FormatHeap };
-        foreach (var row in FormattingRows)
-        {
-            if (symbols.Add(row.Abi.Name))
-            {
-                definitions.Add(row.Abi);
-            }
-        }
-
-        return ExpandRuntime(string.Join('\n', parts), CollectionsMarshal.AsSpan(definitions));
+        // The built-in write and the fixed and heap buffers; the erased writer's kept runtime defines Text.writer's routine.
+        return ExpandRuntime(string.Join('\n', parts), [WriteBuiltin, FormatFixed, FormatHeap]);
     }
 
     // A signature that writes the caller's result slot.
@@ -184,11 +128,11 @@ internal static partial class LegacyRuntimeHelpers
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
     // Code generation's expanded runtime texts (G350): the CLR initializes this class when a writer (WriteFormattingRuntime) first reads
-    // one for a module, never on the check path, whose collector reads the rows and ABIs (Row, IntrinsicRows) but no text; no other
-    // member reads them.
+    // one for a module, never on the check path, whose collector reads the ABIs (Row, IntrinsicRows) but no text; no other member reads
+    // them.
     private static class Texts
     {
-        // The runtime templates with each row's routine definition spliced in once.
+        // The runtime templates with each marked routine's definition spliced in once.
         internal static readonly string FormattingRuntime = ReadFormattingRuntime();
     }
 }

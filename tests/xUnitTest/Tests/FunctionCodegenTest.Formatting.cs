@@ -430,7 +430,7 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(Writers, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var routine = Routines(CompilerFunctionKind.TextWriter)[0];
+        var routine = RuntimeAbi.TextWriter.Name;
         foreach (var (name, words) in new[]
         {
             ("wrFixed", "i64 0, ptr null"), ("wrHeap", "i64 1, ptr null"), ("wrUser", "i64 2, ptr @"), ("wrItem", "i64 2, ptr @"),
@@ -472,7 +472,7 @@ public sealed partial class FunctionCodegenTest
     {
         using var formatting = new StringWriter();
         LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
-        string[] definitions = ["define internal void @" + Routines(CompilerFunctionKind.TextWriter)[0] + "(", "define internal void @__kimi_erased_reserve("];
+        string[] definitions = ["define internal void @" + RuntimeAbi.TextWriter.Name + "(", "define internal void @__kimi_erased_reserve("];
         var text = Generate(Analyze(Writers, OutputKind.Library));
         var at = text.IndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal);
         Assert.True(at >= 0);
@@ -495,7 +495,6 @@ public sealed partial class FunctionCodegenTest
     {
         var reserve = IntrinsicRows.Of(IntrinsicId.ErasedReserve);
         Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.ErasedWriter), (reserve.Writer, reserve.Requests));
-        Assert.Contains(reserve.Routine!, LlvmModuleText.ErasedWriterDefinitions);
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
         var format = IntrinsicRows.Of(IntrinsicId.FormatFloat); // R8-S2c: the float formatting part, which declares nothing.
@@ -598,9 +597,6 @@ public sealed partial class FunctionCodegenTest
         BoundType[] others = [BoundType.Boolean, BoundType.Unit, BoundType.String, BoundType.Range, BoundType.WrappingOf(BoundType.Primitives["u8"])];
         Assert.Equal([5, 2, -1, -1, 3], others.Select(FormattingTypes.Bound));
     }
-
-    // The routine symbols of formatting rows (P1d's FormattingRow), in order.
-    private static string[] Routines(params CompilerFunctionKind[] kinds) => [.. kinds.Select(static x => LegacyRuntimeHelpers.FormattingRow(x)!.Abi.Name)];
 
     // The byte length of a site's location text (SPEC 22.5.1).
     private static int Located(string source, string site) => LocationText(source, site).Length;

@@ -60,7 +60,8 @@ internal sealed partial class ModuleCodegen
         /// whose reservation calls it and which calls its llvm.memset declaration, until R8-W2.</summary>
         ErasedWriter = 32,
 
-        /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
+        /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for Text.writer and an owning interpolation's steps
+        /// (HelperNeeds.FormattingRuntime; DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
 
         /// <summary>The 128-bit overflow intrinsics' declarations (LlvmModuleText.WideOverflowDeclarations), for a checked 128-bit operation
