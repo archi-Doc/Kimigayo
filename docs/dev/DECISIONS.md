@@ -6333,6 +6333,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a CLI `check` allocates +0.76 to +0.81% on the 44 milestone programs; the `Purpose=Allocation` tests are unchanged.
   - Rejected: an IMPL A.4 scopes-per-body limit (a Resource record; it would refuse valid programs at a bound three orders below the
     other body tables); both the limit and the wider index.
+- **R4-M201 A5's rule W reads each state part once per walk at its reading, and asks the guard of the reading Type** (2026-11-13;
+  the A5 value redesign's unit U3a; the owner's O-209 and O-220 (a); Middle, A5; Major, behaviour-preserving; the redesign's
+  acceptance-moving units wait for the SPEC clarification of the owner's O-232 (a), U3a moves nothing) SPEC 15.6.4 item 1, 5.7
+  Calls; R4-M73, R4-M140, R4-M147, R4-M153, R4-M154 Revision 8, R4-M160.
+  - Rule: `MirBorrows.Reach`'s W is one walk whose nodes are the parts (Placed, Shared) of the states of the holders it reaches. A
+    node's reading is the guard of the Type the holder's state is read at: `MirTypes.HoldsLoans`' `MirWrites`, from the holding
+    memo; in this unit that Type is the holder's own root Type, as before. A static's direct Loan names E and keeps the static's key
+    as its Root; E has no root local, so its guard is `None` on every route (`MirBorrows.GuardRoot`, the one statement through which
+    `Refs`, `FirstStep` and `Write` record a target's root).
+  - Once per walk: each (part id, reading) is read once per walk through `MirBorrows.States`' mark by set and level (Through's
+    reading covers Named's, since Φ_W is always beside Φ_E): R4-M160 marked the Shared part only, and the mark now serves the Placed
+    part too. Each reached holder is asked its guard once; Limit (R4-M147) and Deep (R4-M153, `Changes`) are that guard's answers; a
+    holder past another still takes the Reached entry of the Type of the Place the reaching Loan names (Revision 8).
+  - Removed: the per-local guard table (`writable`) and its per-slot per-walk copy (`writingKind`).
+  - Reason: the guard is a function of the Type a state is read at, not a property of a local, so a later unit can read a holder at
+    another Type (a callee's layer) through the same guard instead of adding a second one (the unit's design review 2, R2.6 item 1:
+    the key table lists layers and is no guard).
+  - Bound: R4-M160's (a walk reads each distinct part id at most once per level); Work can only fall.
+  - Rejected: a node keyed by the root Type itself (two root Types with one guard would read a shared part twice: the many-Types row
+    holdKSd); a per-run memo of W's reads in this unit (it has no second reader before the redesign's later units); the guard table
+    kept under another index.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
