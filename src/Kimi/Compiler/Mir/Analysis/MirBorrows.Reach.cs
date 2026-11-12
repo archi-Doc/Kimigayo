@@ -485,11 +485,6 @@ internal sealed partial class MirBorrows
     private void Write(int set, MirWrites past, int local)
     {
         var named = past == MirWrites.Named;
-        if (this.sets.Contains(set, Converted))
-        {
-            this.StepViewed(set, this.OwnKey(local), scalar: false); // The converted route besides; the holder at its own Type.
-        }
-
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
@@ -504,6 +499,11 @@ internal sealed partial class MirBorrows
                 var place = loan.Named != Escaped && !named && !loan.OwnStep ? this.PlaceType(loan) : null;
                 this.Written(loan.Named, ViaPast | ViaDeclared, place, NoView, null);
             }
+        }
+
+        if (this.sets.Contains(set, Converted))
+        {
+            this.StepViewed(set, this.OwnKey(local), scalar: false); // The converted route besides; the holder at its own Type.
         }
     }
 
@@ -646,6 +646,12 @@ internal sealed partial class MirBorrows
     // by those Types' keys, which PunKeys memoizes per program version, so no cap.
     private bool Views(int slot, int key, BoundType? type)
     {
+        if (type is not null && (this.writingVia[slot] & ViaDeclared) != 0 && this.holderLocals[slot] is >= 0 and var local &&
+            ReferenceEquals(types.Erase(type), types.Erase(cases.Type(this.body.Locals[local].Type))))
+        {
+            return false; // The declared route views the holder at that Type already: no key (no conversion lies on this reach).
+        }
+
         var head = this.writingView[slot];
         if (head == UnknownView || key == EmptyView)
         {
