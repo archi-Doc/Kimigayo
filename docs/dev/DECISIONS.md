@@ -11882,11 +11882,11 @@ resumed by R4-M86 (2026-10-20).
   (a)) SPEC 6.5.2, 8.1.3, 10.2.2, 10.8, 10.8.1.
   - Decision: `FixedSlots` (Binding.CallSlots.cs) is a solution's slot bindings fixed before any evidence (SPEC 10.8, 10.8.1, 6.5.2
     step 2): its owner, each slot's binding, the lengths and whether every own slot is fixed. An open slot has one encoding, its own
-    parameter, and only an inferred construction leaves one beside fixed slots; when no slot is fixed there are no Types. A Case
-    construction fixes all or none (its qualifier and its expected Type each supply every slot, SPEC 8.1.3, 6.5.2 item 2).
-    Producers: `FixCallSlots` (a candidate: a function's explicit Type arguments and lengths; a constructor's declaring Type),
-    `ConstructionSlots` (a construction Type, shared with `ConstructorType` before the candidate's frame exists) and the Case
-    construction's seeding. `SlotSolution.Fixed` holds a solution's.
+    parameter, and only an inferred construction leaves one beside fixed slots; when no slot is fixed there are no Types. An
+    inferred construction, a structure's `.init` or a Case's qualifier with its own list omitted (SPEC 9.7), alone leaves an open
+    slot beside fixed ones (BU-167). Producers: `FixCallSlots` (a candidate: a function's explicit Type arguments and lengths; a
+    constructor's declaring Type), `ConstructionSlots` (a construction Type, shared with `ConstructorType` before the candidate's
+    frame exists) and the Case construction's seeding. `SlotSolution.Fixed` holds a solution's.
   - The adaptation entry `AdaptInput` takes a `FixedPattern`, which only `FixedPattern.Of(pattern, FixedSlots)` (the pattern under
     the fixed bindings; an open slot stays a slot) or `FixedPattern.Open(pattern)` (a reader of a completed or slot-free Type,
     stated at the call) makes, so the build names every reader: 16 call sites, 4 through `Of` (`InferAdapted`, also for a Case
@@ -11894,7 +11894,8 @@ resumed by R4-M86 (2026-10-20).
     value-call solution fixes none) and 12 through `Open`. A Function Type at the fixed pattern also gives the argument's call
     signature (`SignatureAtFunction`, also in a join's typed position), so a Function Item at a written Function Type is evidence by
     its signature and erased at the fit. `commonOrigins` is off exactly when every own slot is fixed; a Case construction's
-    `settled` reads the same `FixedSlots`.
+    `settled` reads the frame before any evidence, where an open slot is unbound (substituting `FixedSlots` leaves an open slot's
+    own parameter, which looks complete).
   - Permanent: these are SPEC 10.8's fixed bindings. R7-P3's `FnSig` normalization may carry them; that is not a removal condition.
     Lifetime: the call (`FixedSlots` is a `ref struct` over the call's pooled explicit Types, the declaring Type's components or the
     Case construction's scratch). Cost: one memoized `SubstituteType` query per reader where a slot is fixed; warm 0 B (RP8 measures
@@ -12043,6 +12044,31 @@ resumed by R4-M86 (2026-10-20).
     itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
     C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
     a revisit on the path ends the walk.
+- **BU-167 A qualifier with its own list omitted before `.init` or a Case reference is one inferred construction target (PLAN
+  G745)** (2026-11-11; Front, Binding; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation review ACCEPT) SPEC 9.7, 9.7.1,
+  6.5.2.
+  - Decision: SPEC 9.7's inferred construction target has one owning member, `ConstructionTargetType`
+    (Binding.ContainerReferences.cs): the environment from the path, the own arguments supplied (a Case's expected owned Type of the
+    same enum, SPEC 6.5.2 steps 2-3) or else the declaration's own parameters, open, the qualifier then marked in
+    `inferredConstructionTargets` (renamed from `inferredConstructorTargets`, declared beside it). `ConstructorQualifierType` (a
+    structure's `.init`) and `EnumQualifierType` (a nested enum's Case qualifier and qualified Case Pattern) call it; the top-level
+    enum keeps its supplied or declaration Type. `OpenConstructionSlot` (over the slot owner declaration) is the one rule both
+    constructions read. A Case construction's `FixedSlots` then holds the fixed environment beside the open own slots, each as its
+    own parameter, `Own` when every own slot is fixed; the inferred qualifier is completed with the constructed Type, as a
+    structure's is.
+  - Moves: the nested enum Case forms with the own list omitted (construction, lexical, qualified Case Pattern, at any nesting
+    depth, and in a non-generic container, `Plain.E.A(..)`) newly accepted (Q17 class 3); their invalid twins keep the top-level
+    forms' records (`TypeMismatch_Kd`, `UnresolvedBinding_Kd`, `UnsatisfiedConstraint_Kd`, `InvalidPattern_Kd`) instead of
+    `InvalidTypeFormation_Kd` at the qualifier, and an omitted middle list's record moves from the inner qualifier to the middle one
+    (SPEC 9.7.1; Q13).
+  - Replaced: `ConstructorQualifierType`'s own copy of the target's binding; the Case construction's all-or-none `FixedSlots` and
+    its `settled` read of `FixedSlots`.
+  - Rejected: the own-parameter form for the top-level enum's qualifier too (moves the bound qualifier Type of every top-level Case,
+    `Option.Some(1)`); the open slots decided from the qualifier's syntax in the construction; the environment substituted into the
+    payloads before the solve.
+  - Permanent (SPEC 9.7). Cost: one set lookup per qualified Case construction; warm 0 B. Open (design review 2's N1, pre-existing):
+    `CompleteEnumOrigins` rewrites a Case construction's use Type (and its plan) when a local's Origin declaration resolves, but not
+    its member access or its qualifier, which keep the pre-rewrite Type; no hover or MIR reader of them was found failing.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
