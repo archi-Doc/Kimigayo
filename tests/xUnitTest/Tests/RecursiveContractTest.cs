@@ -186,10 +186,10 @@ public sealed class RecursiveContractTest
     // premise names it resting on it. A guard row, not a fail-before row: the records are the same without kept rows, and no
     // program with a kept row that differs from a fresh walk is known (ContractSolver's Kept rows gives the argument).
     [Theory]
-    [InlineData("closed-k2k", "contract K\n    Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
-    [InlineData("closed-kk2", "contract K\n    Missing is Copy\n", "    needsK<T>(t)\n    needsK2<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
-    [InlineData("ancestor", "contract Bad\n    Missing is Copy\ncontract K: Bad\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: contract K: Bad | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
-    [InlineData("dependent", "contract K\n    Self.Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Self.Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Self.Missing is Copy")]
+    [InlineData("closed-k2k", "contract K\n    Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("closed-kk2", "contract K\n    Missing is Copy\n", "    needsK<T>(t)\n    needsK2<T>(t)\n", "InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("ancestor", "contract Bad\n    Missing is Copy\ncontract K: Bad\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: contract K: Bad | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("dependent", "contract K\n    Self.Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Self.Missing is Copy")]
     [InlineData("valid-k2k", "contract K\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "")]
     [InlineData("valid-kk2", "contract K\n", "    needsK<T>(t)\n    needsK2<T>(t)\n", "")]
     public void ADeclarationStateChangedInsideAnEpochGivesTheRecordsOfEitherCallOrder(string form, string contract, string calls, string records)
