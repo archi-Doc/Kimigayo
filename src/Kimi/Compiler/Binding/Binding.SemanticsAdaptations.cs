@@ -285,13 +285,15 @@ public sealed partial class Binding
         _ => this.Form(whole.Semantics, target, origin),
     };
 
-    private BoundType? SubstituteFamilyArgument(
-        BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, int slot, BoundType whole)
+    private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
+        // A slot the slot owner's column does not bind is the declaring Type's (CallSubstitution.Slot), whose occurrence then takes each case in turn.
+        var declaring = substitution.OwnsSlot(ContainerSlot(substitution.SlotOwner, family.Symbol!)) ? null : substitution.Declaring;
+        var slots = declaring is null ? substitution.Types : (BoundType[])declaring.Components;
         var children = this.RentTypes(whole.Components.Count);
-        var caseArguments = this.typeScratch.Rent(arguments.Length);
+        var caseArguments = this.typeScratch.Rent(slots.Length);
         var cases = this.adaptationCaseScratch.Rent(1);
-        arguments.CopyTo(caseArguments);
+        slots.CopyTo(caseArguments);
         try
         {
             var count = 0;
@@ -301,7 +303,10 @@ public sealed partial class Binding
                 {
                     cases[0] = new(whole.Symbol!, mode);
                     caseArguments[slot] = whole.Components[count];
-                    if (this.SubstituteType(family, binder, caseArguments.AsSpan(0, arguments.Length), lengths, origins, images, originBinder) is not { } child)
+                    var caseSlots = caseArguments.AsSpan(0, slots.Length);
+                    var caseSubstitution = declaring is null ? substitution with { Types = caseSlots }
+                        : substitution with { Declaring = this.types.Rebuild(declaring, caseSlots!, declaring.Origin, (BoundOrigin[])declaring.OriginArguments) };
+                    if (this.Substitute(family, caseSubstitution) is not { } child)
                     {
                         return null;
                     }

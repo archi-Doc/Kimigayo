@@ -208,7 +208,7 @@ public sealed partial class Binding
                 var operandSyntax = KotoHelper.UnwrapParentheses(conversion.Left);
                 if (readConversions && (operandSyntax.BindingState == BindingState.Resolved || operandSyntax is IdentifierNameKoto) &&
                     this.ResultEvidence(conversion.Left, conversionScope) is { } operandType &&
-                    (ScalarTypes.Supports(operandType) || this.IsReadType(operandType, conversionScope) || this.ReadTypeReferent(operandType, conversionScope) is not null))
+                    (this.IsReadType(operandType, conversionScope) || this.ReadTypeReferent(operandType, conversionScope) is not null))
                 {
                     return this.BindNode(conversion, conversionScope);
                 }

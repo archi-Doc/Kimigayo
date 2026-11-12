@@ -233,7 +233,7 @@ public class ExpressionPrecedenceTest
             return Describe(parentheses.Operand);
         }
 
-        var children = koto.ChildNodes.ToArray();
+        var children = koto.Children().ToArray();
         return children.Length == 0
             ? $"{koto.Akind}:{koto}"
             : $"{koto.Akind}({string.Join(", ", children.Select(Describe))})";

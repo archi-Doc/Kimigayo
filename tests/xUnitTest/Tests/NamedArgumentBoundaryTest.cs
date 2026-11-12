@@ -211,7 +211,7 @@ public class NamedArgumentBoundaryTest
             var destination = Compilation.CreateForTest();
             tree.OnDeserialized(destination);
             Assert.NotEmpty(TestDiagnostics.Of(tree));
-            Assert.Empty(tree.RootKoto.ChildNodes);
+            Assert.Empty(tree.RootKoto.Children());
             Assert.Null(tree.GeneratedFunction);
         }
     }
@@ -228,7 +228,7 @@ public class NamedArgumentBoundaryTest
         Assert.NotNull(tree);
         tree.OnDeserialized(c);
         Assert.NotEmpty(TestDiagnostics.Of(tree));
-        Assert.Empty(tree.RootKoto.ChildNodes);
+        Assert.Empty(tree.RootKoto.Children());
         Assert.Null(tree.GeneratedFunction);
     }
 }
