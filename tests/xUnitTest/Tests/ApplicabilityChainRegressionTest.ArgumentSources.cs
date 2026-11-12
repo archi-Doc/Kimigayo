@@ -302,6 +302,15 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "j19n", JoinPositions + "    return pn(if c => ((n, m), 1) else => ((m, n), 2))\n", "NoApplicableOverload_Kd: return pn(if c => ((n, m), 1) else => ((m, n), 2))")]
     [InlineData("guard", "j20", "func fw(p: ((ref/i32 during a, ref/i32 during a), i32)) -> bool => true\nfunc fw(p: (ref/(ref/i32 during a, ref/i32 during a) during b, i32)) -> i32 => 0\n" + JoinPositions + "    let q2 = (n, m)\n    let q = fw(if c => ((n, m), 1) else => (q2, 2))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "j20n", "func fta(p: (Array<i32>, i32)) -> i32 => p.1\n" + JoinPositions + "    return fta(if c => ([n], 1) else => ([m], 2))\n", "NoApplicableOverload_Kd: return fta(if c => ([n], 1) else => ([m], 2))")]
+    // SPEC 14.9.2 step 2 (PLAN G729, finding I1): a position holding literals beside safe reference layers over a read Type has that Type,
+    // the references value-read, as a join's own sources do (BesideLiterals): no temporary, at a call (j21, j22 the overload it decides, j24
+    // nested, j25 with no Loan after the call) and at a let (j23; j23n its twin, the position's i32 at bool).
+    [InlineData("G729", "j21", JoinPositions + "    return pt(if c => (n, 1) else => (1, 2))\n", "")]
+    [InlineData("G729", "j22", "func fo2(p: (i64, i32)) -> i32 => 0\nfunc fo2(p: (bool, i32)) -> i32 => 1\n" + JoinPositions + "    return fo2(if c => (r, 1) else => (1, 2))\n", "")]
+    [InlineData("G729", "j23", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    return q.0\n", "")]
+    [InlineData("guard", "j23n", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    let z: bool = q.0\n    return 0\n", "TypeMismatch_Kd: let z: bool = q.0")]
+    [InlineData("G729", "j24", JoinPositions + "    return pn(if c => ((n, 1), 2) else => ((1, 2), 3))\n", "")]
+    [InlineData("G729", "j25", JoinPositions + "    var x: i32 = 1\n    let q = pt(if c => (x@ref, 1) else => (1, 2))\n    x = 3\n    return q\n", "")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 

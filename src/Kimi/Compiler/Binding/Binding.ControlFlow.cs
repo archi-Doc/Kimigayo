@@ -150,6 +150,12 @@ public sealed partial class Binding
         return differ ? scalar : null;
     }
 
+    // SPEC 3.5.3, 14.9.2 step 2: beside literal sources, the typed sources' common Type `common` ending in a read Type through safe
+    // reference layers gives that read Type: the literals are literals of it and the reference sources supply it by a value read. Every
+    // formation with literal sources reads it: a join's own sources (InferResultExpected) and a position's parts (PositionType).
+    private BoundType? BesideLiterals(BoundType? common, BindingScope scope)
+        => common is not null && this.ReadTypeReferent(common, scope) is { } terminal ? terminal : common;
+
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
         expected = ResultExpectation(target, expected);
