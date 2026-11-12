@@ -122,10 +122,13 @@ internal static class AllocationMeasurement
     // run, the unmeasured one too, has a new compiler thread, whose own pooled buffers are empty. A thread's pooled buffers are
     // process state that the series does not control: ArrayPool<T>.Shared empties them when it trims under High memory pressure,
     // and they hold what the thread ran before, so on one thread a run paid a buffer that its neighbours found pooled. On a new
-    // thread every run pays every pooled buffer it rents, a constant or the size's own. Cost: one thread per run, and a run's
-    // buffers become garbage with it (a Bind's syntax numbering chain, about 0.69 MB of it on the large object heap). Left: a
-    // High-pressure trim inside one run, between two rents of one length, adds that buffer to the run. The states are still
-    // made on one pooled worker, outside every run.
+    // thread a run pays the pooled buffers it rents, a constant or the size's own, as observed on every series; the rule
+    // guarantees only the thread's own buffers. Cost: one thread per run, and a run's buffers become garbage with it (a Bind's
+    // syntax numbering chain, about 0.69 MB of it on the large object heap). Left, neither observed: a High-pressure trim inside
+    // one run, between two rents of one length, adds that buffer to the run; and a run finds free a buffer that another thread
+    // left in the pool's shared stacks, by returning it while its own slot of that length was full (no series' path does). A
+    // run has none of the runner's ExecutionContext, as Measure's windows have none. The states are still made on one pooled
+    // worker, outside every run.
     internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
     {
         ArgumentNullException.ThrowIfNull(fresh);
