@@ -169,8 +169,8 @@ A declaration header writes, in this order: Attributes, an access specification,
 
 ```kimi
 public open struct Shape
-    public virtual func area(self) -> f64 => 0.0
-    virtual public func size(self) -> i32 => 0   // Error: the access word comes first
+    public virtual func area(self: objref/Self) -> f64 => 0.0
+    virtual public func size(self: objref/Self) -> i32 => 0   // Error: the access word comes first
 ```
 
 ## F.4. Layout
