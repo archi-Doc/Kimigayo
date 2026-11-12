@@ -1,12 +1,22 @@
 // Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the operations of
 // ArrayOperations.kimi are supplied by the compiler; other operations and helpers are functions here.
 public struct Array<T>
+    Self is UniqIndexable<isize>
+    associate Element is T
     Self is Iterable
     associate Iterable.IteratorType(source) is ArrayIterator<T> during source
     Self is UniqIterable
     associate UniqIterable.IteratorType(source) is ArrayUniqIterator<T> during source
     Self is IntoIterable
     associate IntoIterable.IteratorType is ArrayOwningIterator<T>
+
+    /// Lends the element at `key` for shared access; a key outside the elements Aborts at the caller's access.
+    public func index(self: ref/Self, key: ref/isize) -> ref/T during self
+        return self[key]@ref
+
+    /// Lends the element at `key` for exclusive access; a key outside the elements Aborts at the caller's access.
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+        return self[key]@uniq
 
     /// Borrows the complete contiguous storage without copying elements.
     public func slice(self: ref/Self) -> Slice<T> during self

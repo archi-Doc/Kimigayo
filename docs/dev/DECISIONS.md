@@ -6316,6 +6316,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Cost: one Join per slot-rooted candidate at a Return; `defaulted` keeps its array, one byte per Loan; no new walk.
   - Rejected: recording at each Return (a template has a check Return per non-value end, so a Limit then a decided sighting of one
     Loan would give two records and the reverse order one).
+- **R4-M202 A location's scope is the scope table's `int` index (PLAN G796)** (2026-11-12; Middle, MIR build; Major, small; a shared
+  representation; design and implementation review ACCEPT WITH NOTES) IMPL A.4.
+  - Rule: `SourceInfo.Scope` is the scope table's `int` index, no longer a `ushort` narrowed unchecked at five builder sites (a body
+    past 65,535 scopes joined later locations to one of its first scopes); the builder's scope fields and saved copies follow, and
+    `MirValidator`'s per-location scope check also refuses a negative index.
+  - No scopes-per-body limit: nothing packs the index, and every other body table is `int`-indexed, unlike G761's module ordinal
+    (the owner's O-215 (a)), whose 16 bits are a packed, shared identity.
+  - Cost: `SourceInfo` 12 -> 16 B (`MirStatement` stays 64 B, `MirTerminator` 88 -> 96, `MirBlock` 96 -> 104, `MirLocal` 32 -> 40);
+    a CLI `check` allocates +0.76 to +0.81% on the 44 milestone programs; the `Purpose=Allocation` tests are unchanged.
+  - Rejected: an IMPL A.4 scopes-per-body limit (a Resource record; it would refuse valid programs at a bound three orders below the
+    other body tables); both the limit and the wider index.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12393,6 +12404,23 @@ resumed by R4-M86 (2026-10-20).
     plans them); a node fact alone (misses premise-made pair targets, design review 3, B3); deleting the gate for pair layers too
     (widens G254, B1); a located `Unsupported_Kd` at each use that Reborrows by case (C-235's interim: 18 valid `s/T` programs).
   - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
+- **BU-183 A built-in sequence with a declaration states its Indexable conformance in Kimigayo (PLAN G715 part a)** (2026-11-12;
+  Front, the library and Binding; Major; implementation reviews 1 and 2 REVISE, 3 ACCEPT WITH NOTES by the Back's reviewer; split by
+  the owner's O-197 (a)) SPEC 4.7.1, 8.5.2, 22.1, 3.4.3.
+  - Rule: Array declares `Self is UniqIndexable<isize>`, `associate Element is T`, `index` and `indexUniq` in `Array.kimi` (bodies:
+    the built-in element access), as Dictionary and UniqSlice do. Concrete `a[i]` stays the built-in element access:
+    `Binding.Elements` selects it by Kind before `TryBindIndexer`, so the members are reached through a conformance or a written
+    call. The concrete-sequence decision reads the receiver's terminal through every layer (`ElementAccess.IsSequence`), so Array's
+    conformance serves only generic use, projections and written calls; a sequence behind two or more layers keeps the located
+    `Unsupported_Kd` (PLAN G179).
+  - Moves (Q17 class 3), valid and newly accepted: Array's projections (`Array<T>.(Indexable<isize>).Element`), its bare `Element`,
+    its generic Indexable use and written `index` and `indexUniq` calls.
+  - Remaining under PLAN G715: Slice's conformance in source is a following unit (PLAN G777's cause, implementation matching
+    refusing its `during source` result, is fixed for function requirements); a fixed array has no declaration, so its conformance
+    is a Builtin row (part b, after R7-V2c, keyed by the bound reference).
+  - Rejected: Slice's `index` with `during self` (narrower than SPEC 4.7.1's table); compiler-provided Array conformance rows (the
+    library can state it); an interim `Unsupported_Kd` gate for the fixed array (a second copy of the row's fact, which would also
+    answer the invalid `Indexable<i32>`).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
