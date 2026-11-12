@@ -89,9 +89,14 @@ public static partial class Parser
         }
 
         // The header's form selects the list's production: a specialization's TypeArguments, else GenericParameters (SPEC F.6.3).
-        var genericArguments = reader.CurrentTokenKind != TokenKind.LessThan ? null
-            : form == FunctionForm.Specialization ? ParseSpecializationArguments(ref reader)
-            : ParseGenericParameters(ref reader, allowLength: true);
+        List<TypeKoto>? genericArguments = null;
+        if (reader.CurrentTokenKind == TokenKind.LessThan)
+        {
+            genericArguments = form == FunctionForm.Specialization
+                ? ParseSpecializationArguments(ref reader)
+                : ParseGenericParameters(ref reader, allowLength: true);
+        }
+
         RejectCallableOriginList(ref reader);
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) || ParseParameterList(ref reader, form) is not { } list)
         {

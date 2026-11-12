@@ -400,7 +400,7 @@ public static partial class Parser
     }
 
     /// <summary>Parses one Type parameter (SPEC F.5 GenericParameter): a Name, a pair <c>Name / Name</c> or a length slot <c>length Name</c>.</summary>
-    /// <returns>The parameter, or <see langword="null"/> where its Name is missing; nothing is reported here, and the list skips the item.</returns>
+    /// <returns>The parameter, or <see langword="null"/> where its Name is missing (reported here, by the Name read); the list skips the item.</returns>
     private static TypeKoto? ParseGenericParameter(ref TokenReader reader)
     {
         if (reader.IsCurrentIdentifier("length") && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
@@ -433,7 +433,7 @@ public static partial class Parser
     /// <summary>
     /// Parses a specialization's Type arguments at their <c>&lt;</c> (SPEC F.6.3 SpecializationDeclaration, F.5 TypeArguments) as the header's
     /// list: each GenericArgument a <see cref="TypeKoto"/>, an ArrayLength wrapped in one. A Type's own arguments are read by
-    /// <see cref="ParseGenericsPostfix"/>, whose recovery differs.
+    /// <see cref="ParseGenericsPostfix"/>, whose recovery differs, until PLAN G804.
     /// </summary>
     private static List<TypeKoto>? ParseSpecializationArguments(ref TokenReader reader)
     {
