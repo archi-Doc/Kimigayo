@@ -37,17 +37,7 @@ public class DocumentationMarkdownBoundaryTest
     public void PlainFastPathPreservesGeneralParserTreeAndRanges(string input)
     {
         var optimized = DocumentationMarkdownDocument.Parse(input);
-        var parser = new DocumentationMarkdownParser(input, CancellationToken.None, 256);
-        DocumentationMarkdownDocument general;
-        try
-        {
-            general = parser.Parse(null);
-        }
-        finally
-        {
-            parser.Dispose();
-        }
-
+        var general = ParseGeneral(input, CancellationToken.None);
         Assert.Equal(Snapshot(general.Root), Snapshot(optimized.Root));
         DocumentationMarkdownParserTest.AssertRanges(optimized);
 
@@ -252,22 +242,30 @@ public class DocumentationMarkdownBoundaryTest
         Assert.All(doc.GetItemCandidates().ToArray(), x => Assert.Equal(DocumentationMarkdownItemKind.Unclassified, x.Kind));
     }
 
+    // The parser polls its token in its work loops, behind the public entry's own poll. A token cancelled before the parser runs
+    // therefore stops it at its first poll inside the parse, once it holds pooled storage sized to the input; no timer races the
+    // parse (G718). The same input then parses fully through the public entry after that storage went back to the pool.
     [Fact]
-    public async Task CancelsAnActiveLargeParseAndCanRetryTheSameInput()
+    public void CancelsAnActiveLargeParseAndCanRetryTheSameInput()
     {
         var input = string.Concat(Enumerable.Repeat("words **strong** and `code`\n", 100000));
-        using var cancellation = new CancellationTokenSource();
-        using var started = new ManualResetEventSlim();
-        var operation = Task.Run(() =>
-        {
-            started.Set();
-            return DocumentationMarkdownDocument.Parse(input, cancellation.Token);
-        });
-        Assert.True(started.Wait(TimeSpan.FromSeconds(10)));
-        cancellation.CancelAfter(1);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await operation);
+        Assert.Throws<OperationCanceledException>(() => ParseGeneral(input, new CancellationToken(true)));
         var retried = DocumentationMarkdownDocument.Parse(input);
         Assert.Equal(input, retried.Text);
         DocumentationMarkdownParserTest.AssertRanges(retried);
+    }
+
+    // The general parser alone, without the public entry's poll and plain-paragraph path; it disposes its storage as Parse does.
+    private static DocumentationMarkdownDocument ParseGeneral(string input, CancellationToken cancellationToken)
+    {
+        var parser = new DocumentationMarkdownParser(input, cancellationToken, 256);
+        try
+        {
+            return parser.Parse(null);
+        }
+        finally
+        {
+            parser.Dispose();
+        }
     }
 }

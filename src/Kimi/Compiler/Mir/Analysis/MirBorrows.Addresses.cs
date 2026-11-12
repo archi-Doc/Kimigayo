@@ -143,7 +143,7 @@ internal sealed partial class MirBorrows
     {
         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
         return location < this.body.Statements.Length && this.body.Statements[location] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Storage }
-            ? this.placeSteps.Element(this.body, place, count, ref this.walk) : count;
+            ? this.placeSteps.Element(place, count, ref this.walk) : count;
     }
 
     // The own-step entry of a raw Place that is a `during self` layer (B §5.2 item 2), decided once per view; -1 for another Place.
@@ -160,7 +160,7 @@ internal sealed partial class MirBorrows
         }
 
         entry = this.Owner(layer, out var part, out var length) is var owner and >= 0 &&
-            types.StoredStep(cases.Type(this.body.TypeOf(layer with { Projection = owner })!), part, this.positions.AsSpan(0, length)) == HoldStep.Own
+            types.StoredStep(cases.TypeOf(layer with { Projection = owner }), part, this.positions.AsSpan(0, length)) == HoldStep.Own
             ? this.OwnStep(layer with { Projection = owner }, location) : -1;
         this.ownCount += entry >= 0 ? 1 : 0;
         this.ownAt.Add((layer.Root, layer.Projection), entry);
@@ -236,7 +236,7 @@ internal sealed partial class MirBorrows
                 return projections[prefix].Prefix;
             }
 
-            var holding = cases.Type(this.body.TypeOf(place with { Projection = prefix })!);
+            var holding = cases.TypeOf(place with { Projection = prefix });
             if (row.Kind == MirProjectionKind.Field && AdtDef.IsStruct(holding))
             {
                 part = row.Arg;
@@ -259,10 +259,10 @@ internal sealed partial class MirBorrows
     // Whether a Tuple or fixed-array Place inside a stored part encloses a `during self` layer inline (PQ-10, S4).
     private bool Encloses(MirPlace place)
     {
-        var type = cases.Type(this.body.TypeOf(place)!);
+        var type = cases.TypeOf(place);
         this.visited.Clear();
         return type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
-            this.Encloses(cases.Type(this.body.TypeOf(place with { Projection = owner })!), part, length, type);
+            this.Encloses(cases.TypeOf(place with { Projection = owner }), part, length, type);
     }
 
     // Whether an inline Type at the scratch's positions encloses a layer the instance's part stores stepping Own: never where the

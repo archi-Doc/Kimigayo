@@ -9,9 +9,9 @@ namespace XunitTest;
 public class ExpressionInputFormationBindingTest
 {
     [Theory]
-    [InlineData("Source<string>.Origin.Item")]
-    [InlineData("(Source<string>.Origin.Item, i32)")]
-    [InlineData("[2 of Source<string>.Origin.Item]")]
+    [InlineData("Source<string>.(Origin).Item")]
+    [InlineData("(Source<string>.(Origin).Item, i32)")]
+    [InlineData("[2 of Source<string>.(Origin).Item]")]
     public void InvalidExplicitCallInputsCannotCertify(string argument)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
@@ -26,9 +26,9 @@ public class ExpressionInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("Source<string>.Origin.Item")]
-    [InlineData("(Source<string>.Origin.Item, i32)")]
-    [InlineData("[2 of Source<string>.Origin.Item]")]
+    [InlineData("Source<string>.(Origin).Item")]
+    [InlineData("(Source<string>.(Origin).Item, i32)")]
+    [InlineData("[2 of Source<string>.(Origin).Item]")]
     public void InvalidRuntimeTargetInputsCannotCertify(string argument)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
@@ -43,10 +43,10 @@ public class ExpressionInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("Source<i32>.Origin.Item")]
-    [InlineData("(Source<i32>.Origin.Item, i32)")]
-    [InlineData("[2 of Source<i32>.Origin.Item]")]
-    [InlineData("() -> Source<i32>.Origin.Item")]
+    [InlineData("Source<i32>.(Origin).Item")]
+    [InlineData("(Source<i32>.(Origin).Item, i32)")]
+    [InlineData("[2 of Source<i32>.(Origin).Item]")]
+    [InlineData("() -> Source<i32>.(Origin).Item")]
     public void ValidInputsPreserveBothCertificates(string argument)
     {
         var call = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
@@ -69,8 +69,9 @@ public class ExpressionInputFormationBindingTest
     public void DependentInputUsesCallerEvidence(bool runtime)
     {
         var source = runtime
-            ? "struct Target<T>\ngroup G\n    func call<U>(x: objref/Target<i32>) -> bool\n        U is i32\n        return x is Target<Source<U>.Origin.Item>"
-            : "group G\n    func take<T>() => ()\n    func call<U>()\n        U is i32\n        take<Source<U>.Origin.Item>()";
+            ? "struct Target<T>\ngroup G\n    func call<U>(x: objref/Target<i32>) -> bool\n        U is i32\n" +
+                "        return x is Target<Source<U>.(Origin).Item>"
+            : "group G\n    func take<T>() => ()\n    func call<U>()\n        U is i32\n        take<Source<U>.(Origin).Item>()";
         var c = MinimalEmissionTest.Analyze(Prefix + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -82,8 +83,8 @@ public class ExpressionInputFormationBindingTest
     public void ReplacingInputRevokesAndRestoresCertificate(bool runtime)
     {
         var source = Prefix + (runtime
-            ? "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>"
-            : "group G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()");
+            ? "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.(Origin).Item>"
+            : "group G\n    func take<T>() => ()\n    func call() => take<Source<i32>.(Origin).Item>()");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var donor = MinimalEmissionTest.Analyze(source.Replace("Source<i32>", "Source<string>", StringComparison.Ordinal));
@@ -118,7 +119,7 @@ public class ExpressionInputFormationBindingTest
     [Fact]
     public void WarmExpressionInputChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()\n    func check(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>");
+        var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func take<T>() => ()\n    func call() => take<Source<i32>.(Origin).Item>()\n    func check(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.(Origin).Item>");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

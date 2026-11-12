@@ -98,7 +98,8 @@ public sealed class MirLoanSetsTest
     }
 
     // V16, A3 §6.2 (re-review): Scanned counts the elements the operations read and write, which A5's work counts: a Union both runs, a
-    // Remove its smaller operand and, when it removes an element, the run it copies, a Range its run; a repeated operation reads its memo.
+    // Remove its smaller operand and, when it removes an element, the run it copies, but nothing for two sets that lie apart (PLAN G768:
+    // one's greatest element below the other's least), a Range its run; a repeated operation reads its memo.
     [Fact]
     public void ScannedCountsTheElementsOperationsRead()
     {
@@ -108,9 +109,29 @@ public sealed class MirLoanSetsTest
         var union = sets.Union(six, three);
         Assert.Equal((union, 18L), (sets.Union(three, six), sets.Scanned));
         Assert.Equal(six, sets.Remove(six, sets.Range(10, 2)));
-        Assert.Equal(22, sets.Scanned);
+        Assert.Equal(20, sets.Scanned);
+        var ends = sets.Add(sets.Add(0, 0), 7);
+        Assert.Equal(ends, sets.Remove(ends, three));
+        Assert.Equal(25, sets.Scanned);
         Assert.Equal([0, 1, 2, 3], sets.Elements(sets.Remove(union, three)).ToArray());
-        Assert.Equal(32, sets.Scanned);
+        Assert.Equal(35, sets.Scanned);
+    }
+
+    // PLAN G768: a Remove of two sets that lie apart is the set and reads no element, whichever lies below, adjacent runs included (one's
+    // greatest element just below the other's least); sets that share an end element do not lie apart, and their Remove scans and removes it.
+    [Fact]
+    public void ARemoveOfSetsThatLieApartIsTheSet()
+    {
+        var sets = new MirLoanSets();
+        var (low, high, adjacent, shared) = (sets.Range(0, 6), sets.Range(10, 2), sets.Range(6, 2), Of(sets, 5, 9));
+        var scanned = sets.Scanned;
+        Assert.Equal(
+            [high, low, low, adjacent],
+            new[] { sets.Remove(high, low), sets.Remove(low, high), sets.Remove(low, adjacent), sets.Remove(adjacent, low) });
+        Assert.Equal(scanned, sets.Scanned);
+        Assert.Equal([0, 1, 2, 3, 4], sets.Elements(sets.Remove(low, shared)).ToArray());
+        Assert.Equal([9], sets.Elements(sets.Remove(shared, low)).ToArray());
+        Assert.True(sets.Scanned > scanned);
     }
 
     // R4-M138: the union of any number of sets is the fold of their binary Unions: none or only empty sets give the empty set, one distinct

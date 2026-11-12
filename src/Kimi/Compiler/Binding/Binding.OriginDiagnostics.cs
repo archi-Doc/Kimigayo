@@ -14,6 +14,7 @@
 //   formed.
 // - Prohibitions: no inference, proof or judgment re-run to explain a failure; no failure decided here.
 
+using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -309,7 +310,7 @@ public sealed partial class Binding
     // as ` in the Semantics case s = owner`: per binder, its Semantics joined by `or`; binders joined by `, ` where every binder must give
     // the class (`none`, the weakest: a product) and listed by `; ` where one suffices (`uniq`, the strongest: a union); empty for none, a
     // failure in every case.
-    private static string CaseText(LoanRequirement failing, PairCase[] cases)
+    private static string CaseText(LoanRequirement failing, ReadOnlySpan<PairCase> cases)
     {
         var union = failing == LoanRequirement.Uniq;
         var text = new StringBuilder();
@@ -442,7 +443,7 @@ public sealed partial class Binding
         if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
             var slot = invalid.Slot;
-            var found = CaseText(invalid.Failing, invalid.Cases);
+            var found = CaseText(invalid.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(invalid.Cases.Start, invalid.Cases.Count));
             node.Report(
                 requirement,
                 code,
@@ -455,7 +456,7 @@ public sealed partial class Binding
         if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
         {
             var slot = phantom.Slot;
-            var found = CaseText(phantom.Failing, phantom.Cases);
+            var found = CaseText(phantom.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(phantom.Cases.Start, phantom.Cases.Count));
             var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
             node.Report(
                 requirement,

@@ -439,9 +439,9 @@ public sealed partial class Binding
         return origin;
     }
 
-    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses; a failed clause makes its contract unavailable, or a local's
-    // rests the slots it names (Binding.OriginDeclarations.Failures.cs); otherwise its equalities substitute, its pending slots
-    // complete, and its Types and Origins are rewritten to the completed Origins.
+    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses, a failed one resting the slots it names
+    // (Binding.OriginDeclarations.Failures.cs); its equalities substitute, its pending slots complete, and its Types and Origins are
+    // rewritten to the completed Origins.
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
         if (declaration is null || declaration.Forming.State != 1)
@@ -464,11 +464,6 @@ public sealed partial class Binding
                 declaration.Forming.Relations.Add(new(a, b, clause.IsEquality, clause));
                 clause.BindingState = BindingState.Resolved;
             }
-        }
-
-        if (declaration.Forming.Failure is { } failure && this.FailOriginDeclaration(declaration, failure))
-        {
-            return;
         }
 
         this.SubstituteOriginEqualities(declaration);

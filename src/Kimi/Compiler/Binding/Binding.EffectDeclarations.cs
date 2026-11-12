@@ -407,23 +407,13 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.11.1: the selector names an ancestor of the Contract, and Name exactly one function requirement of that ancestor.
+    // SPEC 8.11.1: the selector names an ancestor of the Contract, and Name exactly one function requirement of that ancestor. The
+    // selector is looked up once in its own row (UseRow) and its reference is the one WrittenReference reads (F.6.2: a group holds a
+    // NamedReference, so `((A))` names no Contract).
     private BoundRequirement? EffectTarget(BoundContract shape, EffectBoundKoto effect, BindingScope scope)
     {
         var selector = effect.Selector!;
-        var syntax = selector;
-        while (syntax is ParenthesizedKoto or ParenthesizedTypeKoto || syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null })
-        {
-            syntax = syntax switch
-            {
-                ParenthesizedKoto grouped => grouped.Operand,
-                ParenthesizedTypeKoto grouped => grouped.Type,
-                TypeSemanticsKoto wrapper => wrapper.Type!,
-                _ => syntax,
-            };
-        }
-
-        if (this.TypeName(syntax, scope) is not { IsContract: true, Declaration: ContractKoto declaration } named)
+        if (this.TypeName(selector, scope) is not { IsContract: true, Declaration: ContractKoto declaration } named || WrittenReference(selector) is not { } syntax)
         {
             this.RejectEffectBound(effect, new(EffectRejection.NotContract));
             return null;

@@ -75,7 +75,7 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(this.CaseType(place)).Scalar == Extent.None)
+        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
         {
             return;
         }
@@ -275,7 +275,7 @@ internal sealed partial class MirBorrows
 
         for (var i = last; ; i++)
         {
-            var at = this.CaseType(place with { Projection = i + 1 < count ? this.walk[i + 1].Prefix : place.Projection });
+            var at = cases.TypeOf(place with { Projection = i + 1 < count ? this.walk[i + 1].Prefix : place.Projection });
             if (on && this.Leads(held, at, grid: false))
             {
                 return PunWrite.Typed;
@@ -328,7 +328,7 @@ internal sealed partial class MirBorrows
     private BoundType? Holder(int entry, out PunKey facts)
     {
         facts = this.punKeys[this.EntryKey(entry)];
-        return facts.RawInline && this.CaseType(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
+        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
     }
 
     // A displacement of a raw pointer (SPEC 5.3) by its pointee's stride.
@@ -347,7 +347,7 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Count(value);
         foreach (var element in this.sets.Elements(value))
         {
-            if (this.PunEntry(element) is >= 0 and var entry && !this.Step(this.CaseType(this.loans[entry].Place), of, field))
+            if (this.PunEntry(element) is >= 0 and var entry && !this.Step(cases.TypeOf(this.loans[entry].Place), of, field))
             {
                 return this.sets.Union(value, this.offgridSet);
             }
@@ -373,7 +373,7 @@ internal sealed partial class MirBorrows
             var element = kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
             if (element || kind is MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.Downcast)
             {
-                value = this.Stepped(value, this.CaseType(place with { Projection = this.walk[i].Prefix }), this.Field(i));
+                value = this.Stepped(value, cases.TypeOf(place with { Projection = this.walk[i].Prefix }), this.Field(i));
             }
         }
 
@@ -382,7 +382,4 @@ internal sealed partial class MirBorrows
 
     // The Field the step at `i` of the walk buffer selects, else -1.
     private int Field(int i) => this.walk[i].Kind == MirProjectionKind.Field ? this.walk[i].Arg : -1;
-
-    // A Place's case Type under the view.
-    private BoundType CaseType(MirPlace place) => cases.Type(this.body.TypeOf(place)!);
 }
