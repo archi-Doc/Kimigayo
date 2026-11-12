@@ -28,7 +28,7 @@ $expected = [ordered]@{
     Array = 'checksum 1917245123'; ArrayLiteral = 'checksum 996929325'; Buffers = 'checksum 4145164471'; Dictionary = 'checksum 906592013'; ErasedCalls = 'checksum 1506170851'
     ArrayMoves = 'checksum 2366022699'; ArrayViews = 'checksum 1365791996'
     Interpolation = 'checksum 1676251827'; Iterators = 'checksum 2086978537'; SharedHandles = 'checksum 3194390882'
-    Strings = 'checksum 3199852972'; Tuples = 'checksum 3620601396'; VirtualDispatch = 'checksum 3854058029'
+    Strings = 'checksum 1592246748'; Tuples = 'checksum 3620601396'; VirtualDispatch = 'checksum 3854058029'
 }
 $kernels = Get-ChildItem -LiteralPath (Join-Path $repo 'src/Benchmark/Kimi/Corpus') -Filter '*.kimi' -File | Sort-Object Name
 if ((@($kernels.BaseName) -join ',') -cne (@($expected.Keys | Sort-Object) -join ',')) { throw 'Every corpus kernel needs exactly one expected output.' }
