@@ -6247,13 +6247,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     in a holder reached only through one.
   - Record moves (Q13; dev to the unit, by program; no acceptance move): kClosureMixedStoreRests, kTupleBorrowStoreRests,
     kClosureMixedDestRests, mEnv3Rests, mTuple3BorrowRests (unsettled): ComparisonLoanConflict_Kd -> `Unsupported_Kd` at the same
-    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (labelled valid in G775's reviews; PLAN
-    G788's triage reads them unsettled by SPEC 15.6 Holders and 15.6.4, an independent label check pending):
-    ComparisonLoanConflict_Kd -> `Unsupported_Kd`; the six invalid programs of the record selection: ComparisonLoanConflict_Kd ->
-    `Unsupported_Kd` (still rejected); sTookPerTierBad, sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second
-    record at `var p` ComparisonLoanConflict_Kd -> `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class);
-    hOwnRested2Bad (invalid): `Unsupported_Kd` -> ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather
-    read holders in).
+    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (valid; an independent SPEC label check,
+    2026-11-12): ComparisonLoanConflict_Kd -> `Unsupported_Kd`, a Language error replaced by the limit (PLAN G788 keeps it); the six
+    invalid programs of the record selection: ComparisonLoanConflict_Kd -> `Unsupported_Kd` (still rejected); sTookPerTierBad,
+    sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second record at `var p` ComparisonLoanConflict_Kd ->
+    `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class); hOwnRested2Bad (invalid): `Unsupported_Kd` ->
+    ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather read holders in).
   - Not covered: R26-borrow (`MirBorrows.Defaults.DefaultBorrows`) does not read the tier; it reports every slot-rooted candidate
     whatever its `Outcome` (PLAN G793; twin rKeepRestsU). The own-step Warning and Activations' scans keep R4-M198's named limit.
   - Cost: per pass instance at most two reads of a holder's state and stores (one per read key), a Shared set read in full by two
