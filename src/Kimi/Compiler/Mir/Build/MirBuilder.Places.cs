@@ -33,7 +33,7 @@ internal sealed partial class MirBuilder
         var shape = HirTables.PlaceOf(node);
         if (input && shape is { Kind: HirPlaceKind.Value, Layers: > 0 } && Lending(node) is { } borrow)
         {
-            return this.Follow(this.Lent(this.Place(Child(borrow), input), TypeOf(borrow)), shape.Layers - 1);
+            return this.FollowLayers(this.Lent(this.Place(Child(borrow), input), TypeOf(borrow)), shape.Layers - 1);
         }
 
         var place = shape.Kind switch
@@ -49,7 +49,7 @@ internal sealed partial class MirBuilder
             _ => this.Unsupported(node),
         };
 
-        return this.Follow(place, shape.Layers);
+        return this.FollowLayers(place, shape.Layers);
     }
 
     // The Place an expansion located a node at, which its later calls read instead of locating it again (SPEC 13.7.2).
@@ -72,19 +72,59 @@ internal sealed partial class MirBuilder
         => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, MirCases.Binder(this.body, this.body.TypeOf(place)))
             : this.body.Project(place, MirProjectionKind.Deref, 0);
 
-    // SPEC 3.4.3, 13.5.5: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type, which
-    // Binding names as the body's premises make it (SPEC 8.2.3: MirTypes.Agrees).
-    private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
+    // SPEC 3.4.3, 13.5.5: the Place below the layers Binding counted for a consumer (a PlaceShape's Layers, a Pattern position's
+    // ImplicitFollows, an adaptation's one).
+    private MirPlace FollowLayers(MirPlace place, int count)
     {
-        for (; count > 0 && !(target is not null && MirTypes.Agrees(this.body, target, this.body.TypeOf(place))) && TyCtxt.Layer(
-            this.body.TypeOf(place),
-            out _,
-            out _) is var kind and not HirPlaceKind.Value; count--)
+        for (; count > 0 && TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value; count--)
         {
+            this.program.LayerWalkWork++;
             place = this.Layer(place, kind);
         }
 
         return place;
+    }
+
+    // SPEC 3.4.3, 13.5.5, 8.2: the Place of the target Type Binding names for a consumer, below the layers selection follows implicitly, or,
+    // no target named (null), the value Place below every layer (TyCtxt.Layer's Value). Each step descends into a part of the Place's Type,
+    // so the walk ends within the Type's height (IMPL A.4) and needs no count. A step's Type agrees with the target as MirTypes.Agrees
+    // decides, as it is or as the body's premises make both (Image), and no step premises the whole remaining Type (PLAN G647): the target
+    // and the first Type that does not agree as it is are premised once, and the image of the Type below a layer is its image's component
+    // where the image keeps the layer's head, as premising rebuilds a Type over its parts' images (Binding.ContractType, then the identity
+    // premises); below a head a premise rewrote, the Type is premised afresh.
+    private MirPlace FollowTo(MirPlace place, BoundType? target)
+    {
+        var type = this.body.TypeOf(place);
+        BoundType? goal = null, image = null; // The images, null until premised.
+        while (TyCtxt.Layer(type, out _, out _) is var kind and not HirPlaceKind.Value)
+        {
+            this.program.LayerWalkWork++;
+            if (target is not null && (MirTypes.Agree(target, type) || MirTypes.Agree(goal ??= this.Image(target), image ??= this.Image(type))))
+            {
+                break;
+            }
+
+            place = this.Layer(place, kind);
+            var below = this.body.TypeOf(place);
+            image = image is { Components: [var part] } && type is { Components: [var component] } && ReferenceEquals(component, below) &&
+                image.Kind == type.Kind && image.Semantics == type.Semantics && ReferenceEquals(image.Symbol, type.Symbol) ? part : null;
+            type = below;
+        }
+
+        return place;
+    }
+
+    // SPEC 8.2: a Type's image under the body's premises (MirTypes.Premised); a Type without an abstract part is its own (premises change
+    // only abstract parts; the Contract environment's rewrite of its Origins alone is not applied, as MirTypes.Agree ignores Origins).
+    private BoundType? Image(BoundType? type)
+    {
+        if (type is not { HasAbstractPart: true })
+        {
+            return type;
+        }
+
+        this.program.LayerWalkWork += type.Height + 1;
+        return MirTypes.Premised(this.body, type);
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
@@ -115,7 +155,7 @@ internal sealed partial class MirBuilder
             return this.Static(property, node);
         }
 
-        return receiver is { } place ? this.Field(this.Follow(place, 16), property, node) : this.Unsupported(node);
+        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Unsupported(node);
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
@@ -137,7 +177,7 @@ internal sealed partial class MirBuilder
             index--;
         }
 
-        return index < 0 ? null : this.body.Project(this.Follow(new(this.receiver), 16), MirProjectionKind.Field, index);
+        return index < 0 ? null : this.body.Project(this.FollowTo(new MirPlace(this.receiver), null), MirProjectionKind.Field, index);
     }
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
@@ -178,7 +218,7 @@ internal sealed partial class MirBuilder
         => this.Identical(receiver, receiverNode, node) ? this.Unidentified(receiver, node) : this.body.Project(receiver, kind, arg);
 
     // SPEC 8.2.3 (DECISIONS BU-72): whether Binding resolved a selection through an identity premise whose subject is the Type parameter the
-    // receiver's Place has, on exactly the premise's Type: the receiver node's published Type through its Layers (TyCtxt.Layer, as Follow).
+    // receiver's Place has, on exactly the premise's Type: the receiver node's published Type through its Layers (TyCtxt.Layer, as FollowLayers).
     // A MIR Place keeps the parameter, from which no projection selects; any other typeless projection is formed, a broken contract
     // MirValidator reports. Temporary (PLAN G168b): G170's identity query, giving the Place the identical Type, removes it and its callers'
     // branches.

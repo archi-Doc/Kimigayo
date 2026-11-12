@@ -167,7 +167,7 @@ public sealed partial class KimiLibrary
 
     private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
         => kind == KimiLibraryContainer.Text ? this.Text :
-            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
+            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer or KimiLibraryContainer.Utf8Slice
                 ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto : null;
 
     private void LoadSources()
