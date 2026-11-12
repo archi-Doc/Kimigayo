@@ -6,9 +6,11 @@ namespace Kimi.Compiler.Mir;
 // two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, and listed by its
 // Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness); an own-step entry
 // found, its tag (MirBorrows.OwnSteps). What the drop tier finds is tagged apart (DECISIONS R4-M153): a candidate's Dropped tags, a
-// marker's drop stamp and an own-step entry's drop tag, each with the drop-live holder as via. Which check sets hold a
-// candidate is Tags.Takes, either tier's, and its Outcome there decided by its own tags, else Deep by the drop tier's; the passes and the
-// closure are the gather's (MirBorrows.CheckSets).
+// marker's drop stamp and an own-step entry's drop tag, each with the drop-live holder as via. What a set carrying Φ_U holds, and what
+// the gather reaches only through such a set (its read key's tier, MirBorrows.CheckSets), is tagged apart too, at the Limit tier
+// (R4-M198's undecided class, PLAN G775). Which check sets hold a candidate is Tags.Takes, any tier's, and its Outcome there decided by
+// its own tags, else Limit by the rested ones, else Deep by the drop tier's; the passes and the closure are the gather's
+// (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -23,20 +25,22 @@ internal sealed partial class MirBorrows
     private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
     private int[] markRested = []; // By marker: the check that saw it in a Based or Stored pass's set that carries Φ_U.
     private int candidateCount;
-    private MirOutcome tier; // The tier of what a scan finds: decided, Limit past Φ_U in its set, Deep in the drop tier.
+
+    // The tier of what a scan finds: its read key's (Limit for a holder reached only through a set carrying Φ_U, else the pass's), Limit
+    // past Φ_U in its set.
+    private MirOutcome tier;
+
+    // The tier a pass's scan starts at, but at a read key reached only through a set carrying Φ_U: Deep in the drop tier, else decided.
+    private MirOutcome PassTier => (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
 
     // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
 
-    // The tier a pass's scan starts at: Limit for a holder reached only through a set carrying Φ_U (`rested`, MirBorrows.CheckSets'
-    // Reach), else Deep in the drop tier, else decided.
-    private MirOutcome Tier(bool rested) => rested ? MirOutcome.Limit : (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
-
-    // A state found in a holder (-1: a transit value, a state of one part) by the pass, at the Limit tier where the holder was reached
-    // only through a set carrying Φ_U (`rested`): its elements, in ascending order.
-    private void Scan(ulong found, int via, bool rested)
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass, at the tier `at` (its read key's, MirBorrows.CheckSets):
+    // its elements, in ascending order.
+    private void Scan(ulong found, int via, MirOutcome at)
     {
-        this.tier = this.Tier(rested);
+        this.tier = at;
         this.Work += this.Count(found);
         foreach (var element in this.ElementsOf(found))
         {

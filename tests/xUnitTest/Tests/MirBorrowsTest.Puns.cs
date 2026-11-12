@@ -300,6 +300,37 @@ public sealed partial class MirBorrowsTest
             unsafe => *tp = 7
             keepPair(h@uniq, spare)
             kk = 2
+        func selfStoreRests()
+            var other: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = other@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            var nothing: raw/u8 = null
+            c(nothing)
+            let r = other@uniq
+            other = r@follow@raw@raw/u8
+        func selfStoreEscBad(slot: raw/(raw/(raw/u8)))
+            var other: raw/u8 = null
+            unsafe => *slot = other@raw
+            let r = other@uniq
+            other = r@follow@raw@raw/u8
+        func selfStoreNoEscOk()
+            var other: raw/u8 = null
+            let r = other@uniq
+            other = r@follow@raw@raw/u8
+        func selfStoreNoWriteOk()
+            var other: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = other@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            var nothing: raw/u8 = null
+            c(nothing)
+            let r = other@uniq
+            other = r@follow@raw@raw/u8
         func zeroArrayOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -603,7 +634,10 @@ public sealed partial class MirBorrowsTest
     // (5.2.1 Retained dependencies), and stores spare where that pointer points, other's holder, in either layout. Whether other is
     // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests, borrowedTupleRests;
     // closurePtrBad, whose only part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in
-    // either layout (closureMixedLiveBad), and without the write nothing is reported (closureMixedNoWriteOk) (PLAN G775).
+    // either layout (closureMixedLiveBad), and without the write nothing is reported (closureMixedNoWriteOk) (PLAN G775). The same holds
+    // for a location's own store into a holder used after it only through such a write: storing into other a pointer carrying a Loan of
+    // other and writing other is valid in every layout (5.2.1: a self-link; 5.5), at most the limit, never a Language error
+    // (selfStoreRests); with other's address in storage the body does not own it conflicts (selfStoreEscBad).
     [Theory]
     [InlineData("storePunBad", "storePunBad: kk = 2")]
     [InlineData("readPunBad", "readPunBad: kk = 2")]
@@ -621,6 +655,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("closureMixedLiveBad", "closureMixedLiveBad: kk = 2")]
     [InlineData("closurePtrBad", "closurePtrBad: kk = 2 Unsupported_Kd")]
     [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2 Unsupported_Kd")]
+    [InlineData("selfStoreRests", "selfStoreRests: other = r@follow@raw@raw/u8 Unsupported_Kd")]
+    [InlineData("selfStoreEscBad", "selfStoreEscBad: other = r@follow@raw@raw/u8")]
+    [InlineData("selfStoreNoEscOk", "")]
+    [InlineData("selfStoreNoWriteOk", "")]
     [InlineData("cLayoutSecondFieldBad", "cLayoutSecondFieldBad: kk = 2")]
     [InlineData("zeroArrayOk", "")]
     [InlineData("lengthArrayRests", "lengthArrayRests: kk = 2 Unsupported_Kd")]
@@ -679,14 +717,15 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16 (DECISIONS R4-M140, C-189's readers): after a rebind, the pun rule's key memo, its scans and its walks past a call's first step
-    // run again over a store pun, a walk past a holder, an undecided write, a stated layer and a no-store input, and allocate nothing.
+    // run again over a store pun, a walk past a holder, an undecided write, a stated layer and a no-store input, and the gather's Limit
+    // read keys (a holder reached only through a set carrying Φ_U, its state and its stores; PLAN G775), and allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ThePunRuleAllocatesNothingWarm()
     {
         var head = PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)];
         var c = MirBuildTest.Compile(Prelude + head + Form(PunForms, "storePunBad") + Form(PunForms, "pastPunBad") + Form(PunForms, "arrayMidBad") +
-            Form(PunForms, "statedOk") + Form(PunForms, "sliceReadOk"));
+            Form(PunForms, "statedOk") + Form(PunForms, "sliceReadOk") + Form(PunForms, "closureMixedRests") + Form(PunForms, "selfStoreRests"));
         var stratum = new Stratum(c.Types);
         stratum.Run(c.BuildMir());
         MirProgram? program = null;
