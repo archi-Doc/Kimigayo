@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
 // Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and raw storage a
-// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound).
+// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound), Occurs where the Type ends.
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
@@ -232,7 +232,7 @@ public sealed partial class Binding
         foreach (var at in this.retentionFills)
         {
             this.retentionWalked.Clear();
-            if (at is null || this.Occurs(part, at, 0))
+            if (at is null || this.Occurs(part, at))
             {
                 return true;
             }
@@ -241,18 +241,20 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether a carrier, Origins erased, is a Type or occurs among its components, to the depth bound.
-    private bool Occurs(BoundType? type, BoundType carrier, int depth)
+    // Whether a carrier, Origins erased, is a Type or occurs among its components: a walk of the Type's parts, each entered once
+    // (retentionWalked), which ends with the Type (IMPL A.4's height) and has no bound of its own.
+    private bool Occurs(BoundType? type, BoundType carrier)
     {
-        if (type is null || depth > StorageBound || !this.Enters(type, null, null, depth))
+        if (type is null || !this.retentionWalked.TryAdd((type, null, null), 0))
         {
             return false;
         }
 
+        this.termWalks++;
         var occurs = ReferenceEquals(this.types.Erase(type), this.types.Erase(carrier));
         for (var i = 0; !occurs && i < type.Components.Count; i++)
         {
-            occurs = this.Occurs(type.Components[i], carrier, depth + 1);
+            occurs = this.Occurs(type.Components[i], carrier);
         }
 
         return occurs;

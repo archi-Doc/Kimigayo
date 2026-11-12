@@ -267,9 +267,10 @@ public static class DocumentationLinks
     private static Parts Split(string value)
     {
         var hash = value.IndexOf('#');
-        var query = value.AsSpan(0, hash < 0 ? value.Length : hash).IndexOf('?');
-        var end = query >= 0 ? query : hash >= 0 ? hash : value.Length;
-        return new(value[..end], query < 0 ? null : value[(query + 1)..(hash < 0 ? value.Length : hash)], hash < 0 ? null : value[(hash + 1)..]);
+        var beforeFragment = hash < 0 ? value.Length : hash;
+        var query = value.AsSpan(0, beforeFragment).IndexOf('?');
+        var end = query < 0 ? beforeFragment : query;
+        return new(value[..end], query < 0 ? null : value[(query + 1)..beforeFragment], hash < 0 ? null : value[(hash + 1)..]);
     }
 
     // The length of a path's scheme (RFC 3986: a letter, then letters, digits, '+', '-' or '.', before the first ':'); 0 for a

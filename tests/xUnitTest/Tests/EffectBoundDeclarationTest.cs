@@ -53,7 +53,8 @@ public class EffectBoundDeclarationTest
             "contract Lending\n    associate LentItem(step) for uniq/Self during step\n    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>\n" +
             "contract Stepping: Lending\n    associate Item\n    associate Lending.LentItem(step) is Item\n    effect Lending.next confined\n" +
             "contract Indexed<K>\n    func at(self: ref/Self, key: K) -> i32\ncontract StrictIndexed: Indexed<i32>\n    effect (Indexed<i32>).at confined\n" +
-            "contract Settled: StableSource\n    effect Source.take confined\n";
+            "contract Settled: StableSource\n    effect Source.take confined\n" +
+            "contract Grouped: Source\n    effect (Source).take confined\ncontract Rooted: Source\n    effect (::Source).take confined\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
@@ -65,6 +66,12 @@ public class EffectBoundDeclarationTest
     [InlineData("contract Other\n    func run(self: ref/Self) -> ()\ncontract Bounded: Source\n    effect Other.run confined\n", "effect Other.run confined", "Other is not an ancestor of Bounded", null)]
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n    effect Bounded.own confined\n", "effect Bounded.own confined", "Bounded is this Contract", "effect clause")]
     [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", "effect Plain.take confined", "Plain names no Contract", null)]
+
+    // A ContractSelector's group holds a NamedReference (SPEC F.6.2), so a group inside it names no Contract, as in an associate
+    // selector and a `.(C).` suffix (WrittenReference; PLAN G740).
+    [InlineData("contract Bounded: Source\n    effect ((Source)).take confined\n", "effect ((Source)).take confined", "((Source)) names no Contract", null)]
+    [InlineData("contract Bounded: Source\n    effect (((::Source))).take confined\n", "effect (((::Source))).take confined", "(((::Source))) names no Contract", null)]
+    [InlineData(Generic + "contract Bounded: P<i32>\n    effect ((P<i32>)).value confined\n", "effect ((P<i32>)).value confined", "((P<i32>)) names no Contract", null)]
 
     // A selector without the Type arguments of a generic Contract or Container on its path names no bound ancestor, whether one or two
     // are available (SPEC 8.4.3, 8.11.1, 9.7.1; the owner's O-145 (a); PLAN G705).
@@ -101,6 +108,32 @@ public class EffectBoundDeclarationTest
         {
             Assert.Contains(note, error.Note);
         }
+    }
+
+    // SPEC 23.1.2: a ContractSelector's reference (F.6.2) reads the selector alone, never the item's position, so a misplaced item's
+    // selector is judged on its own and its fault is the item's second record, beside the misplacement (PLAN G769); a misplaced item
+    // with a valid selector keeps one record (RejectsInvalidEffectItems). A syntax Error among the selector's Type arguments is the
+    // parser's record; the item's misplacement never rests on it in any position, and the selector's judgment reads it (a dependent).
+    [Theory]
+    [InlineData("struct S\n    effect ((Source)).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "((Source)) names no Contract")]
+    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect ((Source)).take confined\n", Misplaced, "((Source)) names no Contract")]
+    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (ref/Source).take confined\n    return\n", Misplaced, "(ref/Source) names no Contract")]
+    [InlineData("struct Plain\nenum E\n    A\n    effect (Plain).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(Plain) names no Contract")]
+    [InlineData(Override + "effect Missing.take confined\n        return 2\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "Missing names no Contract")]
+    [InlineData(Generic + "struct S\n    effect (P).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P) is not a reference to P")]
+    [InlineData(Generic + "struct S\n    effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "enum E\n    A\n    effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "contract Q: P<i32>\n    func own(self: ref/Self) -> ()\n        effect (P<>).value confined\n", Misplaced, "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "contract Same\n    func same(self: ref/Self) -> bool\nstruct Box<T>\n    public var item: T\n    Self is Same when T is Copy\n        public func same(self: ref/Self) -> bool => true\n        effect (P<>).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P<Error>) is not a reference to P", true)]
+    [InlineData(Generic + "func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (P<>).value confined\n    return\n", Misplaced, "(P<Error>) is not a reference to P", true)]
+    public void JudgesAMisplacedItemsSelectorOnItsOwn(string declarations, string position, string selector, bool syntaxError = false)
+    {
+        var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
+        c.Binding.ReportDiagnostics();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        Assert.Equal([position, selector], errors.Where(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Label).ToArray());
+        string[] parser = syntaxError ? [nameof(DiagnosticCode.ExpectedSyntax_Kd)] : [];
+        Assert.Equal(parser, errors.Where(static x => x.Code != nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Code).ToArray());
     }
 
     // SPEC 8.11.1, 8.11.4: a rejected item relates the declaration it bounds, by its kind (a function requirement, an original

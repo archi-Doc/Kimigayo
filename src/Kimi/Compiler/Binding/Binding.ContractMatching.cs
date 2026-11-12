@@ -182,6 +182,7 @@ public sealed partial class Binding
 
             var proof = declarationProof;
             IsKoto? specification = null;
+            Koto? failedRequirement = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -192,6 +193,13 @@ public sealed partial class Binding
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
                         specification ??= part;
+                        continue;
+                    }
+
+                    if (this.HasFailureCauses(identity.Symbol.Declaration))
+                    {
+                        // SPEC 23.1.2: a requirement that failed in its Contract has no Type to bind; the absence rests on it (G686).
+                        failedRequirement ??= identity.Symbol.Declaration;
                         continue;
                     }
 
@@ -229,6 +237,12 @@ public sealed partial class Binding
             if (specification is not null)
             {
                 return RestOnSpecification(specification);
+            }
+
+            if (failedRequirement is not null)
+            {
+                this.partPrerequisites[conformance.Use] = failedRequirement;
+                return Invalid(BindingFailure.InvalidAssociatedType);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -505,7 +519,13 @@ public sealed partial class Binding
                 arguments[i] = requirement.BoundSymbol!.Schema!.GenericSlots[i].Symbol.WholeType;
             }
 
-            var proof = this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises);
+            // SPEC 15.3.7: the implementation's Origins are solved first (CompareCallableContracts), and its clauses are read under the
+            // one substitution its signature is (PLAN G700, G707).
+            var proof = CombineProof(
+                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises),
+                this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
+                true);
+            var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)
@@ -513,11 +533,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var substituted = this.SubstituteConstraint(constraint, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
-                if (selection.DeclaringType is { Symbol: not null } declaring)
-                {
-                    substituted = this.StoredConstraint(substituted, declaring);
-                }
+                var substituted = this.SubstituteConstraint(constraint, substitution);
 
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
                 var clause = (IsKoto)implementation.TypeConstraints[i];
@@ -543,7 +559,6 @@ public sealed partial class Binding
                 }
             }
 
-            proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
             var witness = this.FunctionWitness(conformance, identity);
             witness.DeclaringType = selection.DeclaringType!;
             witness.BasePath = selection.Path;

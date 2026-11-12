@@ -278,6 +278,119 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(e)
                 """));
 
+    // SPEC 4.8.4, 5.6, 15.6 (DECISIONS R4-M40, R4-M63's amendment): `x[r]` is `x.slice(r)`, a Slice during the shared borrow of an array
+    // or during a Slice's source, so a range selection's Slice reaches what its backing reaches and no storage the body does not own of
+    // its own; a written `Raw.slice`, whose result Origin is a fresh anchor tied to no argument, reaches it, and so does a Slice of a
+    // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
+    // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
+    // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
+    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
+    [Fact]
+    public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
+        => Assert.Equal(
+            ["usedAfter: kk = 2", "subUsedAfter: kk = 2", "readAfter: kk = 2", "written: kk = 2", "writtenSub: kk = 2", "parameter: kk = 2",
+                "parameterArray: kk = 2"],
+            Problems("""
+                func stash(slot: raw/(raw/u8), value: raw/u8) => ()
+                func usev(v: ref/[2 of raw/u8]) => ()
+                func direct()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func usedAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    usev(values@ref)
+                func tuple()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var other: raw/u8 = null
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    var o = (sl, other@raw)
+                    stash(o.1, spare)
+                    kk = 2
+                func subUsedAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[0..1]
+                    let p = part[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    usev(values@ref)
+                func dynamic()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: Array<raw/u8> = [null, null]
+                    let sl = values[0..1]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func readAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                    let z = sl[1]
+                func written()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    unsafe
+                        let sl = Raw.slice(values[0]@raw, 2)
+                        let p = sl[0]@raw
+                        stash(p, spare)
+                    kk = 2
+                func writtenSub()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    unsafe
+                        let sl = Raw.slice(values[0]@raw, 2)
+                        let part = sl[0..1]
+                        let p = part[0]@raw
+                        stash(p, spare)
+                    kk = 2
+                func parameter(src: Slice<raw/u8>)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let part = src[0..1]
+                    let p = part[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                func parameterArray(arr: ref/[2 of raw/u8])
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let sl = arr@follow[..]
+                    let p = sl[0]@raw
+                    stash(p, spare)
+                    kk = 2
+                """));
+
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
     // disjoint.
@@ -2529,6 +2642,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73). N addressed
     // holders read through their live pointers across N writes (each write scans the live holders, the addressed ones among them) and a
     // raw chain of depth N (each pointer addressing the one before, read through at the end) stay within the dense bound (R4-M116, B §7).
+    // The gather's Limit read keys (PLAN G775) keep it there: N holders whose addresses a rested store put in E, each read at Limit through
+    // E and decidedly by its own later borrow, and N vias whose own states carry Φ_U over one Shared set beside a decided one (cc), each
+    // Shared set read in full by two vias per tier (MirBorrows.States' Scanned).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -2551,6 +2667,17 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     [InlineData(
         "    var y = 1\n    var z = 0\n", "    var w{0}: ref/i32 = y@ref\n    let p{0} = w{0}@raw\n    z = {0}\n", "    unsafe => inspect(*p{0})\n", true)]
     [InlineData("    var y = 1\n    var w: ref/i32 = y@ref\n    let p0 = w@raw\n", "    let p{1} = p{0}@raw\n", "    _ = p{1} == null\n", true)]
+    [InlineData(
+        "    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var w: raw/u8 = null\n    var h: (u64, raw/(raw/u8)) = (0, w@raw)\n" +
+        "    let tp = h@raw@raw/u16\n    unsafe => *tp = 7\n    let hp = h.1\n",
+        "    var o{0}: raw/u8 = spare\n    unsafe => *hp = o{0}@raw@raw/u8\n",
+        "    inspect(o{0}@ref)\n",
+        true)]
+    [InlineData(
+        "    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var cc: raw/u8 = null\n    var p: raw/(raw/u8) = cc@raw\n",
+        "    var w{0}: raw/u8 = null\n    var g{0}: (u64, raw/(raw/u8)) = (0, w{0}@raw)\n    let t{0} = g{0}@raw@raw/u16\n    unsafe => *t{0} = 7\n    let gp{0} = g{0}.1\n    var a{0}: raw/u8 = null\n    unsafe => a{0} = *gp{0}\n    if flag\n        p = a{0}@raw\n    unsafe => *p = spare\n",
+        "    inspect(a{0}@ref)\n    inspect(cc@ref)\n",
+        true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
         var (work, bytes) = this.Scaled(head, each, after, operand);

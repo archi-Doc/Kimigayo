@@ -192,14 +192,8 @@ public sealed partial class Binding
     // of a direct input that S quantifies, the binding holds, alone or in a meet; `foreign` is any other input Origin, except one that a
     // Function Type inside the binding quantifies itself (an inner per-call Origin never escapes its Function Type) and an input Origin
     // of a function enclosing the reference, which is fixed in its body (SPEC 15.6.5), so a bound argument may hold it.
-    private static void InputOrigins(BoundType type, BoundType parameters, Koto? binder, Koto use, bool nested, ref ulong perCall, ref bool foreign, int depth)
+    private static void InputOrigins(BoundType type, BoundType parameters, Koto? binder, Koto use, bool nested, ref ulong perCall, ref bool foreign)
     {
-        if (depth > 64)
-        {
-            foreign = true;
-            return;
-        }
-
         Origin(type.Origin, parameters, binder, use, nested, ref perCall, ref foreign, 0);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
@@ -209,7 +203,7 @@ public sealed partial class Binding
         nested |= type.Kind == BoundTypeKind.Function;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            InputOrigins(type.Components[i], parameters, binder, use, nested, ref perCall, ref foreign, depth + 1);
+            InputOrigins(type.Components[i], parameters, binder, use, nested, ref perCall, ref foreign);
         }
 
         static void Origin(BoundOrigin? origin, BoundType parameters, Koto? binder, Koto use, bool nested, ref ulong perCall, ref bool foreign, int depth)
@@ -247,14 +241,14 @@ public sealed partial class Binding
     }
 
     // SPEC 15.4.4: whether a written Type argument is the binding except in Origins it omits, which local inference would solve.
-    private static bool SameExceptOmittedOrigins(BoundType written, BoundType binding, int depth)
+    private static bool SameExceptOmittedOrigins(BoundType written, BoundType binding)
     {
         if (ReferenceEquals(written, binding))
         {
             return true;
         }
 
-        if (depth > 32 || !written.SameExceptOrigins(binding) || !Omitted(written.Origin, binding.Origin))
+        if (!written.SameExceptOrigins(binding) || !Omitted(written.Origin, binding.Origin))
         {
             return false;
         }
@@ -269,7 +263,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < written.Components.Count; i++)
         {
-            if (!SameExceptOmittedOrigins(written.Components[i], binding.Components[i], depth + 1))
+            if (!SameExceptOmittedOrigins(written.Components[i], binding.Components[i]))
             {
                 return false;
             }

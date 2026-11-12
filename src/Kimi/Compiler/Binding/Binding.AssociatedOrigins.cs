@@ -197,31 +197,57 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 23.1.2: an associated Type application binds every part, its target projection (in a frame of its own, so the target's
+    // failed parts are its prerequisites) and each Origin argument. It reports its own failure (no associated family, an arity
+    // mismatch) beside the arguments' records, and otherwise rests on its first failed part.
     private BoundType? BindAssociatedApplication(OriginApplicationKoto application, BindingScope scope)
     {
         var target = UnwrapTransparentType(application.Type)!;
-        var projection = target is MemberAccessKoto member ? this.BindAssociatedProjection(member, scope, applyingOrigins: true) : this.BindTypeStructure(target, scope, this.TypeContext(application, scope), applyingOrigins: true);
-        if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
-            this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count || application.ArgumentNodes.Count == 0)
-        {
-            return this.Fail(application, BindingFailure.InvalidAssociatedType);
-        }
-
-        var arguments = this.originScratch.Rent(application.ArgumentNodes.Count);
+        var frame = this.BeginConsultation(target);
+        BoundType? projection;
         try
         {
-            for (var i = 0; i < application.ArgumentNodes.Count; i++)
-            {
-                if (this.BindOrigin(application.ArgumentNodes[i], scope) is not { } origin)
-                {
-                    // SPEC 23.1.2: the failed Origin argument reports its cause, and the application rests on it.
-                    return this.CompleteDependent(application, application.ArgumentNodes[i]);
-                }
+            projection = target is MemberAccessKoto member ? this.BindAssociatedProjection(member, scope, applyingOrigins: true) : this.BindTypeStructure(target, scope, this.TypeContext(application, scope), applyingOrigins: true);
+        }
+        finally
+        {
+            this.EndConsultation(target, frame);
+        }
 
-                arguments[i] = origin;
+        var count = application.ArgumentNodes.Count;
+        var arguments = this.originScratch.Rent(count);
+        try
+        {
+            Koto? failedArgument = null;
+            for (var i = 0; i < count; i++)
+            {
+                if (this.BindOrigin(application.ArgumentNodes[i], scope) is { } origin)
+                {
+                    arguments[i] = origin;
+                }
+                else
+                {
+                    failedArgument ??= application.ArgumentNodes[i];
+                }
             }
 
-            projection = this.WithOrigins(projection, null, arguments.AsSpan(0, application.ArgumentNodes.Count));
+            if (projection is null && this.HasFailureCauses(target))
+            {
+                return this.CompleteDependent(application, target);
+            }
+
+            if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
+                this.AssociatedParameters(associated.Declaration).Length != count || count == 0)
+            {
+                return this.Fail(application, BindingFailure.InvalidAssociatedType);
+            }
+
+            if (failedArgument is not null)
+            {
+                return this.CompleteDependent(application, failedArgument);
+            }
+
+            projection = this.WithOrigins(projection, null, arguments.AsSpan(0, count));
             this.associatedApplications.Add((application, projection));
             application.BoundSymbol = target.BoundSymbol = associated;
             Complete(target, projection);

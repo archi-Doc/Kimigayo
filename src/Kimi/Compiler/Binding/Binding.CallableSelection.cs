@@ -117,6 +117,7 @@ public sealed partial class Binding
             var stride = call.ArgumentNodes.Count + 1;
             var operations = this.argumentOperationScratch.Rent(count * stride);
             var evaluated = this.candidateScratch.Rent(count);
+            var classBase = this.positionClasses.Count;
             try
             {
                 var applicable = 0;
@@ -162,6 +163,7 @@ public sealed partial class Binding
             {
                 this.argumentOperationScratch.Return(operations, clearArray: true);
                 this.candidateScratch.Return(evaluated, clearArray: true);
+                this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             }
         }
         finally

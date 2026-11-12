@@ -431,13 +431,13 @@ internal readonly struct CallableInstance
     // call, a local region that holds no Loans and is solved by its uses.
     internal bool IsResultOnlyOrigin(BoundOrigin origin)
         => this.actual is not null && this.actualBinder is FunctionKoto && origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, this.actualBinder) &&
-            !Mentions(this.actual.Components[0], origin, 0);
+            !Mentions(this.actual.Components[0], origin);
 
-    private static bool Mentions(BoundType type, BoundOrigin origin, int depth)
+    private static bool Mentions(BoundType type, BoundOrigin origin)
     {
-        if (depth > 64 || !type.CarriesOrigin)
+        if (!type.CarriesOrigin)
         {
-            return depth > 64;
+            return false;
         }
 
         if (Names(type.Origin, origin))
@@ -455,7 +455,7 @@ internal readonly struct CallableInstance
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (Mentions(type.Components[i], origin, depth + 1))
+            if (Mentions(type.Components[i], origin))
             {
                 return true;
             }

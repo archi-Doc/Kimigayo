@@ -10,6 +10,10 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginRequirementWork> originRequirementNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
+
+    // The rows of every failed slot's FailingCase range, cleared by ResetPrerequisites with their capacity kept, so a warm rebind
+    // allocates none. A range is contiguous: FailingCase appends, and removes, only its own rows, with no other append between.
+    private readonly List<PairCase> pairCaseRows = [];
     private uint originRequirementPass;
     private uint originRequirementConsumer;
 
@@ -357,7 +361,7 @@ public sealed partial class Binding
         }
 
         binder = null;
-        return argument.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection
+        return argument.IsAbstractType
             ? SemanticsMask.None : CaseSemantics(argument);
     }
 
@@ -382,12 +386,13 @@ public sealed partial class Binding
     // SPEC 23.1.2, 15.3.5 (DECISIONS BU-44): the Semantics cases a slot's requirement is `failing` in at an instance, its failure's typed
     // fact: per binder of it that the instance leaves open (SelectedCases: a pair layer's or a family's, or the declaring binder with no
     // instance), its cases of that class where they are some but not all of its cases; none when every case fails, as the concrete twin's
-    // record names none. Formed only on failure.
-    private PairCase[] FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
+    // record names none. Formed only on failure, as a range of pairCaseRows.
+    private (int Start, int Count) FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
     {
         var (weakest, strongest) = this.RequirementAt(slot, instance);
         var schema = ListingSchema(slot, instance);
-        var cases = new List<PairCase>();
+        var cases = this.pairCaseRows;
+        var first = cases.Count;
         var binders = weakest == strongest ? default : slot.Requirement.Binders;
         for (var ordinal = binders.Next(0); ordinal >= 0; ordinal = binders.Next(ordinal + 1))
         {
@@ -408,7 +413,7 @@ public sealed partial class Binding
             }
         }
 
-        return [.. cases];
+        return (first, cases.Count - first);
     }
 
     private sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
