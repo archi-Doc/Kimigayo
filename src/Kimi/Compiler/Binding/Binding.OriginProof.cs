@@ -467,7 +467,8 @@ public sealed partial class Binding
     // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): a conjunct one of whose ends rests on a failed part holds and gives no evidence
     // (HoldsResting, after the ordinary answer). A recording fit that held so publishes it (fitRested): its entry leaves the fit's
     // positions as rows of its body (CheckTypeUse), which A5 judges with the atom Dependent (a chain through it between its ends;
-    // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows).
+    // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows). The walks entered through IsSubtypeAt (a callable
+    // contract) and CallableSignatureFits set it too and form no row: no entry reads it there, and the next fit's entry clears it.
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);

@@ -99,29 +99,33 @@ public sealed partial class Binding
         this.fitRested = false;
         var walk = new RelationWalk(this, use, this.comparisonFacts);
         var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+
+        // SPEC 23.1.2 (PLAN G739): a walk that held by a resting position forms the rows its shape gives, and its answer stays the walk's
+        // where the shape gives none (`rested`).
+        var rested = fits && this.fitRested;
         if (!fits)
         {
             failure = walk.Failure;
         }
-        else if (!this.fitRested && !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
+        else if (!rested && !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }
 
         if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
-            return false;
+            return rested;
         }
 
         if (actual.Kind == BoundTypeKind.Function)
         {
-            return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
+            return rested; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
         switch (FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
         {
             case OuterOriginFit.Mismatch:
-                return false;
+                return rested;
             case OuterOriginFit.Relation:
                 this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use));
                 break;
