@@ -110,6 +110,37 @@ public class BuiltinComparisonTest
         ScalarEmissionTest.EmitFixture("ComparisonBuiltinScalars", Source, "Builtin comparison witnesses preserved.\n");
     }
 
+    // SPEC 13.4.1, 9.6 (G776-a, the owner's O-194 (a)): the built-in and composed Equatable and Comparable conformances add no member, so
+    // `equals` and `compare` called as members of a scalar, Unit, a string, a Tuple or a reference layer over them name none (fail-before:
+    // each bound); a Constraint or the operators reach them, and a reference to a user Type keeps its declared `equals` (SPEC 3.4.3).
+    [Theory]
+    [InlineData("let a = 1\nlet r = a.equals(a@ref)", "a.equals")]
+    [InlineData("let a = 1\nlet r = a.compare(a@ref)", "a.compare")]
+    [InlineData("let a = 0.5\nlet r = a.equals(a@ref)", "a.equals")]
+    [InlineData("let a = 'a'\nlet r = a.compare(a@ref)", "a.compare")]
+    [InlineData("let a = true\nlet r = a.equals(a@ref)", "a.equals")]
+    [InlineData("let a = ()\nlet r = a.equals(a@ref)", "a.equals")]
+    [InlineData("let a = \"a\"\nlet r = a.equals(\"b\")", "a.equals")]
+    [InlineData("let a = \"a\"\nlet r = a.compare(\"b\")", "a.compare")]
+    [InlineData("let a = (1, 2)\nlet r = a.equals((1, 2))", "a.equals")]
+    [InlineData("let a = (1, 2)\nlet r = a.compare((1, 3))", "a.compare")]
+    [InlineData("func f(a: ref/i32) -> bool => a.equals(a)", "a.equals")]
+    public void ABuiltinComparisonConformanceAddsNoMember(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+    }
+
+    // SPEC 3.4.3 (the valid twin): a reference to a user Type reaches its declared `equals`, and a Type parameter its Constraint's.
+    [Theory]
+    [InlineData("struct Key\n    Self is Equatable\n    public let v: i32\n    public init(v: i32) => self.v = v\n    public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v\nfunc f(k: ref/Key) -> bool => k.equals(k)")]
+    [InlineData("func f<T>(a: ref/T) -> bool\n    T is Equatable\n    return a.equals(a)")]
+    public void ADeclaredOrConstrainedComparisonStaysAMember(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     [Theory]
     [InlineData("f32", "0.0")]
     [InlineData("f64", "0.0")]

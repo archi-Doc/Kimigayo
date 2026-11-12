@@ -119,14 +119,19 @@ public class BuiltinArithmeticContractTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // SPEC 13.3.3, 9.6: a built-in numeric Type gains no named members, Wrapping<T> over a PrimitiveInteger parameter included (G776-a, the
+    // owner's O-194 (a); fail-before for its rows: each bound); generic code reaches them through a Constraint
+    // (GenericWrappingEvidenceSuppliesBinaryAndUnaryRequirements).
     [Theory]
-    [InlineData("i32", "1")]
-    [InlineData("Wrapping<i32>", "1")]
-    [InlineData("f32", "1.0")]
-    public void ConformanceDoesNotCreateNamedNumericMembers(string type, string literal)
+    [InlineData("let value: i32 = 1\nlet result = value.added(value)", "value.added")]
+    [InlineData("let value: Wrapping<i32> = 1\nlet result = value.added(value)", "value.added")]
+    [InlineData("let value: f32 = 1.0\nlet result = value.added(value)", "value.added")]
+    [InlineData("func f<T>(value: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return value.added(value)", "value.added")]
+    [InlineData("func f<T>(value: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return value.negated()", "value.negated")]
+    public void ConformanceDoesNotCreateNamedNumericMembers(string source, string at)
     {
-        var c = MinimalEmissionTest.Analyze("let value: " + type + " = " + literal + "\nlet result = value.added(value)");
-        Assert.False(c.Binding.Result.IsComplete);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
     }
 
     [Theory]

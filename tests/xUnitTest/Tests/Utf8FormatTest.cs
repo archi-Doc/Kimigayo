@@ -34,13 +34,11 @@ public class Utf8FormatTest
     public void BuiltinFixedWritesHaveNoHeapAllocation(string name, string value, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8Format" + name, Program("try (writer@uniq).write(" + value + ")"), 0, 0, 0, expected + "\n");
 
+    // A view's declared `format`; a built-in conformance adds no member (SPEC 22.10.2), so the scalars, Unit, a string and a wrapping
+    // integer reach the same encoder through `T is Utf8Format` (GenericRequirementUsesTheBuiltinWitness).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Number", "(123).format(writer@uniq)", "123")]
-    [InlineData("String", "\"abc\".format(writer@uniq)", "abc")]
-    [InlineData("Unit", "().format(writer@uniq)", "()")]
     [InlineData("View", "Text.utf8(\"a君\").format(writer@uniq)", "a君")]
-    [InlineData("Wrapping", "((-5@i32)@Wrapping<i32>).format(writer@uniq)", "-5")]
     public void DirectFormatCallsUseTheSameEncoder(string name, string expression, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8FormatDirect" + name, Program("try " + expression), 0, 0, 0, expected + "\n");
 
