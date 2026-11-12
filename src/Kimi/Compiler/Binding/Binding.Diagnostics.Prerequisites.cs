@@ -230,7 +230,8 @@ public sealed partial class Binding
             (specification.BindingFailure != BindingFailure.None || specification.BindingState == BindingState.Invalid)) ||
             (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
             this.formationCauses?.ContainsKey(read) == true) ||
-            (node.BindingFailure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) && this.KeepsPremiseErrorContext(premise));
+            (node.BindingFailure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
+            this.KeepsPremiseErrorContext(premise));
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any

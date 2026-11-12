@@ -86,7 +86,8 @@ public sealed partial class Binding
 
         // The one finality rule (W7): a class is final unless one of its meets rests on an Origin "no" from incomplete declarations or an
         // unrentable premise environment.
-        internal bool Failed(BoundType type) => this.node.TryGetValue(type, out var n) && this.state[this.Find(n)] != One && !this.incompleteClass[this.Find(n)];
+        internal bool Failed(BoundType type)
+            => this.node.TryGetValue(type, out var n) && this.state[this.Find(n)] != One && !this.incompleteClass[this.Find(n)];
 
         // Whether a Type has a part in a final erroneous class (the producer channel's question).
         internal bool Holds(BoundType? type)
@@ -215,7 +216,8 @@ public sealed partial class Binding
             }
         }
 
-        private static bool IsConstructor(BoundType type) => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection);
+        private static bool IsConstructor(BoundType type)
+            => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection);
 
         private static bool Quantifies(BoundOrigin? origin) => origin is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionTypeKoto };
 
@@ -248,7 +250,8 @@ public sealed partial class Binding
 
         private static bool SameHead(BoundType x, BoundType y)
             => x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol) && x.Semantics == y.Semantics && x.Components.Count == y.Components.Count &&
-            ReferenceEquals(x.ClosureContext, y.ClosureContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) && x.OriginArguments.Count == y.OriginArguments.Count &&
+            ReferenceEquals(x.ClosureContext, y.ClosureContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) &&
+            x.OriginArguments.Count == y.OriginArguments.Count &&
             (x.LengthExpression is not null || y.LengthExpression is not null || x.Length == y.Length);
 
         // The class's constructor pairs (an owner-only pair application is no constructor): an agreeing pair's parts join, and the state
@@ -561,7 +564,8 @@ public sealed partial class Binding
                 this.parts.Add((x.Components[i], y.Components[i]));
             }
 
-            if (!ReferenceEquals(x.LengthExpression, y.LengthExpression) || !binding.OriginsAgree(x.Origin, y.Origin, this.scope!.Owner, ref this.meetProvisional))
+            if (!ReferenceEquals(x.LengthExpression, y.LengthExpression) ||
+                !binding.OriginsAgree(x.Origin, y.Origin, this.scope!.Owner, ref this.meetProvisional))
             {
                 return Unproven;
             }
@@ -582,7 +586,8 @@ public sealed partial class Binding
         // quantified Origin would be carried out of its Function Type (Refuted; a pair application there is no form this rule covers).
         private byte Correspond(BoundType x, BoundType y)
         {
-            var paired = x.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || y.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+            var paired = x.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+                y.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
             var structural = IsConstructor(x) && IsConstructor(y) && !paired;
             if (!structural && !(x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol) && x.Kind != BoundTypeKind.Parameter))
             {

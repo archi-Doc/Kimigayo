@@ -379,7 +379,8 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
     [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
     [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
-    public void NeverWithAConflictingIdentityPremiseIsAPremiseError(string source) => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+    public void NeverWithAConflictingIdentityPremiseIsAPremiseError(string source)
+        => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
     public void PropositionIdentityPreservesOrigins()
