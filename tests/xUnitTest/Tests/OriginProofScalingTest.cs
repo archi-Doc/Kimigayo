@@ -52,6 +52,34 @@ public class OriginProofScalingTest
 
     // SPEC 15.3.6 (DECISIONS: G572 U1): nested Closures with two regions per level, each bound by both of the level above, read at a fixed
     // Origin at the bottom. The oracle walks each region once per target (UniversalRelations' memo): without it the reads double per level.
+    // PLAN G647 (SPEC 15.6.1): x of n nested ref layers returned as its own Type (accepted) and as y's, whose innermost Origin alone
+    // differs (c: d, unproven), past the 32 and 64 components the relation walks once counted. The walks' steps (TermWalkWork) grow with
+    // the layers where the Types differ, and do not grow where they are one Type, which the fit does not enter. n nested Origins have n(n-1)/2 outlives premises by SPEC, so the premise graph's nodes at most double and its edges at
+    // most quadruple (plus two a layer) per doubling; the summed proof work is not this row's (PLAN G647's design section 7).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NestedLayerRelationsFollowTheOriginPairs(bool valid)
+    {
+        var rows = new[] { 17, 34, 68 }.Select(layers =>
+        {
+            var (c, d) = (TypeDagScalingTest.RefLayers(layers, "i32", "c"), TypeDagScalingTest.RefLayers(layers, "i32", "d"));
+            var compilation = Compilation.CreateForTest();
+            Assert.True(compilation.Prepare(WindowsProfile.Target));
+            compilation.Kotonoha.AddSource(new SourceDocument("nested.kimi", $"func f(x: {c}, y: {d}) -> {(valid ? c : d)}\n    return x\npublic func main() => ()\n"));
+            var metrics = new OriginProofMetrics();
+            compilation.Binding.OriginProofMetrics = metrics;
+            compilation.Bind();
+            compilation.Binding.CheckStartup(OutputKind.Application);
+            compilation.Analyze();
+            var codes = compilation.Binding.Issues.Select(static x => x.Code.ToString()).Concat(compilation.Problems.Select(static x => x.Code.ToString()));
+            Assert.Equal(valid ? [] : ["UnprovenOriginRelation_Kd"], codes.Distinct());
+            return (Layers: layers, Work: (long)compilation.Binding.TermWalkWork, metrics.MaxNodes, metrics.MaxEdges);
+        }).ToArray();
+        Assert.True((valid || rows[1].Work > rows[0].Work) && MirBorrowsTest.Grows(rows.Select(static x => x.Work).ToArray(), 2), string.Join(' ', rows));
+        Assert.True(rows[2].MaxNodes <= 2 * rows[1].MaxNodes && rows[2].MaxEdges <= (4 * rows[1].MaxEdges) + (2 * rows[2].Layers), string.Join(' ', rows));
+    }
+
     [Fact]
     public void AFixedReadWalksEachRegionOnce()
     {

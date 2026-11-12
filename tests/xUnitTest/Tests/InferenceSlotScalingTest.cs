@@ -43,6 +43,28 @@ public class InferenceSlotScalingTest
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnboundTypeArgument);
     }
 
+    // PLAN G647 (SPEC 10.2): a Type parameter is inferred from an argument of n ref layers, composed in the body so that no Origin is
+    // named, past the 64 components the slot walks (MentionsSlots, Unnameable) once counted. Those two walks have no counter of their
+    // own: the row is the acceptance, and the inference's mappings and comparisons, which grow with the layers.
+    [Fact]
+    public void ASlotIsInferredFromALayeredArgument()
+    {
+        var work = new[] { 36, 72, 144 }.Select(Work).ToArray();
+        Assert.True(MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(int layers)
+        {
+            var source = "func id<T>(v: T) -> T => v@move\nfunc f() -> i32\n    let n: i32 = 1\n    let r1 = n@ref\n" +
+                string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"    let r{i + 1} = r{i}@ref\n")) + $"    let z = id(r{layers})\n    return z\n";
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+            c.Binding.MeasureCallInference = true;
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.InferenceMetrics.Mappings + c.Binding.InferenceMetrics.Comparisons;
+        }
+    }
+
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
     // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
     [Fact]

@@ -164,8 +164,11 @@ public sealed partial class Binding
                     out var unbound,
                     out var receiver,
                     out _,
-                    out _,
+                    out var failure,
                     out var premiseUnknown);
+                // SPEC 10.1, 10.2.1 (PLAN G680): the selected constructor, its waiting arguments completed, keeps its selection past a
+                // refuted clause, which is the call's obligation (AsSelected), never a changed selection.
+                state = i == selected ? AsSelected(state, failure, CandidateApplicability.Applicable) : state;
                 checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
                 if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
                 {

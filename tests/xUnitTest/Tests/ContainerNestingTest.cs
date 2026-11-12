@@ -10,6 +10,9 @@ namespace XunitTest;
 
 public class ContainerNestingTest
 {
+    private const string NestedEnum = "struct Outer<O>\n    public enum E<T>\n        A(O, T)\n        N\n        public func make() -> i32 => 0\n    public enum E2<T>\n        P(T, T)\n" +
+        "    public enum R<T> {src}\n        B(O, ref/T during src)\n    public struct Mid<Y>\n        public enum K<T>\n            C(O, Y, T)\n";
+
     [Theory]
     [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nfunc f() -> i32\n    let result = (Outer<i32>.Helpers{h}).identity(42)\n        origin h.source == static\n    return result")]
     [InlineData("alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\nstruct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nlet x = H.identity(42)")]
@@ -170,6 +173,60 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.7, 9.7.1, 6.5.2 steps 2-3 (PLAN G745): a nested enum's qualifier with its own list omitted before a Case reference takes its
+    // environment from the path and infers only its own slots, as `Outer<i32>.Inner.init(value)` does: from the payloads (the environment
+    // fixed before any evidence, so a payload at it is read as a value), from the expected Type or from the Pattern position, at any
+    // nesting depth and in a non-generic container (`Plain.E.A(n)`, no environment). The twins keep the records of the top-level forms
+    // (`Option.None`, a payload that misfits, conflicting evidence), a written argument that differs fails, and an omitted outer or
+    // middle list stays the qualifier's own failure (SPEC 9.7.1).
+    [Theory]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let e = Outer<i32>.E.A(v, 1@i64)\n", "")]
+    [InlineData(NestedEnum + "func f(n: ref/i32)\n    let e = Outer<i32>.E.A(n, 1@i64)\n", "")]
+    [InlineData(NestedEnum + "func f()\n    let e = Outer<i32>.E.A(1, 2)\n", "")]
+    [InlineData(NestedEnum + "func f()\n    let e: Outer<i32>.E<i64> = Outer<i32>.E.N\n", "")]
+    [InlineData(NestedEnum + "func f(e: ref/Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => 0\n        .N => 1\n", "")]
+    [InlineData("struct Outer<O>\n    public enum E<T>\n        A(O, T)\n    public func f(o: O)\n        let e = E.A(o@move, 1@i64)\n", "")]
+    [InlineData(NestedEnum + "func f(n: ref/i64)\n    let e = Outer<i32>.E.A(n, 1@i64)\n", "TypeMismatch_Kd Outer<i32>.E.A(n, 1@i64)")]
+    [InlineData(NestedEnum + "func f()\n    let e = Outer<i32>.E.N\n", "UnresolvedBinding_Kd Outer<i32>.E.N")]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let e: Outer<i64>.E<i64> = Outer<i32>.E.A(v, 1)\n", "TypeMismatch_Kd Outer<i32>.E.A(v, 1)")]
+    [InlineData(NestedEnum + "func f(e: ref/Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i64>.E.A(let a, let b) => 0\n        .N => 1\n", "InvalidPattern_Kd Outer<i64>.E.A(let a, let b)")]
+    [InlineData(NestedEnum + "func f() -> i32 => Outer<i32>.E.make()\n", "InvalidTypeFormation_Kd Outer<i32>.E")]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let k = Outer<i32>.Mid<i64>.K.C(v, 2@i64, true)\n", "")]
+    [InlineData(NestedEnum + "func f(n: ref/i32, m: ref/i64)\n    let k = Outer<i32>.Mid<i64>.K.C(n, m, true)\n", "")]
+    [InlineData(NestedEnum + "func f(n: ref/i32)\n    let k = Outer<i32>.Mid<i64>.K.C(n, n, true)\n", "TypeMismatch_Kd Outer<i32>.Mid<i64>.K.C(n, n, true)")]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let k = Outer<i32>.Mid.K.C(v, 2@i64, true)\n", "InvalidTypeFormation_Kd Outer<i32>.Mid")]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let e = Outer.E<i64>.A(v, 1)\n", "InvalidTypeFormation_Kd Outer")]
+    [InlineData(NestedEnum + "func f(e: Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => a\n        .N => 0\n", "")]
+    [InlineData(NestedEnum + "func f(e: Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => b\n        .N => 0\n", "TypeMismatch_Kd match e\n    Outer<i32>.E.A(let a, let b) => b\n    .N => 0")]
+    [InlineData(NestedEnum + "func mk<X>(x: X) -> Outer<X>.E<i64>\n    return Outer<X>.E.A(x@move, 1@i64)\n", "")]
+    [InlineData(NestedEnum + "func mk<X>(x: X) -> Outer<X>.E<i64>\n    let e = Outer<X>.E.A(x@move, true)\n    return e\n", "TypeMismatch_Kd return e")]
+    [InlineData(NestedEnum + "func f(n: ref/i32, r: ref/i64)\n    let e = Outer<i32>.R.B(n, r)\n", "")]
+    [InlineData(NestedEnum + "func f(r: ref/i64)\n    let e = Outer<i32>.R.B(r, r)\n", "TypeMismatch_Kd Outer<i32>.R.B(r, r)")]
+    [InlineData(NestedEnum + "func f()\n    let e = Outer<i32>.E2.P(1@i64, true)\n", "TypeMismatch_Kd Outer<i32>.E2.P(1@i64, true)")]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let e: Outer<i32>.E<i64> = Outer<i32>.E.A(v, true)\n", "TypeMismatch_Kd Outer<i32>.E.A(v, true)")]
+    [InlineData("struct Plain\n    public enum E<T>\n        A(T)\nfunc f(n: ref/i32)\n    let e = Plain.E.A(n)\n", "")]
+    [InlineData("struct Plain\n    public enum E<T>\n        A(T)\nfunc f()\n    let e: Plain.E<i32> = Plain.E.A(true)\n", "TypeMismatch_Kd Plain.E.A(true)")]
+    public void ANestedEnumCaseInfersOnlyItsOwnSlots(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.7, 10.8.1 (PLAN G745): an inferred construction qualifier, a Case's as a structure's, names the constructed Type once the
+    // construction is solved, never its open own parameters.
+    [Theory]
+    [InlineData(NestedEnum + "func f(v: i32)\n    let e = Outer<i32>.E.A(v, 1@i64)\n", "Outer<i32>.E")]
+    [InlineData("struct Outer<O>\n    public enum E<T>\n        A(O, T)\n    public func f(o: O)\n        let e = E.A(o@move, 1@i64)\n", "E")]
+    [InlineData("struct Outer<O>\n    public struct S<U>\n        public let b: U\n        public init(b: U) => self.b = b@move\nfunc f()\n    let s = Outer<i32>.S.init(1@i64)\n", "Outer<i32>.S")]
+    public void AnInferredQualifierNamesTheConstructedType(string source, string qualifier)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var member = HirColumnsTest.Reachable(c.Kotonoha).OfType<MemberAccessKoto>().Single(x => x.Left.ToString() == qualifier);
+        Assert.Same(member.Parent!.TypeOf(), member.Left.TypeOf());
     }
 
     // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
