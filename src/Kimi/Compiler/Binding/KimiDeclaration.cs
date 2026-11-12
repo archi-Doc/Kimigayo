@@ -77,6 +77,7 @@ public enum KimiDeclarationId : byte
     StringWitnessFormat,
     Utf8SliceFormat,
     WrappingFormatFormat,
+    IntegerFormatFormat,
     ObjectPayload,
     DictionaryReserve,
     DictionaryTryInsert,

@@ -214,6 +214,10 @@ public sealed partial class KimiLibrary
     /// 22.10.2), which the witness table's WrappingFormat row selects; <c>Wrapping&lt;T&gt;</c> gains no members from it.</summary>
     internal DeclarationContainerKoto? WrappingFormatMembers { get; private set; }
 
+    /// <summary>Gets the internal Kimi group whose receiver function is every integer Type's built-in formatting body up to 64 bits
+    /// (SPEC 22.10.2), which the witness table's IntegerFormat row selects; integers gain no members from it.</summary>
+    internal DeclarationContainerKoto? IntegerFormatMembers { get; private set; }
+
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
@@ -234,6 +238,7 @@ public sealed partial class KimiLibrary
         WitnessMembers.F32Format => this.F32FormatMembers,
         WitnessMembers.F64Format => this.F64FormatMembers,
         WitnessMembers.WrappingFormat => this.WrappingFormatMembers,
+        WitnessMembers.IntegerFormat => this.IntegerFormatMembers,
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
@@ -445,6 +450,7 @@ public sealed partial class KimiLibrary
         this.F32FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F32Format", false) as DeclarationContainerKoto;
         this.F64FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F64Format", false) as DeclarationContainerKoto;
         this.WrappingFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "WrappingFormat", false) as DeclarationContainerKoto;
+        this.IntegerFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerFormat", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
     }
 

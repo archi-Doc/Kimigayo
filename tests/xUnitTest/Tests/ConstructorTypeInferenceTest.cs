@@ -247,6 +247,27 @@ public class ConstructorTypeInferenceTest
     public void TheTwinsOfAWaitingArgumentAtTheFixedConstructionKeepTheirRecords(string body, string[] codes)
         => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
 
+    // SPEC 10.1, 10.2.1, 10.8.1 (PLAN G680): the fixed-binding check reads the selected constructor's verdict as the selection's other
+    // re-checks do (AsSelected): a clause refuted only after the Literal's default, the constructor's or the struct's, is the selected
+    // call's record at the call, never a changed selection (ConstructorSelectionChanged_Kd before; NoApplicableOverload_Kd on dev
+    // 47849280f). The struct's clause also fails the uses of the call's result Type, records of the same code (dependent, DECISIONS Q13
+    // rule W). The valid twins hold after the default.
+    [Theory]
+    [InlineData("struct Box<T>\n    public var tag: i32 = 0\n    public init(value: T)\n        T is PrimitiveInteger\n        self.tag = 1\nfunc g() -> ()\n    let box = Box.init(1.5)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("struct Box<T>\n    T is PrimitiveInteger\n    public var tag: i32 = 0\n    public init(value: T) => self.tag = 1\nfunc g() -> ()\n    let box = Box.init(1.5)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("struct Box<T>\n    public var tag: i32 = 0\n    public init(value: T)\n        T is PrimitiveInteger\n        self.tag = 1\nfunc g() -> ()\n    let box = Box.init(1)\n", null)]
+    [InlineData("struct Box<T>\n    T is PrimitiveInteger\n    public var tag: i32 = 0\n    public init(value: T) => self.tag = 1\nfunc g() -> ()\n    let box = Box.init(1)\n", null)]
+    public void AClauseRefutedAfterTheDefaultIsTheFixedConstructionsRecord(string body, string? code)
+    {
+        var source = body + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)).ToArray();
+        Assert.Equal(code is null ? [] : new[] { code }, errors.Select(static x => x.Code).Distinct().ToArray());
+        if (code is not null)
+        {
+            Assert.Contains((code, "Box.init(1.5)"), errors);
+        }
+    }
+
     [Theory]
     [InlineData("struct Box<T>\n    public init(value: T) => ()\nlet n: i32 = 42\nlet box = Box.init(n)")]
     [InlineData("struct Box<T>\n    public init(value: T, extra: i32 = 0) => ()\nlet n: i32 = 42\nlet box = Box.init(n)")]
