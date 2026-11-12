@@ -12477,6 +12477,37 @@ resumed by R4-M86 (2026-10-20).
     pair-layer clause in member lookup alone (receivers stay unresolved; one clause per site); a separate limit predicate
     `ObjRef || ExclusivelyAcquirable` (a partial second copy of the input rule); a clause excepting object layers from BU-184's
     interim row (1) (a second rule for one family).
+- **BU-186 A missing name a later source can supply is pending at every constraint former (PLAN G726)** (2026-11-12; Front, Binding;
+  Major, Q17 class 3; PLAN G726's N1 and N2; design review ACCEPT WITH NOTES; the owner's O-216 (a)) SPEC 7.5, 9.2, 9.5.
+  - Rule (BU-151's reading of SPEC 9.2, 9.5; SPEC and IMPL do not define Provisional mode): `HasUnresolvedConstraintSyntax` is the
+    one answer to "this syntax formed nothing for a missing name". Every exit of a constraint former that formed nothing asks it. A
+    subject asks it in `BindConstraint`: a subject that formed nothing is pending when it could become a subject valid here, by the
+    one statement of that rule (`Admits`, shared with the formed subject): its projection chain's base (`SubjectBase`) is a generic
+    input rooted as SPEC 7.5 requires, or closed subjects are valid in its scope. A Contract use asks it through `PendingReference`
+    (the Contract reference former's file; a use whose lookup selected nothing first gets its missing mark from `BindType`): a
+    requirement's Contract reference (`T is C<M>`), a Contract parent, generic or not, with a missing Contract or Type argument
+    (`K: C`, `K: C<M>`, `K: Future<i32>`), and an associate selector (`associate C.Item is R`, `associate C<M>.Item is R`;
+    `BindAssociatedName` returns the pending result explicitly). A subject rooted in a missing name in a function or a `when` list,
+    a wrong arity, and a selector naming an available Contract that is no conformance are decided at once.
+  - O-216 (a) (the owner, 2026-11-12): a Contract parent whose generic Contract is not declared yet is pending like a non-generic
+    missing parent.
+  - Removed: `BuildContract`'s `generic is null` gate with its comment "a generic parent is never deferred" (no SPEC or DECISIONS
+    source) and its inline `BindType` + visitor pair (now `PendingReference`). `BindConstraint`'s scope-kind gate
+    (`scope.Owner is StructKoto or EnumKoto or ContractKoto`) is no longer a gate of its own: it becomes the closed arm of the
+    subject rule (`closedScope`, shared with `closedSubject`).
+  - Moves: Provisional verdicts only (final records unchanged), definite -> pending: a projection whose qualifier is missing, and
+    the unqualified projection under a pending Constraint (`T.Item`), in `when` lists and function regions; a bound reference with a
+    missing Type argument in every conformance, requirement and parent form; a missing generic parent (`RefinementNameBindingTest`'s
+    three generic-parent rows: Invalid -> pending, the test renamed `MissingNamesLeaveGenericParentsPending`); the associate
+    selector with a missing Contract or Type argument, a child Contract's selector and a group fragment's Contract included; the
+    parent part of an effect item's missing ancestor (the Contract's parent is pending; the effect item itself stays PLAN G799's).
+    Definite twins unchanged.
+  - Rejected: dropping the subject gate (a function subject rooted in a missing name would wait for a source no one can write); a
+    pending BoundType for a projection; a Provisional arm per form.
+  - Open: (1) the effect target (`effect A.r bound`) shares the cause; its Provisional verdict is prototyped
+    (`rest-effect-target.patch`) but waits for PLAN G799 (a valid program is rejected on the rebind after the append). (2) The
+    unqualified `associate Item is R` whose Contract is missing is definite before the supply (probe a3): PLAN G726 keeps it; its
+    exit needs the owner's pending conformances, not a node of the clause.
 - **BU-185 A path's projection is its walk's end (`PathEnd.Projection`); 9.7.3 is judged where a nested Type's reference is formed;
   a member access publishes its side** (2026-11-12; R7-N1e2-2b-2; Major; design reviews 1-3, the owner's O-186 (a)) SPEC 8.5.2,
   8.8.1, 8.8.2, 9.6, 9.7.1, 9.7.3, 6.3.2, 23.1.2; PLAN G724, G728.
@@ -18135,6 +18166,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a `DerivedDomainWithin` guard (misses protected levels on the left: `ra3`, `w1`, `w6`-`w8`); a normalized domain value
     (allocation per check on the `TypeAccessCovers` walk).
   - Closes the owner's O-65 (a) named limit (`rx1c` accepted) and N2d's ten crash-to-error programs (`p2`, `p4`, `p8`, `p9`, `rc4`, `rc5`, `ru2`, `nt5`, `nt13`, `nt23`); PLAN G592 closed.
+  - Extended by R7-M23 (PLAN G610): SPEC 9.4.2's empty intersection of two Kotonoha's atoms covers a union through each chain's
+    Derived atom (`DerivedIncluded`).
 - **R7-M15 One reading of SPEC 9.4.1's table: a use is a point of Body(its Container)** (2026-11-08; R7-N3b; Major; no design
   review, F's ruling 3) SPEC 9.4.1, 9.4.2, 9.4.3.
   - Rule: `AccessUnions(symbol)` is the one reading of the table's rows: the unions a chain's levels give, below the root; a public
@@ -18156,6 +18189,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: 9.4.3 inside the inclusion (an atom-reporting result, a mode steering it); the row decoded inside `UnionIncluded` (above).
   - Derived(C) of a struct that is not open is empty (SPEC 9.4.1), and Derived follows the declared base clauses (9.4.2): a struct that
     names a sealed base gains the independent access record where it reads the sealed base's protected member (the class below).
+  - Extended by R7-M23 (PLAN G610): SPEC 9.4.2's empty intersection of two Kotonoha's atoms covers a union through each chain's
+    Derived atom (`DerivedIncluded`).
 - **R7-M11 `Binding.UseOf`, one place-use rule** (2026-11-08; R7-Y2a, PLAN G251 (1), (3), (5); Major; implementation review ACCEPT, C-136; the owner's O-21 (ii), verbatim 「(ii) で決定」, and O-76 (b) (i), (c) (i), verbatim 「O76は推奨どおりでお願いします」) SPEC 4.7.1, 5.2.1, 7.7.3, 8.14, 15.1.5, 15.1.6. What a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 15.1.5, 15.1.6) is decided once, by the Adjust rule: the strongest of the child's two rows' takes (`Take`: ByCase, a bare pair-case acquisition that Reborrows in some case, tested first; Exclusive, an operation's exclusive target, an exclusive borrow or a Reborrow of an exclusive Type; Consuming, a Move) and its parent's own operation, which no row states and which never moves its operand (`BorrowsExclusively`: an exclusive borrow, view upcast or case adaptation in some case; an assignment or update target; an Exclusive-mode Subject). `PlaceUse` is a Binding representation, not a column (O-40 (a): no rows at bind time) and not a HIR vocabulary entry. The HIR publisher reads it for `indexUniq` (ByCase or Exclusive), keeping only its down-propagation, which stops at a raw Place (SPEC 5.2). ClosureEffects reads it over its finder's rows (one `TakesOf`, the shared selection, which `ConsumedByValue` also reads) and owns SPEC 7.7.3's environment rule: past a raw step a Take or in-place destruction needs write capability; `DerivesPointer` is 5.2.1 condition 3's closed list (a displacement, a raw-pointer conversion or fit, an identity conversion; groups are walk steps); the owner's O-76 (c) (i): a pointer read through a raw Place the environment reaches is read from the environment, so the raw rule, `DerivesPointer` and the contract rule apply past a raw step; O-76 (b) (i): a pointer a call with a body returns is not derived (`DerivesPointer` lists no call). A call whose operation contract performs a write-capability access through an argument is the body's access (the owner's O-21 (ii)): the compiler-function table's written inputs, `IntrinsicDisposition.WritesThrough` next to `Effect(kind)` (`RawInitialize` 0, `StorageTransferBytes` 0 and 1, `StorageDestroyValues` 0, `StoragePlaceDictionaryEntry` 0; `Raw.release`, `Raw.slice` none). `StoragePlaceDictionaryEntry`'s row is temporary: R8-K1b gives `placeEntry` a body, and R8-G1 replaces the kind table. A foreign import's contract is prose (SPEC 22.6): its call in any Closure body passed such a pointer is a located `Unsupported_Kd` (`ClosureEffects.Uncontracted`) until imports state their writes; the OQ-1 census found no corpus program. MIR's borrow check decides nothing here; it is the observer that made the two old rules' disagreement an `InternalInvariant_Kd` (N14, h1). Discharges R7-M6's staged sentence ('Y2's `PlaceUse` states a bare take's mode'): `Take` reads the child's Type, and no row field is written. Amends R7-M8's `Claimed` text only in that `Take` replaces `Claims`; BU-8 and Y3's `HirAdjust.Exclusive` stand; D5's selection is per node, under BU-8's open item. **Staged:** Consuming is decided twice, by `Take` (a Move row, read only by the raw rule) and by ClosureEffects' Visit syntax test (the environment's Consuming); removal condition: R7-Y2b folds the second (its Copy-callee move named, SPEC 7.7.3 "A Consuming call Copies a Copy Closure"). Discharged by R7-M12 (R7-Y2b). A pointer copied through a body local stays Shared until R7-Y2c, which reads `DerivesPointer`. **Moves:** h1 `InternalInvariant_Kd` to accepted with `indexUniq`, h3 `InternalInvariant_Kd` to `CallActivationConflict_Kd` (Y2a-2); in a `let` Closure, accepted to rejected (all invalid): a Take or in-place destruction through an environment pointer, a write through a displaced or converted pointer, through `*pp` included (Y2a-3), and `Raw.initialize` through such a pointer (Y2a-4); a foreign import passed one: accepted to `Unsupported_Kd`. **Deleted:** `Claims`, `LendsExclusively`, `NeedsExclusively`' parent switch and recorded-Reborrow clause, the second consumer walk of `ConsumedByValue`, the publisher's Borrow and assignment clauses. **Rejected:** a bind-time column; the raw rule inside the shared fact (5.2); a ClosureEffects case per operation; every or no raw argument of a foreign import counted as written.
   - Discharged by R8-M11 (R8-K1b-2): `StoragePlaceDictionaryEntry`'s temporary `WritesThrough` row; `placeEntry` is a Kimigayo body.
 - **R7-M12 ClosureEffects reads `Take` for Consuming, the by-case mark and a nested entry** (2026-11-08; R7-Y2b, PLAN G251's staged sentence; Major; design review ACCEPT and implementation review 2 ACCEPT, F, C-145) SPEC 3.2, 3.5, 7.7.3, 8.14.
@@ -18366,6 +18401,22 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Not adopted (the owner chose C alone): the streams of R7 per session, the delegation of R7 design beyond Q18, the seat caps
     after R8 and R9, and a first Binding-file split stage.
   - With the decision no booked slot was released: the one booked R7 slot, T-168 (R7-C3a), is R7's core and changes behaviour.
+- **R7-M23 `UnionCovered` reads SPEC 9.4.2's empty intersections** (2026-11-12; R7 open-issue lane, PLAN G610; Major; no design
+  review, F's ruling; extends R7-M10 and R7-M15, supersedes neither) SPEC 9.4.1, 9.4.2, 9.4.6.
+  - Rule: `Access(a) ∩ Access(b)` is inside a union U of the member when one level of a's or b's chain has every atom in U (R7-M10),
+    or when a and b belong to two Kotonoha and each chain has a level whose Derived atom is in U (`DerivedIncluded`): every
+    intersection with no atom in U then takes a Kotonoha or Body atom of both Kotonoha and is empty. A chain with no level (a public
+    declaration) never satisfies the second alternative.
+  - Reading: the atoms of a Kotonoha are `Kotonoha(K)` and `Body(C)`; `Derived(S)` is of none (9.4.1, present or future derivers in
+    any Kotonoha).
+  - Owner: the access component, `Binding.Access.cs`; `AccessCovers` stays the one entry, no caller changes. `DerivedIncluded` names
+    `UnionIncluded`'s Derived part. `Access(S) ⊆ U` for a Derived atom needs no reading of its own: S's levels are levels of the
+    same chain, which the first alternative already reads.
+  - Rejected: dropping the other Kotonoha's atoms from a level (accepts a public Type's conformance); a normalized domain value
+    (R7-M10's reason stands); a mode on `UnionIncluded`; reading `Derived(S)` as an atom of S's Kotonoha (exposes a binding to code
+    that cannot name it).
+  - Closes PLAN G610: a conformance of a Type of one Kotonoha to a `protected internal` Contract of another Kotonoha's open struct
+    is accepted when the associated binding or the implementation is a `protected` member of that struct.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
