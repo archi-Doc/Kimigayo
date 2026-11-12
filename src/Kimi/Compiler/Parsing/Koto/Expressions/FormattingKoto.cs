@@ -15,8 +15,6 @@ internal sealed class FormattingKoto(Koto root, FormattingOperation operation)
 
     internal BoundType? DeclaringType { get; set; }
 
-    internal BoundFormatting Plan { get; set; } = null!;
-
     internal void Resolve(BoundType type)
     {
         this.BoundType = type;
@@ -29,8 +27,4 @@ internal enum FormattingOperation : byte
     Callee,
     Storage,
     Capacity,
-    Hint,
-    Check,
-    Status,
-    Finish,
 }
