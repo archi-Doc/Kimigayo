@@ -179,6 +179,22 @@ public sealed class RecursiveContractTest
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
+    // R7-C2a a1's kept rows (SPEC 8.3.2, 8.3.3 Finality, 23.1.2): probe's two calls ask the rows of T in one view, so the second reads
+    // what the first kept, and K's declaration state changes inside the capability epoch that kept them (the validation loop fails K
+    // on its closed clause, on its ancestor or on a dependent clause's unresolved part). The loop clears the epoch and runs again, so
+    // the records are those of rows walked afresh in either order of the calls: the failed Contract's own, and each function whose
+    // premise names it resting on it. A guard row, not a fail-before row: the records are the same without kept rows, and no
+    // program with a kept row that differs from a fresh walk is known (ContractSolver's Kept rows gives the argument).
+    [Theory]
+    [InlineData("closed-k2k", "contract K\n    Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("closed-kk2", "contract K\n    Missing is Copy\n", "    needsK<T>(t)\n    needsK2<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("ancestor", "contract Bad\n    Missing is Copy\ncontract K: Bad\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Missing is Copy | InvalidConstraint_Kd: contract K: Bad | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Missing is Copy")]
+    [InlineData("dependent", "contract K\n    Self.Missing is Copy\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "InvalidConstraint_Kd: Self.Missing is Copy | InvalidConstraint_Kd: func needsK<V>(v: ref/V) | InvalidConstraint_Kd: func probe<T>(t: ref/T) | UnresolvedBinding_Kd: Self.Missing is Copy")]
+    [InlineData("valid-k2k", "contract K\n", "    needsK2<T>(t)\n    needsK<T>(t)\n", "")]
+    [InlineData("valid-kk2", "contract K\n", "    needsK<T>(t)\n    needsK2<T>(t)\n", "")]
+    public void ADeclarationStateChangedInsideAnEpochGivesTheRecordsOfEitherCallOrder(string form, string contract, string calls, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, contract + "    func k(self) -> i32\ncontract K2\n    func k2(self) -> i32\nfunc needsK<V>(v: ref/V)\n    V is K\n    ()\nfunc needsK2<V>(v: ref/V)\n    V is K2\n    ()\nfunc probe<T>(t: ref/T)\n    T is K\n    T is K2\n" + calls + "()", records);
+
     // R7-C2a: Enumerate's walk demands nothing, so a clause whose normalization proves a conformance condition over a taller projection
     // (Box<Self.(K).Y>.(C).X under `Self.(K).Y is M`) cannot continue it, and under a parameter identity the view's preparation
     // normalizes each fact once. Each check ends without an internal failure; an invalid twin is rejected.

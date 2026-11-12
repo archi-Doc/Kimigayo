@@ -16,11 +16,12 @@
 //   is asked per fact, lazily, in the caller's order. Enumerate is a leaf of the judgment graph: its walk compares interned Types
 //   (FactStates, AssociatedIdentityMatches) and calls no judgment, so a request demands only while it prepares its view
 //   (IndexNormalized), and a demand made there reads the written facts alone; PremiseRefines entered from a walk is InternalInvariant.
-//   Enumerate's tables live for one outermost request and are keyed by the view value (the scope and its serial, taken once per
-//   request), so a scope re-parented within a request is another view; a preparation that moves its own view is InternalInvariant.
-//   The walk reads the requirement Contract (ContractSupply's rewrites substitute activeRequirementContract), which is constant
-//   over a request (its writers bind calls, reached from no normalization and no walk): the keys need no call context, and an index
-//   kept across requests would have to key it. The caller of Reading holds its view's serial: a loop that writes the chain only
+//   Enumerate's request tables (memo, index, pools) live for one outermost request and are keyed by the view value (the scope and
+//   its serial, taken once per request), so a scope re-parented within a request is another view; a preparation that moves its own
+//   view is InternalInvariant. The walk reads the requirement Contract (ContractSupply's rewrites substitute
+//   activeRequirementContract), which is constant over a request (its writers bind calls, reached from no normalization and no
+//   walk): the request tables need no call context in their keys, and the kept rows, which outlive a request, key it (Kept rows,
+//   below). The caller of Reading holds its view's serial: a loop that writes the chain only
 //   through Reading (Supply's, IndexNormalized's) passes its last observation and a formation takes it again; a loop with other
 //   writes (SymbolicCapability's judgments) takes one per fact. A write added to such a loop outside Reading breaks this.
 //   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3). Enumerate is complete modulo
@@ -30,9 +31,9 @@
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
 //   only Reading calls (temporary until R7-C2c2 keys Types by identity class); Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
-//   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading (below); no second
-//   scheduler; no read sets. From C3 (C1 §5), broken until then by the eager derivation moved here: no Binding writes,
-//   syntax-triggered supply, DerivedFacts or fallback scan.
+//   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
+//   each in the kept region alone (both below); no second scheduler; no read sets. From C3 (C1 §5), broken until then by the
+//   eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or fallback scan.
 //
 // The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
@@ -54,6 +55,35 @@
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
 //   and the PrepareTypeStorage memo (per storageVersion).
+//
+// Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's Closure(scope) holds a view's rows with its index and
+// readings and deletes enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
+// - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), and a
+//   Contract's head depth per Contract.
+// - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
+//   preparation that formed no reading: each fact of its index was a kept, Complete reading, so the index is a function of the key
+//   and the pass. Nested demands never read or fill the rows.
+// - Lifetime: one epoch (KeepsAcrossRequests, the one phase fact; ClearKeptRows, the one clear). In the capability phase it is the
+//   capability epoch, which ClearCapabilityResults ends with the capability results and the component summaries; before the phase it
+//   is one outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
+// - Inputs outside the key, and what covers a write to each inside an epoch: Contract clause storage (HeadDepth, ContractSupply):
+//   bound before the phase, none. The availability reads (AvailableConstraintFact, AvailableContractPremise): an environment's fact
+//   sets and its Invalid (in the serial); a published source state, which only leaves Pending and is written as each check of a
+//   publication round ends; a Contract's declaration context, which the validations only fail (ValidateConstraintEnvironments;
+//   ValidateClosedTypeConstraints in InvalidateProjectionCertificates' loop). A kept row may be read across such a write until
+//   the epoch ends, exactly as a capability result may: a round or a loop iteration that wrote one is followed by a clear and
+//   another, a declaration left Pending is checked again in a fresh epoch, and the last round and the last iteration write none,
+//   so what outlives them read final states (SourceStates: no answer computed from a Pending read outlives its round). A row read
+//   across a write is a Pending read's (the row of a Contract proven since is absent) or names a Contract that has failed since,
+//   whose own record rejects the program and whose failure makes each environment naming it Invalid, another serial. Only a
+//   premise-bearing subject has rows (one rooted in a generic input or a Contract's Self: a closed proposition is never a
+//   premise), so a closed clause's own requests, over closed subjects, have empty rows on every walk; what a non-final round does
+//   not redo is a proof step that asked such a subject in another declaration's scope before a state it read changed (a
+//   hypothesis the capability results share: a node is keyed by proposition and scope).
+// - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload:
+//   InvalidDeclarationContext's Consulted (SPEC 23.1.2), ReadSourceState's join of a limit, a U fact or a cause (BU-22) and, outside
+//   a proof scope, its frame. They exist only where a source is not valid, whose own record is reported: what can differ is the
+//   dependence or the cause of a failing check's record in a rejected program, never an acceptance (DECISIONS Q13).
 
 using Kimi.Compiler.Parsing;
 
@@ -125,12 +155,21 @@ public sealed partial class Binding
 
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
+    // The kept tables' one phase fact: whether a table may outlive an outermost request. The capability phase (capabilitiesReady,
+    // raised once per pass after every Contract clause is bound) keeps readings for the pass and rows and head depths for the
+    // capability epoch; before it an epoch is one request (the class header's Kept rows).
+    private bool KeepsAcrossRequests => this.capabilitiesReady;
+
+    // R7-M20's kept region, the one rule every kept table asks (Reading's readings, PremiseRefines' rows): a table may outlive the
+    // request, and neither an associated normalization nor an identity expansion is under way (their contexts are in no key).
+    private bool KeptRegion => this.KeepsAcrossRequests && this.normalizingAssociated.Count == 0 && this.identityExpansions.Count == 0;
+
     // The reading of `fact` in the view `scope` denotes (the class header's closure). `serial` is the view's serial as the caller last
     // took it (null: not taken). Only a formation can write the chain, so a caller whose loop makes no other write takes it once: a
     // formation leaves the serial it took after itself, or null where it took none.
     private BoundConstraint Reading(BoundConstraint fact, BindingScope scope, ref int? serial)
     {
-        if (!this.capabilitiesReady || this.normalizingAssociated.Count != 0 || this.identityExpansions.Count != 0)
+        if (!this.KeptRegion)
         {
             serial = null;
             this.readingFormations++;
@@ -196,9 +235,9 @@ public sealed partial class Binding
         return new() { Positive = positive, Negative = negative };
     }
 
-    // Enumerate's tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value: the rows
-    // of a link of the subject's chain in a view (null while the link is open), the view's Contract facts by subject key (IndexWritten,
-    // IndexNormalized), the views indexed, a Contract's head depth, and the pooled lists.
+    // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
+    // the rows of a link of the subject's chain in a view (null while the link is open), the view's Contract facts by subject key
+    // (IndexWritten, IndexNormalized), the views indexed, and the pooled lists.
     private readonly Dictionary<(BoundType, EvidenceView, int), List<BindingSymbol>?> enumerateMemo = new();
 
     private readonly Dictionary<(EvidenceView, int, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>>
@@ -206,10 +245,11 @@ public sealed partial class Binding
 
     private readonly HashSet<(EvidenceView, int)> enumeratePrepared = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
-    private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
 
-    // The rows an outermost request walked in the kept region (Reading's), per link, view value and requirement Contract, for one
-    // capability epoch (ClearCapabilityResults empties them with the capability results, capacity and pooled lists kept).
+    // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
+    // a Contract's head depth, and the rows an outermost request walked in the kept region per link, view value and requirement
+    // Contract.
+    private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), List<BindingSymbol>> enumerateKept = new();
     private readonly List<List<BindingSymbol>> enumerateKeptPool = new();
     private readonly List<List<BindingSymbol>> enumeratePool = new();
@@ -234,7 +274,7 @@ public sealed partial class Binding
 
         var view = this.ViewOf(scope);
         var serial = SerialOf(scope);
-        var keep = this.enumerateDepth == 0 && this.capabilitiesReady && this.normalizingAssociated.Count == 0 && this.identityExpansions.Count == 0;
+        var keep = this.enumerateDepth == 0 && this.KeptRegion;
         if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept))
         {
             return RowsRefine(kept, contract);
@@ -287,12 +327,11 @@ public sealed partial class Binding
                 this.enumerateIndex.Clear();
                 this.enumeratePrepared.Clear();
                 this.enumeratePoolNext = 0;
-                if (!this.capabilitiesReady)
-                {
-                    this.enumerateHeads.Clear(); // Before the capability phase a Contract's clauses may still be bound.
-                }
-
                 this.enumerateFactPoolNext = 0;
+                if (!this.KeepsAcrossRequests)
+                {
+                    this.ClearKeptRows(); // Before the capability phase the epoch is this request.
+                }
             }
         }
     }
@@ -326,7 +365,7 @@ public sealed partial class Binding
         }
     }
 
-    // The capability epoch ended (ClearCapabilityResults): kept rows and head depths go with the capability results.
+    // The kept tables' epoch ended: the capability epoch (ClearCapabilityResults) or, before the phase, the outermost request.
     private void ClearKeptRows()
     {
         this.enumerateKept.Clear();
