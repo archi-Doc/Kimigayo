@@ -171,8 +171,7 @@ public sealed partial class Binding
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
-        // SPEC 23.1.2: whether the destination admits the write does not rest on the value's Type, so a failed value does not hide it.
-        if (assignment && left is not null && !this.CheckOperatorDestination(binary, left, scope))
+        if (assignment && left is not null && right is not null && !this.CheckOperatorDestination(binary, left, scope))
         {
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, right, scope);
         }
