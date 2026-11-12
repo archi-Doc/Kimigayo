@@ -468,11 +468,13 @@ public sealed partial class Binding
             (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
         // Closed subjects are valid in a struct's, an enum's and, Self apart, a Contract's region.
         var closedScope = scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause));
-        // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here
-        // (Admits): its root is the base its projection chain published (SPEC 7.5, 8.8.1: `T.(D).Item`, D missing), and whether it is
-        // closed is not known yet. A root no source can make an input (`U is Copy` in a function) is decided now.
+        // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here,
+        // as a formed one is below: its root (RootedInput) is the base its projection chain published (SPEC 7.5, 8.8.1: `T.(D).Item`,
+        // D missing), and whether it is closed is not known yet, so any subject is pending where closed subjects are valid. A root no
+        // source can make an input (`U is Copy` in a function) is decided now.
         var pendingRoot = subject is null ? SubjectBase(clause.Left).BoundSymbol : null;
-        var unresolvedSubject = subject is null && this.HasUnresolvedConstraintSyntax(clause.Left) && Admits(pendingRoot is { IsGenericInput: true }, pendingRoot, closedScope);
+        var unresolvedSubject = subject is null && this.HasUnresolvedConstraintSyntax(clause.Left) &&
+            (RootedInput(pendingRoot is { IsGenericInput: true }, pendingRoot) || closedScope);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
@@ -509,8 +511,8 @@ public sealed partial class Binding
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
         var closedSubject = closedScope && subject is not null && !this.DependentType(subject, unresolvedProjection: false);
-        var validSubject = subject is not null &&
-            (Admits(input, root?.Symbol ?? symbol, closedSubject) || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+        var validSubject = subject is not null && (RootedInput(input, root?.Symbol ?? symbol) || closedSubject ||
+            (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
@@ -547,13 +549,13 @@ public sealed partial class Binding
             }
         }
 
-        // A subject valid here, the one statement for a formed subject and a pending one. SPEC 7.5: a function's subject is rooted in its
-        // own parameter or in one of its declaring Type, the Container whose scope the member is declared in (Indexing; a conditional
-        // block's member included), never a local function's enclosing function. Elsewhere: an input root, or a closed subject.
-        bool Admits(bool inputRoot, BindingSymbol? rootSymbol, bool closed)
-            => scope.Owner is FunctionKoto member
-                ? inputRoot && (ReferenceEquals(rootSymbol?.Scope, scope) || (rootSymbol?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope)))
-                : inputRoot || closed;
+        // A subject's root valid here, the one statement for a formed subject and a pending one: an input, and (SPEC 7.5) in a function
+        // its own parameter or one of its declaring Type, the Container whose scope the member is declared in (Indexing; a conditional
+        // block's member included), never a local function's enclosing function. A closed subject is the other valid subject, where
+        // closed subjects are valid (closedScope: never a function).
+        bool RootedInput(bool input, BindingSymbol? rootSymbol)
+            => input && (scope.Owner is not FunctionKoto member || ReferenceEquals(rootSymbol?.Scope, scope) ||
+                (rootSymbol?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope)));
 
         // Self clauses remain implementation obligations, never assumptions.
     }
