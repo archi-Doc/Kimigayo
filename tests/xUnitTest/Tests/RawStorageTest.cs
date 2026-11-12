@@ -293,6 +293,16 @@ public class RawStorageTest
     [InlineData("()", "let c = Cell.Two((fresh, nope))", "UnsatisfiedOriginRelation_Kd: (fresh, nope) | UnresolvedBinding_Kd: nope")]
     [InlineData("()", "let c = Cell.Two((nope, 1))", "UnresolvedBinding_Kd: nope")]
     [InlineData("()", "let c = Cell.Some(nope)", "UnresolvedBinding_Kd: nope")]
+    // Only the elements the stored Tuple has are read: a longer Tuple literal's misfit is its fit's record, and a layer inside the arity
+    // is still judged (the misfit's record beside U is lost, PLAN G262). A longer fixed-array literal fails as a whole (rule W).
+    [InlineData("()", "b.pair = (nope, 1, 2)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (fresh, 1, 2)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((nope, 1, 2))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((fresh, 1, 2))", "UnsatisfiedOriginRelation_Kd: (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((null, 1, 2))", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [fresh, null, null]", "TypeMismatch_Kd: [fresh, null, null]")]
+    [InlineData("()", "b.pair = (null, 1, 2)", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [nope, null, null]", "TypeMismatch_Kd: [nope, null, null] | UnresolvedBinding_Kd: nope")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)
         => Assert.Equal(records.Split(" | "), RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 

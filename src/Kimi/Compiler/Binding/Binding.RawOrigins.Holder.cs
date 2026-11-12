@@ -17,6 +17,7 @@ public sealed partial class Binding
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
     // recursively; any other source reaches the layers as a whole. Null when every layer receives null. A failed part (PartFailed) is
     // no evidence of what it writes (rule W, DECISIONS BU-79): it is passed over, its own record reported, and the other layers judged.
+    // Only the elements the stored Tuple has are walked: a longer Tuple literal is its fit's misfit, and that check owns its record.
     private Koto? NonNullAtLayers(BoundType stored, Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -36,7 +37,7 @@ public sealed partial class Binding
             (BoundTypeKind.FixedArray, ArrayLiteralKoto array) => array.Elements,
             _ => null,
         };
-        for (var i = 0; elements is not null && i < elements.Count; i++)
+        for (var i = 0; elements is not null && i < elements.Count && (stored.Kind == BoundTypeKind.FixedArray || i < stored.Components.Count); i++)
         {
             var part = stored.Components[stored.Kind == BoundTypeKind.FixedArray ? 0 : i];
             if (this.HoldsHolder(part) && this.NonNullAtLayers(part, elements[i]) is { } written)
