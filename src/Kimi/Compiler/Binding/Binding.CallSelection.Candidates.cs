@@ -582,7 +582,7 @@ public sealed partial class Binding
                 constraintFailure = failure;
             }
 
-            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown && !unsolvedSlots.IsEmpty;
+            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown or ConstraintProof.Refuted && !unsolvedSlots.IsEmpty; // Refuted: CheckDefaulted's selected candidate.
             premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
