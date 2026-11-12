@@ -18,7 +18,6 @@ public sealed partial class Binding
     private const int StorageRejected = -1;
 
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
 
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
@@ -366,18 +365,12 @@ public sealed partial class Binding
         }
 
         if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
-            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 } declaration)
+            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);
         }
 
-        var pattern = this.SelfType(symbol);
-        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), ((BoundType[])pattern.Components).AsSpan(0, declaration.GenericParameterNodes.Count));
-        if (type is not null)
-        {
-            this.inferredConstructorTargets.Add(syntax);
-        }
-
+        var type = this.ConstructionTargetType(syntax, symbol, scope, null);
         syntax.BoundSymbol = symbol;
         return Complete(syntax, type);
     }

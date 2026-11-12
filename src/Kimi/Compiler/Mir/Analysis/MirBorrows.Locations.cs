@@ -47,7 +47,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
+            var count = this.placeSteps.Walk(access.Place, access.Reborrow, ref this.accessSteps);
             if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);

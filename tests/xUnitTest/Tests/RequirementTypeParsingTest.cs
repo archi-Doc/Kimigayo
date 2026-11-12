@@ -82,7 +82,8 @@ public class RequirementTypeParsingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
+            // SPEC 10.2.1 (PLAN G680): the Literals bind T only by their defaults, after selection; the refuted clause is the call's record.
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
             Assert.False(c.Generate(TextWriter.Null));
         }
     }

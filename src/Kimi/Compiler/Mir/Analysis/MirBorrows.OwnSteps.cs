@@ -90,7 +90,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
+            var count = this.placeSteps.Walk(access.Place, access.Reborrow, ref this.accessSteps);
             met = this.Depart(at, root, this.accessSteps.AsSpan(0, count), access.Kind, met);
             if (met.IsDecided)
             {
@@ -194,7 +194,7 @@ internal sealed partial class MirBorrows
             return true;
         }
 
-        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.accessSteps);
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.accessSteps);
         for (var entry = this.ownRoots[root].First; entry != None; entry = this.ownTags[entry - this.loanCount].Next)
         {
             this.Work++;
