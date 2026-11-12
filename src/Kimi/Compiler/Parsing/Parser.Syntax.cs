@@ -357,13 +357,29 @@ public static partial class Parser
     // Types and fill literals use the same surface grammar (SPEC 4.2); Binding checks constant eligibility and value.
     private static void CheckArrayLengthSyntax(ref TokenReader reader, Koto length)
     {
-        if (length is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or
-            SyntaxFormKoto { Akind: KotoKind.RootName } or ParenthesizedKoto or ErrorKoto) &&
-            length.CodeContext.RecoveryCause(length) is null)
+        if (!IsArrayLength(length) && length.CodeContext.RecoveryCause(length) is null)
         {
             RecoverItem(ref reader, length, length.Unexpected(SyntaxForm.CompoundArrayLength));
         }
     }
+
+    // ArrayLength := "_" | IntegerLiteral | ConstantName | "(" LengthExpression ")" (F.5). "_" is read before the length, and an Error is a
+    // length that failed where it was read.
+    private static bool IsArrayLength(Koto length)
+        => length is NumberLiteralKoto { IsInteger: true } or ParenthesizedKoto or ErrorKoto || IsConstantName(length);
+
+    // ConstantName := "::"? Name ("." Name)* (F.5).
+    private static bool IsConstantName(Koto length)
+        => length is IdentifierNameKoto or MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.RootName };
+
+    // LengthExpression's operators with their binding powers (F.5 LengthExpression, LengthProduct); 0 for any other token.
+    private static int LengthOperatorPower(TokenKind kind)
+        => kind switch
+        {
+            TokenKind.Plus or TokenKind.Minus => 10,
+            TokenKind.Asterisk or TokenKind.Slash or TokenKind.Percent => 20,
+            _ => 0,
+        };
 
     private static Koto ParseArrayLength(ref TokenReader reader, int precedence = 0, bool expression = false)
     {
@@ -413,8 +429,7 @@ public static partial class Parser
 
         while (expression)
         {
-            var kind = reader.CurrentTokenKind;
-            var power = kind is TokenKind.Plus or TokenKind.Minus ? 10 : kind is TokenKind.Asterisk or TokenKind.Slash or TokenKind.Percent ? 20 : 0;
+            var power = LengthOperatorPower(reader.CurrentTokenKind);
             if (power == 0 || power < precedence)
             {
                 break;
@@ -427,6 +442,8 @@ public static partial class Parser
         return left;
     }
 
+    // GenericArgument := Type | ArrayLength (F.5): whether a grouped argument is "(" LengthExpression ")", by the first token in the group
+    // that decides it. A group that closes without one is read as a Type; Binding classifies it by the declared slot (SPEC 4.4).
     private static bool IsLengthExpression(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind != TokenKind.OpenParenthesis)
@@ -446,16 +463,27 @@ public static partial class Parser
             {
                 return false;
             }
-            else if (kind is TokenKind.NumericLiteral or TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Percent ||
-                (kind == TokenKind.Slash && i >= 2 && reader.PeekKind(i - 2) == TokenKind.Dot))
+            else if (kind == TokenKind.Slash)
+            {
+                // A slash after a Name is a Semantics separator (ref/T); only one after a qualified ConstantName divides.
+                if (i >= 2 && reader.PeekKind(i - 2) == TokenKind.Dot)
+                {
+                    return true;
+                }
+            }
+            else if (kind == TokenKind.NumericLiteral || LengthOperatorPower(kind) != 0)
             {
                 return true;
             }
-            else if (kind is TokenKind.OpenBracket or TokenKind.Comma or TokenKind.MinusGreaterThan or TokenKind.EndBlock or TokenKind.Invalid)
+            else if (kind is TokenKind.OpenBracket or TokenKind.Comma or TokenKind.MinusGreaterThan)
             {
-                // A bracket starts a fixed-array Type, not a length expression. Its numeric
-                // length must not classify an enclosing grouped Type argument as a value.
+                // A Type's own tokens. A bracket starts a fixed-array Type, not a length expression: its numeric length must not
+                // classify an enclosing grouped Type argument as a value.
                 return false;
+            }
+            else if (kind is TokenKind.EndBlock or TokenKind.Invalid)
+            {
+                return false; // The group does not close.
             }
         }
 
