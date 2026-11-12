@@ -262,6 +262,7 @@ public sealed partial class Binding
         {
             actual = this.BindNodeCore(node, scope, expected);
         }
+
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);

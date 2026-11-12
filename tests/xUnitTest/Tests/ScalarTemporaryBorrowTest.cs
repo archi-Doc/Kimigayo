@@ -14,7 +14,7 @@ public class ScalarTemporaryBorrowTest
 
     private const string Literals = "func kf(x: ref/[2 of i64]) -> i32 => 0\nfunc kg(x: ref/[2 of i32]) -> i32 => 0\nfunc km(x: ref/Range<i64, i32>) -> i32 => 0\nfunc kn(x: ref/Range<i64, i64>) -> i32 => 0\nfunc t(c: bool, s: string, b: u8, v: i32, w: i64) -> i32\n";
 
-    private const string Inspect ="func inspect<T>(value: ref/T) -> () => ()\nfunc makeValue() -> i64 => 1\n";
+    private const string Inspect = "func inspect<T>(value: ref/T) -> () => ()\nfunc makeValue() -> i64 => 1\n";
 
     // SPEC 10.2: an owner scalar temporary is materialized once and shared-borrowed for a ref/T argument.
     [Theory]
