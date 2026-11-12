@@ -167,7 +167,7 @@ public sealed partial class Binding
         if (TryPairLayer(type, out _, out var target))
         {
             var written = declared is not null && TryPairLayer(declared, out _, out var declaredTarget) ? declaredTarget : null;
-            this.Past(environment, target, targets, IsInvariantLayer(type, this), layer, below with { Signature = written });
+            this.Past(environment, target, targets, IsInvariantLayer(type, this, null, default), layer, below with { Signature = written });
             if (at.Source.Input >= 0 && this.Referent(run, out _) is null)
             {
                 this.Parts(environment, type, at, run); // A pair layer admitting no borrow holds its target by value in its owning cases.

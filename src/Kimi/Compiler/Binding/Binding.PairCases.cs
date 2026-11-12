@@ -54,8 +54,10 @@ public sealed partial class Binding
     /// <c>objuniq</c> or <c>raw</c>, so a relation between its targets must hold as an equality in a generic body; the admitted set
     /// is the binder's own, from its declaring scope.</summary>
     /// <param name="type">A Type.</param>
+    /// <param name="use">The use the relation is judged at; none for a declaration's own relation.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer with an invariant admitted Semantics.</returns>
-    internal bool InvariantAdmitted(BoundType type)
+    internal bool InvariantAdmitted(BoundType type, Koto? use, in CallableInstance comparison)
     {
         const SemanticsMask invariant = SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw;
         if (type.Kind == BoundTypeKind.SemanticsAdaptation)
@@ -107,8 +109,9 @@ public sealed partial class Binding
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
     /// <param name="use">The use whose binders give the bits.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, Koto use)
+    internal ulong? PairSlotCondition(BoundType layer, Koto use, in CallableInstance comparison = default)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {

@@ -15,6 +15,7 @@ public sealed partial class Binding
 
         var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
         var demanded = this.RentTypes(requirement.InputCount);
+        var written = this.RentTypes(requirement.InputCount);
         var count = 0;
         try
         {
@@ -51,23 +52,30 @@ public sealed partial class Binding
                     return ConstraintProof.Refuted;
                 }
 
+                written[count] = actual;
                 demanded[count++] = required;
-                this.MatchInputOrigins(actual, required, implementation.Binder, origins, inputs);
-                this.CollectOriginInference(actual, required, inference);
             }
 
             var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
-            if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
-            {
-                this.CollectOriginInference(projected, expected, inference, result: true);
-            }
 
             // SPEC 15.3.7, 15.6.1, the owner's (a): a whole-contract comparison; each of its proofs, its solve's too, assumes the own
             // well-formedness of the requirement as substituted (Self, the Type's arguments), as 10.7's does (ContractFits).
             var demandedInputs = count == 0 ? BoundType.Unit : this.types.Tuple(demanded.AsSpan(0, count));
             var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, expected ?? BoundType.Unit]);
-            var comparison = new CallableInstance(null, null, signature, requirement.Binder, null);
+            var comparison = new CallableInstance(null, null, signature, requirement.Binder, null) { Scope = scope };
             inference.Comparison = comparison;
+
+            // The comparison is formed before any of its judgments, the bounds its solve collects included (PLAN G801).
+            for (var i = 0; i < count; i++)
+            {
+                this.MatchInputOrigins(written[i], demanded[i], implementation.Binder, origins, inputs);
+                this.CollectOriginInference(written[i], demanded[i], inference);
+            }
+
+            if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
+            {
+                this.CollectOriginInference(projected, expected, inference, result: true);
+            }
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
             if (!(implementation.Binder is FunctionKoto solved
@@ -115,6 +123,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
         }
 

@@ -69,13 +69,13 @@ public sealed partial class Binding
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
     // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
     // Semantics. A comparison without a Binding sees only the concrete layers.
-    private static bool IsInvariantLayer(BoundType type, Binding? binding)
-        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
+    private static bool IsInvariantLayer(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
+        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type, use, comparison));
 
     // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
     // comparisons `outer` names.
-    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, ComparisonPremises? outer)
-        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), outer);
+    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing)
+        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), enclosing.Enclosing) { Scope = enclosing.Scope };
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)

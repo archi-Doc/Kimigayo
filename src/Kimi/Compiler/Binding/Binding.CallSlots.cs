@@ -359,7 +359,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            var below = invariant || IsInvariantLayer(pattern, this) ||
+            var below = invariant || IsInvariantLayer(pattern, this, null, default) ||
                 (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
             if (!this.Infer(
                 pattern.Components[i],
