@@ -4,8 +4,9 @@ namespace Kimi.Compiler;
 
 // SPEC 4.6.1, 8.7, 22.1: Position and PositionRange are closed Contracts; every integer Type's Position is a row of the library
 // witness table (Binding.LibraryWitnesses), and integers gain no members. SPEC 8.7.4: PrimitiveIntegerSupplies is its list of the
-// Contracts a PrimitiveInteger premise proves; the Copy and Owned it also supplies stay in Binding.Capabilities, the operators and
-// literals in Binding.Operators, and member lookup's Position clause in Binding.ContractCalls (temporary, PLAN G776).
+// Contracts a PrimitiveInteger premise proves; the Copy and Owned it also supplies stay in Binding.Capabilities, the arithmetic
+// Contracts in Binding.ArithmeticContracts and Binding.BuiltinArithmetic, and member lookup's Position clause in
+// Binding.ContractCalls (temporary, PLAN G776).
 public sealed partial class Binding
 {
     // SPEC 8.7.4's Contract list: the Contracts a proven `T is PrimitiveInteger` proves for T, the built-in Equatable, Comparable
