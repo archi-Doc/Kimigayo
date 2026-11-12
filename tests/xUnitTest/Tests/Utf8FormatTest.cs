@@ -39,7 +39,6 @@ public class Utf8FormatTest
     [InlineData("Number", "(123).format(writer@uniq)", "123")]
     [InlineData("String", "\"abc\".format(writer@uniq)", "abc")]
     [InlineData("Unit", "().format(writer@uniq)", "()")]
-    [InlineData("View", "Text.utf8(\"a君\").format(writer@uniq)", "a君")]
     [InlineData("Wrapping", "((-5@i32)@Wrapping<i32>).format(writer@uniq)", "-5")]
     public void DirectFormatCallsUseTheSameEncoder(string name, string expression, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8FormatDirect" + name, Program("try " + expression), 0, 0, 0, expected + "\n");
@@ -91,12 +90,17 @@ public class Utf8FormatTest
 
     // SPEC 22.10.1 (design review 2, R2-B2; R8-S2d1): a direct `format` has no failure test of its own, only the adapter `write` has, so
     // on a failed writer an empty string's and an empty view's `format` reserve nothing and return Ok, while a non-empty one's
-    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1).
+    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1). The view's `format` is
+    // no member (SPEC 22.10.2), so a `T is Utf8Format` body calls it.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ADirectFormatOfEmptyOutputOnAFailedWriterReturnsOk()
     {
         const string Source = """
+            group Helpers
+                public func append<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+                    T is Utf8Format
+                    return value.format(writer)
             var bytes = [1 of 0@u8]
             var buffer = Text.fixed(bytes@uniq)
             var writer = Text.writer(buffer@uniq)
@@ -106,7 +110,7 @@ public class Utf8FormatTest
             match "".format(writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty string")
-            match Text.utf8("").format(writer@uniq)@move
+            match Helpers.append(Text.utf8(""), writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty view")
             match "x".format(writer@uniq)@move

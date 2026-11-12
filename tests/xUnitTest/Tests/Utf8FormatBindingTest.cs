@@ -40,7 +40,6 @@ public class Utf8FormatBindingTest
     [InlineData("\"text\".format(writer@uniq)")]
     [InlineData("true.format(writer@uniq)")]
     [InlineData("1.5.format(writer@uniq)")]
-    [InlineData("Text.utf8(\"text\").format(writer@uniq)")]
     [InlineData("((200@u8)@Wrapping<u8>).format(writer@uniq)")]
     [InlineData("(7@u8).format(writer@uniq)")]
     [InlineData("(7@i128).format(writer@uniq)")]
@@ -48,6 +47,16 @@ public class Utf8FormatBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = " + expression);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
+    }
+
+    // SPEC 22.10.2, 22.9.3: the view's Utf8Format conformance is built in and adds no member, so its `format` is reached only through a
+    // proven `T is Utf8Format`; a direct call names no member of the view, which has `length` and `bytes()` only.
+    [Fact]
+    public void AViewsFormatIsNoMember()
+    {
+        const string Source = Prefix + "_ = Text.utf8(\"a\").format(writer@uniq)\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(("UnresolvedBinding_Kd", "Text.utf8(\"a\").format"), (record.Code, Source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
     }
 
     [Theory]
@@ -61,8 +70,9 @@ public class Utf8FormatBindingTest
     }
 
     // SPEC 22.10.2, 8.6.1, 3.1.1 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): Utf8Format's requirement on bool, char, Unit, f32, f64,
-    // string, a wrapping integer and every integer selects the witness table's group function, a body, i128's and u128's the generic one,
-    // whose specialization runs (SPEC 8.13.3) (fail-before: Builtin for each; i128 and u128 until R8-S2b2, DECISIONS R8-M30's temporary 7).
+    // string, a view, a wrapping integer and every integer selects the witness table's group function, a body, i128's and u128's the
+    // generic one, whose specialization runs (SPEC 8.13.3) (fail-before: Builtin for each, the view's its declared member; i128 and u128
+    // until R8-S2b2, DECISIONS R8-M30's temporary 7).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
@@ -70,6 +80,7 @@ public class Utf8FormatBindingTest
     [InlineData("f32", "F32Format")]
     [InlineData("f64", "F64Format")]
     [InlineData("string", "String")]
+    [InlineData("Text.Utf8Slice", "Utf8SliceFormat")]
     [InlineData("Wrapping<u8>", "WrappingFormat")]
     [InlineData("i32", "IntegerFormat")]
     [InlineData("u8", "IntegerFormat")]
@@ -88,6 +99,7 @@ public class Utf8FormatBindingTest
             "f32" => BoundType.F32,
             "f64" => BoundType.F64,
             "string" => BoundType.String,
+            "Text.Utf8Slice" => c.Library.GetSymbol(KimiDeclarationId.Utf8Slice)!.Type!,
             "Wrapping<u8>" => BoundType.WrappingOf(BoundType.Primitives["u8"]),
             "()" => BoundType.Unit,
             _ => BoundType.Primitives[type],

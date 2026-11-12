@@ -32,6 +32,7 @@ internal enum WitnessMembers : byte
     BoolFormat,
     CharFormat,
     UnitFormat,
+    Utf8SliceFormat,
     F32Format,
     F64Format,
     WrappingFormat,
@@ -46,13 +47,13 @@ public sealed partial class Binding
 
     // SPEC 22.1, 4.6.1, 8.7, 13.4.1: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's
     // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position, string's two
-    // comparison Contracts and its Utf8Format, and bool's, char's, Unit's, f32's and f64's Utf8Format (SPEC 22.10.2), whose bodies are
-    // not generic, so their rows have no parameter (no Contract holds exactly f32 and f64, and SPEC 13.5.4's bit conversion needs a
-    // closed Type); Wrapping<T>'s Utf8Format (SPEC 3.1.1) over its argument I, a wrapping scalar's integer or the construction's
-    // abstract T, which SPEC 3.1.1's formation proves PrimitiveInteger, so the row proves an abstract Wrapping<T>'s conformance too; and
-    // every concrete integer Type's Utf8Format (R8-S2b1, R8-S2b2), one generic body over I whose i128 and u128 specializations format
-    // through formatInteger128. A bare Type parameter has no shape to key on, so an abstract `I is PrimitiveInteger` keeps SPEC 8.7.4's
-    // premise, as for Position.
+    // comparison Contracts and its Utf8Format, and bool's, char's, Unit's, the view's (Text.Utf8Slice), f32's and f64's Utf8Format (SPEC
+    // 22.10.2), whose bodies are not generic, so their rows have no parameter (no Contract holds exactly f32 and f64, and SPEC 13.5.4's bit
+    // conversion needs a closed Type); Wrapping<T>'s Utf8Format (SPEC 3.1.1) over its argument I, a wrapping scalar's integer or the
+    // construction's abstract T, which SPEC 3.1.1's formation proves PrimitiveInteger, so the row proves an abstract Wrapping<T>'s
+    // conformance too; and every concrete integer Type's Utf8Format (R8-S2b1, R8-S2b2), one generic body over I whose i128 and u128
+    // specializations format through formatInteger128. A bare Type parameter has no shape to key on, so an abstract `I is PrimitiveInteger`
+    // keeps SPEC 8.7.4's premise, as for Position.
     internal static LibraryWitnessGroup? WitnessGroup(BoundType? self, KimiDeclarationId? contract) => self switch
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
@@ -73,6 +74,8 @@ public sealed partial class Binding
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Boolean) => new(WitnessMembers.BoolFormat, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Char) => new(WitnessMembers.CharFormat, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.Unit) => new(WitnessMembers.UnitFormat, null, null, null),
+        { Semantics: SemanticsKind.Owner, Symbol.LibraryDeclaration: KimiDeclarationId.Utf8Slice } when contract == KimiDeclarationId.Utf8Format
+            => new(WitnessMembers.Utf8SliceFormat, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.F32) => new(WitnessMembers.F32Format, null, null, null),
         _ when contract == KimiDeclarationId.Utf8Format && ReferenceEquals(self, BoundType.F64) => new(WitnessMembers.F64Format, null, null, null),
         _ => null,
@@ -113,12 +116,13 @@ public sealed partial class Binding
         this.typeScratch.Return(types, clearArray: true);
     }
 
-    // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an integer
-    // or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at most one
-    // layer, so a bare string passes too, though nothing else reaches this; bool, char, Unit, f32 and f64, which the formatting bodies
-    // write as `ref/bool`, `ref/char`, `ref/()`, `ref/f32` and `ref/f64` (SPEC 22.10.2), likewise; some `Wrapping<I>`, a wrapping scalar
-    // or the construction the body writes as `ref/Wrapping<I>` (SPEC 3.1.1); the integers' formatting body's `ref/I`, a Type parameter, and
-    // its specializations' `ref/i128` and `ref/u128` (R8-S2b1, R8-S2b2). A new group states its own; none is another's by default.
+    // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an
+    // integer or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at
+    // most one layer, so a bare string passes too, though nothing else reaches this; bool, char, Unit, a view, f32 and f64, which the
+    // formatting bodies write as `ref/bool`, `ref/char`, `ref/()`, `ref/Text.Utf8Slice`, `ref/f32` and `ref/f64` (SPEC 22.10.2), likewise;
+    // some `Wrapping<I>`, a wrapping scalar or the construction the body writes as `ref/Wrapping<I>` (SPEC 3.1.1); the integers' formatting
+    // body's `ref/I`, a Type parameter, and its specializations' `ref/i128` and `ref/u128` (R8-S2b1, R8-S2b2). A new group states its own;
+    // none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
@@ -128,6 +132,7 @@ public sealed partial class Binding
         WitnessMembers.BoolFormat => ReferenceEquals(EffectiveCore(type), BoundType.Boolean),
         WitnessMembers.CharFormat => ReferenceEquals(EffectiveCore(type), BoundType.Char),
         WitnessMembers.UnitFormat => ReferenceEquals(EffectiveCore(type), BoundType.Unit),
+        WitnessMembers.Utf8SliceFormat => EffectiveCore(type) is { Symbol.LibraryDeclaration: KimiDeclarationId.Utf8Slice },
         WitnessMembers.F32Format => ReferenceEquals(EffectiveCore(type), BoundType.F32),
         WitnessMembers.F64Format => ReferenceEquals(EffectiveCore(type), BoundType.F64),
         WitnessMembers.WrappingFormat => EffectiveCore(type) is { IsWrappingInteger: true } or

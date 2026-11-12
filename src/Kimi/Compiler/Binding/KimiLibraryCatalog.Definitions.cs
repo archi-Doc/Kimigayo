@@ -125,7 +125,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.F32FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F32Format"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.F64FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F64Format"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.StringWitnessFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "StringWitness"), // SPEC 22.5.1 until G1.
-        new(KimiDeclarationId.Utf8SliceFormat, "format", KimiLibraryContainer.Utf8Slice, SourceFunction: true, CallerLocation: true), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.Utf8SliceFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "Utf8SliceFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.WrappingFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "WrappingFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.IntegerFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "IntegerFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),

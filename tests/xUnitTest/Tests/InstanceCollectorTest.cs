@@ -1521,22 +1521,21 @@ public sealed partial class InstanceCollectorTest
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, body));
     }
 
-    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is its declared member, written, called directly and called through a
-    // `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which writes its
-    // integer through the IntegerFormat body at u8 (R8-S2b1; fail-before: Builtin Utf8Slice and Builtin Wrapping<u8> BuiltinFormat, then
-    // Builtin u8 BuiltinFormat).
+    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is the witness table's Utf8SliceFormat body, written and called
+    // through a `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which
+    // writes its integer through the IntegerFormat body at u8 (R8-S2b1; fail-before: Builtin Utf8Slice and Builtin Wrapping<u8>
+    // BuiltinFormat, then Builtin u8 BuiltinFormat; the view's then its declared member).
     [Fact]
     public void AViewAndAWrappingIntegerFormatThroughTheirWitnesses()
     {
         var (program, set) = Collect(
             "func emit(writer: uniq/Utf8Writer, view: Text.Utf8Slice, wrapped: Wrapping<u8>) -> Result<(), BufferFull>\n" +
-            "    try writer.write(view)\n    try view.format(writer)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
+            "    try writer.write(view)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
             "func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
             "    return value.format(writer)\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        const string View = "library Fn format in struct Utf8Slice";
+        const string View = "library Fn format in group Utf8SliceFormat";
         Assert.Contains(View, Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Utf8Slice]"));
-        Assert.Contains(View, Calls(program, set, "Fn emit"));
         Assert.Contains(View, Calls(program, set, "Fn show [Utf8Slice]"));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, View));
         const string Wrapped = "library Fn format in group WrappingFormat [u8]";
