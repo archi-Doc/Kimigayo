@@ -12045,6 +12045,19 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
     would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
     read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
+- **BU-179 Call retention reads the operation contract's no-store inputs: a NoStore input is no output (PLAN G780, C-189)**
+  (2026-11-12; Front, Binding; Major, an acceptance mover; the Middle's consent C-262) SPEC 4.8.4, 5.2 Placement, 5.6, 15.6.4.
+  - `TyCtxt.Retains` forms no `OutputRetention` for an input through which the callee's operation contract stores no value
+    (`KimiLibraryCatalog.NoStore`, e.g. `Raw.slice`'s storage): 15.6.4's writable storage is what the instantiated public contract
+    writes, so rule A forms no row there and nothing unties it. A range selection (`RawSlice` under `Raw.slice`'s declaration) and a
+    written `Raw.slice` no longer store {Φ_E, Φ_W} into the array their storage addresses; with R4-M63's amendment (F2b) a reslice
+    of a range selection stores nothing there either.
+  - A5 reads Retains alone: the skipped Writes entry drops Keep ({Φ_E, Φ_W}, Φ_N), Cover (PLAN G338) and the MirWrites limit and
+    depth facts at that output; nothing is stored there. MirValidator's `Keeps` can only relax.
+  - NoStore stays the one published fact, read by Retains and the pun rule with one meaning; it does not fold into `CallRetention`:
+    the pun rule needs every store, a scalar one included, which retention does not publish (BU-145's rejected column stands).
+  - Rejected: A5's Keep reading NoStore (a consumer correcting its owner's published fact; `MirValidator`'s `Keeps` would keep the
+    contradicting reading); a `CallRetention` column (BU-145).
 - **BU-175 A Type walk has no count of its own (PLAN G647)** (2026-11-12; Front, Binding and MIR; Major; the Binding half's design
   review 1 REVISE, design review 2 ACCEPT, implementation review 1 REJECT and its re-check ACCEPT, F's rulings 1-3; the Middle's
   consent C-205, REVISE then ACCEPT WITH NOTES) IMPL A.4; SPEC 13.5.3, 22.6.
