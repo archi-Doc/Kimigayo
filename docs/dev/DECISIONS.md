@@ -11927,6 +11927,7 @@ resumed by R4-M86 (2026-10-20).
     (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
     empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
     1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
+  - Partly superseded by BU-178 (G769): one rejection per item.
 
 - **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
   design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
@@ -12159,6 +12160,28 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected.** `or TargetProjection` at each list (one more case of an open family at five sites); one predicate for both
     questions (design review 2: it rejected `let v: s/T = 1` under `s is owner`); the read terminal through `OperandTerminal` with
     its premises (its forms are G542's and G355's).
+
+- **BU-178 A misplaced effect item's selector is judged on its own (PLAN G769)** (2026-11-12; Front, Binding; Major; design review 1
+  REVISE (B1), design review 2 ACCEPT, implementation review 1 REVISE (B1), implementation review 2 ACCEPT (notes N3, N4 optional);
+  commits 611178cc2 and c8f9a7f6a on `claude/f-g769`; extends BU-173) SPEC 8.11.1, F.6.2, 23.1.2; DIAGNOSTICS 4.3.
+  - Rule: `SelectorReference` (from `EffectTarget`: one lookup, `WrittenReference`, `QualifierReference`) reads the selector and its
+    scope only. An applying item reads it in `EffectTarget`; a misplaced item (`BindEffectBound`) records its position, then judges
+    its selector on its own; a fault is kept under the selector and published as the item's second record (condition 1). No verdict
+    of the item reads that judgment, so it runs with no consultation frame open (`SuspendConsultation`), as an applying item's
+    (`PrepareEffectBounds`) and a Callable list's (`PrepareCallableEffects`) do: the misplacement never rests on the selector
+    (implementation review 1's B1: inside the item's `BindNode` frame, a syntax Error among the selector's Type arguments made both
+    records derived).
+  - Moves: records on invalid programs only (Q13): +1 independent `InvalidEffectBound_Kd` per misplaced item with a faulty selector
+    (`((A))`, `(ref/A)`, a non-Contract, an unknown name, a bare generic); dependent, counted by code: +1 `InvalidEffectBound_Kd`
+    per misplaced item whose selector holds a syntax Error (`()`, `(P<>)`, `(P<[i32; 2]>)`).
+  - Rejected: the selector as its own subject (moves every applying record to the selector); a parser rejection of `((A))` (BU-162);
+    two causes in one record (DIAGNOSTICS 4.3).
+  - Supersedes, in part, BU-173's rejected option "judging every item's selector in Binding" (F, design review 1's B1): of its two
+    reasons, "an item holds one rejection" no longer holds (DIAGNOSTICS 4.3 condition 1 lets one node hold several independent
+    problems; `ReportParameterShapes` is the precedent), so a misplaced item's selector fault is the item's second record; "Binding
+    records no syntax code" still holds: the selector's syntax faults (an empty group, a list) stay the parser's, and Binding judges
+    only the Contract reference's form, kind and formation. BU-173 gains the line "Partly superseded by BU-178 (G769): one rejection
+    per item".
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
