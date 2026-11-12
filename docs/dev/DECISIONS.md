@@ -6234,6 +6234,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by R4-M199 (PLAN G775): the undecided class's Limit tier holds through the gather's closure: a gather read has one tier
     (`MirBorrows.Candidates.ReadTier`), a holder a Limit read reaches is read at Limit under its own read key, and the set-level
     named limit (PLAN G599 (b)) reaches through the closure too.
+  - Amended by PLAN G792 (F1; 2026-11-12; Middle, A5; Major, an acceptance mover; the owner's O-205 (a)): an abstract written part
+    is a Scalar of a binding's size (SPEC 8.15.1, 5.2, 5.5, 5.7 Calls). R4-M198 left the written Type's reading of an abstract part
+    unstated. A5 had read it as holding no Scalar (`Punnable`'s default arm), which accepted invalid programs (bOneTakeBackBad,
+    cOnePutBad). Amendment:
+    - An abstract part is punnable and surely holds a Scalar (`Punnable`'s one row), so the seen store's gate, the written fold
+      (Within, Scalared) and the judge read it as a written Scalar, at the write's Position.
+    - The judge's rows are unchanged: a pun only where the Place's grid rows end at a raw pointer, or, on the Place's address, its
+      chain ends at one and the written Type's at a Scalar; else undecided. No row assumes a binding's size (O-205 (a)).
+    - On the written fold, a Holdings Unsupported entry is undecided, and an Erased entry writes nothing (a Function value is not
+      punnable and has no raw Place within it, SPEC 5.2). The `MirBorrows.PunTypes` contract sentences change with it.
+    - Moves (Q13; the Middle's rulings):
+      - invalid programs newly rejected with the conflict: bOneTakeBackBad, cOnePutBad, aOffGridTBad, cTupleTStoreBad,
+        cArrTStoreBad, cArrTPutBad, cWrapFieldStoreBad, cWrapPutBad, fUniqBorrowMutateBad, eOneTakeBackInstBad, covNestedGridBad;
+      - invalid programs newly rejected with the located `Unsupported_Kd`: bLenTRests (limit (c)); aOnTupleTBad, aOnTupleCopyTBad,
+        aOnTuplePutBad, covArr32PutBad, covArr2StoreBad, covGridOfGridBad, covElemOnArrayBad, covNestedOnTupleBad and
+        dPutThenStoreBad (the undecided judge; aOnTupleTBad's pointer is also Off by a Drop's receiver address, PLAN G802, which
+        does not decide its record);
+      - three invalid programs whose independent conflict becomes `Unsupported_Kd` beside an undecided write: dDropThenPutBad,
+        dOtherSrcStoreBad and covSelfTupleRests (invalid by SPEC 5.2, 5.5 and 15.6 Holders: `x = *bp` reads buf's bytes as T, which
+        for `T = raw/u8` is a punned read with no provenance, and h holds x; design review 3's N9). This is R4-M198's set-level
+        named limit, which PLAN G599 (b) removes. Its control covSelfTupleNoWriteOk is invalid by the same route and keeps dev's
+        conflict;
+      - the unsettled aOffTupleTRests, aOffTuplePutRests, covArr13ThreeRests and covEnumPtrRests to `Unsupported_Kd`;
+      - three valid programs to `Unsupported_Kd`: bZeroExprTRests under limit (c) (G735 removes it); covArr32StoreOk and
+        covEnumNumBranchOk under R4-M198's undecided class: the verdict their concrete controls (covArr32U8StoreRests,
+        covEnumNumU16Rests) already get on dev, and the one O-205 (a) prescribes for an abstract write (A5 reads no size or Case at
+        the store).
+      - one valid program that dev already rejects (PLAN G416's self-row;
+        `DictionaryIndexTest.GenericIndexUsesTheConcreteEqualityWitness`): its false ComparisonLoanConflict_Kd is kept and a second
+        record, `Unsupported_Kd`, is added at the same subject: of the two checks the self-row fails (`owned`'s destruction and its
+        storage's end), the second now finds the Loan only in sets carrying Φ_U, the store `owned[key] = value@move` of an abstract
+        V through `indexUniq`'s `uniq/V` being an undecided write at `owned` as its concrete control's is on dev (R4-M198's
+        set-level named limit through R4-M199's closure, PLAN G599 (b); no acceptance move).
+    - Rejected: a Position-free answer (review 1's B1); a clause per form at the gate (B2); Erased read as the unknown write
+      (dFnStoreOk, dFnPutOk are valid); a pun decided by a binding's assumed size (review 2's B4, O-205 (a)); encoding the abstract
+      part as `Extent.Open`, which means a length that is no constant (limit (c)), while an abstract part is a Scalar for some
+      binding.
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
