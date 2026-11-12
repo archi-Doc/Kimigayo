@@ -75,9 +75,9 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 14.9.2 step 2: a source holding a literal default or a waiting part supplies no candidate, so the Type is formed part by part, each part as
     // the step finds one, the sentence above included.
     [InlineData("guard", "p46", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (y, 2))\n    return r\n", "")]
-    [InlineData("I2", "r18", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (1, y)\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "s07", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (1, y))\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "s08", RefSources + "    return ft(if c => (w, 1) else => (1, 2))\n", "", Explicit = true)]
+    [InlineData("G729", "r18", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (1, y)\n    return r\n", "")]
+    [InlineData("G729", "s07", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (1, y))\n    return r\n", "")]
+    [InlineData("G729", "s08", RefSources + "    return ft(if c => (w, 1) else => (1, 2))\n", "")]
 
     // SPEC 14.9.2 step 2, 4.3.1 (revision B's B2-B4): an array literal source with every element typed is Array<T> and compared whole, so Array<ref/i32>
     // beside Array<i32> has no common Type and the argument waits; elements of one literal agree (4.3.1).
@@ -99,8 +99,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "w13", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(y, 2)]\n    return r\n", "")]
     [InlineData("guard", "w13a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(y, 2)])\n    return r\n", "")]
     [InlineData("guard", "a01", Sources + SourcesBody + "    let j = if c => [(u@ref, 1), (y, 2)] else => [(y, 3)]\n    return r\n", "")]
-    [InlineData("I2", "x10", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(1, 2)]\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "x10a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(1, 2)])\n    return r\n", "", Explicit = true)]
+    [InlineData("G729", "x10", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(1, 2)]\n    return r\n", "")]
+    [InlineData("G729", "x10a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(1, 2)])\n    return r\n", "")]
     [InlineData("guard", "a13", Sources + SourcesBody + "    let j = if c => [u@ref: 1] else => [y: 2]\n    return r\n", "")]
     [InlineData("guard", "a11", Sources + SourcesBody + "    let t = identity(if c => ([2 of (u@ref, 1)], 3) else => ([2 of (y, 2)], 4))\n    return r\n", "")]
     [InlineData("guard", "c12", Sources + SourcesBody + "    let t = identity(if c => (if d => [(u@ref, 1)] else => [(y, 2)]) else => [(y, 3)])\n    return r\n", "")]
