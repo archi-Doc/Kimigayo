@@ -130,7 +130,8 @@ public sealed partial class Binding
         }
         else
         {
-            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+            type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
+                (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
                 : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
         }

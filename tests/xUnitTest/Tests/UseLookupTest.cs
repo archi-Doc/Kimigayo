@@ -22,6 +22,9 @@ public class UseLookupTest
     private const string Inherited = HasItem + "open struct Base\n    public struct N\n        Self is HasItem\n        associate HasItem.Item is i32\n";
     private const string Opened = "alias A\nalias B\ncontract HasItem\n    associate Item\ngroup A\n    public group X\n        public func z() -> i32 => 0\n";
 
+    private const string BothWays = "contract C\n    associate Item\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n    associate C.Item is P\n" +
+        "    public struct Item\n        public init() => ()\n";
+
     private const string ProjectedP = "contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
         "    associate C<i32>.Item is P\n";
 
@@ -129,6 +132,40 @@ public class UseLookupTest
         "struct S\n    public struct In\n        public init() => ()\nfunc f(v: Missing.X) -> i32 => 0\nfunc g(v: S.Missing.X) -> i32 => 0\nfunc h(v: (Missing).X) -> i32 => 0",
         "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd S.Missing")]
     public void AProjectionIsItsPathsEnd(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // PLAN G728 (SPEC 9.7.3, 9.7.1 step 3, 8.8.2): a nested Type named through a Core qualifier whose applied Type also has an associated
+    // Type of that name with conformance evidence resolves both ways: ambiguous where its reference is formed, in a Type position, as a
+    // construction qualifier, inherited, under `::` and as a nested enum's qualifier (r14b, r14, y01, y02, y16); the twins name it one
+    // way (r14n, the nested Type alone; r14w, the parenthesized projection; y16n). A conditional conformance whose condition is refuted
+    // for the written arguments is no evidence (y04, valid). Read before the conformances register, the judgment is G621's located
+    // Unsupported_Kd (x01).
+    [Theory]
+    [InlineData(BothWays + "func g(x: S.Item) -> i32 => 0", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(BothWays + "func g() -> i32\n    let x = S.Item.init()\n    return 0", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(BothWays + "func g(x: ::S.Item) -> i32 => 0", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(BothWays + "func g(x: S.(C).Item) -> i32 => 0", "")]
+    [InlineData("struct S\n    public struct Item\n        public init() => ()\nfunc g(x: S.Item) -> i32 => 0\nfunc h() -> i32\n    let y = S.Item.init()\n    return 0", "")]
+    [InlineData(
+        "contract C\n    associate Item\nstruct P\n    public init() => ()\nopen struct Base\n    public struct Item\n        public init() => ()\n" +
+            "struct D : Base\n    Self is C\n    associate C.Item is P\nfunc g(x: D.Item) -> i32 => 0",
+        "AmbiguousBinding_Kd D.Item")]
+    [InlineData(
+        "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct S<T>\n    public struct Item\n        public init() => ()\n" +
+            "    Self is C when T is D\n        associate C.Item is P\nfunc g(x: S<i32>.Item) -> i32 => 0\nfunc h() -> i32\n    let y = S<i32>.Item.init()\n    return 0",
+        "")]
+    [InlineData(
+        "contract C\n    associate Item\nenum M\n    A\nstruct S\n    Self is C\n    associate C.Item is M\n    public enum Item\n        A\n" +
+            "func g() -> i32\n    let e = S.Item.A\n    return 0",
+        "AmbiguousBinding_Kd S.Item")]
+    [InlineData(
+        "contract C\n    associate Elem\nenum M\n    A\nstruct S\n    Self is C\n    associate C.Elem is M\n    public enum Item\n        A\n" +
+            "func g() -> i32\n    let e = S.Item.A\n    return 0",
+        "")]
+    [InlineData(
+        "contract C<T>\n    associate Item\ncontract D<T>\nstruct P\n    public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
+            "    public struct Item\n        public init() => ()\nstruct T\n    Self is D<S.Item>",
+        "Unsupported_Kd S.Item")]
+    public void ANestedTypeNamedBothWaysIsAmbiguous(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
     // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a

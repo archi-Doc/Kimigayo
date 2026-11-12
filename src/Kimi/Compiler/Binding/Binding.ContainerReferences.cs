@@ -320,6 +320,11 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
+                {
+                    return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                }
+
                 if (!ReferenceEquals(container, parent))
                 {
                     var selected = this.LookupTypeMember(environment, symbol.Name, scope, typeRole: true);
