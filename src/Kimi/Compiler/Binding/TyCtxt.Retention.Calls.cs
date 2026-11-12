@@ -55,8 +55,9 @@ internal sealed partial class TyCtxt
     // accessor, else its Property), into `signatures`; whether every one substitutes (false: CallRetention.Limit).
     internal bool RequirementSignatures(BoundType self, BindingSymbol contract, List<Binding.ErasedSignature> signatures)
     {
-        foreach (var requirement in contract.Contract!.Requirements)
+        for (var i = 0; i < contract.Contract!.Requirements.Count; i++)
         {
+            var requirement = contract.Contract!.Requirements[i];
             var subst = requirement.Contract.Type is { } reference ? this.Synthesized(requirement.Symbol, self, reference)
                 : this.Intern(requirement.Symbol, self, null, [], [], [], []);
             var substituted = requirement.Symbol.Property is { } property

@@ -41,6 +41,12 @@ public sealed partial class Binding
             return true;
         }
 
+        // BoundType.IsAbstractType excludes a pair's own Type by its symbol alone, so every such Type decomposes above.
+        if (type is { Kind: BoundTypeKind.Parameter, Symbol.Kind: BindingSymbolKind.SemanticsTarget })
+        {
+            throw new InvalidOperationException($"The pair `{type}` has no whole Type or target (InternalInvariant).");
+        }
+
         whole = target = null!;
         return false;
     }

@@ -36,11 +36,11 @@ public sealed partial class Binding
     // The scaling rows' measure: the nodes the identity classes added in this compilation.
     internal int IdentityClassWork { get; private set; }
 
-    private static bool HasIdentityPremise(BindingScope scope)
+    private static bool HasParameterIdentity(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { Invalid: false, HasIdentity: true })
+            if (current.Constraints is { Invalid: false, HasParameterIdentity: true })
             {
                 return true;
             }
@@ -49,11 +49,12 @@ public sealed partial class Binding
         return false;
     }
 
-    private static bool HasParameterIdentity(BindingScope scope)
+    // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
+    private static bool HasTypeIdentity(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { Invalid: false, HasParameterIdentity: true })
+            if (current.Constraints is { Invalid: false, HasTypeIdentity: true })
             {
                 return true;
             }
@@ -150,7 +151,7 @@ public sealed partial class Binding
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or its classes make them one (Verdict's Proven); an
     // erroneous or provisional class proves nothing.
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
-        => this.SameCompleteType(a, b) || (HasIdentityPremise(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+        => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 
     // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
     private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)
@@ -162,7 +163,7 @@ public sealed partial class Binding
     // located limit (an Origin attribute the judge could not decide).
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
-        if (scope.Constraints is not { Invalid: false, HasIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
+        if (scope.Constraints is not { Invalid: false, HasTypeIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
             this.ClassesOf(scope, out _) is not { Worst: not IdentityClasses.One } own)
         {
             return false;
