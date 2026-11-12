@@ -36,14 +36,17 @@ public sealed partial class Binding
             : this.BoundContractReference(this.types.Intern(BoundTypeKind.Constructed, declaration, SemanticsKind.Owner, [counterpart]));
     }
 
-    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope)
+    // W5 (ContractSolver's Completion): Complete at the static gate, Provisional past it (the conformance proves).
+    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope, out Completion completion)
     {
+        completion = Completion.Complete;
         if (projection is not { Kind: BoundTypeKind.AssociatedProjection, Components: [var self, var reference], Symbol.Scope.Owner.BoundSymbol: { } declaration } ||
             !ArithmeticContracts.IsArithmetic(declaration.LibraryDeclaration))
         {
             return null;
         }
 
+        completion = Completion.Provisional;
         return this.BuiltinArithmeticConformance(self, this.BoundContractReference(reference), scope) ? self : null;
     }
 }

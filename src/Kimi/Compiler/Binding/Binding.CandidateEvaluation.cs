@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -8,6 +9,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
+
+    // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
+    // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
+    private readonly List<ArgumentAdaptation> positionClasses = new();
 
     // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
     private Dictionary<Koto, PendingJudgment>? pendingJudgments;
@@ -133,6 +138,15 @@ public sealed partial class Binding
             related: [("argument", judgment.Part, null)]);
     }
 
+    // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
+    // any other row), which no other argument or tie-breaker rescues.
+    private static bool CompareClasses(ArgumentAdaptation x, ArgumentAdaptation y, ref bool better, ref bool worse)
+    {
+        better |= x < y;
+        worse |= x > y;
+        return x == y || (x != ArgumentAdaptation.Erasure && y != ArgumentAdaptation.Erasure);
+    }
+
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
     // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
     private bool ComparableCallableSlots(
@@ -184,23 +198,43 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
+    // SPEC 10.4: this comparison reads explicit source arguments only; receiver acquisition is common to the group. Step 1 compares each
+    // argument's class and each element position's (Positions). Two fits of one argument walk its syntax alike, so they record the same
+    // positions, unequal counts being a broken contract (InternalInvariant_Kd at the argument); a candidate that leaves the argument open
+    // (no Type) records none and is compared at the argument only (step 2 then makes the pair incomparable).
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
     {
         var better = false;
         var worse = false;
+        var classes = CollectionsMarshal.AsSpan(this.positionClasses);
         for (var i = 0; i < left.Length; i++)
         {
-            var x = left[i];
-            var y = right[i];
-            if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
+            var x = classes[left[i].Positions];
+            var y = classes[right[i].Positions];
+            if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse))
             {
-                return false; // An incomparable argument cannot be rescued by another argument or tie-breaker.
+                return false;
             }
 
-            better |= x.Adaptation < y.Adaptation;
-            worse |= x.Adaptation > y.Adaptation;
+            if (x.Length != y.Length)
+            {
+                if (!x.IsEmpty && !y.IsEmpty)
+                {
+                    this.Fail(left[i].Source!, BindingFailure.Internal);
+                    return false;
+                }
+
+                continue;
+            }
+
+            for (var p = 0; p < x.Length; p++)
+            {
+                if (!CompareClasses(x[p], y[p], ref better, ref worse))
+                {
+                    return false;
+                }
+            }
         }
 
         if (worse || better)

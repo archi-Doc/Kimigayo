@@ -133,7 +133,9 @@ public sealed partial class DocumentationSource
     }
 
     internal void SetLocation(string logicalName, string? modId = null, int additionOrder = 0)
-        => this.Collect((logicalName, modId, additionOrder), static (source, value) => source.SetLocationCore(value.logicalName, value.modId, value.additionOrder));
+        => this.Collect(
+            (logicalName, modId, additionOrder),
+            static (source, value) => source.SetLocationCore(value.logicalName, value.modId, value.additionOrder));
 
     internal void Merge(DocumentationSource nested)
         => this.Collect(nested, static (source, value) => source.MergeCore(value));
@@ -147,7 +149,8 @@ public sealed partial class DocumentationSource
     internal void Exclude(int start, int syntaxEnd, int nextToken)
         => this.Collect((start, syntaxEnd, nextToken), static (source, value) => source.ExcludeCore(value.start, value.syntaxEnd, value.nextToken));
 
-    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    // The header runs from the token at headerPosition, a position in tokens (TokenReader.HeaderPosition), to the source offset headerEnd.
+    internal void Associate(Koto declaration, int headerPosition, int headerEnd, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
         if (this.failed)
         {
@@ -156,7 +159,7 @@ public sealed partial class DocumentationSource
 
         try
         {
-            this.AssociateCore(declaration, header, attributes, tokens);
+            this.AssociateCore(declaration, headerPosition, headerEnd, attributes, tokens);
         }
         catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
         {
@@ -254,48 +257,12 @@ public sealed partial class DocumentationSource
         }
     }
 
-    private void AssociateCore(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    private void AssociateCore(Koto declaration, int headerPosition, int headerEnd, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
-        var headerStart = header.Start;
-        var tokenIndex = 0;
-        var high = tokens.Length;
-        while (tokenIndex < high)
-        {
-            var middle = (tokenIndex + high) / 2;
-            if (tokens[middle].Span.Start < headerStart)
-            {
-                tokenIndex = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-
-        // Function parser spans start at the name. Recover the written header prefix.
-        var prefix = tokenIndex - 1;
-        while (prefix >= 0)
-        {
-            var token = tokens[prefix];
-            var isPrefix = token.Kind is TokenKind.Func or TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open;
-            if (token.Kind == TokenKind.Identifier)
-            {
-                var spelling = this.Source.AsSpan().Slice(token.Span.Start, token.Length);
-                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize") ||
-                    (declaration is FunctionKoto && (spelling.SequenceEqual("virtual") || spelling.SequenceEqual("override")));
-            }
-
-            if (!isPrefix)
-            {
-                break;
-            }
-
-            headerStart = token.Span.Start;
-            prefix--;
-        }
+        var headerStart = tokens[headerPosition].Span.Start;
 
         // Header/Attribute-interior comments cannot become a later declaration's prelude.
-        this.Suppress(SourceSpan.FromBounds(headerStart, Math.Max(headerStart, header.End)));
+        this.Suppress(SourceSpan.FromBounds(headerStart, headerEnd));
         var candidateIndex = this.FindBefore(headerStart);
         while (candidateIndex >= 0 && (!this.comments[candidateIndex].IsRecognized || this.comments[candidateIndex].IsSuppressed))
         {
@@ -320,7 +287,7 @@ public sealed partial class DocumentationSource
             return;
         }
 
-        for (var i = prefix; i >= 0 && tokens[i].Span.End > candidate.Span.End; i--)
+        for (var i = headerPosition - 1; i >= 0 && tokens[i].Span.End > candidate.Span.End; i--)
         {
             var token = tokens[i];
             if (token.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
@@ -331,7 +298,8 @@ public sealed partial class DocumentationSource
             var inAttribute = false;
             for (var attribute = attributes; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (ReferenceEquals(attribute.CodeContext.SourceDocument, this.Source) && attribute.Span.Start <= token.Span.Start && attribute.Span.End >= token.Span.End)
+                if (ReferenceEquals(attribute.CodeContext.SourceDocument, this.Source) &&
+                    attribute.Span.Start <= token.Span.Start && attribute.Span.End >= token.Span.End)
                 {
                     inAttribute = true;
                     break;
@@ -345,7 +313,7 @@ public sealed partial class DocumentationSource
         }
 
         candidate.Declaration = declaration;
-        candidate.DeclarationSpan = SourceSpan.FromBounds(headerStart, Math.Max(header.End, headerStart));
+        candidate.DeclarationSpan = SourceSpan.FromBounds(headerStart, headerEnd);
     }
 
     /// <summary>Gets optional documentation diagnostics, independently of language diagnostics.</summary>
@@ -506,7 +474,8 @@ public sealed class DocumentationComment
 
     // Walks the comment lines. With null outputs it only measures; otherwise it
     // fills the normalized text and both offset tables in the same order.
-    private static (int Lines, int Length) ScanLines(SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
+    private static (int Lines, int Length) ScanLines(
+        SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
     {
         var source = document.SourceText;
         var position = range.Start;

@@ -170,7 +170,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right));
+            var resolved = this.FollowTo(ExpansionPlan.Of(index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }

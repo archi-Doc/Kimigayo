@@ -120,7 +120,7 @@ public sealed partial class MirBuildTest
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.False(body.HasOpaque);
         var text = new StringBuilder();
-        MirDump.Write(body, text, program.Drops, body.Ordinal);
+        MirDump.Write(body, text, program.Drops);
         var aggregates = Regex.Matches(text.ToString(), @"(_\d+ = (?:Fill|FixedArray)\(.*?\): .*?) @\d+").Select(static x => x.Groups[1].Value);
         Assert.Equal(fills.Split('|'), aggregates);
         var statements = body.Statements.ToArray();
@@ -153,7 +153,7 @@ public sealed partial class MirBuildTest
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.False(body.HasOpaque);
         var text = new StringBuilder();
-        MirDump.Write(body, text, program.Drops, body.Ordinal);
+        MirDump.Write(body, text, program.Drops);
         var built = Regex.Matches(text.ToString(), @"(_\d+ = (?:Array|Tuple|FixedArray)\(.*?\): .*?) @\d+").Select(static x => x.Groups[1].Value);
         Assert.Equal(aggregates.Split('|'), built);
         Assert.DoesNotContain(body.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Call && x.Terminator.Callee.Symbol?.Name != "g");

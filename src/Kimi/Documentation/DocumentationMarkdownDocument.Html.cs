@@ -142,9 +142,9 @@ public sealed partial class DocumentationMarkdownDocument
         else if (tag is not null)
         {
             output.Append('<').Append(tag);
-            if (node.Kind == DocumentationMarkdownKind.Heading && node.HeadingLevel + options.DeclarationHeadingLevel > 6)
+            if (node.Kind == DocumentationMarkdownKind.Heading && node.HeadingLevel + options.DeclarationHeadingLevel is var level and > 6)
             {
-                output.Append(" role=\"heading\" aria-level=\"").Append((node.HeadingLevel + options.DeclarationHeadingLevel).ToString(CultureInfo.InvariantCulture)).Append('"');
+                output.Append(" role=\"heading\" aria-level=\"").Append(level.ToString(CultureInfo.InvariantCulture)).Append('"');
             }
             else if (node.Kind == DocumentationMarkdownKind.OrderedList && node.StartNumber != 1)
             {
@@ -153,7 +153,8 @@ public sealed partial class DocumentationMarkdownDocument
 
             output.Append('>');
             if (node.Kind is DocumentationMarkdownKind.Quote or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList ||
-                (node.Kind == DocumentationMarkdownKind.ListItem && node.FirstChild is { } first && (!node.Parent!.Value.IsTight || first.Kind != DocumentationMarkdownKind.Paragraph)))
+                (node.Kind == DocumentationMarkdownKind.ListItem && node.FirstChild is { } first &&
+                (!node.Parent!.Value.IsTight || first.Kind != DocumentationMarkdownKind.Paragraph)))
             {
                 output.Append('\n');
             }
@@ -197,8 +198,9 @@ public sealed partial class DocumentationMarkdownDocument
 
         if (tag is not null)
         {
+            // A block element's closing tag ends its line; an inline element's continues it.
             output.Append("</").Append(tag).Append('>');
-            if (node.Kind is DocumentationMarkdownKind.Paragraph or DocumentationMarkdownKind.Heading or DocumentationMarkdownKind.Quote or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList or DocumentationMarkdownKind.ListItem)
+            if (node.Kind < DocumentationMarkdownKind.Text)
             {
                 output.Append('\n');
             }

@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases)>? invalidStaticOriginSlots;
 
     internal BoundType SelfType(BindingSymbol symbol)
     {

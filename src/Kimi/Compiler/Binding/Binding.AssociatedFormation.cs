@@ -169,7 +169,7 @@ public sealed partial class Binding
             {
                 if (node is IsKoto clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity)
                 {
-                    formation = this.SubstituteContractReference(formation, identity.Contract);
+                    formation = this.SubstituteContractReference(formation, identity.Contract, out _);
                 }
 
                 return this.ContractType(formation, scope, this.SelfType(self));

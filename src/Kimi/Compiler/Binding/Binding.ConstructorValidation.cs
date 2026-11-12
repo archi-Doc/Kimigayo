@@ -97,6 +97,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(argumentCount);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -155,7 +156,6 @@ public sealed partial class Binding
                         Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                         ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
                     },
-                    [],
                     mapping,
                     previous.ArgumentMap,
                     expected,
@@ -230,7 +230,7 @@ public sealed partial class Binding
             }
 
             checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
-            this.InitializeCallSlots(call, selectedFunction, construction, frame, fixedConstruction: true);
+            _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frame, fixedConstruction: true);
             if (count > 1)
             {
                 allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);
@@ -245,6 +245,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.argumentOperationScratch.Return(checkedOperations, clearArray: true);
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }

@@ -23,36 +23,40 @@ public partial class TypeDagScalingTest
 
     private const string LayerMain = "public func main()\n    Console.writeLine(\"p\")\n";
 
-    // SPEC 3.4.3, 13.5.5: a Field read, a receiver call, a shared-reference argument, arithmetic, a comparison and a `for` through n
-    // layers. Each walk's steps grow with the layers: Binding's layer walks and the component walks of the fits (TermWalkWork), the
-    // layers HIR publishes (HirPlace.Layers: one step of its loop each) and the projections the MIR builder forms (one per layer its
-    // Follow takes). The sizes pass every count the walks had (8, 16, 32, 64) where the proof cost of the named Origins allows.
+    // SPEC 3.4.3, 13.5.5: a Field read, a receiver call, a shared-reference argument, arithmetic, comparisons, a `for`, a `match` and a
+    // range key through n layers. Each walk's work grows with the layers: Binding's layer walks and the component walks of the fits
+    // (TermWalkWork), the layers HIR publishes (HirPlace.Layers: one step of its loop each) and the MIR builder's layer walks
+    // (MirProgram.LayerWalkWork: their steps, a targeted walk's agreement tests and its premising), the counted walk (the Field read, the
+    // `for` Subject, the `match` Subject), the targeted walk (the receiver's lent referent, the argument's referent, the terminals `==`
+    // compares on Point) and the walk to the value (the range key, through ref layers in both rows). The sizes pass every count the walks had (8, 16, 32, 64) where the
+    // proof cost of the named Origins allows.
     [Theory]
     [InlineData(false, 20)]
     [InlineData(true, 10)]
     public void LayerWalksAreLinearInTheLayers(bool pair, int size)
     {
         var work = new[] { size, 2 * size, 4 * size }.Select(n => Work(pair, n)).ToArray();
-        foreach (var measure in new Func<(long Terms, long Layers, long Projections), long>[] { static x => x.Terms, static x => x.Layers, static x => x.Projections })
+        foreach (var measure in new Func<(long Terms, long Layers, long Walks), long>[] { static x => x.Terms, static x => x.Layers, static x => x.Walks })
         {
             var steps = work.Select(measure).ToArray();
             Assert.True(steps[1] > steps[0] && MirBorrowsTest.Grows(steps, 2), string.Join(' ', work));
         }
 
-        static (long Terms, long Layers, long Projections) Work(bool pair, int layers)
+        static (long Terms, long Layers, long Walks) Work(bool pair, int layers)
         {
             var layered = pair ? (Func<int, string, string>)PairLayers : (n, terminal) => RefLayers(n, terminal);
             var c = MirBuildTest.Compile(LayerTypes +
-                $"func f{(pair ? "<s/T>" : string.Empty)}(x: {layered(layers, "Node")}, y: {layered(layers, "Array<i32>")}, z: {layered(layers, "i32")}{(pair ? ", m: s/T" : string.Empty)}) -> i32\n" +
+                $"func f{(pair ? "<s/T>" : string.Empty)}(x: {layered(layers, "Node")}, y: {layered(layers, "Array<i32>")}, z: {layered(layers, "i32")}, " +
+                $"p: {layered(layers, "Point")}, o: {layered(layers, "Option<i32>")}, v: ref/Array<i32>, r: {RefLayers(layers, "Range<isize, End>")}{(pair ? ", m: s/T" : string.Empty)}) -> i32\n" +
                 (pair ? "    s is value or valueborrow\n" : string.Empty) +
-                "    var total: i32 = x.weight + x.load() + g(z) + (z + 1)\n    for e in y\n        total += e\n    return if z < z => total else => total + 1\n" + LayerMain);
+                "    var total: i32 = x.weight + x.load() + g(z) + (z + 1)\n    for e in y\n        total += e\n    let n = v[r].length\n    let less = z < z\n" +
+                "    let same = p == p\n    match o\n        .Some(let w) => return w\n        .None => return if same => total else => total + 1\n" + LayerMain);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
             var terms = c.Binding.TermWalkWork;
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             Assert.Empty(program.Records(MirRecordClass.Construction));
-            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-            return (terms, HirColumnsTest.Reachable(c.Kotonoha).Sum(static x => (long)HirTables.PlaceOf(x).Layers), body.Projections.Length);
+            return (terms, HirColumnsTest.Reachable(c.Kotonoha).Sum(static x => (long)HirTables.PlaceOf(x).Layers), program.LayerWalkWork);
         }
     }
 

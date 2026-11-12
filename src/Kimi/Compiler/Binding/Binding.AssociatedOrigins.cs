@@ -9,9 +9,16 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
 
+    // SPEC 8.5.1, 8.5.4: a Contract's associated Type declaration with Origin parameters, read from where the parser placed it
+    // (Parser.ParseAssociatedTypeItem): one without a requirement is a member form, one with a requirement is among the Contract's
+    // Constraints; a specification, a member, is none, whatever its head.
     private static bool IsAssociatedRequirement(Koto node)
-        => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
-            UnwrapTransparentType(application.Type) is IdentifierNameKoto or TypeSemanticsKoto { Type: null };
+        => AssociatedHead(node) is OriginApplicationKoto && node switch
+        {
+            SyntaxFormKoto { Parent: ContractKoto } => true,
+            IsKoto { Parent: ContractKoto contract } clause => contract.ConstraintNodes.Contains(clause),
+            _ => false,
+        };
 
     private static Koto? AssociatedHead(Koto declaration)
     {
@@ -137,39 +144,6 @@ public sealed partial class Binding
             ? constraint : this.InternConstraint(new(constraint.Kind, constraint.Subject, required, constraint.Contract, constraint.Mask, left, right));
     }
 
-    // SPEC 8.5.1 Qualification, 8.5.3: a Contract's associated specification `associate C.X is R`, with Origin arguments or without,
-    // constrains its Self's `Self.(C).X` for C a proper ancestor, with its Type arguments, that has the associated Type X.
-    private BoundType? BindAssociatedRefinement(IsKoto clause, MemberAccessKoto member, BindingScope scope)
-    {
-        var application = AssociatedHead(clause) as OriginApplicationKoto;
-        var owner = scope.Owner.BoundSymbol!;
-        if (this.TypeName(member.Left, scope) is not { IsContract: true } selection || this.QualifierReference(member.Left, selection, scope) is not { } qualifier ||
-            ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
-        {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
-        }
-
-        var self = this.ContractSelfType(owner);
-        var associated = this.FindAssociated(self, scope, name, qualifier, clause, out var reference);
-        if (associated is null || this.AssociatedParameters(associated.Declaration).Length != (application?.ArgumentNodes.Count ?? 0))
-        {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
-        }
-
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
-        clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = associated;
-        CompleteQualifier(member.Left, selection, qualifier);
-        Complete(member.Right, projection);
-        Complete(member, projection);
-        if (application is not null)
-        {
-            application.BoundSymbol = associated;
-            Complete(application, projection);
-        }
-
-        return projection;
-    }
-
     private void PrepareAssociatedOrigins()
     {
         for (var n = 0; n < this.nodes.Count; n++)
@@ -223,31 +197,57 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 23.1.2: an associated Type application binds every part, its target projection (in a frame of its own, so the target's
+    // failed parts are its prerequisites) and each Origin argument. It reports its own failure (no associated family, an arity
+    // mismatch) beside the arguments' records, and otherwise rests on its first failed part.
     private BoundType? BindAssociatedApplication(OriginApplicationKoto application, BindingScope scope)
     {
         var target = UnwrapTransparentType(application.Type)!;
-        var projection = target is MemberAccessKoto member ? this.BindAssociatedProjection(member, scope, applyingOrigins: true) : this.BindTypeStructure(target, scope, this.TypeContext(application, scope), applyingOrigins: true);
-        if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
-            this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count || application.ArgumentNodes.Count == 0)
-        {
-            return this.Fail(application, BindingFailure.InvalidAssociatedType);
-        }
-
-        var arguments = this.originScratch.Rent(application.ArgumentNodes.Count);
+        var frame = this.BeginConsultation(target);
+        BoundType? projection;
         try
         {
-            for (var i = 0; i < application.ArgumentNodes.Count; i++)
-            {
-                if (this.BindOrigin(application.ArgumentNodes[i], scope) is not { } origin)
-                {
-                    // SPEC 23.1.2: the failed Origin argument reports its cause, and the application rests on it.
-                    return this.CompleteDependent(application, application.ArgumentNodes[i]);
-                }
+            projection = target is MemberAccessKoto member ? this.BindAssociatedProjection(member, scope, applyingOrigins: true) : this.BindTypeStructure(target, scope, this.TypeContext(application, scope), applyingOrigins: true);
+        }
+        finally
+        {
+            this.EndConsultation(target, frame);
+        }
 
-                arguments[i] = origin;
+        var count = application.ArgumentNodes.Count;
+        var arguments = this.originScratch.Rent(count);
+        try
+        {
+            Koto? failedArgument = null;
+            for (var i = 0; i < count; i++)
+            {
+                if (this.BindOrigin(application.ArgumentNodes[i], scope) is { } origin)
+                {
+                    arguments[i] = origin;
+                }
+                else
+                {
+                    failedArgument ??= application.ArgumentNodes[i];
+                }
             }
 
-            projection = this.WithOrigins(projection, null, arguments.AsSpan(0, application.ArgumentNodes.Count));
+            if (projection is null && this.HasFailureCauses(target))
+            {
+                return this.CompleteDependent(application, target);
+            }
+
+            if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
+                this.AssociatedParameters(associated.Declaration).Length != count || count == 0)
+            {
+                return this.Fail(application, BindingFailure.InvalidAssociatedType);
+            }
+
+            if (failedArgument is not null)
+            {
+                return this.CompleteDependent(application, failedArgument);
+            }
+
+            projection = this.WithOrigins(projection, null, arguments.AsSpan(0, count));
             this.associatedApplications.Add((application, projection));
             application.BoundSymbol = target.BoundSymbol = associated;
             Complete(target, projection);
