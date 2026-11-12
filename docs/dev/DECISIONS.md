@@ -12474,6 +12474,37 @@ resumed by R4-M86 (2026-10-20).
     pair-layer clause in member lookup alone (receivers stay unresolved; one clause per site); a separate limit predicate
     `ObjRef || ExclusivelyAcquirable` (a partial second copy of the input rule); a clause excepting object layers from BU-184's
     interim row (1) (a second rule for one family).
+- **BU-186 A missing name a later source can supply is pending at every constraint former (PLAN G726)** (2026-11-12; Front, Binding;
+  Major, Q17 class 3; PLAN G726's N1 and N2; design review ACCEPT WITH NOTES; the owner's O-216 (a)) SPEC 7.5, 9.2, 9.5.
+  - Rule (BU-151's reading of SPEC 9.2, 9.5; SPEC and IMPL do not define Provisional mode): `HasUnresolvedConstraintSyntax` is the
+    one answer to "this syntax formed nothing for a missing name". Every exit of a constraint former that formed nothing asks it. A
+    subject asks it in `BindConstraint`: a subject that formed nothing is pending when it could become a subject valid here, by the
+    one statement of that rule (`Admits`, shared with the formed subject): its projection chain's base (`SubjectBase`) is a generic
+    input rooted as SPEC 7.5 requires, or closed subjects are valid in its scope. A Contract use asks it through `PendingReference`
+    (the Contract reference former's file; a use whose lookup selected nothing first gets its missing mark from `BindType`): a
+    requirement's Contract reference (`T is C<M>`), a Contract parent, generic or not, with a missing Contract or Type argument
+    (`K: C`, `K: C<M>`, `K: Future<i32>`), and an associate selector (`associate C.Item is R`, `associate C<M>.Item is R`;
+    `BindAssociatedName` returns the pending result explicitly). A subject rooted in a missing name in a function or a `when` list,
+    a wrong arity, and a selector naming an available Contract that is no conformance are decided at once.
+  - O-216 (a) (the owner, 2026-11-12): a Contract parent whose generic Contract is not declared yet is pending like a non-generic
+    missing parent.
+  - Removed: `BuildContract`'s `generic is null` gate with its comment "a generic parent is never deferred" (no SPEC or DECISIONS
+    source) and its inline `BindType` + visitor pair (now `PendingReference`). `BindConstraint`'s scope-kind gate
+    (`scope.Owner is StructKoto or EnumKoto or ContractKoto`) is no longer a gate of its own: it becomes the closed arm of the
+    subject rule (`closedScope`, shared with `closedSubject`).
+  - Moves: Provisional verdicts only (final records unchanged), definite -> pending: a projection whose qualifier is missing, and
+    the unqualified projection under a pending Constraint (`T.Item`), in `when` lists and function regions; a bound reference with a
+    missing Type argument in every conformance, requirement and parent form; a missing generic parent (`RefinementNameBindingTest`'s
+    three generic-parent rows: Invalid -> pending, the test renamed `MissingNamesLeaveGenericParentsPending`); the associate
+    selector with a missing Contract or Type argument, a child Contract's selector and a group fragment's Contract included; the
+    parent part of an effect item's missing ancestor (the Contract's parent is pending; the effect item itself stays PLAN G799's).
+    Definite twins unchanged.
+  - Rejected: dropping the subject gate (a function subject rooted in a missing name would wait for a source no one can write); a
+    pending BoundType for a projection; a Provisional arm per form.
+  - Open: (1) the effect target (`effect A.r bound`) shares the cause; its Provisional verdict is prototyped
+    (`rest-effect-target.patch`) but waits for PLAN G799 (a valid program is rejected on the rebind after the append). (2) The
+    unqualified `associate Item is R` whose Contract is missing is definite before the supply (probe a3): PLAN G726 keeps it; its
+    exit needs the owner's pending conformances, not a node of the clause.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
