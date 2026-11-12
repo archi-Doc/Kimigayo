@@ -211,6 +211,11 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
+        if (write.IsAbstract)
+        {
+            return this.Pointered(place) == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided; // G734 P2: UnknownWrite's answer.
+        }
+
         if (Punnable(write).Scalar != Extent.Positive)
         {
             return PunWrite.Undecided;
@@ -234,7 +239,7 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        var result = Punnable(type).Scalar != Extent.None ? this.Designated(place, type, on) : PunWrite.Typed;
+        var result = Punnable(type).Scalar != Extent.None || type.IsAbstract ? this.Designated(place, type, on) : PunWrite.Typed;
         if (result == PunWrite.Pun)
         {
             return result;

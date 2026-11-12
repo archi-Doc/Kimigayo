@@ -75,7 +75,7 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
+        if (cases.TypeOf(place) is var stored && Punnable(stored).Scalar == Extent.None && !stored.IsAbstract)
         {
             return;
         }
