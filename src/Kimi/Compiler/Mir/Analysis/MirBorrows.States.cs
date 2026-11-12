@@ -17,7 +17,7 @@ internal sealed partial class MirBorrows
 {
     private long[] steppedBy = []; // By Shared set: the walk level that read it (Steps).
     private long stepping; // The walk's base level, even (level + 1: a set's indirect form; Steps); never reset, so a long (an int wraps at 2^30 walks).
-    private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set and read tier (Scanned): the pass instance that read it, its first via, the vias.
+    private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set and read tier (Scanned): its pass instance, first via, vias.
     private int instance; // The gather's pass instances (Pass).
 
     // A state's parts and a state of parts.

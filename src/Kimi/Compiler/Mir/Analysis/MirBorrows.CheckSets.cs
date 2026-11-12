@@ -317,7 +317,12 @@ internal sealed partial class MirBorrows
         return slot + 1;
     }
 
-    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex, this.instance, this.tier) = (pass, index, this.instance + 1, this.PassTier);
+    // Starts a pass instance, at the pass's tier until a read fixes its own (a reach outside a read takes the pass's read key).
+    private void Pass(byte pass, int index = 0)
+    {
+        (this.pass, this.passIndex, this.instance) = (pass, index, this.instance + 1);
+        this.tier = this.PassTier;
+    }
 
     // A holder's read key at the reaching read's tier (R4-M198's undecided class, PLAN G775): reached by a read at the Limit tier (through
     // a set carrying Φ_U, MirBorrows.Puns), it rests on the undecided write: slot + holderCount; else the slot.
