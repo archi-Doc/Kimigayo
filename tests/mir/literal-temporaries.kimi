@@ -1,0 +1,19 @@
+func both(p: (ref/i32 during a, ref/i32 during a)) -> bool => true
+func nested(p: (ref/(i32, i32) during a, i32)) -> bool => true
+func show(p: (ref/(string, i32) during a, i32)) -> bool => true
+func letScalar() -> i32
+    let a: ref/i64 = 1
+    return 0
+func letElement() -> i32
+    let x: (ref/i32, i32) = (1, 2)
+    return 0
+func letJoin(c: bool, n: ref/i32) -> i32
+    let x: ref/i32 = if c => n else => 1
+    return 0
+func assignSource(n: ref/i32) -> i32
+    var x: ref/i32 = n
+    x = 1
+    return 0
+func callElement(n: ref/i32) -> bool => both((n, 1))
+func callNested() -> bool => nested(((1, 2), 3))
+func callDrop(s: string) -> bool => show(((s@move, 1), 2))

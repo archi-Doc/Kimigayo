@@ -228,7 +228,7 @@ public sealed partial class Binding
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
         var first = this.positionClasses.Count;
-        var result = this.ProbeAggregateArgument(node, valueType, scope);
+        var result = borrow && !this.FitsOwnTypeAt(node, type, scope) ? CandidateApplicability.Inapplicable : this.ProbeAggregateArgument(node, valueType, scope);
         if (result != CandidateApplicability.Applicable)
         {
             this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
@@ -244,12 +244,40 @@ public sealed partial class Binding
         return result;
     }
 
+    // SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3 (PLAN G585; the owner's O-201 (1) (a), (2) (a)): the Type U of the owner temporary that a
+    // source at `ref/U` is, materialized once and shared-borrowed, the one rule of every position (an argument's fit, BindAndAdaptNode
+    // at any expected Type, the evidence walk, a value call's solve): a Tuple or array literal (a fill is none, 4.3.3), an untyped literal
+    // or a literal-only expression (12.3; a mixed range is none, 4.6.2), or an unbound selection, `do` or `loop` with such a source,
+    // directly or nested (its survey), whose value is the one temporary at its position. The source is fitted to U as at an expected U,
+    // so a misfit is its own record at U; a call's fit tests it (FitLiteral). A form that delivers its operand (a label, an expression
+    // body) passes the position to it; null at any other Type or part.
+    private BoundType? TemporaryTarget(Koto part, BoundType? type, BindingScope scope)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var target] } || DeliveredOperand(core) is not null)
+        {
+            return null;
+        }
+
+        return core is TupleLiteralKoto { Elements.Count: > 0 } or ArrayLiteralKoto { FillLength: null } || IsUnfittedLiteral(core) ||
+            (core.BoundType is null && ControlFlowExpression(core) is { } join && this.SurveyResult(join, scope).Literal) ? target : null;
+    }
+
+    // SPEC 4.3.3, 4.6.2 rule 2, 12.3.1 (PLAN G585, K's K2/K3): a composite at `ref/U` that is no such temporary (a fill, a mixed range)
+    // takes nothing from U: its literal parts keep the Type its own parts give them (a fill's literal element its default, a mixed
+    // range's literal boundary its typed boundary's), so it fits only where that Type is U. A join keeps its own rows (FitsJoin).
+    private bool FitsOwnTypeAt(Koto node, BoundType type, BindingScope scope)
+        => this.TemporaryTarget(node, type, scope) is not null || KotoHelper.UnwrapParentheses(node) switch
+        {
+            ArrayLiteralKoto { FillLength: not null, Elements: [var element] } => !IsUnfittedLiteral(element) ||
+                type.Components[0] is not { Kind: BoundTypeKind.FixedArray, Components: [var item] } || ReferenceEquals(this.LiteralDefault(element), item),
+            RangeKoto => type.Components[0] is not { Kind: BoundTypeKind.Constructed, Components: [var start, var end] } || ReferenceEquals(start, end),
+            _ => true,
+        };
+
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        var target = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? type.Components[0] : null;
-        if (target is not null &&
-            (ScalarTypes.Supports(target) || this.TakesGenericLiterals(target, scope) || this.IsSyntaxPositionType(target)) &&
-            this.FitsLiteralPart(node, target, scope))
+        if (this.TemporaryTarget(node, type, scope) is { } target && this.FitsLiteralPart(node, target, scope))
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
             var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));

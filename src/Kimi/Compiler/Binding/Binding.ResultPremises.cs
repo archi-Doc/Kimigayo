@@ -487,6 +487,11 @@ public sealed partial class Binding
                 {
                     this.CollectOriginInference(pattern, adapted, inference);
                 }
+                else if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Pattern: { Origin: { } origin } borrowed, Part: var temporary } &&
+                    this.TemporaryTarget(temporary, borrowed, scope) is not null)
+                {
+                    AddInputBound(inference, origin, this.PlaceOrigin(temporary)); // SPEC 10.2 row 2, 15.3.6: as InferTemporary.
+                }
             }
 
             this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);

@@ -465,13 +465,6 @@ public sealed partial class Binding
                     {
                         return applicability;
                     }
-
-                    // SPEC 10.2: a borrowed literal temporary's Place Origin binds the parameter's input Origin like any other borrowed temporary.
-                    if (operation is { Kind: ArgumentOperationKind.Borrow, AdaptedType: not null } && argument.BoundType is null &&
-                        !solution.InferInput(pattern, operation.SourceType!, argument))
-                    {
-                        return CandidateApplicability.Inapplicable;
-                    }
                 }
             }
 
