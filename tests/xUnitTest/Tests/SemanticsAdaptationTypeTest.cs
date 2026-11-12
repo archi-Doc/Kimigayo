@@ -57,6 +57,67 @@ public class SemanticsAdaptationTypeTest
         Assert.Same(created, c.Binding.CaseType(type, both));
     }
 
+    // SPEC 13.5.1, 8.2.3 (PLAN G759): `p@s` abbreviates `p@s/U`, so a family whose cases are exactly those of the application `s/U` is
+    // that application, and a case list no application gives stays a family: under `s is ref or objref` the ref case borrows the
+    // handle's slot (`ref/(obj/i32)`) while the objref case views its payload.
+    [Theory]
+    [InlineData("s is objref or objuniq", true)]
+    [InlineData("s is obj or objref or objuniq", true)]
+    [InlineData("s is ref or objref", false)]
+    public void AFamilyWithAnApplicationsCasesIsThatApplication(string premise, bool application)
+    {
+        var (c, _, pair) = Parse($"func f<s/T>(value: s/T)\n    {premise}\n    ()");
+        var handle = c.Binding.AdaptedType(SemanticsKind.Obj, BoundType.I32, null, pair.Scope);
+        var type = c.Binding.SemanticsAdaptation(pair, handle, BoundOrigin.Static, pair.Scope);
+        Assert.Equal(application ? BoundTypeKind.SemanticsApplication : BoundTypeKind.SemanticsAdaptation, type.Kind);
+        Assert.Equal(application, Binding.TryPairLayer(type, out var whole, out var target));
+        if (application)
+        {
+            Assert.Same(pair.WholeType, whole);
+            Assert.Same(BoundType.I32, target);
+            Assert.Same(BoundOrigin.Static, type.Origin);
+        }
+    }
+
+    // SPEC 13.5.1, 8.2.3 (PLAN G759): the Type of `p@s` is the written `s/Node`, also inside a Tuple and as a borrowed slot's referent.
+    // Labels from SPEC: the first four are valid; the next three name a Type that is not `s/Node` (another binder, another target, a
+    // concrete layer the objuniq case is not); the last two move or write `p` while the application local `y` borrowing it lives (15.6).
+    [Theory]
+    [InlineData("    let y: s/Node = p@s\n", "")]
+    [InlineData("    let y = p@s\n    let r: ref/(s/Node) = y@ref\n", "")]
+    [InlineData("    let y: s/Node = p@s\n    let r: ref/(s/Node) = y@ref\n", "")]
+    [InlineData("    let t: (s/Node, i32) = (p@s, 1)\n", "")]
+    [InlineData("    let y: t/Node = p@s\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Other = p@s\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Node = p@objref\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Node = p@s\n    let z = p@move\n    let v = y.n\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let y: s/Node = p@s\n    p.n = 2\n    let v = y.n\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AnObjectShorthandHasItsWrittenApplicationType(string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nstruct Other\n    public var k: i32\n    public init(k: i32) => self.k = k\n" +
+            "func f<s/T, t/U>(m: s/T, k: t/U, o: obj/Node) -> i32\n    s is objref or objuniq\n    t is objref or objuniq\n    var p = o@move\n" + body +
+            "    return 0\npublic func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes.Contains(code, StringComparison.Ordinal), codes);
+    }
+
+    // SPEC 13.5.1, 13.5.6 (PLAN G759): `x = p@t` under `t is objectborrow` is the application `t/Node`, so `x@s` adapts a pair layer as
+    // any (dev: InternalInvariant_Kd on a two-case family local). Labels from SPEC: a read through `y` is valid; a write through the
+    // objref `y` is invalid (13.5.5), with the concrete record only.
+    [Theory]
+    [InlineData("    return y.n\n", "")]
+    [InlineData("    y.n = 1\n    return 0\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    public void AShortAdaptationOfAnApplicationLocalIsAnAdaptation(string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "func f<s/T, t/U>(o: obj/Node) -> i32\n    s is objref\n    t is objectborrow\n    var p = o@move\n    let x = p@t\n    let y = x@s\n" + body +
+            "public func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes == code, codes);
+    }
+
     [Fact]
     public void ASharedObjectViewKeepsItsExistingOrigin()
     {
