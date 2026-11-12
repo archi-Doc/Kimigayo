@@ -635,11 +635,9 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 14.9.2 step 3 at every position (U1.6g2): the join's own position (depth 0) and each child position of its Tuple and
-    // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take the position's Target Result Type,
-    // `target`: at a call the selected candidate's Type there, at which the position's parts were fitted as one control-flow argument
-    // (SPEC 10.5.1 last paragraph, PLAN G729), with no call the step-2 Type (DecideResult's at depth 0, PositionType selecting over the
-    // same supplied Types); without one its typed parts' common Type; with no Type it has no part (Never or failed parts only), and a
-    // waiting part there is a broken contract. Aggregate: each child position at its element of
+    // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take its typed parts' common Type, with no
+    // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
+    // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
     // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
     // element Type (7.7.4, per element).
     private void BindStepThree(int start, int end, BoundType? target)
@@ -647,12 +645,11 @@ public sealed partial class Binding
         switch (this.PositionKind(start, end, out var common))
         {
             case PartKind.Typed:
-                var type = target ?? common;
                 for (var i = start; i < end; i++)
                 {
                     if (this.positionParts[i] is { BoundType: null } part && this.Deferred(part))
                     {
-                        _ = type is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, type);
+                        _ = common is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, common);
                     }
                 }
 
