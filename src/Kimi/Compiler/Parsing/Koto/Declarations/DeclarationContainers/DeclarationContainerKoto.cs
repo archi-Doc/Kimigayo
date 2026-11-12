@@ -687,7 +687,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (this is StructKoto && token.Kind == TokenKind.Init)
         {
-            var constructor = Parser.ParseFuncDeclaration(ref reader, constructor: true);
+            var constructor = Parser.ParseFuncDeclaration(ref reader, Parser.FunctionForm.Constructor);
             if (constructor is not null)
             {
                 constructor.DeclaringContainer = this;
@@ -781,14 +781,15 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function, reader.CurrentTokenRange);
         reader.Advance();
-        var functionKoto = Parser.ParseFuncDeclaration(ref reader);
+        var form = this is ContractKoto ? Parser.FunctionForm.Requirement : Parser.FunctionForm.Function;
+        var functionKoto = Parser.ParseFuncDeclaration(ref reader, form);
         if (functionKoto is null)
         {
             return true;
         }
 
         functionKoto.DeclaringContainer = this;
-        if (this is ContractKoto)
+        if (form == Parser.FunctionForm.Requirement)
         {
             Parser.ParseRequirementBody(ref reader, functionKoto);
         }

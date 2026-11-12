@@ -377,7 +377,7 @@ public static partial class Parser
     internal static FunctionKoto? ParseFunctionItem(ref TokenReader reader)
     {
         reader.Advance();
-        var function = ParseFuncDeclaration(ref reader);
+        var function = ParseFuncDeclaration(ref reader, FunctionForm.Function);
         if (function is null)
         {
             return null;

@@ -12,49 +12,94 @@ namespace Kimi.Compiler;
 
 // The function header (SPEC 6.3.1, 7.1, Appendix F.6.3): the Name or init, Type parameters, the parameter list with its `!` boundary, the
 // result and a constructor's base call; and a named function's body, or its absence on an import.
-// Input: a reader after the function keyword with the item's prefix pending; the header's form as ParseFuncDeclaration's arguments.
+// Input: a reader after the function keyword with the item's prefix pending; the production of the caller's position as a FunctionForm.
 // Output: a FunctionKoto without its body, which takes the prefix, or null when nothing of the header can be kept.
 // Invariants: a declaration whose header failed is omitted with its body; a function expression leaves the rest to its expression. A
-// specialization publishes no modifier: each it wrote is reported here.
+// specialization publishes no modifier: each it wrote is reported here. The form selects what these readers judge: the attribute
+// prefix, the captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver shorthand,
+// what follows the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a Function
+// into 6.4.1's override header. Judged elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a
+// SpecializationParameter's attribute and default (Binding.Specializations, SPEC 8.13.2); an override's own Type parameters, `!`,
+// defaults and parameter attributes (Binding.VirtualDeclarations, 6.4.1). PLAN G557's parameter part makes the requirement's rules,
+// the specialization's default and every parameter attribute row tests here; the override's other rules become Override row tests in
+// the later Front unit after the owner's O-222 (b), which gives the override header an F.6.3 production of its own.
 // Prohibitions: a body's items belong to Parser.Blocks, the clauses after a header to Parser.Syntax.
 public static partial class Parser
 {
-    /// <summary>Parses a function header after its keyword: the Name, Type parameters, parameters and result (SPEC 7.1, Appendix F FunctionHeader).</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="anonymous">Whether this is a function expression, whose Name is omitted and whose parameters may omit their Types.</param>
-    /// <param name="constructor">Whether this is an init declaration; the reader stands at <c>init</c>.</param>
-    /// <param name="specialization">Whether the generic list contains specialization arguments.</param>
-    /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
-    public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, bool anonymous = false, bool constructor = false, bool specialization = false)
+    /// <summary>The production a function header is read under (SPEC F.6.2, F.6.3, F.9.1; 6.4.1's override header). Each reader of a
+    /// header part tests the row where it reads that part; the rules no row carries yet are named in this file's contract.</summary>
+    internal enum FunctionForm
     {
+        /// <summary>FunctionHeader (F.6.3), of a FunctionDefinition or a BodilessFunctionDeclaration: a Name, GenericParameters and
+        /// ParameterList&lt;Parameter&gt;.</summary>
+        Function,
+
+        /// <summary>6.4.1's override header: in Appendix F a FunctionHeader under <c>override</c>, an F.6.3 production of its own by the
+        /// owner's O-222 (b). The header reads a Function under the prefix's modifier as this row; it takes no attribute prefix (DECISIONS
+        /// R9-M4).</summary>
+        Override,
+
+        /// <summary>FunctionRequirement (F.6.2): ParameterList&lt;RequirementParameter&gt;, whose defaults and attributes
+        /// Parser.ParseRequirementBody judges after the header.</summary>
+        Requirement,
+
+        /// <summary>ConstructorDeclaration (F.6.3): <c>init</c>, ParameterList&lt;Parameter&gt; without a receiver (SPEC 7.3), a BaseInitializer.</summary>
+        Constructor,
+
+        /// <summary>SpecializationDeclaration (F.6.3): a Name, TypeArguments and SpecializationParameters without the <c>!</c> boundary,
+        /// whose restated attributes and defaults Binding judges (SPEC 8.13.2).</summary>
+        Specialization,
+
+        /// <summary>FunctionExpression (F.9.1): a CaptureList, no Name, and AnonymousParameters without the <c>!</c> boundary.</summary>
+        Expression,
+    }
+
+    /// <summary>A parameter list as read (Appendix F ParameterList&lt;P&gt;, or the boundary-less list of a Specialization or an Expression).</summary>
+    /// <param name="Parameters">The parameters, or <see langword="null"/> when none was kept.</param>
+    /// <param name="NameBoundary">The index of the first named parameter, or -1 without a boundary.</param>
+    /// <param name="Close">The closing parenthesis.</param>
+    private readonly record struct ParameterList(List<FunctionParameterKoto>? Parameters, int NameBoundary, SourceSpan Close);
+
+    /// <summary>Parses a function header after its keyword: the Name, Type parameters, parameters and result (SPEC 7.1, Appendix F FunctionHeader).</summary>
+    /// <param name="reader">The token reader; at <c>init</c> for a Constructor.</param>
+    /// <param name="form">The production of the caller's position; a Function under <c>override</c> is read as an Override.</param>
+    /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
+    internal static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, FunctionForm form)
+    {
+        // The header reads the prefix's override once: a Function under it is 6.4.1's override header (O-222 (b): its own F.6.3 production).
+        if (form == FunctionForm.Function && (reader.ModifierKind & ModifierKind.Override) != 0)
+        {
+            form = FunctionForm.Override;
+        }
+
         // A constructor, a specialization and an override take no attributes (SPEC 6.3, 8.13.2, 6.4.1): the prefix's are reported
-        // and attach to nothing.
-        if (constructor || specialization || (reader.ModifierKind & ModifierKind.Override) != 0)
+        // and attach to nothing. A requirement's were reported by its Contract, as every Contract item's are; a function expression
+        // is never read under a pending override.
+        if (form is FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Override)
         {
             ReportPendingAttributes(ref reader);
         }
 
         var context = reader.TakeContext();
-        var captures = anonymous && reader.CurrentTokenKind == TokenKind.OpenBracket ? ParseCaptures(ref reader) : null;
+        var captures = form == FunctionForm.Expression && reader.CurrentTokenKind == TokenKind.OpenBracket ? ParseCaptures(ref reader) : null;
         var methodToken = reader.CurrentToken;
-        if (!TryParseFunctionName(ref reader, anonymous, constructor, out var methodName))
+        if (!TryParseFunctionName(ref reader, form, out var methodName))
         {
-            return Omitted(ref reader, anonymous);
+            return Omitted(ref reader, form);
         }
 
         // The header's form selects the list's production: a specialization's TypeArguments, else GenericParameters (SPEC F.6.3).
         var genericArguments = reader.CurrentTokenKind != TokenKind.LessThan ? null
-            : specialization ? ParseSpecializationArguments(ref reader)
+            : form == FunctionForm.Specialization ? ParseSpecializationArguments(ref reader)
             : ParseGenericParameters(ref reader, allowLength: true);
         RejectCallableOriginList(ref reader);
-        if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) ||
-            !TryParseParameterList(ref reader, anonymous, constructor, specialization, out var parameters, out var nameBoundary, out var closeParenthesisRange))
+        if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) || ParseParameterList(ref reader, form) is not { } list)
         {
-            return Omitted(ref reader, anonymous);
+            return Omitted(ref reader, form);
         }
 
         Koto? returnType = null;
-        var end = closeParenthesisRange.End;
+        var end = list.Close.End;
         if (reader.TryConsume(TokenKind.MinusGreaterThan, out var returnArrowRange, false))
         {
             returnType = ParseFunctionReturnType(ref reader, returnArrowRange);
@@ -64,22 +109,25 @@ public static partial class Parser
         // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (its access word is
         // rejected before this header, Parser.RejectAccessWord; unsafe, virtual and override are SpecializationHeader below; then
         // StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
-        var header = specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context;
+        var header = form == FunctionForm.Specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context;
         var functionKoto = new FunctionKoto(
             ref reader,
             header,
             SourceSpan.FromBounds(methodToken.Span.Start, end),
             methodName,
             genericArguments,
-            parameters,
-            returnType);
-        functionKoto.NameBoundaryIndex = nameBoundary;
-        functionKoto.HeaderEnd = closeParenthesisRange.End;
-        functionKoto.IsAnonymous = anonymous;
-        functionKoto.IsConstructor = constructor;
-        functionKoto.IsSpecialization = specialization;
+            list.Parameters,
+            returnType)
+        {
+            NameBoundaryIndex = list.NameBoundary,
+            HeaderEnd = list.Close.End,
+            IsAnonymous = form == FunctionForm.Expression,
+            IsConstructor = form == FunctionForm.Constructor,
+            IsRequirement = form == FunctionForm.Requirement,
+            IsSpecialization = form == FunctionForm.Specialization,
+        };
         functionKoto.SetCaptures(captures);
-        if (anonymous)
+        if (form == FunctionForm.Expression)
         {
             if (methodName.Length != 0)
             {
@@ -92,7 +140,7 @@ public static partial class Parser
             reader.Hover(functionKoto, methodToken.Span);
         }
 
-        if (constructor)
+        if (form == FunctionForm.Constructor)
         {
             if (reader.TryConsume(TokenKind.Colon))
             {
@@ -107,7 +155,7 @@ public static partial class Parser
             }
         }
 
-        if (specialization && (genericArguments is null || context.ModifierKind.Judged() != 0))
+        if (form == FunctionForm.Specialization && (genericArguments is null || context.ModifierKind.Judged() != 0))
         {
             // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
             var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
@@ -119,7 +167,7 @@ public static partial class Parser
 
         // A declaration's header ends its line, since the declaration may be bodyless. A function expression's required body judges its
         // header's line (FunctionKoto.Parse) and stops at an enclosing grouping's closer; an attribute continuing it is misplaced (SPEC 6.7).
-        if (anonymous)
+        if (form == FunctionForm.Expression)
         {
             reader.ReportMisplacedAttributes();
         }
@@ -131,9 +179,9 @@ public static partial class Parser
         return functionKoto;
 
         // A declaration whose header failed is skipped with its body; a function expression leaves the rest to its expression.
-        static FunctionKoto? Omitted(ref TokenReader reader, bool anonymous)
+        static FunctionKoto? Omitted(ref TokenReader reader, FunctionForm form)
         {
-            if (!anonymous)
+            if (form != FunctionForm.Expression)
             {
                 OmitDeclaration(ref reader, reader.Diagnostic.LastError);
             }
@@ -146,23 +194,23 @@ public static partial class Parser
     /// Reads the Name of a function declaration, <c>init</c> of a constructor, or the omitted Name of a function expression; a
     /// qualified Name is read in full and reported. A failed Name ends the header, which the caller then skips with its body.
     /// </summary>
-    private static bool TryParseFunctionName(ref TokenReader reader, bool anonymous, bool constructor, [NotNullWhen(true)] out string? name)
+    private static bool TryParseFunctionName(ref TokenReader reader, FunctionForm form, [NotNullWhen(true)] out string? name)
     {
         // An attribute precedes the declaration (SPEC 6.7); one before the Name, or before a function expression's parameter
         // list, is reported and the header continues after it.
         if (reader.CurrentTokenKind == TokenKind.Sharp)
         {
-            reader.ReportMisplacedAttributes(anonymous ? TokenKind.OpenParenthesis : TokenKind.Invalid);
+            reader.ReportMisplacedAttributes(form == FunctionForm.Expression ? TokenKind.OpenParenthesis : TokenKind.Invalid);
         }
 
         var token = reader.CurrentToken;
-        if (anonymous && token.Kind == TokenKind.OpenParenthesis)
+        if (form == FunctionForm.Expression && token.Kind == TokenKind.OpenParenthesis)
         {
             name = string.Empty;
             return true;
         }
 
-        if (anonymous && !(token.Kind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.OpenParenthesis))
+        if (form == FunctionForm.Expression && !(token.Kind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.OpenParenthesis))
         {
             // A function expression continues with its parameter list; only a Name before one is parsed further, to be reported as misplaced.
             reader.Expect(SyntaxForm.OpenParenthesis);
@@ -170,7 +218,7 @@ public static partial class Parser
             return false;
         }
 
-        if (constructor && token.Kind == TokenKind.Init)
+        if (form == FunctionForm.Constructor && token.Kind == TokenKind.Init)
         {
             reader.Advance();
             name = "init";
@@ -196,28 +244,17 @@ public static partial class Parser
     }
 
     /// <summary>
-    /// Parses the parameters after the opening parenthesis through the closing one (Appendix F ParameterList): attributes before each
-    /// parameter, the one <c>!</c> boundary before the named section, and the separating commas.
+    /// Parses the parameters after the opening parenthesis through the closing one (Appendix F ParameterList&lt;P&gt;): attributes before
+    /// each parameter, the one <c>!</c> boundary before the named section, and the separating commas. A Specialization's and an
+    /// Expression's lists are ParameterList&lt;P&gt; without the boundary, which is reported there.
     /// </summary>
     /// <param name="reader">The token reader positioned after <c>(</c>.</param>
-    /// <param name="anonymous">Whether the list belongs to a function expression.</param>
-    /// <param name="constructor">Whether the list belongs to a constructor.</param>
-    /// <param name="specialization">Whether the list belongs to a specialization.</param>
-    /// <param name="parameters">The parameters, or <see langword="null"/> when none was kept.</param>
-    /// <param name="nameBoundary">The index of the first named parameter, or -1 without a boundary.</param>
-    /// <param name="close">The closing parenthesis.</param>
-    /// <returns><see langword="false"/> when the list is not closed; the header is then dropped.</returns>
-    private static bool TryParseParameterList(
-        ref TokenReader reader,
-        bool anonymous,
-        bool constructor,
-        bool specialization,
-        out List<FunctionParameterKoto>? parameters,
-        out int nameBoundary,
-        out SourceSpan close)
+    /// <param name="form">The header's production, which decides whether the list has a boundary and is passed to each parameter.</param>
+    /// <returns>The list, or <see langword="null"/> when it is not closed; the header is then dropped.</returns>
+    private static ParameterList? ParseParameterList(ref TokenReader reader, FunctionForm form)
     {
-        parameters = null;
-        nameBoundary = -1;
+        List<FunctionParameterKoto>? parameters = null;
+        var nameBoundary = -1;
         var afterComma = false;
         var precedingComma = default(SourceSpan);
         while (reader.CanRead)
@@ -251,7 +288,8 @@ public static partial class Parser
                     reader.Diagnostic.Add(boundarySpan, DiagnosticCode.DuplicateArgumentBoundary_Kd);
                 }
 
-                if (anonymous || specialization)
+                // A function expression's and a specialization's lists are written without ParameterList's boundary (F.9.1, F.6.3).
+                if (form is FunctionForm.Expression or FunctionForm.Specialization)
                 {
                     reader.Diagnostic.Add(boundarySpan, DiagnosticCode.ArgumentBoundaryContext_Kd);
                 }
@@ -286,7 +324,7 @@ public static partial class Parser
                 break;
             }
 
-            if (TryParseParameter(ref reader, anonymous, constructor, parameters, attribute, out var parameter))
+            if (TryParseParameter(ref reader, form, parameters, attribute, out var parameter))
             {
                 (parameters ??= new(4)).Add(parameter);
             }
@@ -320,9 +358,9 @@ public static partial class Parser
             }
         }
 
-        if (reader.ExpectCloser(TokenKind.CloseParenthesis, out close) is not null && close == default)
+        if (reader.ExpectCloser(TokenKind.CloseParenthesis, out var close) is not null && close == default)
         {
-            return false; // The list ended without a closer, written or supplied by the tokenizer.
+            return null; // The list ended without a closer, written or supplied by the tokenizer.
         }
 
         if (nameBoundary >= 0 && nameBoundary == (parameters?.Count ?? 0))
@@ -330,15 +368,19 @@ public static partial class Parser
             reader.Diagnostic.Add(close, DiagnosticCode.EmptyNamedParameterSection_Kd);
         }
 
-        return true;
+        return new(parameters, nameBoundary, close);
     }
 
-    /// <summary>Parses one parameter: its external Name, optional internal Name, Type and default (Appendix F ParameterCore).</summary>
+    /// <summary>
+    /// Parses one parameter: its external Name, optional internal Name, Type and default, the union of Appendix F's Parameter,
+    /// RequirementParameter, SpecializationParameter and AnonymousParameter, so a part its row's production lacks is kept for its judge.
+    /// The form judges an AnonymousParameter and the receiver shorthand here; the other rows' parts are judged where this file's
+    /// contract names.
+    /// </summary>
     /// <returns><see langword="false"/> after an error, with the rest of the parameter skipped.</returns>
     private static bool TryParseParameter(
         ref TokenReader reader,
-        bool anonymous,
-        bool constructor,
+        FunctionForm form,
         List<FunctionParameterKoto>? previous,
         AttributeKoto? attribute,
         [NotNullWhen(true)] out FunctionParameterKoto? parameter)
@@ -355,17 +397,14 @@ public static partial class Parser
             reader.Diagnostic.Add(markerSpan, DiagnosticCode.ParameterNameMarker_Kd);
         }
 
-        if (!anonymous && previous is not null)
+        if (form != FunctionForm.Expression && previous is not null)
         {
             foreach (var earlier in previous)
             {
                 if (earlier.ExternalName == externalName)
                 {
-                    reader.Diagnostic.AddSyntax(
-                        externalNameSpan,
-                        DiagnosticCode.DuplicateExternalParameterName_Kd,
-                        externalName,
-                        related: [reader.Diagnostic.Relate("declaration", earlier.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name")]);
+                    var first = reader.Diagnostic.Relate("declaration", earlier.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name");
+                    reader.Diagnostic.AddSyntax(externalNameSpan, DiagnosticCode.DuplicateExternalParameterName_Kd, externalName, related: [first]);
                     break;
                 }
             }
@@ -379,13 +418,14 @@ public static partial class Parser
             return false;
         }
 
-        var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
+        // ReceiverShorthand: every production but AnonymousParameter has it, and a constructor has no receiver (SPEC 7.3).
+        var allowsReceiverShorthand = form is not (FunctionForm.Expression or FunctionForm.Constructor) && externalName == "self" && internalName == "self";
         Koto parameterType;
         if (reader.TryConsume(TokenKind.Colon))
         {
             parameterType = ParseType(ref reader, TypeContext.Type);
         }
-        else if (anonymous || allowsReceiverShorthand)
+        else if (form == FunctionForm.Expression || allowsReceiverShorthand)
         {
             parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, TokenKind.Underscore.ToText(), []);
         }
@@ -402,14 +442,20 @@ public static partial class Parser
             defaultValue = ParseRequiredExpression(ref reader);
         }
 
-        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.13.2); the parser keeps them. A
-        // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
-        if (anonymous && (internalName != externalName || defaultValue is not null || attribute is not null))
+        // An AnonymousParameter has no internal Name, default or attribute. A requirement's default and attribute are judged after its
+        // header (ParseRequirementBody); a specialization's and an override's restated ones are Binding's requirement (SPEC 8.13.2,
+        // 6.4.1), and the parser keeps them (PLAN G557's parameter part). A misplaced attribute already reported before the list is
+        // kept here for the tree, not written on the parameter.
+        if (form == FunctionForm.Expression && (internalName != externalName || defaultValue is not null || attribute is not null))
         {
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);
         }
 
-        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameSpan, InternalNameSpan = internalNameSpan };
+        parameter = new(externalName, internalName, parameterType, defaultValue, attribute)
+        {
+            ExternalNameSpan = externalNameSpan,
+            InternalNameSpan = internalNameSpan,
+        };
         return true;
     }
 

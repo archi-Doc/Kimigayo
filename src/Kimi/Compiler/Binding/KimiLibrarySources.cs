@@ -144,7 +144,7 @@ public sealed partial class KimiLibrary
                 reader.Advance();
             }
 
-            var declaration = Parser.ParseFuncDeclaration(ref reader, constructor: constructor);
+            var declaration = Parser.ParseFuncDeclaration(ref reader, constructor ? Parser.FunctionForm.Constructor : Parser.FunctionForm.Function);
             if (declaration is null)
             {
                 break;
