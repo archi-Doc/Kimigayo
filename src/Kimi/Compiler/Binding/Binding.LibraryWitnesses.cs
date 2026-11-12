@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 //   group gives a requirement (GroupWitness) and of a witness's generic arguments at the Type (RentWitnessArguments). A built-in Type has
 //   no source declaration to state a conformance, so the compiler records the conformance and the library writes its witness; so has
 //   Wrapping<T>, whose declaration SPEC 3.1.1 gives no members, in both its forms (a wrapping scalar and the construction over an
-//   abstract T).
+//   abstract T), and so has the view (Text.Utf8Slice), a declared struct with `length` and `bytes()` (SPEC 22.9.3) whose declaration
+//   states no conformance, since SPEC 22.10.2 makes its Utf8Format conformance built in.
 // - Inputs: a Type and a Contract's identity; the group's member scope; the generic parameters of the group's functions; a Contract's built
 //   requirements (ContractWitness), which PrepareContracts fills.
 // - Outputs: a row (LibraryWitnessGroup); the witness, the group's one function named as the requirement, explicit specializations aside;

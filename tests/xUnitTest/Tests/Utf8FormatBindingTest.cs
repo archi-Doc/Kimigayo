@@ -50,13 +50,17 @@ public class Utf8FormatBindingTest
     }
 
     // SPEC 22.10.2, 22.9.3: the view's Utf8Format conformance is built in and adds no member, so its `format` is reached only through a
-    // proven `T is Utf8Format`; a direct call names no member of the view, which has `length` and `bytes()` only.
-    [Fact]
-    public void AViewsFormatIsNoMember()
+    // proven `T is Utf8Format`; a direct call, a call through a borrow and the Type-qualified Function Item each name no member of the
+    // view, which has `length` and `bytes()` only.
+    [Theory]
+    [InlineData(Prefix + "_ = Text.utf8(\"a\").format(writer@uniq)\n", "Text.utf8(\"a\").format")]
+    [InlineData("func put(r: ref/Text.Utf8Slice, w: uniq/Utf8Writer) -> Result<(), BufferFull> => r.format(w)\n" + Prefix, "r.format")]
+    [InlineData("let show = Text.Utf8Slice.format\n", "Text.Utf8Slice.format")]
+    public void AViewsFormatIsNoMember(string source, string at)
     {
-        const string Source = Prefix + "_ = Text.utf8(\"a\").format(writer@uniq)\n";
-        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal(("UnresolvedBinding_Kd", "Text.utf8(\"a\").format"), (record.Code, Source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("UnresolvedBinding_Kd", at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), record.Span.Value.Start);
     }
 
     [Theory]
