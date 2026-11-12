@@ -300,6 +300,9 @@ public static partial class Parser
         return literal;
     }
 
+    // ArrayExpression := "[" TrailingList<Expression>? "]" | "[" ArrayLength "of" Expression "]" and DictionaryExpression := "[" ":" "]" |
+    // "[" TrailingList<DictionaryEntry> "]" (F.9.1). The empty forms and the fill form are read here; after the first element a ":"
+    // selects the Dictionary's list, anything else the Array's.
     private static Koto ParseCollectionLiteralCore(ref TokenReader reader)
     {
         var openRange = reader.CurrentTokenRange;
@@ -338,108 +341,112 @@ public static partial class Parser
         return reader.CurrentTokenKind == TokenKind.Colon
             ? ParseDictionaryLiteral(ref reader, openRange, first)
             : ParseArrayLiteral(ref reader, openRange, first);
+    }
 
-        static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
+    // ArrayExpression's TrailingList<Expression> after its first element, to the "]" (F.9.1).
+    private static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
+    {
+        var elements = new List<Koto>(4) { first };
+        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
         {
-            var elements = new List<Koto>(4) { first };
-            while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
+            if (reader.CurrentTokenKind != TokenKind.Comma)
             {
+                RecoverItem(ref reader, elements[^1], reader.Expect(SyntaxForm.Comma));
+                reader.SkipListItem();
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    RecoverItem(ref reader, elements[^1], reader.Expect(SyntaxForm.Comma));
-                    reader.SkipListItem();
-                    if (reader.CurrentTokenKind != TokenKind.Comma)
-                    {
-                        break;
-                    }
-                }
-
-                reader.Advance();
-                reader.SkipSeparators();
-                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
-                {
                     break;
                 }
+            }
 
-                elements.Add(ParseLiteralElement(ref reader));
+            reader.Advance();
+            reader.SkipSeparators();
+            if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+            {
+                break;
+            }
+
+            elements.Add(ParseLiteralElement(ref reader));
+            reader.SkipSeparators();
+        }
+
+        RecoverItem(ref reader, elements[^1], reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange));
+        var end = Math.Max(elements[^1].Span.End, closeRange.End);
+        return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), elements);
+    }
+
+    // DictionaryExpression's TrailingList<DictionaryEntry> from its first key's ":", to the "]"; DictionaryEntry := Expression ":" Expression
+    // (F.9.1). An entry without its ":" is reported and skipped.
+    private static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
+    {
+        var entries = new List<DictionaryLiteralEntry>(4);
+        var key = firstKey;
+        while (reader.CanRead)
+        {
+            if (reader.CurrentTokenKind != TokenKind.Colon)
+            {
+                reader.Expect(SyntaxForm.Colon);
+                reader.SkipListItem();
+            }
+            else
+            {
+                reader.Advance();
+                reader.SkipSeparators();
+                var value = ParseLiteralElement(ref reader);
+                entries.Add(new(key, value));
                 reader.SkipSeparators();
             }
 
-            RecoverItem(ref reader, elements[^1], reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange));
-            var end = Math.Max(elements[^1].Span.End, closeRange.End);
-            return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), elements);
-        }
-
-        static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
-        {
-            var entries = new List<DictionaryLiteralEntry>(4);
-            var key = firstKey;
-            while (reader.CanRead)
+            if (reader.CurrentTokenKind == TokenKind.CloseBracket)
             {
-                if (reader.CurrentTokenKind != TokenKind.Colon)
+                break;
+            }
+
+            if (reader.CurrentTokenKind != TokenKind.Comma)
+            {
+                var cause = reader.Expect(SyntaxForm.Comma);
+                if (entries.Count > 0)
                 {
-                    reader.Expect(SyntaxForm.Colon);
-                    reader.SkipListItem();
-                }
-                else
-                {
-                    reader.Advance();
-                    reader.SkipSeparators();
-                    var value = ParseLiteralElement(ref reader);
-                    entries.Add(new(key, value));
-                    reader.SkipSeparators();
+                    RecoverItem(ref reader, entries[^1].Value, cause);
                 }
 
-                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
-                {
-                    break;
-                }
-
+                reader.SkipListItem();
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    var cause = reader.Expect(SyntaxForm.Comma);
-                    if (entries.Count > 0)
-                    {
-                        RecoverItem(ref reader, entries[^1].Value, cause);
-                    }
-
-                    reader.SkipListItem();
-                    if (reader.CurrentTokenKind != TokenKind.Comma)
-                    {
-                        break;
-                    }
-                }
-
-                reader.Advance();
-                reader.SkipSeparators();
-                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
-                {
                     break;
                 }
-
-                key = ParseLiteralElement(ref reader);
-                reader.SkipSeparators();
             }
 
-            var unclosed = reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange);
-            if (entries.Count > 0)
+            reader.Advance();
+            reader.SkipSeparators();
+            if (reader.CurrentTokenKind == TokenKind.CloseBracket)
             {
-                RecoverItem(ref reader, entries[^1].Value, unclosed);
+                break;
             }
 
-            var end = Math.Max(entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End, closeRange.End);
-            return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), entries);
+            key = ParseLiteralElement(ref reader);
+            reader.SkipSeparators();
         }
 
-        static Koto ParseLiteralElement(ref TokenReader reader)
+        var unclosed = reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange);
+        if (entries.Count > 0)
         {
-            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)
-            {
-                reader.Expect(SyntaxForm.Expression);
-                return reader.NewErrorKoto();
-            }
-
-            return ParseExpression(ref reader);
+            RecoverItem(ref reader, entries[^1].Value, unclosed);
         }
+
+        var end = Math.Max(entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End, closeRange.End);
+        return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), entries);
+    }
+
+    // The Expression of an Array element or of a DictionaryEntry's key or value (F.9.1); an Error where a "," or "]" stands in its place.
+    private static Koto ParseLiteralElement(ref TokenReader reader)
+    {
+        if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)
+        {
+            reader.Expect(SyntaxForm.Expression);
+            return reader.NewErrorKoto();
+        }
+
+        return ParseExpression(ref reader);
     }
 }
