@@ -19789,6 +19789,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - before U0, the library's `(ushort)65536` was 0, module 0's ordinal;
     - after U0, module 65,535's ordinal is `LibraryModule`.
     U0 does not move this boundary.
+  - Closed by R8-M37 (PLAN G761, 2026-11-12): a Compilation has at most `SyntaxTable.LibraryModule` source modules; past it
+    `ModuleCountLimit_Kd` and no module is analyzed.
   - Rejected: a `SyntaxId` type holding the constant (a wrapper without semantics).
 - **R8-M32 The library's program independence is a test, with two temporary expectations** (Back, 2026-11-11; R8-L1 U1; the design
   `back\l1-design\design.md` §2 C9, §5 (a), M-B3, M-N4/R2-N5, §8 U1; implementation reviews 1 REVISE and 2 ACCEPT (B's reviewer),
@@ -19969,6 +19971,36 @@ R8-M* and R9-M* by the stage of the recording unit.
     A=A 0.964-1.041 / 0.983-1.011; R5-M147 matched pairs 0.876-0.912 against A=A 0.981-1.012); Strings within A=A (0.992);
     Iterators, ErasedCalls, Array and Dictionary code placement by the aligned control (R5-M135); compile cost
     (`r8-k1a-20261112-200848`) every column within 0.95-1.02 of A and A', warm 0 B.
+
+- **R8-M37 A Compilation has at most `SyntaxTable.LibraryModule` source modules; an over-limit Compilation analyzes no module (PLAN
+  G761)** (Back, 2026-11-12; the owner's O-215 (a); IMPL A.4, 21.3.2; the Front's consent C-276, the Middle's C-277; extends R8-M31
+  and closes its Open) SPEC 23.1.1, 23.2.2, 23.3.
+  - Bound: `SyntaxTable.LibraryModule` itself (65,535): the source modules' ordinals are the values below the library's fixed
+    ordinal, so no second constant exists.
+  - Check: `Compilation.PrepareModules`, the one producer of a multi-module `SourceModules`, makes the one check, before any ordinal
+    is narrowed. Past the bound it records `ModuleCountLimit_Kd` (Error, Resource, `modules:Number`, `limit:Number`) at the root
+    project file in the Input partition and establishes no source module. Each node's configuration is still checked; a
+    configuration failure still fails preparation (Blocked, with both records). `Binding.Bind`'s `(ushort)i` over `SourceModules`
+    stays the only narrowing cast of a module ordinal, now below `LibraryModule`.
+  - Outcome: `Compilation.AnalyzesNoModule`, preparation succeeded and established no source module, is the one owner of that fact
+    (derived from the empty `SourceModules`, so no second state can drift). Its readers: `Project.CheckFrontEnd` completes the check
+    at once (no source is established or parsed, though the resolver has read every node's sources, and no phase runs;
+    `CheckContext.Compilation` is set, so the result is Completed, rejected by the Error preparation recorded; SPEC 23.2.2), and
+    `CheckService`'s test-presence answer is Unknown (no source was parsed; SPEC 23.3). Every refusal at preparation that leaves no
+    source module takes this outcome; the module count's is the only one today.
+  - Contract: a prepared Compilation may have no source module: R5-M25's "`SourceModules[0]` is `Compilation.Kotonoha`" holds only
+    when `AnalyzesNoModule` is false, and `Compilation.Check()` never runs on such a Compilation.
+  - Reason: at 65,536 source modules a module took the library's ordinal (R8-M31's Open): `Compilation.SyntaxOf` and the root range
+    decoded other syntax with no diagnostic. A limit is a Resource diagnostic (IMPL 21.3.2, A.4; SPEC 23.1.1), and the result is
+    Completed, not Blocked: Blocked is an input that could not be established, explained by an Input error (SPEC 23.2.2).
+  - Rejected: running the phase sequence over no module (a false `MissingStartupBody_Kd`); inferring the outcome from an empty
+    `SourceModules` at each reader (the test-presence answer was No for sources never parsed); widening the ordinal to `int`
+    (supersedes R8-M31's constant across the three areas and leaves the count unbounded); a known limit (the silent wrong decode
+    stays, against IMPL A.3 and A.4); an internal invariant at the narrowing cast (a valid program over an implementation limit is
+    Resource, not Internal).
+  - Tests: `DependencyConfigurationTest.ModuleCountIsLimitedBelowTheLibraryOrdinal` (65,535 accepted, 65,536 refused);
+    `HoverCollectionTest.OptionalCollectionKeepsAModuleCountRefusal` (65,536 modules through `CheckService`, with and without hover:
+    Completed, the one record at the root project file, test presence Unknown, no hover fault).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
