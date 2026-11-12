@@ -114,8 +114,16 @@ public class UseLookupTest
     // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is a located
     // Unsupported_Kd at the member (b2, a Type function; r16, Cases); a `.(C)` whose reference fails forms nothing, so its record is the
     // reference's alone (k25); a Name after a projection that names a member Type of the normal form is a located Unsupported_Kd (x08);
-    // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head).
+    // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head). `L.(C)` is a projection
+    // whatever Type its left is, a built-in, an array or a tuple included (SPEC F.5), the base bound with its own records: a missing
+    // Contract records at its step, a missing member at the path, a tuple without the conformance is unproven (no tuple conforms to a
+    // Contract with an associated Type, so that shape has no valid twin).
     [Theory]
+    [InlineData("func f(x: i32.(Addable<i32>).Output) -> i32 => x", "")]
+    [InlineData("func f() -> [2 of i32].(IntoIterable).IteratorType\n    let a: [2 of i32] = [1, 2]\n    return a.intoIterator()", "")]
+    [InlineData("func f(x: i32.(Missing).Output) -> i32 => 0", "UnresolvedBinding_Kd i32.(Missing)")]
+    [InlineData("func f(x: i32.(Addable<i32>).Missing) -> i32 => 0", "UnresolvedBinding_Kd i32.(Addable<i32>).Missing")]
+    [InlineData("func f(x: (i32, u8).(Addable<i32>).Output) -> i32 => 0", "UnprovenConstraint_Kd (i32, u8).(Addable<i32>).Output")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.(C<i32>).Item.init()", "")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.Item.init()", "")]
     [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "Unsupported_Kd S.(C<i32>).Item.make")]

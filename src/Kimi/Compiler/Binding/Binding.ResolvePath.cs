@@ -531,9 +531,23 @@ public sealed partial class Binding
     // the declaration's own Type selects an inherited member, so a qualifier's arguments and Origins never change the selection.
     private ResolvedPath ResolveMember(MemberAccessKoto member, in ResolvedPath qualifier, BindingScope scope, LookupRole role, int arity)
     {
+        // SPEC 8.5.2, F.5: `L.(C)` names a projection whatever Type its left is, by the left walk's end: a projection, a selected Core (a
+        // parameter, a pair target and `Self` included) or a Type the walk names no symbol of (a built-in, a tuple, an array, or a missing
+        // name: Unresolved), which the former binds by BindType with its own records. A left that ended with its own record (Ambiguous,
+        // QualificationStop) keeps that end; a selected non-Core (a group, a Contract) is no projection base.
+        if (member.Right is ParenthesizedTypeKoto)
+        {
+            return qualifier.End switch
+            {
+                PathEnd.Projection or PathEnd.Unresolved => new(PathEnd.Projection, null, member),
+                PathEnd.Selected => new(IsCore(qualifier.Symbol!) ? PathEnd.Projection : PathEnd.Unresolved, null, member),
+                _ => qualifier,
+            };
+        }
+
         if (qualifier.End == PathEnd.Projection)
         {
-            return new(PathEnd.Projection, null, member); // SPEC 8.5.2: `T.(C).X`, and a projection's own associated Type.
+            return new(PathEnd.Projection, null, member); // SPEC 8.5.2: a projection's own associated Type, `T.(C).X`.
         }
 
         if (qualifier.End != PathEnd.Selected)
@@ -542,10 +556,9 @@ public sealed partial class Binding
         }
 
         var left = qualifier.Symbol!;
-        var projectable = IsCore(left); // SPEC 8.5.2: a projection's base is a Core (a parameter, a pair target and `Self` included).
         if (TypeSpelling(member.Right) is not { } name)
         {
-            return new(projectable && member.Right is ParenthesizedTypeKoto ? PathEnd.Projection : PathEnd.Unresolved, null, member);
+            return new(PathEnd.Unresolved, null, member);
         }
 
         var candidates = default(TypeCandidates);
@@ -582,7 +595,7 @@ public sealed partial class Binding
         // conformances (declarations, once registered) name no associated Type of it: then it stays the missing member Type it is. Before
         // they register every one may (G621's early read); a parameter's, a pair target's or `Self`'s candidates are premises, completed
         // later (an override's selection), so its Name stays a projection. The former decides with evidence.
-        var associable = projectable && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.conformancesRegistered ||
+        var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.conformancesRegistered ||
             (left.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
         return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
     }
