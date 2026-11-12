@@ -23,7 +23,7 @@ internal sealed partial class MirBorrows
     private int[] markSeen = []; // By marker (γ_H): the check that saw it in the Based or Stored passes.
     private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
-    private int[] markRested = []; // By marker: the check that saw it in a Based or Stored pass's set that carries Φ_U.
+    private int[] markRested = []; // By marker: the check whose Based or Stored pass saw it in a read at the Limit tier (ReadTier).
     private int candidateCount;
 
     // The tier of what a scan finds (ReadTier).
