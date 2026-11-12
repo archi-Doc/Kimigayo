@@ -5,14 +5,15 @@
 // Responsibility: the parameter order [environment] [ret] a0..an [context] [location, location_length]; under the internal convention
 // each parameter's kind (a string reference SharedReference, a slot Type OwnedSlot, else Value), the omission of zero-sized parameters,
 // the result slot (a slot Type of nonzero size, or a constructor's or destructor's) and the result Type (void for a slot Type, Unit or
-// Never); under #LibraryImport's C convention (SPEC 22.6) each parameter is a Value of its argument Type, nothing is omitted and the
-// result is never a slot.
+// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); under #LibraryImport's C convention
+// (SPEC 22.6) each parameter is a Value of its argument Type, nothing is omitted and the result is never a slot.
 // Inputs: the compilation's Layout; the convention and flags; the closed result Type and the closed parameter Types in slot order, each
 // laid out by Layout (Ok); a C signature is one Binding validated (SPEC 22.6's table), whose every parameter has an argument
 // representation, and takes no flags. The kinds read the root Type predicates SlotTypes and ReferenceTypes.
 // Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: ModuleCodegen its items, an
 // import its external symbol); Matches, whether an existing FunctionAbi is that signature, so a caller reuses it without allocating;
-// HasResultSlot and ResultType, the internal convention's result rules over a record.
+// HasResultSlot and ResultType, the internal convention's result rules over a record; Recorded, the flags a FunctionAbi keeps as given
+// (FunctionAbi.Flags), which Matches compares as one value.
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
 // Must not gate or map a Layout outcome other than Ok, flags under C or a C parameter without an argument representation (broken
 // contracts, which throw), read syntax, Origins, HIR or MIR, name a function, keep state or use LINQ.
@@ -24,6 +25,10 @@ namespace Kimi.Compiler.Backend;
 /// <summary>The physical signature of a closed function instance (IMPL 21.3.1, SPEC 22.6).</summary>
 internal static class Abi
 {
+    /// <summary>The flags a signature records as given (<see cref="FunctionAbi.Flags"/>), compared as one value by <see cref="Matches"/>;
+    /// it records the others by their effect (a slot, parameters).</summary>
+    internal const Flags Recorded = Flags.CallerLocation | Flags.OutOfLine;
+
     /// <summary>A function's calling convention.</summary>
     internal enum Convention : byte
     {
@@ -34,7 +39,7 @@ internal static class Abi
         C,
     }
 
-    /// <summary>The facts of a signature that its Types do not give.</summary>
+    /// <summary>The facts of a signature, and of its definition, that its Types do not give.</summary>
     [System.Flags]
     internal enum Flags : byte
     {
@@ -52,6 +57,9 @@ internal static class Abi
 
         /// <summary>A source entry that receives its caller's location (SPEC 22.5.1).</summary>
         CallerLocation = 8,
+
+        /// <summary>A definition the optimizer keeps out of line (<c>noinline</c>; KimiLibraryCatalog.KeepsOutOfLine); calls are unchanged.</summary>
+        OutOfLine = 16,
     }
 
     private static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);
@@ -110,7 +118,7 @@ internal static class Abi
 
         return new(string.Empty, Result(convention, result, value), physical)
         {
-            NoReturn = ReferenceEquals(result, BoundType.Never), ResultSlot = slot, CallerLocation = location,
+            NoReturn = ReferenceEquals(result, BoundType.Never), ResultSlot = slot, Flags = flags & Recorded,
         };
     }
 
@@ -128,7 +136,7 @@ internal static class Abi
         var slot = HasSlot(convention, flags, result, value);
         var closure = (flags & (Flags.ErasedClosure | Flags.ConcreteClosure)) != 0;
         var location = (flags & Flags.CallerLocation) != 0;
-        if (abi.ResultSlot != slot || abi.CallerLocation != location || abi.NoReturn != ReferenceEquals(result, BoundType.Never) ||
+        if (abi.ResultSlot != slot || abi.Flags != (flags & Recorded) || abi.NoReturn != ReferenceEquals(result, BoundType.Never) ||
             abi.Result != Result(convention, result, value))
         {
             return false;
