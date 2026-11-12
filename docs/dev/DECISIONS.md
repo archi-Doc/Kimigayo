@@ -12387,17 +12387,19 @@ resumed by R4-M86 (2026-10-20).
     `Unsupported_Kd` at the entry until PLAN G254) holds for object layers too. `ReferenceTypes.ViewTarget` and `SharedReadTypes`
     are deleted.
   - Moves: valid, newly accepted (class 3): an object shorthand's written application (e01-e03, e07); a member or receiver through
-    an object pair layer (m01-m12, r21, r26; G766's x12d by R1); a value call through one (c05); with G764's scope r32, r33. Class
-    2: a valid `x@s` over a two-case family local gave `InternalInvariant_Kd` (t03 accepted, t04 `SharedPathAccess_Kd` only). Valid
-    forms at the located limit until G762: a01, m13, t1r, t1u, t5, c02r, e3, and the object setter p2s, p2o (were
-    `NoApplicableOverload_Kd` or `UnresolvedBinding_Kd`). Invalid forms take their concrete twins' records: n01-n03, c04
-    `SharedPathAccess_Kd`, n05 `NoApplicableOverload_Kd`; p2, c06 `InvalidAssignment_Kd`; t1 `ExclusiveBorrowRequired_Kd`; c02
-    `NoApplicableOverload_Kd`. Environment entries (by BU-184's rule, not a reader here): an entry of an object pair layer whose
-    cases never Reborrow (`s is objref`) is accepted; a capture over `s is obj or rc` keeps `TransferRequired_Kd`; under a set with
-    an exclusive case (`s is objref or objuniq`) a written entry stays a located `Unsupported_Kd` until G254, as on dev before G760:
-    the read capture (valid; accepted by G760 alone) and the write twin (G760 alone: `InvalidAssignment_Kd` and
-    `SharedPathAccess_Kd`). The probe names c08, k1 and k2 follow their premise's set (the probe sets were not re-run in the
-    refresh; the pinned rows are `PairFollowTest.AnObjectPairLayerHasItsViewTargetsMembers` rows 28-31).
+    an object pair layer (m01-m12, r21, r26; G766's x12d by R1); G766's i01 (`let y = q@s`, `y.n = 1` under
+    `s is objref or objuniq`) gives its write record, `SharedPathAccess_Kd` alone (the objref case is shared, SPEC 13.5.5, 8.15.2),
+    where dev gave `UnresolvedBinding_Kd`; a value call through one (c05); with G764's scope r32, r33. Class 2: a valid `x@s` over a
+    two-case family local gave `InternalInvariant_Kd` (t03 accepted, t04 `SharedPathAccess_Kd` only). Valid forms at the located
+    limit until G762: a01, m13, t1r, t1u, t5, c02r, e3, and the object setter p2s, p2o (were `NoApplicableOverload_Kd` or
+    `UnresolvedBinding_Kd`). Invalid forms take their concrete twins' records: n01-n03, c04 `SharedPathAccess_Kd`, n05
+    `NoApplicableOverload_Kd`; p2, c06 `InvalidAssignment_Kd`; t1 `ExclusiveBorrowRequired_Kd`; c02 `NoApplicableOverload_Kd`.
+    Environment entries (by BU-184's rule, not a reader here): an entry of an object pair layer whose cases never Reborrow
+    (`s is objref`) is accepted; a capture over `s is obj or rc` keeps `TransferRequired_Kd`; under a set with an exclusive case
+    (`s is objref or objuniq`) a written entry stays a located `Unsupported_Kd` until G254, as on dev before G760: the read capture
+    (valid; accepted by G760 alone) and the write twin (G760 alone: `InvalidAssignment_Kd` and `SharedPathAccess_Kd`). The probe
+    names c08, k1 and k2 follow their premise's set (the probe sets were not re-run in the refresh; the pinned rows are
+    `PairFollowTest.AnObjectPairLayerHasItsViewTargetsMembers` rows 28-31).
   - Kept, named: a concrete explicit target on a pair operand (`y@objref`, `y@objuniq`: G762) and a runtime type test (`y is D`, the
     located `Unsupported_Kd`: G770); `BindSemanticsAdaptation`'s own application branch for object sources without an object-borrow
     case (folding it would re-form its pair-source branch as nested families).
