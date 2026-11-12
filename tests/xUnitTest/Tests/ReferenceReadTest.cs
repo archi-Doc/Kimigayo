@@ -52,6 +52,14 @@ public class ReferenceReadTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
+    // PLAN G647 (SPEC 10.2, 13.4): layers ending in i32 give one ref/i32 at an argument, and a string is compared through safe
+    // reference layers, past the 64 layers the walks once counted; a bool or i32 terminal is refused as it is through 2 layers.
+    [Theory]
+    [InlineData("argref", 65)]
+    [InlineData("argref", 66)]
+    [InlineData("streq", 65)]
+    public void ReadsThroughEveryReferenceLayer(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, false, layers);
+
     [Fact]
     public void ConversionsReadThroughAReference()
     {

@@ -418,7 +418,7 @@ All names in this subsection belong to `Text`.
 | Type | Member | Guarantee |
 | --- | --- | --- |
 | `struct InvalidUtf8` | `init()` | Stateless Copy error for invalid UTF-8. |
-| `struct Utf8Slice {source}` | `length: isize` (getter, `self: Self`) | Copy validated view; reports its byte length without owning the source. |
+| `struct Utf8Slice {source}` | `length: isize` (getter, `self: Self`) | Copy validated view; reports its byte length without owning the source; formatted as its bytes (Utf8Format). |
 | | `bytes(self: Self) -> Slice<u8> during self.source` | Returns the backing bytes without copying. |
 
 Validation accepts Unicode scalar encodings exactly; it rejects malformed UTF-8 without replacement or normalization. NUL is data. A byte subrange is not automatically a validated view.

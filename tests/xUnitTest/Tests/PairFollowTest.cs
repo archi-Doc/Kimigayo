@@ -670,6 +670,24 @@ public class PairFollowTest
         Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
 
+    // PLAN G647 (SPEC 3.4.3, 7.3, 13.5.5): a selection, a `for` Subject, arithmetic and a Case Pattern follow every qualifying pair
+    // layer, past the 16 and 32 layers the walks once counted: the valid form has no record through Binding, HIR and the MIR builder,
+    // and its invalid twin the record it has through 2 layers. One form goes past 64: the named Origins of 65 pair layers cost 5 to 8
+    // seconds a program (the Origin proof's work, not a layer walk: PLAN G647's design section 7).
+    [Theory]
+    [InlineData("field", 17)]
+    [InlineData("field", 33)]
+    [InlineData("field", 65)]
+    [InlineData("recv", 17)]
+    [InlineData("recv", 33)]
+    [InlineData("for", 17)]
+    [InlineData("for", 33)]
+    [InlineData("arith", 17)]
+    [InlineData("arith", 33)]
+    [InlineData("match", 17)]
+    [InlineData("match", 33)]
+    public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
+
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)
         => c.Binding.Issues.Select(x => x.Code).Concat(c.Problems.Select(x => x.Code));
 }

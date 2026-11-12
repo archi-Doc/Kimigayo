@@ -85,7 +85,7 @@ public class AssociatedSubjectConstraintBindingTest
     [InlineData(true)]
     public void DependentUsesRetainCallerProjectionEvidence(bool enumeration)
     {
-        var source = Source(enumeration, "string", "i32").Replace("func accept(x: Box<Source>) => ()", "func accept<U>(x: Box<U>)\n        U is Origin\n        U.Origin.Item is i32\n        ()", StringComparison.Ordinal);
+        var source = Source(enumeration, "string", "i32").Replace("func accept(x: Box<Source>) => ()", "func accept<U>(x: Box<U>)\n        U is Origin\n        U.(Origin).Item is i32\n        ()", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -128,5 +128,5 @@ public class AssociatedSubjectConstraintBindingTest
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == name);
 
     private static string Source(bool enumeration, string item, string requirement)
-        => "contract Origin\n    associate Item\nstruct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\n" + (enumeration ? "enum" : "struct") + " Box<T>\n    T is Origin\n    T.Origin.Item is " + requirement + (enumeration ? "\n    Empty" : string.Empty) + "\ngroup Consumer\n    func accept(x: Box<Source>) => ()";
+        => "contract Origin\n    associate Item\nstruct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\n" + (enumeration ? "enum" : "struct") + " Box<T>\n    T is Origin\n    T.(Origin).Item is " + requirement + (enumeration ? "\n    Empty" : string.Empty) + "\ngroup Consumer\n    func accept(x: Box<Source>) => ()";
 }

@@ -51,8 +51,10 @@ public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, Bound
 
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it. AdaptedType is
 /// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
-/// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false);
+/// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).
+/// Positions: a Tuple or array literal argument's element positions' adaptation classes in the fit's order (SPEC 10.4 step 1, 10.5.1),
+/// a range of the candidate evaluation's positionClasses; Adaptation is then the literal's own fit.</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default);
 
 public sealed partial class Binding
 {
@@ -95,9 +97,10 @@ public sealed partial class Binding
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
         {
             layers++;
+            this.termWalks++;
             if (ReferenceEquals(type.Components[0], referent))
             {
                 BoundOrigin? origin = null;
@@ -515,7 +518,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
+            if (!LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&

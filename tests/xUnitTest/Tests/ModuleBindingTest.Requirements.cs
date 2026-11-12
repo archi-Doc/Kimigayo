@@ -37,19 +37,19 @@ public partial class ModuleBindingTest
         string consumer;
         if (form < 2)
         {
-            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x";
             consumer = form == 0
-                ? "group Consumer\n    func take<T>()\n        T is Source.Origin.Item\n        ()\n    func call() => take<i32>()"
-                : "contract C\nstruct S<T>\n    Self is C when T is Source.Origin.Item";
+                ? "group Consumer\n    func take<T>()\n        T is Source.(Origin).Item\n        ()\n    func call() => take<i32>()"
+                : "contract C\nstruct S<T>\n    Self is C when T is Source.(Origin).Item";
         }
         else if (form < 4)
         {
-            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Source\n        Self is Hidden\n        associate Hidden.Item is i32\n    " + (form == 2 ? "public" : "internal") + " contract C\n    public struct S<T>\n        Self is C when T is Source.Hidden.Item" + (form == 3 ? "\n            public func value() -> i32 => 1" : string.Empty);
+            library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Source\n        Self is Hidden\n        associate Hidden.Item is i32\n    " + (form == 2 ? "public" : "internal") + " contract C\n    public struct S<T>\n        Self is C when T is Source.(Hidden).Item" + (form == 3 ? "\n            public func value() -> i32 => 1" : string.Empty);
             consumer = form == 2 ? "()" : "group Consumer\n    func call() -> i32 => S<i32>.value()";
         }
         else
         {
-            library = "public group Api\n    public contract Origin\n        associate Item\n    public struct Source\n        Self is Origin\n        associate Origin.Item is " + (valid ? "i32" : "string") + "\n    public struct Box<T>\n        T is Origin\n        T.Origin.Item is i32";
+            library = "public group Api\n    public contract Origin\n        associate Item\n    public struct Source\n        Self is Origin\n        associate Origin.Item is " + (valid ? "i32" : "string") + "\n    public struct Box<T>\n        T is Origin\n        T.(Origin).Item is i32";
             consumer = "group Consumer\n    func take<T>() => ()\n    func call() => take<Box<Source>>()";
         }
 
@@ -111,14 +111,14 @@ public partial class ModuleBindingTest
             0 => "public struct Target\n    " + item + " is Copy",
             1 => "public struct Target<T>\n    T is Copy",
             2 => "public struct Target<T>\n    i32 is T",
-            _ => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic contract R\n    Source.Origin.Item is Copy\npublic struct Target\n    Self is R",
+            _ => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic contract R\n    Source.(Origin).Item is Copy\npublic struct Target\n    Self is R",
         };
         var argument = form is 1 or 2 ? "Target<" + item + ">" : "Target";
         var consumer = "group Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()";
         if (form == 4)
         {
             library = "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item;
-            consumer = "struct Target\n    Source.Origin.Item is Copy\n" + consumer;
+            consumer = "struct Target\n    Source.(Origin).Item is Copy\n" + consumer;
         }
 
         library = "public group Api\n    " + library.Replace("\n", "\n    ", StringComparison.Ordinal);

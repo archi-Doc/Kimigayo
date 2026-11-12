@@ -177,6 +177,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(candidateCount * argumentCount);
         var childSlices = this.indexScratch.Rent(candidateCount * 2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -450,13 +451,13 @@ public sealed partial class Binding
                 selectedType = this.ConstructionType(selected, selectedType, solveFrame.Types);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
                 !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructionTargets.Contains(constructedMember.Left))
             {
                 Complete(constructedMember.Left, selectedType);
             }
@@ -495,6 +496,19 @@ public sealed partial class Binding
                     // SPEC 15.3.6, 10.8: judged after selection; it never made the candidate inapplicable.
                     return this.FailPerCallOrigin(call, selected, solveFrame.Types, call.ArgumentNodes[i]);
                 }
+            }
+
+            Koto? borrowedElement = null;
+            for (var i = 0; i < argumentCount; i++)
+            {
+                var element = this.FailBorrowedElements(call.ArgumentNodes[i], selectedOperations[i].SourceType);
+                borrowedElement ??= element;
+            }
+
+            if (borrowedElement is not null)
+            {
+                this.AddPrerequisite(call, borrowedElement); // Interim until PLAN G585: the call rests on its borrowed element.
+                return this.Fail(call, BindingFailure.Unsupported);
             }
 
             var completed = this.CompleteArguments(call, scope, selectedOperations);
@@ -569,6 +583,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlices);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
