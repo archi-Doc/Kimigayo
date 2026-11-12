@@ -90,11 +90,29 @@ public sealed partial class Binding
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
         => this.FindAssociated(type, scope, name, qualifier, use, out _);
 
+    // The associated Type `name` of `type`, its declaring reference out; an ambiguity is recorded at `use` (SPEC 8.5.2).
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use, out BindingSymbol? reference)
+    {
+        var search = this.SearchAssociated(type, scope, name, qualifier);
+        reference = search.Reference;
+        if (search.Alternative is { } second)
+        {
+            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            return null;
+        }
+
+        return search.Found;
+    }
+
+    // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
+    // Type's own Contract, the scope's Contract facts on it and its conformances; Source is the conformance that supplied the match.
+    private AssociatedSearch SearchAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
         BindingSymbol? found = null;
         BindingSymbol? foundReference = null;
         BoundRequirement? alternative = null;
+        BoundConformance? source = null;
+        BoundConformance? searching = null;
         this.ambiguousAssociatedMatches?.Clear();
         if (qualifier?.Contract is { } qualified)
         {
@@ -127,19 +145,13 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < list.Count; i++)
                 {
+                    searching = list[i];
                     Search(list[i].Contract.Contract!);
                 }
             }
         }
 
-        reference = foundReference;
-        if (alternative is { } second)
-        {
-            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(found!, foundReference!), second, this.ambiguousAssociatedMatches!.Count));
-            return null;
-        }
-
-        return found;
+        return new(found, foundReference, alternative, source);
 
         void Search(BoundContract shape)
         {
@@ -160,9 +172,52 @@ public sealed partial class Binding
                     {
                         found = associated;
                         foundReference = candidate;
+                        source ??= searching;
                     }
                 }
             }
+        }
+    }
+
+    // SPEC 9.7.3, 8.5.2, 8.8.2: a nested Type named through a Core qualifier also resolves as an associated Type when the qualifier's
+    // applied Type has one of that name with conformance evidence: a premise, or a conformance with a declared path without premises,
+    // holds for every binding (8.8.1); a conditional one only where its condition is proven for the written arguments ("Refuted: No
+    // conformance from this path"; before the Contract headers are ready every proof is Unknown: PLAN G728's remainder). Judged where the
+    // qualifier is applied (9.7.1 step 3), the one former of every nested Type's reference; the path's selection stands.
+    private bool AlsoAssociated(BoundType qualifier, string name, MemberAccessKoto path, BindingScope scope)
+    {
+        var search = this.SearchAssociated(qualifier, scope, name, null);
+        if (search.Found is not { } associated)
+        {
+            this.NoteEarlyProjection(path, qualifier, scope, name, null);
+            return false;
+        }
+
+        if (search.Alternative is not null || search.Source is not { } source)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < source.Paths.Count; i++)
+        {
+            if (source.Paths[i].Premises is null)
+            {
+                return true;
+            }
+        }
+
+        var evidence = search.Reference ?? associated.Scope.Owner.BoundSymbol!;
+        return this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: evidence)), scope) == ConstraintProof.Proven;
+    }
+
+    // G621: before the conformance declarations register, an unqualified name over a declared Type has no associated candidates yet (they
+    // come from the conformance table; a qualified one searches its Contract): a projection that found none and a nested Type judged
+    // without them are judged again once they register (VerifyEarlyProjections).
+    private void NoteEarlyProjection(MemberAccessKoto use, BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
+    {
+        if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
+        {
+            this.earlyProjections.Add((use, type, scope, name, qualifier));
         }
     }
 
@@ -175,8 +230,15 @@ public sealed partial class Binding
 
         Koto receiver = syntax.Left;
         BindingSymbol? qualifier = null;
-        if (receiver is MemberAccessKoto qualified && this.ProjectionQualifier(qualified, scope) is { } contract)
+        if (receiver is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified)
         {
+            // F2 (SPEC 23.1.2): a `.(C)` whose Contract reference failed recorded that failure, and the projection rests on it, forming
+            // nothing; one naming no Contract is the path's failing step, missing there.
+            if (this.ProjectionQualifier(qualified, scope) is not { } contract)
+            {
+                return WrittenReference(qualified.Right) is { BindingFailure: not BindingFailure.None } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType);
+            }
+
             qualifier = contract;
             receiver = qualified.Left;
         }
@@ -209,15 +271,12 @@ public sealed partial class Binding
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
         if (associated is null)
         {
-            // G621: before the conformance declarations register, an unqualified name over a declared Type has no candidates yet (they
-            // come from the conformance table; a qualified one searches its Contract); the read is judged again once they register
-            // (VerifyEarlyProjections).
-            if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
-            {
-                this.earlyProjections.Add((syntax, type, scope, name, qualifier));
-            }
+            this.NoteEarlyProjection(syntax, type, scope, name, qualifier);
 
-            return null;
+            // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
+            // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
+            return receiverPath.End == PathEnd.Projection && this.LookupTypeMember(type, name, scope, typeRole: true).Member is not null
+                ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
         }
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
@@ -254,6 +313,9 @@ public sealed partial class Binding
     // Origin arguments that the caller applies.
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
+
+    // One associated search (SearchAssociated): the match, its declaring reference, a second distinct match and the match's conformance.
+    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative, BoundConformance? Source);
 
     // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
     // path (9.6, 9.7.3), never read as `T.(C).X`.
