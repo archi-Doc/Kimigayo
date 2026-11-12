@@ -9045,9 +9045,9 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by BU-184 (PLAN G721): its fact (`projectionForms`, `ProjectionUseOf`), its reader in `Capture` and its
     "Open" are deleted with the capture Type allowlist; no capture rests on a projection use. The `AddPendingPrerequisite` stance
     stays.
-  - Amended by BU-185 (R7-N1e2-2b-2): `ConstructorMember` is a second reader: a missing constructor on a projection qualifier that
-    stays a projection rests on the projection's use. Open: the call's own `UnsatisfiedConstraint_Kd` beside a projection whose
-    conformance fails does not rest yet (PLAN G724).
+  - Amended by BU-185 (R7-N1e2-2b-2): `ConstructorMember` keeps this entry's stance without its fact: a missing constructor on a
+    projection qualifier that stays a projection rests on the projection qualifier it formed (the node in hand). Open: the call's
+    own `UnsatisfiedConstraint_Kd` beside a projection whose conformance fails does not rest yet (PLAN G724).
 
 - **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
   its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
@@ -12402,17 +12402,20 @@ resumed by R4-M86 (2026-10-20).
     group or Contract is no base (SPEC 8.5.2, F.5). It is also the end for a Name a Core declares no member Type of (unless the Core
     is a declared struct or enum whose registered conformances name no associated Type of it: then the missing member), and for a
     Name after a projection. One former, `BindAssociatedProjection`: `BindNamedType` forms the projection on that end (its fallback
-    goes); `ConstructorMember` constructs a projection qualifier's normal form; `Member`'s projection qualifier is a located
-    `Unsupported_Kd` at the member. A failed `.(C)` reference is the projection's one record (a `.(C)` naming no Contract is missing
-    there). An unresolved walk records at its failing qualifier (`S.Missing` of `S.Missing.X`). `FindAssociated` is split into
-    `SearchAssociated` (no record; the walk's question and 9.7.3's evidence, with its source conformance) and its recording caller.
+    goes); `ConstructorMember` constructs a projection qualifier's normal form (a projection that stays one names no structure, and
+    its constructor's absence rests on the projection qualifier it formed: the node in hand, a pending prerequisite; BU-184 removed
+    BU-61's fact, so no table is read); `Member`'s projection qualifier is a located `Unsupported_Kd` at the member. A failed `.(C)`
+    reference is the projection's one record (a `.(C)` naming no Contract is missing there). An unresolved walk records at its
+    failing qualifier (`S.Missing` of `S.Missing.X`). `FindAssociated` is split into `SearchAssociated` (no record; the walk's
+    question and 9.7.3's evidence, with its source conformance) and its recording caller.
   - 9.7.3: one judgment, `AlsoAssociated`, in `BindContainerReference` after the qualifier is applied (9.7.1 step 3), so Type
     positions, construction and expression qualifiers, inherited members, `::`, `Self` and a nested enum's qualifier
-    (`EnumQualifierType` forms a member-path qualifier there) all pass it; the selection stands, the reference fails
-    `AmbiguousBinding_Kd` at the path. Evidence: a premise, or a conformance with a declared path without premises, holds for every
-    binding (8.8.1); a conditional conformance only where its condition is proven for the written arguments (8.8.2, "Refuted: No
-    conformance from this path"). Before the conformances register the read joins G621's early list (`NoteEarlyProjection`, one
-    helper); `VerifyEarlyProjections` judges a noted nested Type again by `AlsoAssociated`.
+    (`EnumQualifierType` forms a member-path qualifier through `ConstructionTargetType`, which calls it; a top-level generic enum
+    named by a member path with its own list omitted is G745's inferred construction target) all pass it; the selection stands, the
+    reference fails `AmbiguousBinding_Kd` at the path. Evidence: a premise, or a conformance with a declared path without premises,
+    holds for every binding (8.8.1); a conditional conformance only where its condition is proven for the written arguments (8.8.2,
+    "Refuted: No conformance from this path"). Before the conformances register the read joins G621's early list
+    (`NoteEarlyProjection`, one helper); `VerifyEarlyProjections` judges a noted nested Type again by `AlsoAssociated`.
   - Member sides: a member access publishes its side (`memberSides`, `MemberSide` Type or Value; its own fact beside the lookup's
     `MemberSelection`, because a constructor access has a side and no selection), written by `Member`'s tail (`SelectMember`),
     `BaseMember` and `ConstructorMember`; read (`MemberSideOf`) by `CallReceiver`, `BindEnumConstruction` (a Case named on the Type
