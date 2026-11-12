@@ -330,7 +330,8 @@ public sealed partial class Binding
         }
 
         var path = this.NamePath(member.Left, scope, arity: -1);
-        var projected = path.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection ? this.BindAssociatedProjection(projection, scope) : null;
+        var projection = path.End == PathEnd.Projection ? UseNode(member.Left) as MemberAccessKoto : null;
+        var projected = projection is not null ? this.BindAssociatedProjection(projection, scope) : null;
         if (path.Symbol is null && projected is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
@@ -342,10 +343,11 @@ public sealed partial class Binding
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
-            // DECISIONS BU-61 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's use.
-            if (projected is not null && this.ProjectionUseOf(projected, this.ConstraintScope(member)) is { } use)
+            // DECISIONS BU-61, BU-184 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's
+            // use, the qualifier formed above.
+            if (projection is not null && projected is not null)
             {
-                this.AddPendingPrerequisite(member, use);
+                this.AddPendingPrerequisite(member, projection);
             }
 
             this.FailConstructorAbsence(member, type);
