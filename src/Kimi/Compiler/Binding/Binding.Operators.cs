@@ -15,7 +15,7 @@ public sealed partial class Binding
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
 
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
-        => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
+        => type is { IsProofDecided: true } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
 
     // SPEC 8.7.4, 3.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for

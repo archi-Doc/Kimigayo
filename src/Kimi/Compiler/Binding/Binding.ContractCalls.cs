@@ -14,7 +14,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && !type.IsProofDecided && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }

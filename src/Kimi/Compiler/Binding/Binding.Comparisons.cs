@@ -26,12 +26,19 @@ public sealed partial class Binding
     // step descends into a component of the Type, so the walk ends within the Type's height (IMPL A.4) and needs no limit of its own.
     internal BoundType OperandTerminal(Koto operand, BoundType type)
     {
+        // A Type without an abstract part has no pair layer and no premise.
         var scope = type.HasAbstractPart ? this.ConstraintScope(operand) : null;
-        type = scope is null ? type : this.CallableContractType(type, scope);
+        return scope is null ? ComparisonReferent(type) : this.LayersTerminal(this.CallableContractType(type, scope), scope);
+    }
+
+    // SPEC 3.4.3: the Type below the ref, uniq and qualifying pair layers of `type` in `scope`, in any order: the one walk of the safe
+    // value-reference layers, shared by an operand's terminal and a value read's (ReadTypeReferent). It ends within the Type's height.
+    private BoundType LayersTerminal(BoundType type, BindingScope scope)
+    {
         while (true)
         {
             type = ComparisonReferent(type);
-            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope ??= this.ConstraintScope(operand), out var target) == SemanticsMask.None)
+            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope, out var target) == SemanticsMask.None)
             {
                 return type;
             }
