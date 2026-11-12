@@ -210,7 +210,7 @@ public class ProductTestMembershipTest
             return function;
         }
 
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             if (FindFunction(child, name) is { } found)
             {
