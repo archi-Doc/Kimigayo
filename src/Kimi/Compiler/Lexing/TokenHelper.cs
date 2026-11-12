@@ -309,6 +309,16 @@ public static partial class TokenHelper
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
     /// <summary>
+    /// Determines whether a token is a literal token: a number, a character, or a string without Interpolation (SPEC F.2.3, F.2.4).
+    /// </summary>
+    /// <remarks>A string with Interpolation is <see cref="TokenKind.InterpolatedStringLiteral"/>, read by its parts and outside this class.</remarks>
+    /// <param name="tokenKind">The token kind to inspect.</param>
+    /// <returns><see langword="true"/> for <see cref="TokenKind.NumericLiteral"/> through <see cref="TokenKind.StringLiteral"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsLiteral(this TokenKind tokenKind)
+        => tokenKind is >= TokenKind.NumericLiteral and <= TokenKind.StringLiteral;
+
+    /// <summary>
     /// Determines whether a token is a reserved word, which is never a Name (SPEC F.3).
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
