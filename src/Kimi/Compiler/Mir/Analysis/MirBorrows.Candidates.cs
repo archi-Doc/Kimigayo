@@ -28,10 +28,15 @@ internal sealed partial class MirBorrows
     // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
 
-    // A state found in a holder (-1: a transit value, a state of one part) by the pass: its elements, in ascending order.
-    private void Scan(ulong found, int via)
+    // The tier a pass's scan starts at: Limit for a holder reached only through a set carrying Φ_U (`rested`, MirBorrows.CheckSets'
+    // Reach), else Deep in the drop tier, else decided.
+    private MirOutcome Tier(bool rested) => rested ? MirOutcome.Limit : (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
+
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass, at the Limit tier where the holder was reached
+    // only through a set carrying Φ_U (`rested`): its elements, in ascending order.
+    private void Scan(ulong found, int via, bool rested)
     {
-        this.tier = (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
+        this.tier = this.Tier(rested);
         this.Work += this.Count(found);
         foreach (var element in this.ElementsOf(found))
         {

@@ -23,6 +23,7 @@ public sealed partial class MirBorrowsTest
         func conv(slot: raw/(raw/u8), v: ref/(raw/usize))
             unsafe => *slot = v@follow@raw/u8
         func putq(target: uniq/(raw/u8) during a, q: raw/u8 during a) => ()
+        func keepPair(t: uniq/(u64, raw/(raw/u8)), value: raw/u8) => ()
         func usep<T>(p: raw/T) => ()
         func setTag(p: raw/u32, v: u32)
             unsafe => *p = v
@@ -238,6 +239,66 @@ public sealed partial class MirBorrowsTest
             var h: (u64, raw/(raw/u8)) = (0, other@raw)
             setTag(h@raw@raw/u32, 7)
             stash(h.1, spare)
+            kk = 2
+        func closureMixedRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = other@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            c(spare)
+            kk = 2
+        func closureMixedNoWriteOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = other@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            c(spare)
+            kk = 2
+        func closureMixedLiveBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = other@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            c(spare)
+            kk = 2
+            usep(other)
+        func closurePtrBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            let q: raw/(raw/u8) = other@raw
+            var c = func [q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            c(spare)
+            kk = 2
+        func borrowedTupleRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (u64, raw/(raw/u8)) = (3, other@raw)
+            let tp = h@raw@raw/u16
+            unsafe => *tp = 7
+            keepPair(h@uniq, spare)
             kk = 2
         func zeroArrayOk()
             var kk: u8 = 1
@@ -537,6 +598,12 @@ public sealed partial class MirBorrowsTest
     // an enum whose only pointers are in one (zeroInTupleHolderOk, zeroPayloadBranchOk: bytes held, not Loans carried, 4.3.3),
     // holds no pointer, and a write at its address, seen or a call's, is no pun (zeroHolder*Ok, zeroNestBranchOk, lengthZeroNestOk;
     // 4.1, 5.2; the write is undefined when it runs, which is no compile-time error, 1.3).
+    // A call that writes through a borrowed holder such a write leaves undecided (a Closure's receiver, IMPL 21.1.1 and R4-M148; a
+    // `uniq/` Tuple) may retain what reads through it carry, the other pointer's address included, where the punned pointer reaches
+    // (5.2.1 Retained dependencies), and stores spare where that pointer points, other's holder, in either layout. Whether other is
+    // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests, borrowedTupleRests;
+    // closurePtrBad, whose only part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in
+    // either layout (closureMixedLiveBad), and without the write nothing is reported (closureMixedNoWriteOk) (PLAN G775).
     [Theory]
     [InlineData("storePunBad", "storePunBad: kk = 2")]
     [InlineData("readPunBad", "readPunBad: kk = 2")]
@@ -549,6 +616,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("kLayoutFieldRests", "kLayoutFieldRests: kk = 2 Unsupported_Kd")]
     [InlineData("otherTypeRests", "otherTypeRests: kk = 2 Unsupported_Kd")]
     [InlineData("otherTypeCallRests", "otherTypeCallRests: kk = 2 Unsupported_Kd")]
+    [InlineData("closureMixedRests", "closureMixedRests: kk = 2 Unsupported_Kd")]
+    [InlineData("closureMixedNoWriteOk", "")]
+    [InlineData("closureMixedLiveBad", "closureMixedLiveBad: kk = 2")]
+    [InlineData("closurePtrBad", "closurePtrBad: kk = 2 Unsupported_Kd")]
+    [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2 Unsupported_Kd")]
     [InlineData("cLayoutSecondFieldBad", "cLayoutSecondFieldBad: kk = 2")]
     [InlineData("zeroArrayOk", "")]
     [InlineData("lengthArrayRests", "lengthArrayRests: kk = 2 Unsupported_Kd")]
