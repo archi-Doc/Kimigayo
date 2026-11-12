@@ -10,8 +10,9 @@ namespace Kimi.Compiler;
 //   solution's slot bindings fixed before any evidence (FixedSlots), produced by FixCallSlots for a candidate (a function's explicit Type
 //   arguments and lengths; a constructor's declaring Type, its enclosing slots always and its own unless an inferred construction leaves
 //   them open), by ConstructionSlots for a construction Type (also read by ConstructorType before the candidate's frame exists) and by
-//   a Case construction's seeding (its qualifier's and expected Type's bindings, Binding.Enums.cs); the adaptation entry's only input,
-//   a pattern under those bindings (FixedPattern); a constructor's constructed Type (ConstructionType); the structural matching of a
+//   a Case construction's seeding (its qualifier's and expected Type's bindings, Binding.Enums.cs); the own slots an inferred
+//   construction, a structure's or a Case's (SPEC 9.7), leaves open (OpenConstructionSlot); the adaptation entry's only input, a
+//   pattern under those bindings (FixedPattern); a constructor's constructed Type (ConstructionType); the structural matching of a
 //   pattern over the owner's slots against an actual Type, binding each slot it reaches (Infer), and an s/U whose s is bound, matched as
 //   the Type it forms (FormedApplication).
 // - Inputs: the callee's declaration and declaring Type; the call's explicit Types and lengths; a pattern, the actual Type at its position
@@ -21,10 +22,12 @@ namespace Kimi.Compiler;
 //   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
 // - Invariants: a slot's earlier binding is kept unless the flags say how two bindings meet (SPEC 10.8): an invariant binding over
 //   covariant ones, covariant ones by their common Type; under `relateLater` an Origin never fails a structurally equal binding. An open
-//   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction leaves one beside fixed slots; a Case
-//   construction fixes all its slots or none, and none fixed is no Types. An argument's adaptation is planned only at a FixedPattern made
-//   by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a completed or slot-free Type, stated at the
-//   call), so the build names every reader of the adaptation entry.
+//   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
+//   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
+//   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
+//   completed or slot-free Type, stated at the call), so the build names every reader of the adaptation entry. Completeness under the
+//   fixed bindings is read from the solution's frame before any evidence, where an open slot is unbound (a Case's settled payloads):
+//   substituting FixedSlots leaves an open slot's own parameter, which looks complete.
 // - Prohibitions: no Origin relation is judged and no applicability decided here (SPEC 15.6.1): the callers judge the solution; no
 //   reader adapts at a pattern whose fixed slots are left open, and no FixedPattern is made but by Of or Open.
 public sealed partial class Binding
@@ -48,20 +51,21 @@ public sealed partial class Binding
     // its candidate's frame is seeded (ConstructorType).
     private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType, bool inferred)
     {
+        var owner = (DeclarationContainerKoto)CallSlotOwner(constructor);
         var ownFixed = true;
-        for (var i = 0; i < CallOwnSlots(constructor).Count; i++)
+        for (var i = 0; i < owner.GenericParameterNodes.Count; i++)
         {
-            ownFixed &= !OpenConstructionSlot(constructor, declaringType, inferred, i);
+            ownFixed &= !OpenConstructionSlot(owner, declaringType, inferred, i);
         }
 
-        return new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default, ownFixed);
+        return new(owner, (BoundType[])declaringType.Components, default, ownFixed);
     }
 
-    // An inferred construction leaves open each own slot that its declaring Type gives as its own parameter; an outer slot is always a fixed
-    // binding, even when it is itself a parameter.
-    private static bool OpenConstructionSlot(FunctionKoto constructor, BoundType declaringType, bool inferred, int slot)
-        => inferred && slot < CallOwnSlots(constructor).Count && declaringType.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
-            ReferenceEquals(open.Symbol?.Scope.Owner, CallSlotOwner(constructor));
+    // An inferred construction (a structure's or an enum Case's, SPEC 9.7) leaves open each own slot that its constructed Type gives as its
+    // own parameter; an outer slot is always a fixed binding, even when it is itself a parameter.
+    private static bool OpenConstructionSlot(DeclarationContainerKoto owner, BoundType constructed, bool inferred, int slot)
+        => inferred && slot < owner.GenericParameterNodes.Count && constructed.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
+            ReferenceEquals(open.Symbol?.Scope.Owner, owner);
 
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
@@ -122,9 +126,10 @@ public sealed partial class Binding
         }
 
         var inferred = !fixedConstruction && this.InfersConstruction(call);
+        var owner = (DeclarationContainerKoto)CallSlotOwner(function);
         for (var i = 0; i < count; i++)
         {
-            if (!OpenConstructionSlot(function, declaringType, inferred, i))
+            if (!OpenConstructionSlot(owner, declaringType, inferred, i))
             {
                 slots.SetType(i, declaringType.Components[i]);
             }
@@ -135,7 +140,7 @@ public sealed partial class Binding
 
     // Whether a constructor call infers its construction's Type (SPEC 10.8.1): its qualifier names the Type without its arguments.
     private bool InfersConstruction(InvocationKoto call)
-        => call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left);
+        => call.Method is MemberAccessKoto member && this.inferredConstructionTargets.Contains(member.Left);
 
     // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
     // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
@@ -378,10 +383,11 @@ public sealed partial class Binding
 
     // SPEC 10.8, 10.8.1, 6.5.2 step 2 (DECISIONS: the fixed bindings): a solution's slot bindings fixed before any evidence, over the slot
     // owner's slots (FixCallSlots for a candidate, ConstructionSlots for a construction Type, a Case construction's seeding): each slot's
-    // binding, an open slot as its own parameter (only an inferred construction leaves one beside fixed ones), and the lengths, null where
-    // none is fixed; no Types when no slot is fixed. Own tells whether every own slot is fixed: evidence then keeps every binding (Infer's
-    // commonOrigins off); otherwise the open slots' covariant bindings meet. Its spans live as long as the call's explicit Types, the
-    // declaring Type or the Case's scratch.
+    // binding, an open slot as its own parameter (only an inferred construction, a structure's or a Case's, leaves one beside fixed ones),
+    // and the lengths, null where none is fixed; no Types when no slot is fixed. The adaptation reads it through FixedPattern; whether a
+    // pattern is complete under it is read from the frame before any evidence instead (the contract above). Own tells whether every own
+    // slot is fixed: evidence then keeps every binding (Infer's commonOrigins off); otherwise the open slots' covariant bindings meet. Its
+    // spans live as long as the call's explicit Types, the declaring Type or the Case's scratch.
     private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, bool own)
     {
         internal Koto? Owner { get; } = owner;
