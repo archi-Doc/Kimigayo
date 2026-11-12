@@ -146,7 +146,7 @@ public sealed partial class Binding
     // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
     private BoundType FormedApplication(BoundType pattern, Koto function, ReadOnlySpan<BoundType?> arguments)
     {
-        for (var depth = 0; depth < 16; depth++)
+        while (true)
         {
             if (pattern is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } ||
                 ContainerSlot(function, selector) is not (>= 0 and var slot) || slot >= arguments.Length || arguments[slot] is not { } whole)
@@ -154,6 +154,7 @@ public sealed partial class Binding
                 break;
             }
 
+            this.termWalks++;
             if (whole.Semantics == SemanticsKind.Owner)
             {
                 pattern = target;

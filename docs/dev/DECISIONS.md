@@ -823,6 +823,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   statement masks (plan §5.6.1); the source taken from the operand Place's MIR Type; a MirBody plan table (a table, adder,
   reset, range rules and folding); analyses querying MirCases per Adapt (every analysis would special-case it); moving
   `Select` into TyCtxt (it edits frozen call sites, D5); a MIR copy of `Select` modulo Origins (a second copy). Not temporary.
+  - Amended by BU-175 (PLAN G647): `Follow(P, 1)` is now `FollowLayers(P, 1)`; the decision is unchanged.
 - **R4-M7a** (2026-10-12; supersedes R4-M7's row shape): A3's fact is `MirBody.MustNotComplete`, rows
   `(Entry, End, Subject)`: a require's failure body, entered at Entry, whose end End (an Unreachable without a check
   target) no runtime path from Entry may reach; Subject the failure body. The builder adds a row where it finishes a
@@ -1381,6 +1382,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Remove` scans its smaller operand, returning the set itself when it removes nothing. Rejected: dense holder × Loan bits (cubic:
   heads × holders × Loans); a per-Loan traversal (a check walks every Loan); persistent tree sets (no int identity, an allocation
   per insertion); `Remove` by element (one call per ended Loan and holder) or by predicate (no memo key). Not temporary.
+  - Amended by PLAN G768 (2026-11-12): `Remove` of two nonempty sets that lie apart (one's greatest element below the other's least)
+    returns the set in O(1), before the memo, with no entry or scan, so E8's visits of holders whose sets lie apart from the ended
+    set cost no memo; the visits themselves stay R4-M57's dense term.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; its check sets amended by R4-M66: a
   borrow's stored value only seeding and 1b-3's CS_call over
   live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by R4-M70;
@@ -1623,6 +1627,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   "every operand to the result" (wrong for `clone`, which retains its payload's Loans only); every operand beyond a declaration
   reaching the result by rule (the table names the one operand); giving `$abort` parameter symbols for `TyCtxt.Retains` (its Never
   result retains nothing). Not temporary.
+  - Amended by F2b (Q-331, 4d51fbb4c, 2026-11-12): the Retained operand ties the result: a `RawSlice` whose backing is no constant
+    (a range selection, SPEC 4.8.4: `x[r]` is `x.slice(r)`, tied to the receiver's borrow) is not untied and retains its backing's
+    value; only a written `Raw.slice`, whose backing is R4-M40's Unit constant, keeps its declaration's untied result (SPEC 5.6,
+    15.6). The census's "RawSlice (untied, with its backing row)" is the written call's. Reason no longer holding: R4-M63 read the
+    declaration's untied result for both builder forms.
 - **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
   `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
   integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on
@@ -6859,6 +6868,8 @@ resumed by R4-M86 (2026-10-20).
     (`p@follow.inner@move`, `h@follow@move`) pass the same layers and get the same Note. Why: the old Message named an exclusive
     reference past an owner-only pair layer and `InvalidAssignment_Kd` named only assignment. Rejected: a Message argument (a catalog
     argument) and a Note under the old Message (still a wrong layer). `LayerCases`' walk (PLAN G181 (2)) stays BU's.
+  - Amended by BU-175 (PLAN G647): `ComparisonThroughPairs`, named above, is gone: its walk (with `FollowablePair`) is now inside
+    `Binding.OperandTerminal`, which `TryBindIndexer` reads; the facts stated are unchanged.
 - **BU-17** (2026-10-21; PLAN G163; the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole
   destruction receiver, is never captured. Representation: its Origin is `H = Projection[drop#HelperSlot]` (`HelperSlot = int.MinValue
   + 1`, beside `CallResultSlot` and `ClosureValueSlot`; the binder is always a destructor, never a value or a Closure, so no reader of
@@ -9953,6 +9964,11 @@ resumed by R4-M86 (2026-10-20).
     (Infer's known-signature evidence, G56's relate-later branch; SPEC 10.8).
   - Rejected: a bool or mode parameter for the premise-only judgment; deleting A1 for value fits (a Function value's subtyping, SPEC
     3.8, keeps it).
+  - Amended by SLC (2026-11-12; PLAN G777): implementation matching (8.6.3, 11.9's accessor witnesses) is a whole-contract
+    comparison too: every proof of `CompareCallableContracts`, its solve's included, runs in a comparison carrying the requirement's
+    substituted signature, so it assumes that signature's own well-formedness as `ContractFits` does. Its walk keeps
+    `OriginPart.Judged`, not examined in this unit (`OriginPart.Contract`'s identity rule for Origin-carrying parts and the Limit
+    row would change); merging the two comparisons is a candidate, not decided here.
 
 - **BU-94 The position row is what an argument position is to its call** (2026-11-05; G216 (a) U1, the Position Rows proposal
   `draft/Proposals/2026-11-03 G216 (a) Position Rows.md` §4-§6; the planning session's design `artifacts\verify\g216a-oracle\
@@ -11986,6 +12002,47 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
     would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
     read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
+- **BU-175 A Type walk has no count of its own (PLAN G647)** (2026-11-12; Front, Binding and MIR; Major; the Binding half's design
+  review 1 REVISE, design review 2 ACCEPT, implementation review 1 REJECT and its re-check ACCEPT, F's rulings 1-3; the Middle's
+  consent C-205, REVISE then ACCEPT WITH NOTES) IMPL A.4; SPEC 13.5.3, 22.6.
+  - **Rule.** A walk whose every step goes from a Type to one of its parts (a component, the Type below a `ref`/`uniq` layer by
+    `TyCtxt.Layer`, below a pair layer by `TryPairLayer` under `FollowablePair`) carries no count and no depth parameter: it ends
+    because the Type ends, and BU-134 bounds a Type's height at H where it is formed (the stack rule of BU-134/BU-135 covers the
+    recursion). A walk that crosses a declaration keeps one named bound owned by its component, with a located record where a
+    verdict rests on the part not walked (R4-M153). Binding publishes the exact number of layers it followed (`HirPlace.Layers`,
+    `ushort`). Sites: Binding's `OperandTerminal` (which absorbed `ComparisonThroughPairs`), `PairSubject`, `PairTerminal`,
+    `FormedApplication`, `SharedReferenceThroughLayers`, `ReferenceTypes.EndsInString`, `CollectCallRelations`,
+    `SolveOmittedOrigins`, `InputOrigins`, `SameExceptOmittedOrigins`, `MentionsSlots`, `Unnameable`,
+    `OriginFitSearch.FailedOriginRelation`, `AddTypeClauseObligations`, `Mentions`, the retention fits' `Occurs` (it walks
+    components, not the entries `StorageBound` measures; each part once), `CExchangeable`'s borrow and array steps, HIR's `Layers`,
+    and the MIR builder's two walks (below).
+  - **MIR (the Middle's consent C-205).** `FollowLayers(place, n)` follows exactly the n layers Binding counted (a PlaceShape's
+    `Layers`, a Pattern position's `ImplicitFollows`, an adaptation's one payload layer, SPEC 13.5.3); `FollowTo(place, target)`
+    follows to the first Place whose Type agrees with Binding's target Type (`MirTypes.Agree`, as it is or as the body's premises
+    make both), or, with no target (a key selection's key, a Property's storage, a Closure's environment binding), to the value
+    Place. The target is a `BoundType?` with no default, so a count cannot reach the targeted walk. `FollowTo` premises the target
+    and the first Type that does not agree as it is once; below a layer whose image keeps the layer's head (Kind, Semantics, Symbol)
+    the image is the image's component, as premising rebuilds a Type over its parts' images, and only below a head a premise rewrote
+    is the Type premised afresh (premising the remaining Type at each step was quadratic in the layers).
+  - **Checks.** `ArchitectureRulesTest`'s row "A walk's own count" keeps a depth or count compared with a literal at its listed
+    sites, over the whole compiler (`Mir/` included, no site there). Scaling rows (the owner's RP8 decision, 2026-11-11: G647 books
+    no T slot; these rows are its check): `TypeDagScalingTest.LayerWalksAreLinearInTheLayers` (ref layers 20/40/80, pair layers
+    10/20/40: Binding's `TermWalkWork`, the summed `HirPlace.Layers` and `MirProgram.LayerWalkWork` grow linearly),
+    `TheComponentWalksReachTheHeightLimitWithoutAStackFailure` (the component walks on a Type of height H),
+    `OriginProofScalingTest.NestedLayerRelationsFollowTheOriginPairs` (17/34/68 layers: the walks' steps and the premise graph's
+    size) and `InferenceSlotScalingTest.ASlotIsInferredFromALayeredArgument`. `TermWalkWork` counts Binding's walk steps;
+    `LayerWalkWork` counts one per iteration of a MIR walk (a layer's step and a targeted walk's agreement test together) and a
+    premising as the premised Type's height plus one.
+  - **Reason.** These walks had private counts (8, 16, 32, 64), each a silent cut with a wrong record or `InternalInvariant_Kd` past
+    it, and Binding and MIR could stop at different layers.
+  - **Rejected:** raising the counts (the same open family); one shared walk limit with `Unsupported_Kd` (a limit IMPL A.4 does not
+    have); comparing each depth with H in every walk (a second copy of BU-134's measure); publishing the followed Type per node
+    (four times the column); one `Follow` told apart by its argument's static Type (a literal count still compiled as a silent
+    count; C-205 N2).
+  - **Temporary limit, not this rule's answer.** `CExchangeable`'s Field step crosses a declaration and a C-layout struct may reach
+    itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
+    C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
+    a revisit on the path ends the walk.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18141,6 +18198,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     the builder and the validator judge a Place's Type by one agreement. `Viewed` keeps the structural `Agree` (it tests whether the
     premises change a Type); `Identical` (BU-72's exact test of the published receiver Type against the premise's) and `Dispatched`
     (an Upcast of one Type under a premise, equivalent IR; a Y5 candidate) keep it too.
+  - Amended by BU-175 (PLAN G647): `ComparisonThroughPairs`, named above, is gone: its walk (with `FollowablePair`) is now inside
+    `Binding.OperandTerminal`, which its four readers read; the facts stated are unchanged.
 - **R8-M15 MIR's validator reads a comparison `BinaryOp`'s operands at their premised terminals and rejects one at string** (Back,
   2026-11-09; R8-S1e-b; Major; the owner's O-84 (a); on R8-M7, and R8-M9 with its R8-OT bullet as OT2 amends it).
   - **Deleted:** the operator table's string route: the string column, `Row.Routine`, `Leaf`'s string branch,
@@ -18966,6 +19025,77 @@ R8-M* and R9-M* by the stage of the recording unit.
     by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
     all scalars (R8-M4: one function per requirement).
   - Extended by R8-M34 (R8-S2c, 2026-11-11): the `F32Format` and `F64Format` rows over the producer kind `StorageFormatFloat`.
+  - **Owner, S2d1.** string's Utf8Format is the String row's (`StringWitness.format`, `writer.writeUtf8(Text.utf8(self))`);
+    `Wrapping<T>`'s is a generic table row `WrappingFormat` over both shapes of the Type (a concrete wrapping scalar, argument its
+    `Underlying`; the `Wrapping` construction at an abstract `T`, argument `Components[0]`), body `let value = self@follow@I` then
+    `writer.write(value)` (SPEC 13.5.4; FromEnd's form); `Text.Utf8Slice` declares `Self is Utf8Format` in source with a public
+    `format` (`writer.writeUtf8(self@follow)`), as FromEnd does. Each has a `SourceFunction, CallerLocation` catalog row (SPEC
+    22.5.1, until G1); the view's row reaches its member through a new `KimiLibraryContainer.Utf8Slice`, as FixedBuffer's and
+    HeapBuffer's do. Empty output reserves nothing and has no failure test (SPEC 22.10.1; the leaf's, R2-B2).
+  - **The Wrapping body's write at S2d1, not `value.format(writer)`** (the Middle's N4: C-252's consent text and the plan's N3 named
+    the direct call; the body writes). `write<T>` is a published row (R4-M28), so it composes at the caller; a direct requirement
+    call on the abstract `I` keeps its declaration's bounds (SPEC 15.6.4), and `Utf8Format.format` declares none, so with the direct
+    call a `confined` write of a concrete `Wrapping<u8>` reported `IncompatibleContractImplementation_Kd` (as a generic body's
+    direct `v.format(writer)` on `I is PrimitiveInteger` at `u8` already does at S2c's head: SPEC-conformant; only the owner's open
+    O-182 would change it).
+  - **Why a row for `Wrapping<T>` at S2d1, not a source conformance.** A source conformance needs a public implementation member
+    (SPEC 8.6.3, 9.4.6: `Access(T) ∩ Access(C) ⊆ Access(M)`), and SPEC 3.1.1, SPEC 22.1's row and LIBRARY §1.4 give `Wrapping<T>` no
+    members. A concrete `Wrapping<I>` is a Primitive scalar that `FormattingTypes.IsBuiltin` answers, so a source witness would also
+    be unreachable. The row carries the abstract case too: `Wrapping<T>` has a Type shape at an abstract `T` (as the FixedArray row
+    keys `[N of E]`), and formation requires `T is PrimitiveInteger` (SPEC 3.1.1), so the scope-free arm proves nothing a valid
+    program lacks. `Binding.Contracts.cs`'s `IsGenericWrapping` premise keeps Equatable and Comparable only (not tabled).
+    The table arm, like the IsBuiltin arm, proves only once contract headers are ready, where the premise answered at any time: an
+    abstract `Wrapping<T>` is then proven exactly as every concrete built-in already is, a user Type's conformance is `Unknown`
+    before ready too, and `SignatureVerdict`/`formedParts` keep no pre-ready answer, so no new class of header-time demand arises
+    (to be confirmed at landing by the gate's header-position pairs against `i32`/`Wrapping<u8>` controls).
+  - **Moves, S2d1.** A4's `Require` reads the table for a `Wrapping` construction over an abstract `T` (`TyCtxt.Witnesses`): a
+    `confined` or effect-bounded generic that formats a `Wrapping<T>` reports `IncompatibleContractImplementation_Kd` at its
+    conformance where base reported `Unsupported_Kd` (a Limit): SPEC 8.11.3 gives the abstract `T`'s formatting requirement call
+    unknown environment effects (`Utf8Format.format` declares no bound), a conflict under `confined`, as formatting `T` itself
+    already reported. Valid forms do not move. (Noted for B: SPEC 8.7.4 could supply a bound for `T is PrimitiveInteger`'s built-in
+    formatting; not acted on.) The same class in the other bound positions: a Callable Constraint's `confined` bound
+    (`Unsupported_Kd` -> `UnsatisfiedEffectBound_Kd`) and a confined put with a live borrow of an immutable static, each moving to
+    its bare-`T` program's record.
+    Two valid classes move from `Unsupported_Kd` (the Limit) to accepted (the Middle's hunk review N1, C-252 condition 2; SPEC
+    15.6.4, 4.9.6, 8.11.1, 8.11.3; each equal to its bare control): (a) a generic that formats `Wrapping<T>`, called at `u8` from a
+    `confined` member (the `Wrapping<T>` write composes at the caller, where the integer's callee is known); (b) a `confined`
+    generic whose `T` is also bound by a Contract with `effect Utf8Format.format confined`.
+    Two more moves, accepted by B: (1) a dependent verdict over an ill-formed `Wrapping<T>` argument is not reported; its formation
+    records are (`Holder<Wrapping<T>>` with `E is Utf8Format` and `T` not proven `PrimitiveInteger`: the Holder application's
+    `UnprovenConstraint_Kd` goes, the two at `Wrapping<T>` stay; AGENTS Diagnostics, a node's verdict over a failed child); (2) a
+    Type-qualified Function Item of the view's member, `let show = Text.Utf8Slice.format` then `show(x, writer@uniq)`, valid by SPEC
+    7.3.4, 10.2 and 15.4.4 (the omitted Origin slot is an inference variable of the local), moves from a false Language error
+    (`NoApplicableOverload_Kd` at the call, through the requirement) to the located `Unsupported_Kd` at the Item that members of
+    Origin-bearing containers get (`Binding.UnsupportedReference`, Binding has no inference variables in bodies yet).
+    B's I-N3 (implementation review 1): (1)'s mechanism: the scope-free `WrappingFormat` construction arm answers `Proven` for any
+    `Wrapping` construction, so Holder's `E is Utf8Format` verdict over an ill-formed `Wrapping<T>` is not reported while its two
+    formation records are (a node's own verdict over a failed child; Q13); it cannot widen acceptance, since a written `Wrapping<T>`
+    is always formed with its `PrimitiveInteger` check. (2) is PLAN G10's gap (a Type-qualified instance member as a value). D3-N2's
+    static pair could not observe a static Loan (its Array static and borrow are `Unsupported_Kd`; static Loans are PLAN P42/G78's
+    open work).
+  - **`IsBuiltin` narrowed at S2d1 (F2).** The view's conformance is declared, so `FormattingTypes.IsBuiltin` no longer holds it
+    (otherwise the proof arm and the narrowing keep it on `builtinFormat`); `IsBuiltin` now means "formatted by the compiler's
+    built-in conformance, without a declared or tabled witness", plus the tabled Types temporary 2 still answers.
+    `FormattingTypes.cs` is the Front's (plan §3.1).
+  - **Temporary list, S2d1.** Item 6 superseded: withdrawn at S2d1 (no source conformance exists; the `IsGenericWrapping` admission
+    in `RequirementMember` serves the arithmetic Contracts and was never a Utf8Format statement). Item 3's "beside" note gains
+    nothing: `FormatKind`'s 17 and the routine's `i32 17` case are deleted outright; string's 16 stays for `SegmentText` (item 5).
+  - **Counts, S2d1.** `KimiDeclarationId` +3 (`StringWitnessFormat`, `Utf8SliceFormat`, `WrappingFormatFormat`), catalog 187 -> 190;
+    `WitnessMembers` +1 (`WrappingFormat`, local), `KimiLibraryContainer` +1 (`Utf8Slice`, local); no `CompilerFunctionKind`,
+    `IntrinsicKind`, `IntrinsicId` or diagnostic code.
+  - **Rejected, S2d1.** `Wrapping<T>`'s source conformance (above); keeping the premise's Utf8Format conjunct beside the row (two
+    owners of one conformance); deferring `Wrapping<T>` to S2b1 (moves the question).
+  - **RP8 exception, S2d1 (the owner's O-195 (a), verbatim 「O-195 a」).** S2d1 lands with the O2 Interpolation kernel slower: T-152
+    (A a7cafaad4, B 6d4442652; `artifacts\benchmarks\r8-s2d1-o2-20261112-073238`) B/A 1.128 [1.106, 1.150], R5-M135 aligned 1.076
+    (A=A 0.993-1.013), R5-M147 16 of 16 shifted pairs 1.060-1.079 (A=A 0.978-1.018); Strings within its A=A. Cause (IR at O2, both
+    compilers): the kernel's string writes are `$tryWrite`'s literal segments into a passed writer, lowered as `writer.write("...")`
+    (six per round: "Reading(" and ")" in Reading.format, twice, and ":" and ";" in main). Before S2d1 their witness was the
+    BuiltinFormat routine, whose copy and commit inlined at the call site around one out-of-line runtime reserve, so "Reading("
+    became one constant 8-byte store; since S2d1 it is StringWitness.format, whose leaf `Utf8Writer.writeUtf8` stays out of line
+    (its sole caller `Utf8Writer.reserve` is inlined into it, heap growth and erased paths included) and copies with a
+    run-time-length memcpy. No validation and no second reserve on either side; B's IR with only the leaf marked `alwaysinline`
+    gives the constant store back. Removal condition: PLAN G779's unit lands with Interpolation within A=A (its mechanism, per the
+    owner-reported O-196: `noinline` on the slow path `Utf8Writer.reserve` rather than `alwaysinline` on the leaf).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump

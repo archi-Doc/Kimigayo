@@ -23,9 +23,9 @@ public sealed partial class Binding
 
     // Whether `type` names one of the callee's Type slots in `slots`, directly, as the selector of an `s/U` application or as the target
     // projection of a pair slot.
-    private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
+    private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots)
     {
-        if (slots.IsEmpty || depth > 64)
+        if (slots.IsEmpty)
         {
             return false;
         }
@@ -37,7 +37,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (MentionsSlots(type.Components[i], function, slots, depth + 1))
+            if (MentionsSlots(type.Components[i], function, slots))
             {
                 return true;
             }
@@ -298,7 +298,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (slots[g] is { } bound ? Unnameable(bound, 0) : !unsolved.Contains(g))
+                    if (slots[g] is { } bound ? Unnameable(bound) : !unsolved.Contains(g))
                     {
                         return false;
                     }
@@ -307,16 +307,16 @@ public sealed partial class Binding
                 return true;
             }
 
-            static bool Unnameable(BoundType type, int depth)
+            static bool Unnameable(BoundType type)
             {
                 if (type.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
                 {
                     return true;
                 }
 
-                for (var i = 0; i < type.Components.Count && depth < 64; i++)
+                for (var i = 0; i < type.Components.Count; i++)
                 {
-                    if (Unnameable(type.Components[i], depth + 1))
+                    if (Unnameable(type.Components[i]))
                     {
                         return true;
                     }

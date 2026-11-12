@@ -178,14 +178,11 @@ public sealed partial class Binding
         // `polarity` is the variance of the compared position within the fitted Type, composed as RelationWalk and CheckTypeUse compose
         // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
         // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-        internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity, int depth = 0)
+        internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity)
         {
-            if (depth > 64)
-            {
-                return null;
-            }
-
             OriginRelationFact? first = null;
+            binding.termWalks++;
+
             // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
             // whose premises the relation may use.
             if (FitOuterOrigins(actual, expected, binding, use, out var outer, out var required) == OuterOriginFit.Relation &&
@@ -211,7 +208,7 @@ public sealed partial class Binding
                 actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
             {
                 var target = exclusive ? OriginVariance.Invariant : polarity;
-                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], target, depth + 1) is { } failed)
+                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], target) is { } failed)
                 {
                     if (all is null)
                     {
@@ -243,7 +240,7 @@ public sealed partial class Binding
                     ? schema.GenericSlots[i].OriginVariance
                     : actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2 && i == 0 ? OriginVariance.Contravariant
                     : OriginVariance.Covariant;
-                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], ComposeVariance(polarity, position), depth + 1) is { } argument)
+                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], ComposeVariance(polarity, position)) is { } argument)
                 {
                     if (all is null)
                     {
