@@ -780,8 +780,18 @@ public class ContractBindingTest
     // SPEC 8.6.3, 15.3.7, 15.6.1: implementation matching is a whole-contract comparison, so its proofs assume the own well-formedness of
     // the requirement as substituted: under `Self` = `View{source}`, `self: ref/Self` gives `source outlives self`, so a result or getter
     // during `source` gives at least the required guarantee, as Slice's `index` does (SPEC 4.7.1). The premise relates `source` to `self`
-    // alone: never to `static`, to another input or to a requirement without a receiver, and never the reverse.
+    // alone: never to `static`, to another input or to a requirement without a receiver, and never the reverse. A standard access
+    // bridge is an implementation too (11.9.1, 11.9.2): a stored Field's Copy, its shared borrow (`during self`) and its `set` fit in the
+    // same comparison, so variance still applies and a setter input never outlives `source` by it.
     [Theory]
+    [InlineData("contract L\n    property item: ref/i32 has get\n" + ViewIsL + "    public let item: ref/i32 during source", "")]
+    [InlineData("contract L\n    property item: ref/(ref/i32) has get\n" + ViewIsL + "    public let item: ref/i32 during source", "")]
+    [InlineData("struct View {source}\n    Self is Copy\n    let data: ref/i32 during source\ncontract L\n    property inner: View has get\nstruct Outer {source}\n    Self is L\n    public let inner: View during source", "")]
+    [InlineData("struct View {source}\n    let data: ref/i32 during source\ncontract L\n    property inner: ref/View has get\nstruct Outer {source}\n    Self is L\n    public let inner: View during source", "")]
+    [InlineData("contract L\n    property item: ref/i32 during static has get\n" + ViewIsL + "    public let item: ref/i32 during source", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    property item: ref/i32 during static has get\nstruct S\n    Self is L\n    public var item: i32", "IncompatibleContractImplementation_Kd")]
+    [InlineData("struct Inv {source}\n    let data: uniq/(ref/i32 during source) during source\ncontract L\n    property inner: ref/Inv has get\nstruct Outer {source}\n    Self is L\n    public let inner: Inv during source", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    property item: ref/i32 has get, set\n" + ViewIsL + "    public var item: ref/i32 during source", "IncompatibleContractImplementation_Kd")]
     [InlineData("contract L\n    func lend(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public func lend(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
     [InlineData("struct W<T> {source}\n    Self is Indexable<isize>\n    associate Element is T\n    let data: ref/T during source\n    public func index(self: ref/Self, key: ref/isize) -> ref/T during source => self.data", "")]
     [InlineData("contract L\n    property item: ref/i32\n        get(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
@@ -791,6 +801,23 @@ public class ContractBindingTest
     [InlineData("contract L\n    func take(self: ref/Self, x: ref/i32 during self) -> ()\n" + ViewIsL + "    public func take(self: ref/Self, x: ref/i32 during self.source) -> () => ()", "IncompatibleContractImplementation_Kd")]
     [InlineData("contract L\n    property item: ref/i32 during static\n        get(self: ref/Self) -> ref/i32 during static\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
     public void ResultOriginsAssumeTheSubstitutedRequirementWellFormed(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 11.9.1, 11.9.2, 15.3.5: a bridge's fit reads the conforming Type's binders, so a pair layer in the stored Field is invariant in
+    // its target when its binder admits an invariant Semantics and covariant otherwise: `static` stands for `a` under the layer only
+    // in the covariant case, in the `set` input (P <: F) and in the borrowed Field (ref/F <: ref/G) alike.
+    [Theory]
+    [InlineData("ref or uniq", "static", "a", "IncompatibleContractImplementation_Kd")]
+    [InlineData("owner or ref", "static", "a", "")]
+    [InlineData("ref or uniq", "static", "static", "IncompatibleContractImplementation_Kd")]
+    [InlineData("owner or ref", "static", "static", "")]
+    [InlineData("ref or uniq", "a", "a", "")]
+    public void StandardAccessBridgesKeepPairLayerVariance(string admitted, string input, string field, string codes)
+    {
+        var source = "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\nstruct H<s/T> {a}\n" +
+            $"    s is {admitted}\n    Self is L<s/(ref/i32 during a) during a, s/(ref/i32 during {input}) during a>\n" +
+            $"    public var item: s/(ref/i32 during {field}) during a";
+        AssertBindingCodes(source, codes);
+    }
 
     // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
     // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).

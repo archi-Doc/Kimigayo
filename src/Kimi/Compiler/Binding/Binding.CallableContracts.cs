@@ -4,6 +4,11 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// The whole-contract comparison of a witness with a requirement as substituted (SPEC 8.6.3, 11.9.1, 15.3.7, 15.6.1; DECISIONS BU-93).
+// - Responsibility: CompareCallableContracts judges a written implementation (a function, an accessor) over the CallableContract
+//   view; RequirementComparison forms the comparison every witness kind is judged in, 11.9.2's bridges included.
+// - Invariant: a witness's fit is judged with IsSubtypeAt in that comparison, whose premises are the substituted signature's own;
+//   no site judges a witness with a relation that reads no premises.
 public sealed partial class Binding
 {
     private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
@@ -130,9 +135,10 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, 15.6.1, the owner's (a): the whole-contract comparison of a witness with `binder`'s requirement as substituted (Self,
-    // the Type's arguments): each of its proofs, its solve's too, assumes that signature's own well-formedness, as 10.7's does
-    // (ContractFits). The one place a witness comparison is formed; AddRequiredPremises reads its premises from it (DECISIONS BU-93).
+    // SPEC 11.9.1, 15.3.7, 15.6.1, the owner's (a): the whole-contract comparison of a witness, a written implementation or a standard
+    // access bridge (11.9.2, MatchPropertyOperation), with `binder`'s requirement as substituted (Self, the Type's arguments): each of
+    // its proofs, its solve's too, assumes that signature's own well-formedness, as 10.7's does (ContractFits). The one place a witness
+    // comparison is formed, for every witness kind; AddRequiredPremises reads its premises from it (DECISIONS BU-93).
     private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder)
     {
         var demandedInputs = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);

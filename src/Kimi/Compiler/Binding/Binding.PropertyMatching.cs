@@ -46,6 +46,10 @@ public sealed partial class Binding
         return proof;
     }
 
+    // SPEC 11.9.1, 11.9.2: one operation of a Property requirement against the selected Property's. A written accessor is compared by
+    // CompareCallableContracts; standard access by 11.9.2's closed table of bridges (Copy of the Field's Type F, the shared borrow
+    // `ref/F during receiver`, the `set` of a `var`). A bridge is an implementation too: SignatureEquals identifies its row (Origins
+    // excluded, 8.6.3) and IsSubtypeAt judges its fit in the requirement's comparison (RequirementComparison), as a written witness's.
     private ConstraintProof MatchPropertyOperation(BoundConformancePath conformance, BoundAccessor requirement, BoundAccessor implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
         if (!implementation.IsPresent || !this.AccessCovers(implementation.Property.Symbol, conformance.Type, conformance.Contract, implementation.Access))
@@ -104,22 +108,27 @@ public sealed partial class Binding
                 return ConstraintProof.Refuted;
             }
 
+            var comparison = this.RequirementComparison(input is null ? [receiver] : [receiver, input], result, requirement.Binder);
             if (!getter)
             {
+                // Input direction: the required input P fits the Field, P <: F.
                 kind = PropertyWitnessKind.StorageSet;
                 proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
-                    SignatureEquals(input, field, requirement.Binder, implementation.Binder) && IsSubtype(input, field) && SameType(result, BoundType.Unit) ?
-                    ConstraintProof.Proven : ConstraintProof.Refuted;
+                    SignatureEquals(input, field, requirement.Binder, implementation.Binder) && this.IsSubtypeAt(input, field, requirement.Binder, comparison) &&
+                    SameType(result, BoundType.Unit) ? ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = IsSubtype(field, result) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, comparison) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
             }
-            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
+            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } && receiver.Origin is { } receiverOrigin &&
+                SignatureEquals(field, result.Components[0], implementation.Binder, requirement.Binder))
             {
+                // The bridge's result is the shared borrow of the Field, its Origin the receiver's.
                 kind = PropertyWitnessKind.StorageBorrow;
-                proof = ConstraintProof.Proven;
+                var borrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [field], origin: receiverOrigin);
+                proof = this.IsSubtypeAt(borrow, result, requirement.Binder, comparison) ? ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else
             {
