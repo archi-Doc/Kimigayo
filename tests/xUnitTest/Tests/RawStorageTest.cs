@@ -288,6 +288,11 @@ public class RawStorageTest
     [InlineData("()", "b.data = 5", "TypeMismatch_Kd: 5")]
     [InlineData("()", "b.arr = [nope, shared]", "UnsatisfiedOriginRelation_Kd: b.arr = [nope, shared] | UnresolvedBinding_Kd: nope")]
     [InlineData("()", "unsafe => b.data += nope", "UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
+    // A Case payload's layers are judged over its failed parts as a write's are: a non-null source at a layer beside a failed part keeps
+    // its record, a failed part at the layer gives none.
+    [InlineData("()", "let c = Cell.Two((fresh, nope))", "UnsatisfiedOriginRelation_Kd: (fresh, nope) | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((nope, 1))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Some(nope)", "UnresolvedBinding_Kd: nope")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)
         => Assert.Equal(records.Split(" | "), RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 
