@@ -119,7 +119,7 @@ public sealed partial class Binding
     // `condition` is the Semantics case in which `outer` stores `type`: the borrow cases of a pair slot (SPEC 15.6.5).
     private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection && !TryPairLayer(type, out _, out _))
+        if (type.IsAbstractType)
         {
             return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use, condition);
         }
@@ -169,7 +169,7 @@ public sealed partial class Binding
             {
                 if (node is IsKoto clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity)
                 {
-                    formation = this.SubstituteContractReference(formation, identity.Contract);
+                    formation = this.SubstituteContractReference(formation, identity.Contract, out _);
                 }
 
                 return this.ContractType(formation, scope, this.SelfType(self));

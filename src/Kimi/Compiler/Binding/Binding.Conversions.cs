@@ -309,7 +309,7 @@ public sealed partial class Binding
             var failure = default(ComparisonFailure);
             var fits = pattern.IsObjectBorrow
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
-                : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
+                : this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
@@ -414,7 +414,7 @@ public sealed partial class Binding
                 // SPEC 13.5.6: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
-                if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
+                if (!this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
                     return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.Uniq));
                 }
@@ -500,6 +500,14 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
+        // safe value-reference layers ending in a read Type supply its value, a qualifying pair layer included: such an operand is
+        // read in every case and selects no case. Borrow, follow and object targets took the reference above.
+        if (plain && target.HandleMode is null && !TryAdaptationSelector(target, out _))
+        {
+            source = this.ReadReferent(conversion.Left, source)!;
+        }
+
         if (TryAdaptationSelector(target, out _) || TryAdaptationSelector(source, out _))
         {
             return this.BindCaseAdaptation(conversion, scope, source, target);
@@ -508,13 +516,6 @@ public sealed partial class Binding
         if (target.HandleMode is not null)
         {
             return this.BindObjectAdaptation(conversion, scope, source, target);
-        }
-
-        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
-        // safe reference layers ending in a read Type supply its value; borrow, follow and object targets took the reference above.
-        if (plain)
-        {
-            source = this.ReadReferent(conversion.Left, source)!;
         }
 
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))

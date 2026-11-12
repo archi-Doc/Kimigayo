@@ -46,8 +46,53 @@ public static partial class Parser
     internal static IsKoto ParseAssociatedConstraint(ref TokenReader reader)
     {
         var lastError = reader.Diagnostic.LastError;
-        var name = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseType(ref reader, TypeContext.Type);
+        // AssociatedTypeName := Name | ContractSelector "." Name (F.6.2), read so that its selector is one node: the selector's head, then
+        // the one suffix loop (`. Name`, Type arguments, `.(C).`, the Origin parameters). The head is the ContractSelector's group (F.5
+        // continues no grouped Type with `. Name`), a rooted first segment (ParseType's RootPath would wrap the whole name) or a Type head.
+        Koto name;
+        if (HasSimpleConstraintSubject(ref reader))
+        {
+            name = ParseConstraintSubject(ref reader);
+        }
+        else
+        {
+            var head = reader.CurrentTokenKind switch
+            {
+                TokenKind.OpenParenthesis => ParseBareParenthesizedType(ref reader),
+                TokenKind.ColonColon => ParseRootName(ref reader),
+                _ => ParseTypeHead(ref reader, target: false),
+            };
+            name = ParseTypeSuffixes(ref reader, head, disambiguateGenerics: false);
+        }
+
+        if (!ReportedSince(ref reader, lastError, out _) && !IsAssociatedTypeName(name, out _) && name.Expected(SyntaxForm.Name) is { } rejected)
+        {
+            // A head that is no AssociatedTypeName (a primitive Type, Self, a group or a path without its `. Name`, a Name with Type
+            // arguments) is rejected here for every owner; the specification rests on this Error.
+            reader.CodeContext.RecordRecovery(name, rejected);
+        }
+
         return FinishConstraint(ref reader, name, lastError, finishLine: false);
+    }
+
+    /// <summary>Whether an associate item's head is F.6.2's <c>AssociatedTypeName := Name | ContractSelector "." Name</c>, with its Origin
+    /// parameters; the selector's own form is Binding's (its lookup and its Contract reference).</summary>
+    /// <param name="head">The head, below its Origin parameters and transparent wrappers.</param>
+    /// <param name="qualified">Whether a selector precedes the Name.</param>
+    /// <returns><see langword="true"/> for a Name or a selector's <c>. Name</c>.</returns>
+    internal static bool IsAssociatedTypeName(Koto head, out bool qualified)
+    {
+        head = head is OriginApplicationKoto application ? application.Type : head;
+        while (head is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+        {
+            head = inner;
+        }
+
+        qualified = head is MemberAccessKoto;
+        var name = head is MemberAccessKoto member ? member.Right : head;
+        var self = TokenKind.Self.ToText(); // Self is a TypeName but no Name (F.5); ParseConstraintSubject keeps it as an identifier.
+        return name is IdentifierNameKoto identifier ? identifier.IdentifierName != self :
+            name is TypeSemanticsKoto { Type: null, IsNamedType: true, HasOrigin: false } leaf && leaf.Identifier != self;
     }
 
     // SPEC F.6's ConstraintSubject, over what HasSimpleConstraintSubject leaves to the Type path: a Type with no Type arguments (a primitive
@@ -238,14 +283,14 @@ public static partial class Parser
             return first.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is;
         }
 
-        // An associated specification owns its following "is"; its introducer is not
-        // part of the Type subject. Preserve contextual uses such as associate<T>.
-        if (first == TokenKind.Associate && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+        // An associated declaration or specification owns its following "is": `associate` before a start of its AssociatedTypeName
+        // (a Name or a ContractSelector, F.6.2) introduces it, so no Type subject includes it. Other uses, such as associate<T>, are Names.
+        if (first == TokenKind.Associate && StartsType(reader.PeekKind(1)))
         {
             return false;
         }
 
-        if (!(first.IsIdentifierOrContextualKeyword() || first.IsPrimitiveType() || first is TokenKind.Self or TokenKind.ColonColon or TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        if (!StartsType(first))
         {
             return false;
         }
@@ -323,6 +368,10 @@ public static partial class Parser
             }
         }
     }
+
+    // The tokens that start a Type (F.5); a TypeQualifier, a ContractSelector and an AssociatedTypeName start with the same tokens.
+    private static bool StartsType(TokenKind kind)
+        => kind.IsIdentifierOrContextualKeyword() || kind.IsPrimitiveType() || kind is TokenKind.Self or TokenKind.ColonColon or TokenKind.OpenParenthesis or TokenKind.OpenBracket;
 
     private static bool HasSimpleConstraintSubject(ref TokenReader reader)
     {

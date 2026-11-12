@@ -51,8 +51,10 @@ public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, Bound
 
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it. AdaptedType is
 /// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
-/// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false);
+/// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).
+/// Positions: a Tuple or array literal argument's element positions' adaptation classes in the fit's order (SPEC 10.4 step 1, 10.5.1),
+/// a range of the candidate evaluation's positionClasses; Adaptation is then the literal's own fit.</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default);
 
 public sealed partial class Binding
 {
@@ -95,9 +97,10 @@ public sealed partial class Binding
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
         {
             layers++;
+            this.termWalks++;
             if (ReferenceEquals(type.Components[0], referent))
             {
                 BoundOrigin? origin = null;
@@ -145,7 +148,7 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
+        if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
             !this.FitsStructuralPartAt(adapted, expected, node))
         {
             return null;
@@ -171,32 +174,20 @@ public sealed partial class Binding
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
-        if (ScalarReferent(type) is not { } referent)
+        if (this.ReadTypeReferent(type, node) is not { } read)
         {
-            // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
-            // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
-            var scope = this.ConstraintScope(node);
-            if (this.ReadTypeReferent(type, scope) is { } read)
-            {
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.7.4: a read Type.
-                return read;
-            }
-
-            if (type is not null &&
-                this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
-                this.PairTerminal(target, scope) is { } terminal &&
-                (terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : ScalarReferent(terminal)) is { } scalar)
-            {
-                this.implicitPairFollows[node] = admitted;
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, scalar);
-                return scalar;
-            }
-
             return type;
         }
 
-        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
-        return referent;
+        // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
+        // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
+        if (TryPairLayer(type, out _, out _))
+        {
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+        }
+
+        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);
+        return read;
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
@@ -217,8 +208,10 @@ public sealed partial class Binding
     /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
     /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
     /// </summary>
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool fixedExpectation = false, bool recordPair = true, bool deferAcquisition = false)
+    private bool AdaptInput(Koto source, FixedPattern fixedPattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool fixedExpectation = false, bool recordPair = true, bool deferAcquisition = false)
     {
+        var pattern = fixedPattern.Type;
+
         // Rule W (DECISIONS BU-79): a Receiver Expression whose whole use its special receiver's row refuses carries BindCall's record,
         // so its lending and bare acquisition are not judged again; its Types are formed as for a lent Place (SPEC 7.3.2).
         var judged = !(receiver && RefusedReceiver(source));
@@ -287,6 +280,16 @@ public sealed partial class Binding
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
+            }
+            else if (!receiver && StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
+            {
+                // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
+                // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
+                // is no reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's
+                // receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
+                adapted = this.ReborrowedType(actual, layer, this.ReachOf(source));
+                quality = ArgumentAdaptation.SameSemanticsReborrow;
+                kind = ArgumentOperationKind.Reborrow;
             }
             else if (judged && !fixedExpectation && !this.AcquiresBare(source, actual, actual, pattern, deferAcquisition))
             {
@@ -469,7 +472,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
+            if (!LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&

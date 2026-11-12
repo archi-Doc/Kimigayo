@@ -59,7 +59,7 @@ public sealed partial class Binding
             return type;
         }
 
-        return this.SubstituteIdentity(type, scope);
+        return this.SubstituteIdentity(type, scope, parametersOnly: false, out _);
     }
 
     // DECISIONS BU-72: a member access or an element access whose receiver's Type, through its Semantics layers, is a Type parameter P
@@ -90,8 +90,11 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly = false)
+    // W2 (ContractSolver's Completion): Complete without a parameter or at the formation's own recursion (identityExpansions), else
+    // the meet of IdentityPremise's, the components' and the held Type's.
+    private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly, out Completion completion)
     {
+        completion = Completion.Complete;
         if (!type.ContainsParameter)
         {
             return type;
@@ -106,8 +109,15 @@ public sealed partial class Binding
 
             try
             {
-                var required = this.IdentityPremise(type, scope, parametersOnly);
-                return required.Kind == BoundTypeKind.Parameter ? required : this.SubstituteIdentity(required, scope, parametersOnly);
+                var required = this.IdentityPremise(type, scope, parametersOnly, out completion);
+                if (required.Kind == BoundTypeKind.Parameter)
+                {
+                    return required;
+                }
+
+                var image = this.SubstituteIdentity(required, scope, parametersOnly, out var part);
+                completion = Meet(completion, part);
+                return image;
             }
             finally
             {
@@ -122,13 +132,20 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.SubstituteIdentity(type.Components[i], scope, parametersOnly);
+                components[i] = this.SubstituteIdentity(type.Components[i], scope, parametersOnly, out var part);
+                completion = Meet(completion, part);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             // DECISIONS BU-60: the Type instance a closure's context holds is substituted with the Closure Type.
-            var context = TyCtxt.HeldType(type) is { } held && this.SubstituteIdentity(held, scope, parametersOnly) is var image && !ReferenceEquals(image, held)
-                ? this.types.HeldContext(type.Symbol!, image) : type.ClosureContext;
+            var context = type.ClosureContext;
+            if (TyCtxt.HeldType(type) is { } held)
+            {
+                var image = this.SubstituteIdentity(held, scope, parametersOnly, out var heldPart);
+                completion = Meet(completion, heldPart);
+                context = ReferenceEquals(image, held) ? context : this.types.HeldContext(type.Symbol!, image);
+            }
+
             if (!changed && ReferenceEquals(context, type.ClosureContext))
             {
                 return type;
@@ -149,8 +166,10 @@ public sealed partial class Binding
     // Parameter identities form equivalence classes, not directed rewrite chains. Close only over the finite
     // parameter premises in scope, then choose the same representative for every member. No structural unification
     // or inference of missing premises is performed. Scratch storage is reused across queries and rebinding.
-    private BoundType IdentityPremise(BoundType parameter, BindingScope scope, bool parametersOnly)
+    // W3 (ContractSolver's Completion): Complete when every fact whose availability it asks is direct (W6).
+    private BoundType IdentityPremise(BoundType parameter, BindingScope scope, bool parametersOnly, out Completion completion)
     {
+        completion = Completion.Complete;
         var capacity = 1;
         for (var current = scope; current is not null; current = current.Parent)
         {
@@ -178,8 +197,14 @@ public sealed partial class Binding
 
                     foreach (var fact in environment.Facts)
                     {
-                        if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType.Kind: BoundTypeKind.Parameter } ||
-                            !this.AvailableConstraintFact(environment, fact))
+                        if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType.Kind: BoundTypeKind.Parameter })
+                        {
+                            continue;
+                        }
+
+                        var available = this.AvailableConstraintFact(environment, fact, out var availability);
+                        completion = Meet(completion, availability);
+                        if (!available)
                         {
                             continue;
                         }
@@ -205,8 +230,15 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
-                    if (fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: { } required } &&
-                        members.AsSpan(0, count).Contains(fact.Subject) && this.AvailableConstraintFact(environment, fact))
+                    if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: { } required } ||
+                        !members.AsSpan(0, count).Contains(fact.Subject))
+                    {
+                        continue;
+                    }
+
+                    var available = this.AvailableConstraintFact(environment, fact, out var availability);
+                    completion = Meet(completion, availability);
+                    if (available)
                     {
                         if (required.Kind != BoundTypeKind.Parameter)
                         {

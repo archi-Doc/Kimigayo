@@ -10,10 +10,10 @@ internal static partial class MirDump
 {
     // A Drop's verdict groups, contiguous from view 0's, one per view class, each with its views where they are not all: [keep],
     // [elide in v0; open (.0 elide) in v1].
-    private static void Verdicts(StringBuilder text, MirBody body, MirDropTable drops, int ordinal, int block)
+    private static void Verdicts(StringBuilder text, MirBody body, MirDropTable drops, int block)
     {
-        var rows = drops.RowsOf(ordinal);
-        var group = drops.Group(ordinal, block, 0);
+        var rows = drops.RowsOf(body.Ordinal);
+        var group = drops.Group(body.Ordinal, block, 0);
         var separator = " [";
         while (group >= 0 && group < rows.Length && rows[group].Block == block)
         {

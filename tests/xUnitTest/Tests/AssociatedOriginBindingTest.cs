@@ -94,6 +94,26 @@ public class AssociatedOriginBindingTest
         }
     }
 
+    // SPEC 23.1.2, 8.5.4 (PLAN G747, G324): an associated Type application binds its target and every Origin argument; it reports its own
+    // failure (no family, an arity mismatch) beside the arguments' records and otherwise rests on its first failed part (`U.L` of
+    // `U.L.Item` is an ordinary path, 8.5.2; its twin names the projection).
+    [Theory]
+    [InlineData("func g(p: Q.Item(static))\n    ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("func g()\n    let p: Q.Item(static)? = .None\n    ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("func g<U>(p: U.L.Item(static))\n    U is L\n    ()\n", "UnresolvedBinding_Kd")]
+    [InlineData("func g<U>(p: U.(L).Item(static))\n    U is L\n    ()\n", "")]
+    [InlineData("func g(p: Q.Item((missing)))\n    ()\n", "UnresolvedBinding_Kd MissingOriginBinding_Kd")]
+    [InlineData("func g() -> S.Nope((missing)) => 1\n", "InvalidAssociatedType_Kd MissingOriginBinding_Kd")]
+    [InlineData("func g() -> S.Item((missing), static) => 1\n", "InvalidAssociatedType_Kd MissingOriginBinding_Kd")]
+    [InlineData("func g() -> S.Pair((m1), (m2)) => 1\n", "MissingOriginBinding_Kd MissingOriginBinding_Kd")]
+    [InlineData("func g() -> S.Pair(static, static) => 1\n", "")]
+    public void AnApplicationRestsOnItsFirstFailedPart(string use, string codes)
+    {
+        const string declarations = "contract C\n    associate Item(a) is i32\ncontract C2\n    associate Pair(a, b) is i32\ncontract L\n    associate Item(step)\nstruct S\n    Self is C\n    Self is C2\n";
+        var records = ContextualCaptureTest.PublishedRecords(declarations + use + "public func main() => ()\n");
+        Assert.True(codes == string.Join(' ', records.Select(static x => x.Code)), string.Join(' ', records.Select(static x => $"{x.Code}@{x.Span.Start}")));
+    }
+
     [Theory]
     [InlineData("contract C\n    associate Item(a, a)")]
     [InlineData("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item is i32")]
@@ -104,8 +124,10 @@ public class AssociatedOriginBindingTest
         => Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
 
     // SPEC 2.3, F.8, 8.5.4: `_`, `static` and `b.c` are no Names, so a binder written with one as an Origin parameter is a syntax error, its
-    // one record, also with an attached clause or a use of the family; the named twin is valid (PLAN G614).
+    // one record, also with an attached clause, a conformance (G686) or a use of the family; the named twin is valid (PLAN G614).
     [Theory]
+    [InlineData("contract L<E>\n    associate View(a, _) is ref/E during a\nstruct S\n    Self is L<i32>\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a) is ref/E during a\nstruct S\n    Self is L<i32>\n", "")]
     [InlineData("contract L<E>\n    associate View(a, _) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]
     [InlineData("contract L<E>\n    associate View(a, static) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]
     [InlineData("contract L<E>\n    associate View(a, b.c) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]

@@ -305,11 +305,19 @@ public sealed partial class Binding
 
         this.BindConditionalAssociatedSpecifications();
 
+        // SPEC 8.5.1, 8.5.3: every owner's specifications are its members (Parser.ParseAssociatedTypeItem), a Contract's included.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { IsAssociatedConstraint: true, Parent: StructKoto or EnumKoto } clause)
+            if (this.nodes[i] is StructKoto or EnumKoto or ContractKoto)
             {
-                this.BindAssociatedSpecification(clause, this.scopes[clause.Parent!]);
+                var owner = (DeclarationContainerKoto)this.nodes[i];
+                for (var j = 0; j < owner.Members.Count; j++)
+                {
+                    if (owner.Members[j] is IsKoto { IsAssociatedConstraint: true } clause)
+                    {
+                        this.BindAssociatedSpecification(clause, this.scopes[owner]);
+                    }
+                }
             }
         }
 
@@ -368,7 +376,7 @@ public sealed partial class Binding
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
-    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
@@ -380,24 +388,31 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Invalid = true;
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
 
             foreach (var fact in environment.Facts)
             {
-                if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
                 {
-                    var previous = scope.Owner.BindingState;
-                    changed |= !environment.Invalid;
-                    environment.Invalid = true;
-                    // Other input facts can have independent contradictions. Record a
-                    // sole missing-name cause only when this is the entire environment.
-                    this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                    changed |= previous != scope.Owner.BindingState;
-                    break;
+                    this.DropConsultation(frame);
+                    continue;
                 }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
             }
         }
 
@@ -429,10 +444,7 @@ public sealed partial class Binding
         var bindingScope = this.NodeScope(clause, scope);
         var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
-        var head = AssociatedHead(clause);
-        var subject = scope.Owner is ContractKoto && (head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head) is MemberAccessKoto associatedMember
-            ? this.BindAssociatedRefinement(clause, associatedMember, scope)
-            : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
+        var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
@@ -478,7 +490,7 @@ public sealed partial class Binding
         // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
         // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
         var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
-        if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
+        if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
             this.Fail(clause, BindingFailure.InvalidConstraint);
@@ -489,7 +501,11 @@ public sealed partial class Binding
         if (input || requirement.Kind == ConstraintKind.Error)
         {
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            if (this.AddConstraintFact(environment, requirement))
+            {
+                environment.Fail(clause); // The clause failed, or holds a recovery.
+            }
+
             if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
@@ -584,49 +600,33 @@ public sealed partial class Binding
         return result;
     }
 
-    private void AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    // Adds a fact and its conjuncts; true when one of them is an Error. BindConstraints and BindAssociatedSpecification name their clause
+    // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
+    // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
+    // environment stays valid (PLAN G651's open item).
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
     {
         if (fact.HasUnresolved)
         {
-            return;
+            return false;
         }
 
-        if (source is null)
+        environment.Add(fact, source);
+        if (fact.Kind == ConstraintKind.And)
         {
-            environment.DirectFacts.Add(fact);
-        }
-        else if (!environment.DerivedFacts.Contains((fact, source)))
-        {
-            environment.DerivedFacts.Add((fact, source));
+            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
         }
 
-        var added = environment.Facts.Add(fact);
-        if (!added && fact.Kind != ConstraintKind.And)
-        {
-            return;
-        }
-
-        environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
-        environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
-        environment.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
-        if (fact.Kind == ConstraintKind.Error)
-        {
-            environment.Invalid = true;
-        }
-        else if (fact.Kind == ConstraintKind.And)
-        {
-            this.AddConstraintFact(environment, fact.Left!, source);
-            this.AddConstraintFact(environment, fact.Right!, source);
-        }
+        return fact.Kind == ConstraintKind.Error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
-        var normalized = this.NormalizeProofConstraint(proposition, scope);
+        var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid)
+        if (evidence.Invalid is { } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         var positive = evidence.Positive;
@@ -659,8 +659,11 @@ public sealed partial class Binding
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
 
-    private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope)
+    // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
+    // Type (CallableContractType) is Provisional.
+    private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
+        completion = Completion.Complete;
         if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
         {
             return constraint;
@@ -668,13 +671,14 @@ public sealed partial class Binding
 
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.NormalizeProofConstraint(constraint.Left!, scope));
+            return this.NegateConstraint(this.NormalizeProofConstraint(constraint.Left!, scope, out completion));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            var left = this.NormalizeProofConstraint(constraint.Left!, scope);
-            var right = this.NormalizeProofConstraint(constraint.Right!, scope);
+            var left = this.NormalizeProofConstraint(constraint.Left!, scope, out var a);
+            var right = this.NormalizeProofConstraint(constraint.Right!, scope, out var b);
+            completion = Meet(a, b);
             return ReferenceEquals(left, constraint.Left) && ReferenceEquals(right, constraint.Right) ? constraint : this.InternConstraint(new(constraint.Kind, left: left, right: right));
         }
 
@@ -683,21 +687,31 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.NormalizeProofType(constraint.Subject, scope);
-        var required = constraint.RequiredType is { } type ? constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(type, scope) : this.NormalizeProofType(type, scope) : null;
+        var subject = this.NormalizeProofType(constraint.Subject, scope, out completion);
+        var required = constraint.RequiredType;
+        if (required is not null)
+        {
+            var part = Completion.Provisional;
+            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.NormalizeProofType(required, scope, out part);
+            completion = Meet(completion, part);
+        }
+
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
-    private BoundType NormalizeProofType(BoundType type, BindingScope scope)
+    private BoundType NormalizeProofType(BoundType type, BindingScope scope, out Completion completion)
     {
+        completion = Completion.Complete;
         if (type.ContainsParameter && HasParameterIdentity(scope))
         {
-            type = this.SubstituteIdentity(type, scope, parametersOnly: true);
+            type = this.SubstituteIdentity(type, scope, parametersOnly: true, out completion);
         }
 
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
-            return this.ContractType(type, scope);
+            var projected = this.ContractTypeAnswer(type, scope);
+            completion = Meet(completion, projected.Completion);
+            return projected.Image;
         }
 
         // Keep symbolic subjects symbolic: share facts within a parameter equivalence class, but do not turn a
@@ -714,7 +728,8 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.NormalizeProofType(type.Components[i], scope);
+                components[i] = this.NormalizeProofType(type.Components[i], scope, out var part);
+                completion = Meet(completion, part);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 

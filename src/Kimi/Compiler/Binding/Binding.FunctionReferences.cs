@@ -148,25 +148,22 @@ public sealed partial class Binding
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
                         return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
-                            : structure && contract.Kind == ComparisonFailureKind.None && this.FailedOriginClause(function) is { } clause
-                            ? this.CompleteDependent(use, clause)
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
                 }
 
-                var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
-                var next = 0;
+                var start = this.rejectedRows.Count;
                 for (var i = 0; i < count; i++)
                 {
                     if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
                     {
                         var candidate = evaluated[i].Symbol!;
                         var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-                        rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure);
+                        this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure));
                     }
                 }
 
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+                this.RecordRejected(use, start);
                 return this.Fail(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
 
@@ -203,9 +200,9 @@ public sealed partial class Binding
                 {
                     for (var i = 0; i < target.GenericArguments.Count && i < written.TypeArguments.Count; i++)
                     {
-                        if (written.TypeArguments[i].BoundType is { } type && frame.Types[i] is { } bound && SameExceptOmittedOrigins(type, bound, 0))
+                        if (written.TypeArguments[i].BoundType is { } type && frame.Types[i] is { } bound && SameExceptOmittedOrigins(type, bound))
                         {
-                            this.SolveOmittedOrigins(type, bound, use, 0);
+                            this.SolveOmittedOrigins(type, bound, use);
                         }
                     }
                 }
@@ -327,7 +324,7 @@ public sealed partial class Binding
 
             var perCall = 0UL;
             var foreign = false;
-            InputOrigins(frame.Types[i]!, parameters, binder, use, false, ref perCall, ref foreign, 0);
+            InputOrigins(frame.Types[i]!, parameters, binder, use, false, ref perCall, ref foreign);
             if (perCall != 0 || foreign)
             {
                 // SPEC 10.6, 15.3.6: when the binding fits and its Constraints hold, a bound argument would hold an input Origin bound at
@@ -410,7 +407,7 @@ public sealed partial class Binding
 
             if (frame.Types[i] is { } bound && !ReferenceEquals(bound, written))
             {
-                if (SameExceptOmittedOrigins(written, bound, 0))
+                if (SameExceptOmittedOrigins(written, bound))
                 {
                     continue;
                 }
@@ -429,13 +426,14 @@ public sealed partial class Binding
 
     // SPEC 15.4.4: an Origin that a written Type argument omits is an inference variable of the local whose initializer holds the
     // reference; the selected binding from S solves it, as an initializer's acquisition bounds it. Elsewhere it stays unsolved.
-    private void SolveOmittedOrigins(BoundType written, BoundType binding, Koto use, int depth)
+    private void SolveOmittedOrigins(BoundType written, BoundType binding, Koto use)
     {
-        if (ReferenceEquals(written, binding) || depth > 32)
+        if (ReferenceEquals(written, binding))
         {
             return;
         }
 
+        this.termWalks++;
         this.SolveOmittedOrigin(written.Origin, binding.Origin, use);
         for (var i = 0; i < written.OriginArguments.Count && i < binding.OriginArguments.Count; i++)
         {
@@ -444,7 +442,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < written.Components.Count && i < binding.Components.Count; i++)
         {
-            this.SolveOmittedOrigins(written.Components[i], binding.Components[i], use, depth + 1);
+            this.SolveOmittedOrigins(written.Components[i], binding.Components[i], use);
         }
     }
 
@@ -515,14 +513,14 @@ public sealed partial class Binding
                 }
 
                 if (frame.Types[i] is not { } argument ||
-                    (explicitReference is not null && (written is null || !SameExceptOmittedOrigins(written, argument, 0))))
+                    (explicitReference is not null && (written is null || !SameExceptOmittedOrigins(written, argument))))
                 {
                     return null;
                 }
 
                 var perCall = 0UL;
                 var foreign = false;
-                InputOrigins(argument, parameters, binder, use, false, ref perCall, ref foreign, 0);
+                InputOrigins(argument, parameters, binder, use, false, ref perCall, ref foreign);
                 if (foreign)
                 {
                     return null;

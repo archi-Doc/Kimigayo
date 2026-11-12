@@ -233,7 +233,7 @@ public sealed class MirPublicationTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).ToArray();
         var (f, main) = (bodies.Single(static x => x.Binders.Count > 0).Ordinal, bodies.First(static x => x.Binders.Count == 0).Ordinal);
         var start = program.Problems.Merged.Length;
-        Add("var v = value@move", (f, MirCases.Every(program.Bodies[f])));
+        Add("var v = value@move", (f, MirCases.Every(program.Body(f))));
         Add("let local = v", (f, 0b10));
         Add("_ = local@follow", (f, 0b10), (main, 0b01));
         Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, 0b01));

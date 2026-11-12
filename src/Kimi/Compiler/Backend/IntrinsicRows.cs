@@ -90,7 +90,13 @@ internal static class IntrinsicRows
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Fail, RuntimeAbi.Abort),
         new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Stdout),
-        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(
+            IntrinsicId.FormatFloat,
+            IntrinsicTarget.None,
+            LayoutNeed.None,
+            IntrinsicWriter.Requested,
+            RuntimeAbi.FormatFloat,
+            ModuleCodegen.Needs.FormatFloat), // Storage.formatFloat (R8-S2c).
         new(
             IntrinsicId.ErasedWriter,
             IntrinsicTarget.Witness,

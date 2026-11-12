@@ -177,6 +177,34 @@ public class GenericAdaptationTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 3.4.2, 13.5.5, 13.5.6, 8.14 (PLAN G766): a case that Reborrows an object view lends the object, as the concrete @objuniq does,
+    // so a let slot storing an objuniq view lends it exclusively in each case, an upcast case (SPEC 13.6.1) included; a value borrow's
+    // case still borrows the let slot, a shared layer still denies and two live Reborrows conflict.
+    [Theory]
+    [InlineData("<s/T, t/U>(q: t/Node)", "s is objuniq\n    t is objuniq", "let y = q@s\n    y.n = 1", null, null)]
+    [InlineData("<s/T>(q: objuniq/Node)", "s is objuniq", "let y = q@s\n    y.bump()", null, null)]
+    [InlineData("<s/T, t/U>(q: t/Node)", "s is objref or objuniq\n    t is objuniq", "let y = q@s", null, null)]
+    [InlineData("<s/T>(q: objuniq/Derived)", "s is objuniq", "let y = q@s/Base", null, null)]
+    [InlineData("<s/T>(q: objuniq/Node)", "s is objuniq or uniq", "let y = q@s", nameof(DiagnosticCode.InvalidAssignment_Kd), "q@s")]
+    [InlineData("<s/T>(r: ref/(objuniq/Node during a))", "s is objuniq", "let y = r@follow@s", nameof(DiagnosticCode.SharedPathAccess_Kd), "r@follow@s")]
+    [InlineData("<s/T, t/U>(q: t/Node)", "s is objuniq\n    t is objuniq", "let y = q@s\n    let z = q@s\n    y.n = 1", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "q@s")]
+    [InlineData("<s/T>(q: objuniq/Derived) -> i32", "s is objuniq", "let z = q@objref/Base\n    let y = q@s/Base\n    return z.n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "q@s/Base")]
+    public void ObjectReborrowCasesLendTheObject(string signature, string premises, string body, string? code, string? at)
+    {
+        var source = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+            "open struct Base\n    public var n: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
+            $"func f{signature}\n    {premises}\n    {body}\n";
+        var diagnostics = DiagnosticCorpus.Check(source, "Library").Diagnostics;
+        if (code is null)
+        {
+            Assert.Empty(diagnostics);
+            return;
+        }
+
+        var error = Assert.Single(diagnostics);
+        Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedCaseBindingOwnershipAndGenerationAllocateNothing()

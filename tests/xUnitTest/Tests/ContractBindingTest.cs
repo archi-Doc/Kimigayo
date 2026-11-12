@@ -24,6 +24,9 @@ public class ContractBindingTest
         "    var large: i64 = 4\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n" +
         "    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref";
 
+    private const string Get32 = "\n    public func get(self: ref/Self) -> i32 => 0";
+    private const string Get64 = "\n    public func get(self: ref/Self) -> i64 => 0";
+
     private const string NeedOf = "func need<T>(v: T) -> T\n    T is ";
     private const string UseOfC = "\n    return v@move\nfunc use<T>(v: T) -> T\n    T is C\n    return need(v@move)";
 
@@ -33,6 +36,7 @@ public class ContractBindingTest
     private const string PutUW = "contract Put\n    func put<U, W>(self: uniq/Self, u: U, w: W)\n        U is W\nstruct S\n    Self is Put\n    public func put<U, W>(self: uniq/Self, u: U, w: W)";
     private const string GetU = "contract Get<T>\n    func get<U>(self: ref/Self, u: U) -> U\n        U is T\nstruct S\n    Self is Get<i32>\n    public func get<U>(self: ref/Self, u: U) -> ";
     private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
+    private const string ViewIsL = "struct View {source}\n    Self is L\n    let data: ref/i32 during source\n";
 
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
@@ -128,6 +132,26 @@ public class ContractBindingTest
     [InlineData("contract C\n    associate Item\ncontract D: C\n    associate C.Item is i32", true)]
     [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate C<i32>.Item is i32", true)]
     [InlineData("contract C<T>\n    associate Item\ncontract D<T>: C<T>\n    associate C<T>.Item is T\nfunc f<U>(x: U.(C<i32>).Item) -> i32\n    U is D<i32>\n    return x", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\ncontract E: D\n    associate (C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ::C.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate (C<i32>).Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D<U>: C<U>\n    associate (C<U>).Item is U", true)]
+    [InlineData("contract L\n    associate View(a)\ncontract D: L\n    associate (L).View(a) is ref/i32 during a", true)]
+    [InlineData("group G\n    public contract C\n        associate Item\ncontract D: G.C\n    associate (G.C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ngroup G\n    group C\n        func z() -> i32 => 0\n    contract D: ::C\n        associate (C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ncontract K\n    associate Item\ncontract D: C, K\n    associate (C).Item is i32\n    associate (K).Item is i64", true)]
+    [InlineData("contract C\n    associate Item\ncontract D\n    associate (C).Item is i32", false)]
+    [InlineData("contract C<T>\n    associate Item\ncontract D: C<i32>\n    associate (C<i64>).Item is i32", false)]
+    [InlineData("contract C<U>\n    associate Item\ncontract D<U>: C<U>\n    associate (C<i32>).Item is i32", false)]
+    [InlineData("contract D<U>\n    associate Item\n    associate (D<i32>).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Missing is i32", false)]
+    [InlineData("contract D\n    associate Item\n    associate Self.Item is i32", false)]
+    [InlineData("contract D\n    associate Item\n    associate ::D.Item is i32", false)]
+    [InlineData("contract D\n    associate Item\n    associate (D).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ((C)).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (Self).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\ncontract E: C\n    associate D.Item is i32", false)]
+    [InlineData("group G\n    contract C\n        associate Item\n    contract D: C\n        associate (G.D).Item is i32", false)]
     public void AContractsAssociatedSpecificationNamesAnAncestor(string source, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
@@ -136,6 +160,95 @@ public class ContractBindingTest
         {
             Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
         }
+    }
+
+    // SPEC 8.5.1 Qualification (G683): in a struct, an enum or a conditional block, a selector, grouped, rooted or a path, names a direct
+    // conformance or an ancestor of one, with its Type arguments; a descendant, the Type itself or a group in a group names none.
+    [Theory]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (C).Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i32>).Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\nstruct S<U>\n    Self is C<U>\n    associate (C<U>).Item is U", true)]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    Self is C<i64>\n    associate (C<i32>).Item is i32\n    associate (C<i64>).Item is i64", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is D\n    associate (C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ::C.Item is i32", true)]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate ::C<i32>.Item is i32", true)]
+    [InlineData("struct S\n    contract Inner\n        associate Item\n    Self is Inner\n    associate Self.Inner.Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ngroup G\n    group C\n        func z() -> i32 => 0\n    struct S\n        Self is ::C\n        associate (C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate (C).Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nenum E\n    A\n    Self is D\n    associate ::C.Item is i32", true)]
+    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate (C).Item is T", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nstruct W<T>\n    Self is D when T is Copy\n        associate (C).Item is T", true)]
+    [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i64>).Item is i32", false)]
+    [InlineData("contract C<U>\n    associate Item\nstruct S<T>\n    Self is C<T>\n    associate (C<i32>).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (Self).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ((C)).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate (D).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate D.Item is i32", false)]
+    [InlineData("struct C\n    let v: i32 = 0\ncontract D\n    associate Item\nstruct S\n    Self is D\n    associate (C).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    associate (C).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate Self.Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nenum E\n    A\n    Self is C\n    associate (D).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate ((C)).Item is i32", false)]
+    [InlineData("contract C\n    associate Item\ncontract K\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate (K).Item is T", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\nstruct W<T>\n    Self is C when T is Copy\n        associate (D).Item is T", false)]
+    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate ((C)).Item is T", false)]
+    public void ATypesAssociatedSpecificationNamesAConformance(string source, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        if (!valid)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        }
+    }
+
+    // SPEC 8.5.3, 8.4.3 (G683): a Contract's specification, a member of the Contract and no Constraint clause, is still a premise of the
+    // Contract: its conformers and descendants are held to it, and `T is D` supplies it.
+    [Theory]
+    [InlineData("struct S\n    Self is D\n    associate C.Item is i32" + Get32, true)]
+    [InlineData("struct S\n    Self is D\n    associate C.Item is i64" + Get64, false)]
+    [InlineData("struct S\n    Self is D" + Get32, true)]
+    [InlineData("struct S\n    Self is D" + Get64, false)]
+    [InlineData("contract E: D\nstruct S\n    Self is E\n    associate C.Item is i32" + Get32, true)]
+    [InlineData("contract E: D\nstruct S\n    Self is E\n    associate C.Item is i64" + Get64, false)]
+    [InlineData("contract E: D\n    associate (C).Item is i64\nstruct S\n    Self is E\n    associate C.Item is i32" + Get32, false)]
+    [InlineData("struct W<T>\n    Self is D when T is Copy\n        associate C.Item is i32\n        public func get(self: ref/Self) -> i32 => 0", true)]
+    [InlineData("struct W<T>\n    Self is D when T is Copy\n        associate C.Item is i64\n        public func get(self: ref/Self) -> i64 => 0", false)]
+    [InlineData("func f<T>(x: ref/T) -> i32\n    T is D\n    return x.get()", true)]
+    [InlineData("contract E: C\nfunc f<T>(x: ref/T) -> i32\n    T is E\n    return x.get()", false)]
+    public void AContractsAssociatedSpecificationIsAPremise(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\ncontract D: C\n    associate (C).Item is i32\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+    }
+
+    // SPEC 8.5.1, 8.5.3 (G683): a premise through a generic Contract's selector, a Copy requirement and a declaration's own requirement.
+    [Theory]
+    [InlineData("contract C<U>\n    associate Item\ncontract D<U>: C<U>\n    associate (C<U>).Item is U\nstruct S\n    Self is D<i32>\n    associate C<i32>.Item is i32", true)]
+    [InlineData("contract C<U>\n    associate Item\ncontract D<U>: C<U>\n    associate (C<U>).Item is U\nstruct S\n    Self is D<i32>\n    associate C<i32>.Item is i64", false)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (C).Item is Copy\nstruct S\n    Self is D\n    associate C.Item is i32", true)]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (Missing).Item is i32\nstruct S\n    Self is D\n    associate C.Item is i32", false)]
+    [InlineData("contract D\n    associate Item is Copy\nstruct S\n    Self is D\n    associate D.Item is i32", true)]
+    public void AContractsAssociatedSpecificationRequirementHolds(string source, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+    }
+
+    // SPEC F.5, 8.5.2 (G683, WrittenReference): a projection's `.(C).` holds one group around a NamedReference; `((C))` names no Contract
+    // in a signature, a function's Constraint region or a Contract's Constraint.
+    [Theory]
+    [InlineData("func one<T>(source: ref/T) -> T.(C).Item\n    T is C\n    return source.get()", true)]
+    [InlineData("func one<T>(source: ref/T) -> T.((C)).Item\n    T is C\n    return source.get()", false)]
+    [InlineData("func one<T>(source: ref/T) -> T.(::C).Item\n    T is C\n    return source.get()", true)]
+    [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.(C).Item is i32\n    return 0", true)]
+    [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.((C)).Item is i32\n    return 0", false)]
+    [InlineData("contract D: C\n    Self.(C).Item is i32", true)]
+    [InlineData("contract D: C\n    Self.((C)).Item is i32", false)]
+    public void AProjectionsContractIsOneGroupedReference(string use, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\n" + use);
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
     // SPEC 8.5.1 Qualification, 8.5.2, 9.7 (PLAN G705): a Contract qualifier is a bound Contract reference, so a Contract with Type
@@ -227,7 +340,7 @@ public class ContractBindingTest
     [Fact]
     public void ChildIdentityConstraintDeterminesInheritedAssociatedType()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate Element\n    func read() -> Element\ncontract B: A\n    Self.A.Element is i32\nstruct S\n    Self is B\n    public func read() -> i32 => 1");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate Element\n    func read() -> Element\ncontract B: A\n    Self.(A).Element is i32\nstruct S\n    Self is B\n    public func read() -> i32 => 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -265,14 +378,14 @@ public class ContractBindingTest
     [Fact]
     public void ProjectionUsesRequireConformanceEvidence()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.(C).Element) => ()");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void SignatureProjectionsSeeAllLeadingConstraints()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.C.Element) -> i32\n    T.C.Element is i32\n    T is C\n    return value");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Element\nfunc f<T>(value: T.(C).Element) -> i32\n    T.(C).Element is i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -290,9 +403,9 @@ public class ContractBindingTest
     }
 
     [Theory]
-    [InlineData("T.C.Element", "T is C")]
-    [InlineData("i32", "T is C\n    T.C.Element is i32")]
-    [InlineData("i32", "T.C.Element is i32\n    T is C")]
+    [InlineData("T.(C).Element", "T is C")]
+    [InlineData("i32", "T is C\n    T.(C).Element is i32")]
+    [InlineData("i32", "T.(C).Element is i32\n    T is C")]
     public void GenericInstanceRequirementCallsSubstituteAssociatedTypes(string result, string constraints)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source: ref/T) -> {result}\n    {constraints}\n    return source.read()");
@@ -358,7 +471,7 @@ public class ContractBindingTest
     [Fact]
     public void DistinctGenericAssociatedConstraintsCannotChooseAnArbitraryIdentity()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nfunc f<T>(value: T.C.E)\n    T is C\n    T.C.E is i32\n    T.C.E is string\n    ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nfunc f<T>(value: T.(C).E)\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
@@ -374,7 +487,7 @@ public class ContractBindingTest
     [Fact]
     public void RefinementRejectsContradictoryFixedAssociatedTypesWithoutUses()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E is i32\ncontract B: A\n    Self.A.E is string");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E is i32\ncontract B: A\n    Self.(A).E is string");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Container(c, "B").StateOf());
     }
@@ -464,7 +577,7 @@ public class ContractBindingTest
     [Fact]
     public void WarmContractBindingReusesMetadataAndCallStorage()
     {
-        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.A.E is i32\nstruct S\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x: ref/T)\n    T is B\n";
+        var source = "contract A\n    associate E\n    func read(self: ref/Self) -> E\ncontract B: A\n    Self.(A).E is i32\nstruct S\n    Self is B\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(x: ref/T)\n    T is B\n";
         source += string.Concat(Enumerable.Repeat("    x.read()\n", 128));
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -487,7 +600,7 @@ public class ContractBindingTest
     [Fact]
     public void QualifiedContractNamesUseTheSameRegistrationAndProjectionRules()
     {
-        var c = CompilationTestHelper.ParseSuccess("group P\n    public contract C\n        associate E\n        func f() -> E\nstruct S\n    Self is P.C\n    associate P.C.E is i32\n    public func f() -> i32 => 1\nfunc call<T>() -> T.P.C.E\n    T is P.C\n    return T.f()");
+        var c = CompilationTestHelper.ParseSuccess("group P\n    public contract C\n        associate E\n        func f() -> E\nstruct S\n    Self is P.C\n    associate P.C.E is i32\n    public func f() -> i32 => 1\nfunc call<T>() -> T.(P.C).E\n    T is P.C\n    return T.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -503,9 +616,9 @@ public class ContractBindingTest
     [Fact]
     public void AssociatedIdentityCyclesCannotValidateAnImplementation()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.C.F\n    associate C.F is S.C.E");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.(C).F\n    associate C.F is S.(C).E");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.C.F");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.(C).F");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
 
@@ -601,7 +714,7 @@ public class ContractBindingTest
     [Fact]
     public void ReferencedNestedAssociatedContractsSupplyTheirFixedIdentities()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value: T.C.E.D.F) -> i32\n    T is C\n    return value");
+        var c = CompilationTestHelper.ParseSuccess("contract D\n    associate F is i32\ncontract C\n    associate E is D\nfunc f<T>(value: T.(C).E.(D).F) -> i32\n    T is C\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -663,6 +776,21 @@ public class ContractBindingTest
     [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T>(a: ref/T, b: T) -> i32\n    T is Put\n    return a.put(b@move)", "")]
     [InlineData("contract Put\n    func put<U>(self: ref/Self, u: U) -> i32\n        U is Self\nfunc call<T, V>(a: ref/T, b: V) -> i32\n    T is Put\n    V is Put\n    return a.put(b@move)", "UnprovenConstraint_Kd")]
     public void RequirementSelfNamesTheConformingType(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.6.3, 15.3.7, 15.6.1: implementation matching is a whole-contract comparison, so its proofs assume the own well-formedness of
+    // the requirement as substituted: under `Self` = `View{source}`, `self: ref/Self` gives `source outlives self`, so a result or getter
+    // during `source` gives at least the required guarantee, as Slice's `index` does (SPEC 4.7.1). The premise relates `source` to `self`
+    // alone: never to `static`, to another input or to a requirement without a receiver, and never the reverse.
+    [Theory]
+    [InlineData("contract L\n    func lend(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public func lend(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
+    [InlineData("struct W<T> {source}\n    Self is Indexable<isize>\n    associate Element is T\n    let data: ref/T during source\n    public func index(self: ref/Self, key: ref/isize) -> ref/T during source => self.data", "")]
+    [InlineData("contract L\n    property item: ref/i32\n        get(self: ref/Self) -> ref/i32 during self\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "")]
+    [InlineData("contract L\n    func lend(self: ref/Self) -> ref/i32 during static\n" + ViewIsL + "    public func lend(self: ref/Self) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func lend(self: ref/Self, other: ref/i32) -> ref/i32 during other\n" + ViewIsL + "    public func lend(self: ref/Self, other: ref/i32) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func make(x: ref/i32) -> ref/i32 during x\n" + ViewIsL + "    public func make(x: ref/i32) -> ref/i32 during source => $abort(\"none\")", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    func take(self: ref/Self, x: ref/i32 during self) -> ()\n" + ViewIsL + "    public func take(self: ref/Self, x: ref/i32 during self.source) -> () => ()", "IncompatibleContractImplementation_Kd")]
+    [InlineData("contract L\n    property item: ref/i32 during static\n        get(self: ref/Self) -> ref/i32 during static\n" + ViewIsL + "    public computed item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => self.data", "IncompatibleContractImplementation_Kd")]
+    public void ResultOriginsAssumeTheSubstitutedRequirementWellFormed(string source, string codes) => AssertBindingCodes(source, codes);
 
     // SPEC 8.4.3, 8.7.1: a compiler-intrinsic Contract the capability engine judges is a refinement parent; a conformance to the child
     // entails the parent by the parent's own judgment (SPEC 8.7.2 to 8.7.4), and `T is C` supplies it with what it supplies (PLAN G717).

@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 // BoundContracts (G705): the one path from a Contract reference written in source to its bound reference. SPEC 8.4.3, 8.5, 8.6, 9.7.
 // - Responsibility: BindContractReference forms every written Contract reference: a parent (BuildContract), an associate selector
-//   (BindAssociatedRefinement, BindAssociatedSpecification), a projection qualifier (ProjectionQualifier), an effect target (EffectTarget)
+//   (BindAssociatedName), a projection qualifier (ProjectionQualifier), an effect target (EffectTarget)
 //   and a requirement's Contract (BindRequirement); QualifierReference is its entry for a qualifier whose selection may be no Contract. It
 //   owns every check of the written reference: the arity of its own list (`C<>` is parsed as one error argument), its own Type arguments
 //   in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins, and the completion of its syntax.
@@ -30,7 +30,7 @@ public sealed partial class Binding
     private static void CompleteQualifier(Koto qualifier, BindingSymbol selection, BindingSymbol reference)
     {
         var type = IsBoundContractReference(reference) ? reference.Type! : BoundType.Unit;
-        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedKoto grouped => grouped.Operand, ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
+        for (Koto? level = qualifier; level is not null; level = level switch { ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { IsTransparentWrapper: true } wrapper => wrapper.Type, _ => null })
         {
             level.BoundSymbol = selection;
             Complete(level, type);
@@ -52,6 +52,19 @@ public sealed partial class Binding
         }
 
         return name as GenericsKoto;
+    }
+
+    // SPEC F.5, F.6.2: the reference a Contract selector or a `.(C).` suffix writes, below its transparent wrappers and its own group, for
+    // its formation (QualifierReference); a ContractReference is a NamedReference, so a group inside that group (`((C))`) writes none.
+    private static Koto? WrittenReference(Koto selector)
+    {
+        var syntax = UnwrapTransparentType(selector)!;
+        if (syntax is ParenthesizedTypeKoto group)
+        {
+            syntax = UnwrapTransparentType(group.Type)!;
+        }
+
+        return syntax is ParenthesizedTypeKoto ? null : syntax;
     }
 
     // The bound Contract reference a Contract use names: the one its Type is (BindContractReference, CompleteQualifier), else its selection.
@@ -220,29 +233,39 @@ public sealed partial class Binding
         => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
             ? this.BoundContractReference(substituted) : contract;
 
-    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope)
+    // W4 (ContractSolver's Completion): SubstituteContractReference's.
+    private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope, out Completion completion)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.ConformancePath?.Contract is { Type: { } reference } contract && !ReferenceEquals(reference.Symbol, contract))
             {
-                return this.SubstituteContractReference(type, contract);
+                return this.SubstituteContractReference(type, contract, out completion);
             }
         }
 
+        completion = Completion.Complete;
         return type;
     }
 
     // The caller supplies the requirement's exact declaring reference. Substituting every ancestor would give an
-    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement.
-    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
+    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement. W4: Provisional where StoredType's null
+    // (a height refusal, or no image) is absorbed.
+    private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract, out Completion completion)
     {
+        completion = Completion.Complete;
         if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
         {
             return type;
         }
 
-        return this.StoredType(type, reference) ?? type;
+        if (this.StoredType(type, reference) is { } stored)
+        {
+            return stored;
+        }
+
+        completion = Completion.Provisional;
+        return type;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)

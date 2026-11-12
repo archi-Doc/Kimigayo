@@ -677,6 +677,16 @@ public sealed record BoundType
     /// projection or a dependent Semantics term.</summary>
     internal bool IsAbstract => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
 
+    /// <summary>Gets a value indicating whether a proof alone decides this Type's built-in conformances and roles (SPEC 8.7.3): an
+    /// abstract Type, by a premise, or a pair's own <c>s/T</c>, by its admitted set (one admitted Semantics gives its head, SPEC
+    /// 8.2.3). The proof judges the admitted set; no reader of this property does.</summary>
+    internal bool IsProofDecided => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection;
+
+    /// <summary>Gets a value indicating whether this is SPEC 8.2.3's abstract Type, whose only evidence is a premise: a Type
+    /// parameter, a pair target, a Contract's Self or an unresolved projection. A pair's own <c>s/T</c> is a pair application, not an
+    /// abstract Type (Binding.TryPairLayer decomposes every Parameter whose symbol is a pair's).</summary>
+    internal bool IsAbstractType => this.IsProofDecided && this is not { Kind: BoundTypeKind.Parameter, Symbol.Kind: BindingSymbolKind.SemanticsTarget };
+
     /// <summary>Gets a value indicating whether this Type is abstract or has an abstract part, whose Loans its Origins do not show.</summary>
     internal bool HasAbstractPart => this.hasAbstractPart;
 
@@ -752,11 +762,29 @@ public sealed record BoundType
     }
 }
 
+// A scope's link (Parent, the Constraints object, ConformancePath) is written only through its setters, each counting a change in
+// LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private BindingScope? parent;
+    private ConstraintEnvironment? constraints;
+    private BoundConformancePath? conformancePath;
+
     internal Koto Owner { get; } = owner;
 
-    internal BindingScope? Parent { get; set; }
+    internal BindingScope? Parent
+    {
+        get => this.parent;
+        set => this.Link(ref this.parent, value);
+    }
+
+    // The number of changes of this scope's link.
+    internal int LinkVersion { get; private set; }
+
+    // The view this scope last denoted (ContractSolver.SerialOf): its serial and the chain state it named.
+    internal int ViewSerial { get; set; }
+
+    internal (int Environment, int Link, int Parent) ViewState { get; set; }
 
     internal FunctionKoto? Function { get; set; }
 
@@ -768,12 +796,20 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
 
-    internal ConstraintEnvironment? Constraints { get; set; }
+    internal ConstraintEnvironment? Constraints
+    {
+        get => this.constraints;
+        set => this.Link(ref this.constraints, value);
+    }
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
-    internal BoundConformancePath? ConformancePath { get; set; }
+    internal BoundConformancePath? ConformancePath
+    {
+        get => this.conformancePath;
+        set => this.Link(ref this.conformancePath, value);
+    }
 
     internal void Reset()
     {
@@ -782,6 +818,16 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+    }
+
+    private void Link<T>(ref T? field, T? value)
+        where T : class
+    {
+        if (!ReferenceEquals(field, value))
+        {
+            field = value;
+            this.LinkVersion++;
+        }
     }
 }
 

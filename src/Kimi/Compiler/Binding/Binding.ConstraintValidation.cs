@@ -54,7 +54,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     admitted &= SemanticsSet(fact);
                 }
@@ -93,6 +93,17 @@ public sealed partial class Binding
             ConstraintKind.Not => ClauseSubject(constraint.Left!),
             _ => constraint.Subject,
         };
+
+    // The declaration a clause pending in Provisional mode leaves pending (BU-151; SPEC 8.6.2: a conformance is Refuted only when every
+    // path fails): its own declaration, or for a conditional conformance's target the Type, whose conformances wait on the Contract
+    // (SPEC 8.8.1, 8.8.3). A condition is a premise: a proof applying the conformance reads its pending atom as Unknown
+    // (CheckConstraints), so it leaves no declaration pending.
+    private static DeclarationKoto? PendingDeclaration(IsKoto clause) => clause.Parent switch
+    {
+        DeclarationKoto declaration => declaration,
+        SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationKoto type, Operands: [var target, ..] } when ReferenceEquals(target, clause) => type,
+        _ => null,
+    };
 
     private static Koto? ProjectionDeclarationOwner(Koto use)
     {
@@ -175,7 +186,7 @@ public sealed partial class Binding
     // their projections. Reuse the ordinary validation until declaration states stop changing.
     private void InvalidateProjectionCertificates(BindingMode mode)
     {
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode, sourcesOnly: true))
         {
             this.ClearCapabilityResults();
             this.ValidateBaseDeclarations(mode);
@@ -247,17 +258,25 @@ public sealed partial class Binding
         var changed = false;
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true, Parent: DeclarationKoto owner } pending)
+            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true } pending && PendingDeclaration(pending) is { } owner)
             {
+                // In the declaration's scope: a conditional target is bound in its Type's, never under the conformance's premises.
                 var previous = owner.BindingState;
-                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(pending));
+                var pendingFrame = this.BeginConsultation(pending);
+                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(owner));
                 if (pendingProof == ConstraintProof.Proven)
                 {
                     pendingProof = ConstraintProof.Unknown;
                 }
 
-                this.RequireConstraint(pending, pendingProof, mode);
-                this.RequireConstraint(owner, pendingProof, mode);
+                // The clause, then a conditional conformance between it and its Type, and the declaration: their outcomes are the clause's.
+                this.RequireConstraintInFrame(pending, pendingProof, mode, pendingFrame);
+                for (Koto? node = pending.Parent; node is not null; node = ReferenceEquals(node, owner) ? null : node.Parent)
+                {
+                    var nodeFrame = this.BeginConsultation(node);
+                    this.RequireConstraintInFrame(node, pendingProof, mode, nodeFrame, pending);
+                }
+
                 changed |= previous != owner.BindingState;
             }
 
@@ -307,10 +326,12 @@ public sealed partial class Binding
 
             // Closed clauses are declaration obligations, never assumptions or new conformances.
             var scope = this.scopes[container];
+            var frame = this.BeginConsultation(clause);
             var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope), true);
             var state = container.BindingState;
-            this.RequireConstraint(clause, proof, mode);
-            this.RequireConstraint(container, proof, mode);
+            this.RequireConstraintInFrame(clause, proof, mode, frame);
+            var containerFrame = this.BeginConsultation(container); // The owner's outcome is its clause's.
+            this.RequireConstraintInFrame(container, proof, mode, containerFrame, clause);
             changed |= state != container.BindingState;
         }
 
@@ -324,15 +345,17 @@ public sealed partial class Binding
             var node = this.nodes[i];
             if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol is not { IsGenericInput: true })
             {
-                this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
+                var frame = this.BeginConsultation(clause);
+                this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
             if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
+                var frame = this.BeginConsultation(node);
                 var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments);
-                this.RequireConstraint(node, result, mode);
+                this.RequireConstraintInFrame(node, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
@@ -340,7 +363,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Invalid = true;
+                            (scope.Constraints ??= new()).Fail(node);
                             break;
                         }
 
@@ -495,10 +518,10 @@ public sealed partial class Binding
     // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
     // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
     // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
-    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame)
+    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
     {
         var owned = use.BindingFailure != BindingFailure.None;
-        this.RequireConstraint(use, proof, mode);
+        this.RequireConstraint(use, proof, mode, diagnosticCause);
         if (owned)
         {
             this.DropConsultation(frame);

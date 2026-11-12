@@ -1352,6 +1352,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 56 (2026-11-11, plan §14; the Middle's D-323): M1's row after R9-M1 part 1 landed (DECISIONS R9-M7), with parts 2 and 3, the splits of Documentation's members over a structure limit, as new §5.3 rows. Nothing frozen.
 - Revision 57 (2026-11-11, plan §14; the Middle's D-371): M1 part 2's row after R9-M1 part 2 landed (no DECISIONS entry); M1 part 3's row corrected (`ParseInlines` nesting 6, `IndexParentheses` dropped) and given `SetInlineText`'s and `TryEntity`'s nested conditionals. Nothing frozen.
 - Revision 58 (2026-11-11, plan §14; the Back's D-379): RQ13's outcome: R8-L1 adopted by the owner's O-170 (a) on the Back's T-122 measurement (Hello cold Bind +54.7% over R8's start); §5.2's L1 row updated. Nothing frozen.
+- Revision 59 (2026-11-11, plan §14; the Front's D-332): C2's row after R7-C2e1 landed (DECISIONS R7-M20; RP8 by the owner's O-176 (a)). Nothing frozen.
+- Revision 60 (2026-11-11, plan §14; the owner's decision in K's session): RP8 scoped: an open-issue fix books no timing slot; timing stays for a hot-path change, a back unit's generated code and the plan's units; a checkpoint after every fifth landed window (DECISIONS R7-M21). Nothing frozen.
+- Revision 61 (2026-11-11, plan §14; the owner's decision in K's session): §3.3's seat caps: the Front 4 implementers and 4 designers and reviewers, the Middle and the Back 2 and 2 each; one Front implementer and one designer seat kept on R7's core chain. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
