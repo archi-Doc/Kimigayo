@@ -190,7 +190,7 @@ public sealed partial class Binding
             // nothing; one naming no Contract is the path's failing step, missing there.
             if (this.ProjectionQualifier(qualified, scope) is not { } contract)
             {
-                return this.TypeName(qualified.Right, scope) is { IsContract: true } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType);
+                return WrittenReference(qualified.Right) is { BindingFailure: not BindingFailure.None } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType);
             }
 
             qualifier = contract;
