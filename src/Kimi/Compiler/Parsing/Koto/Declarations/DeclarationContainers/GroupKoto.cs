@@ -152,10 +152,15 @@ public sealed class GroupKoto : DeclarationContainerKoto
             return;
         }
 
-        // A root function declaration is the root's own item (SPEC 6.1.1, F.6.1); every other item is the execution scope's.
+        // A root function declaration and a root specialization are the root's own items (SPEC 6.1.1, 8.13.1, F.6.1); every other item
+        // is the execution scope's, where no executable body takes a specialization (Parser.TryParseStatementItem).
         var oldPosition = reader.Position;
         Koto? item;
-        if (Parser.IsFunctionDefinitionStart(ref reader))
+        if (Parser.IsSpecializationStart(ref reader))
+        {
+            item = Parser.ParseSpecialization(ref reader);
+        }
+        else if (Parser.IsFunctionDefinitionStart(ref reader))
         {
             // Only `public main` takes an access word among the root's functions (SPEC 6.1.1, 22.4); the Name is compared as written.
             if (!(reader.ModifierKind.ExtractAccessibilityModifiers() == ModifierKind.Public && reader.GetSpan(reader.PeekToken(1)) is "main"))

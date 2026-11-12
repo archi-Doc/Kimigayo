@@ -363,9 +363,10 @@ public sealed partial class Binding
                 // is one of the Contract's clauses, inherited and checked as they are.
                 shape.ClauseStorage.Add(specification);
             }
-            else if (member is not EffectBoundKoto)
+            else if (member is not EffectBoundKoto && member is not FunctionKoto { Placement: not null })
             {
-                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
+                // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }

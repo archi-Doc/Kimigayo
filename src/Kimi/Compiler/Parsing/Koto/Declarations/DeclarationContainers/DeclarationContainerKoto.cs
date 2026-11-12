@@ -676,7 +676,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var token = reader.CurrentToken;
         if (Parser.IsSpecializationStart(ref reader))
         {
-            var specialized = Parser.ParseSpecialization(ref reader);
+            // A Contract item is no specialization (SPEC F.6.2 ContractItem, 8.13.1).
+            var specialized = this is ContractKoto ? Parser.ParseMisplacedSpecialization(ref reader) : Parser.ParseSpecialization(ref reader);
             if (specialized is not null)
             {
                 this.AddLast(specialized);
