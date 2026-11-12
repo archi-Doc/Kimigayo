@@ -44,7 +44,7 @@ internal static class KimiLibrarySize
         Nodes: 16384,
         Declarations: 2048,
         Scopes: 2048,
-        TypeKeys: 2048,
+        TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
         MemberSelections: 1024,

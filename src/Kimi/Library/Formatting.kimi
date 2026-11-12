@@ -466,8 +466,8 @@ public group Console
             Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
             Console.writeStdout(feed@raw, 1)
 
-// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's, Wrapping<T>'s and the integers' (up to 64 bits)
-// built-in conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format,
+// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's, Wrapping<T>'s and the integers' built-in
+// conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format,
 // WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi), the view's
 // its own member (above).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
@@ -537,7 +537,7 @@ internal group IntegerFormat
     /// Writes the integer in ASCII decimal, `-` only before a negative value (SPEC 22.10.2): its digits produced into a
     /// local array from the end, then written once at their exact length (SPEC 22.10.5). The comparison and conversions
     /// on `I` are built-in operators (SPEC 8.7.4), no requirement calls, so the body's effects are the same at every
-    /// instance. i128 and u128 are R8-S2b2's.
+    /// instance. i128 and u128 run the specializations below, which this declaration's effects include (SPEC 15.6.4).
     func format<I>(self: ref/I, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         I is PrimitiveInteger
         let value = self@follow
@@ -559,4 +559,27 @@ internal group IntegerFormat
             index -= 1
             digits[index] = 45
         // ASCII digits and `-` are valid UTF-8 (Utf8Slice.init's contract).
+        return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))
+
+    // SPEC 22.10.2: a 128-bit value's digits come from Storage.formatInteger128 (interim by RQ16 (a): the backend
+    // generates no 128-bit division, IMPL 21.3.3), its sign from the body; i128's minimum has 39 digits and its `-`.
+    specialize func format<i128>(self: ref/i128, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        let value = self@follow
+        // `-(value + 1)` fits i128 for every negative value, so the magnitude is computed without overflow.
+        var magnitude: u128 = 0
+        if value < 0
+            magnitude = (-(value + 1))@u128 + 1
+        else
+            magnitude = value@u128
+        var digits = [40 of 0@u8]
+        var index = 40 - Storage.formatInteger128(magnitude, destination: digits@uniq)
+        if value < 0
+            index -= 1
+            digits[index] = 45
+        // ASCII digits and `-` are valid UTF-8 (Utf8Slice.init's contract).
+        return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))
+
+    specialize func format<u128>(self: ref/u128, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        var digits = [40 of 0@u8]
+        let index = 40 - Storage.formatInteger128(self@follow, destination: digits@uniq)
         return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))

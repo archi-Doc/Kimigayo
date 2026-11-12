@@ -121,6 +121,13 @@ internal static class RuntimeAbi
         "i64",
         [new("i64", "bits", AbiParameterKind.Value, 0), new("i1", "narrow", AbiParameterKind.Value, 1), new("ptr", "destination", AbiParameterKind.Value, 2)]);
 
+    // SPEC 22.10.2: a u128's ASCII decimal digits at the end of a 40-byte destination, their count returned: the FormatInteger128
+    // intrinsic's routine (Storage.formatInteger128, R8-S2b2), defined by its module part (LlvmModuleText.FormatInteger128).
+    internal static readonly FunctionAbi FormatInteger128 = new(
+        "__kimi_format_integer128",
+        "i64",
+        [new("i128", "value", AbiParameterKind.Value, 0), new("ptr", "destination", AbiParameterKind.Value, 1)]);
+
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue

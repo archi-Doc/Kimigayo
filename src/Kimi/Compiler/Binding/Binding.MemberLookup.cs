@@ -258,9 +258,9 @@ public sealed partial class Binding
         this.ReceiverElement(member.Left, receiverType);
         while (true)
         {
-            while (receiverType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(receiverType.Semantics) || IsObjectSemantics(receiverType.Semantics)))
+            while (receiverType is not null && this.ViewBelow(receiverType, scope) is { } below)
             {
-                receiverType = receiverType.Components[0];
+                receiverType = below;
             }
 
             if (receiverType is not null)

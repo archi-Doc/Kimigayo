@@ -15,14 +15,16 @@ namespace Kimi.Compiler.Mir;
 // row's: typed. Any other write is a pun only where it must overlap a raw pointer of the Place (SPEC 15.6: a write through its address
 // is in it): the Place's grid rows end at a raw pointer (every byte of it is a pointer's), or, on, its chain ends at one and the
 // written Type's at a Scalar (the write's first byte is a Scalar's on the pointer's first), every length on the way a constant above
-// 0. Else it is undecided, a pun or none as the layout places it (IMPL 21.1). One step rule (Step) keeps or loses a Position.
+// 0; an abstract written part is a Scalar there (Punnable) and no other row decides it. Else it is undecided, a pun or none as the
+// layout places it (IMPL 21.1). One step rule (Step) keeps or loses a Position.
 // Two walks reach a Type's inline parts, by what a missing part would cost. Pointered and Punnable answer what bytes a Type has: a
 // part they miss would remove a holder or a written Scalar, so they read only the stored Types a Type's own structure fixes
-// (Components, AdtDef's Fields, base and Case payloads) with Sized, and every other Type answers "may" (Extent.Open), a Closure
-// included (its environment is the body's reading, R4-M148). Within and Scalared list the raw Places within a written Type (SPEC 5.2:
-// its Fields and elements): a part they miss would drop a write, so they take Binding's by-value reading (Holdings' Inline entries:
-// kept parts, a Closure's environment, an owner layer's target), and an array of no element, whose element Holdings keeps (SPEC
-// 4.3.3), is cut by Within's own array arm (Sized).
+// (Components, AdtDef's Fields, base and Case payloads) with Sized. For Pointered every other Type answers "may" (Extent.Open), a
+// Closure included (its environment is the body's reading, R4-M148); for Punnable an abstract part is a binding's, a Scalar of any
+// size among them (SPEC 8.15.1), and every other Type is not punnable (SPEC 5.2). Within and Scalared list the raw Places within a
+// written Type (SPEC 5.2: its Fields and elements): a part they miss would drop a write, so they take Binding's by-value reading
+// (Holdings' Inline entries: kept parts, a Closure's environment, an owner layer's target; an Unsupported row undecided, Unstated),
+// and an array of no element, whose element Holdings keeps (SPEC 4.3.3), is cut by Within's own array arm (Sized).
 // Must not: test a Type's Kind or an AdtDef fact for the chain's step (TyCtxt.Leading's); read Binding's holdings for the bytes a Place
 // has (they state the Loans and layers a value carries).
 internal sealed partial class MirBorrows
@@ -60,10 +62,11 @@ internal sealed partial class MirBorrows
 
     // Whether a Type is punnable (SPEC 5.2: the `owner` Scalars of 3.1, ScalarTypes' one definition; raw pointers; Tuples and fixed arrays
     // of them) and how much of a Scalar it holds inline: an array its element's, by its own extent at most (Sized); a Tuple its
-    // components' most.
+    // components' most. An abstract part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them): punnable and a
+    // Scalar surely, judged as one at its Position (Designated); any other Type is not punnable.
     private static (bool Punnable, Extent Scalar) Punnable(BoundType type)
     {
-        if (ScalarTypes.Supports(type))
+        if (ScalarTypes.Supports(type) || type.IsAbstract)
         {
             return (true, Extent.Positive);
         }
@@ -92,6 +95,12 @@ internal sealed partial class MirBorrows
                 return (false, Extent.None);
         }
     }
+
+    // What a Holdings entry that names no stored part writes, as the written side's fold reads it (Within; Scalared: whether it may
+    // write): a form with no row undecided (Holdings' contract: each reader's undecided outcome); none for an erased environment (no raw
+    // Place lies within a Function value, SPEC 5.2), a layer or an abstract part's own entry (Punnable's row reads the part); null for
+    // an Inline part, which the fold reads by its Type.
+    private static PunWrite? Unstated(in Hold entry) => entry.Step == HoldStep.Unsupported ? PunWrite.Undecided : null;
 
     // How much of a raw pointer's byte a Place of a Type holds inline, by the Type's own structure and the one reading of a length
     // (Sized): the bytes a Place has (SPEC 4.1, 5.2), which is not what its value carries: Binding's holdings state the Loans and layers
@@ -203,7 +212,8 @@ internal sealed partial class MirBorrows
     // write must overlap a raw pointer of the Place, which holds a byte (Holder): every byte of the Place is a pointer's (its grid rows
     // end at a raw pointer), or the write's first byte is a Scalar's on a pointer's first (on, the Place's chain ends at a raw pointer and
     // the written Type's at a Scalar), every length on the way a constant above 0 and the written Type surely holding a Scalar
-    // (Extent.Positive). Else undecided: the layout, or a length that is no constant, decides what it covers.
+    // (Extent.Positive; an abstract part is a Scalar of a binding's size, Punnable, so it is a pun only where these rows establish the
+    // overlap, the owner's O-205 (a)). Else undecided: the layout, or a length that is no constant, decides what it covers.
     private PunWrite Designated(BoundType place, BoundType write, bool on)
     {
         if (types.SameStructure(place, write) || (on && this.Leads(place, write, grid: false)))
@@ -275,6 +285,10 @@ internal sealed partial class MirBorrows
             {
                 result = Worse(result, this.Within(place, cases.Type(part), on: false));
             }
+            else if (Unstated(this.punHolds[i]) is { } unstated)
+            {
+                result = Worse(result, unstated);
+            }
         }
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
@@ -293,7 +307,8 @@ internal sealed partial class MirBorrows
         _ = types.Holdings(type, null, null, this.punHolds);
         for (var i = start; !found && i < this.punHolds.Count; i++)
         {
-            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } && this.Scalared(cases.Type(part));
+            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } ? this.Scalared(cases.Type(part))
+                : Unstated(this.punHolds[i]) is not null;
         }
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
