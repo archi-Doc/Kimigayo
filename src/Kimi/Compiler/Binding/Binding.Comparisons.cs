@@ -32,21 +32,24 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3: the Type below the ref, uniq and qualifying pair layers of `type` in `scope`, in any order: the one walk of the safe
-    // value-reference layers, shared by an operand's terminal and a value read's (ReadTypeReferent). It ends within the Type's height.
+    // value-reference layers, shared by an operand's terminal and a value read's (ReadTypeReferent), one LayerBelow each step. It ends
+    // within the Type's height.
     private BoundType LayersTerminal(BoundType type, BindingScope scope)
     {
-        while (true)
+        while (this.LayerBelow(type, scope) is { } below)
         {
-            type = ComparisonReferent(type);
-            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope, out var target) == SemanticsMask.None)
-            {
-                return type;
-            }
-
             this.termWalks++;
-            type = target;
+            type = below;
         }
+
+        return type;
     }
+
+    // SPEC 3.4.3, 13.5.5: the referent below one safe value-reference layer (ref, uniq, or a pair layer whose admitted set in `scope` lies
+    // in value or valueborrow), or null for any other Type.
+    private BoundType? LayerBelow(BoundType type, BindingScope scope)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
+            : this.FollowablePair(type, scope, out var target) != SemanticsMask.None ? target : null;
 
     private BoundType? CompleteComparison(
         BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)

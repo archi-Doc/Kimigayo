@@ -13,9 +13,10 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
     private int termWalks;
 
-    /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer followed by OperandTerminal,
-    /// PairSubject, PairTerminal, FormedApplication or SharedReferenceThroughLayers, and a part entered by CollectCallRelations,
-    /// FailedOriginRelation, AddTypeClauseObligations, SolveOmittedOrigins, Occurs or CExchangeable; read by the scaling tests.</summary>
+    /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer (ref, uniq or pair) followed by
+    /// LayersTerminal, a layer followed by PairSubject, PairTerminal, FormedApplication or SharedReferenceThroughLayers, and a part
+    /// entered by CollectCallRelations, FailedOriginRelation, AddTypeClauseObligations, SolveOmittedOrigins, Occurs or CExchangeable;
+    /// read by the scaling tests.</summary>
     internal int TermWalkWork => this.termWalks;
 
     /// <summary>Decomposes a pair layer (SPEC 13.5.5): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
