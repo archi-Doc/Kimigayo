@@ -269,32 +269,39 @@ public sealed partial class Binding
 
         // SPEC 10.8, 10.2: a Type at the pattern of its position, through the common adaptation.
         private bool InferAdapted(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
+            => this.AdaptPart(pattern, actual, source, path, receiver) is { } adapted &&
+                this.InferFrom(pattern, adapted, new(source, this.Binding.PartContribution(source), this.Binding.WasDeferred(source)));
+
+        // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: one argument part's Type adapted at its pattern under the bindings fixed before any
+        // evidence (FixedPattern); a slot that evidence binds stays a slot, so no argument's adaptation follows another's binding. Null
+        // where it does not adapt.
+        private readonly BoundType? AdaptPart(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
+        {
+            var fixedPattern = FixedPattern.Of(this.Binding, pattern, this.Fixed);
+            return this.Binding.AdaptInput(
+                source, fixedPattern, actual, this.Scope, path, this.DeclaringType, out var adapted, out _, out _, receiver: receiver, deferAcquisition: true)
+                ? adapted : null;
+        }
+
+        // SPEC 10.8: the evidence of an adapted Type at the pattern of its position. `part` carries the facts the adapted part gives: its
+        // node, whose known call signature binds a Function pattern (none for a position of several parts), its contribution, and
+        // whether it is a nested call checked against this candidate, which supplies relations for checking, never outer slot evidence.
+        private bool InferFrom(BoundType pattern, BoundType actual, PartEvidence part)
         {
             var binding = this.Binding;
             var binder = this.Binder;
-
-            // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: the adaptation, and the call signature a Function Type takes, are planned at the pattern
-            // under the bindings fixed before any evidence (FixedPattern); a slot that evidence binds stays a slot, so no argument's
-            // adaptation follows another's binding.
-            var fixedPattern = FixedPattern.Of(binding, pattern, this.Fixed);
-            if (!binding.AdaptInput(
-                source, fixedPattern, actual, this.Scope, path, this.DeclaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
-            {
-                return false;
-            }
-
             var callee = actual;
-            actual = binding.SignatureAtFunction(fixedPattern.Type, actual);
+            actual = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, actual);
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
-            var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
-                ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
+            var known = part.Node is { } node && pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
+                ? new SignatureEvidence(CalleeBinder(callee, actual), node) : (SignatureEvidence?)null;
             var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
             binding.MatchInputOrigins(pattern, actual, binder, this.Origins, this.Inputs, quantifier);
             if (pattern.CarriesOrigin && actual.CarriesOrigin)
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                if (binding.PartContribution(source) == Contribution.Evidence)
+                if (part.Contribution == Contribution.Evidence)
                 {
                     // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
                     binding.CollectInputPremises(pattern, pattern, this.OriginInference, this.Call);
@@ -302,8 +309,7 @@ public sealed partial class Binding
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-            // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasDeferred(source))
+            if (part.Relations)
             {
                 return true;
             }
@@ -621,4 +627,9 @@ public sealed partial class Binding
     private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
         => pattern.Kind != BoundTypeKind.Function ? actual
             : this.FunctionItemSignature(actual) ?? BoundClosure.Of(actual)?.Signature ?? actual;
+
+    // What an adapted Type's evidence reads of the part it comes from (SlotSolution.InferFrom): the node whose known call signature binds
+    // a Function pattern (none for a position of several parts), its contribution (Contribution), and whether it only supplies relations
+    // (a nested call checked against the candidate, WasDeferred).
+    private readonly record struct PartEvidence(Koto? Node, Contribution Contribution, bool Relations);
 }

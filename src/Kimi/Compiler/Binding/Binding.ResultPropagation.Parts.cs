@@ -322,7 +322,7 @@ public sealed partial class Binding
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
-            if (!IsUnfittedLiteral(part) && !this.IsAggregatePart(part) && this.SuppliedType(part) is { } type)
+            if (this.TypedPositionPart(part) is { } type)
             {
                 types.Add(type);
             }
@@ -333,6 +333,11 @@ public sealed partial class Binding
         types.Clear();
         return common;
     }
+
+    // A typed part of a position, PositionType's (neither a literal nor an aggregate, with a supplied Type): its Type, which its
+    // evidence adapts (SlotSolution.InferAdaptedParts) and its fit fits (FitsTypedPart); null for any other part.
+    private BoundType? TypedPositionPart(Koto part)
+        => !IsUnfittedLiteral(part) && !this.IsAggregatePart(part) ? this.SuppliedType(part) : null;
 
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate
     // parts' formed by their child positions (Tuples by element, list literals by element as Array<T>, fills by element at their
