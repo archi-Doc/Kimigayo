@@ -1466,7 +1466,7 @@ public sealed partial class InstanceCollectorTest
     // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, an integer's the witness
     // table's IntegerFormat body at its Type (R8-S2b1), i128's and u128's its specialization, which writes through the leaf (R8-S2b2;
     // fail-before: the BuiltinFormat shim, which called no witness). Text.toString and Text.tryFormat are bodies (R8-W1c-2): one instance per value Type, whose
-    // interpolation or write calls that write instance.
+    // interpolation or write calls that write instance, the interpolation after Text.heap, its buffer's body (R8-W2 c3b).
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
@@ -1479,10 +1479,11 @@ public sealed partial class InstanceCollectorTest
         const string ShowI32 = "library Fn toString in group Text [Text, i32]";
         const string ShowBox = "library Fn toString in group Text [Text, Box]";
         const string FillBox = "library Fn tryFormat in group Text [Text, Box, ]";
+        const string Heap = "library Fn heap in group Text"; // An owning interpolation's buffer (R8-W2 c3b; before: the FormatBuffer intrinsic).
         Assert.Equal([ShowBox], Calls(program, set, "Fn show [Box]"));
         Assert.Equal([ShowI32], Calls(program, set, "Fn show [i32]"));
-        Assert.Equal([WriteBox], Calls(program, set, ShowBox));
-        Assert.Equal([WriteI32], Calls(program, set, ShowI32));
+        Assert.Equal([Heap, WriteBox], Calls(program, set, ShowBox));
+        Assert.Equal([Heap, WriteI32], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
         const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
         Assert.Equal([FormatI32, Failure, Failure], Calls(program, set, WriteI32));

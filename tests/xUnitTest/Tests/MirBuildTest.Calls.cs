@@ -578,25 +578,25 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "FormatFinish" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "FormatFinish" })]
     [InlineData(
         "func f() -> string => \"\\(\"only\")\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "FormatFinish" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "FormatFinish" })]
     [InlineData(
         "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "FormatFinish" })]
     public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
     // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
     // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
-    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), FormatBuffer,
+    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), Text.heap,
     // its writer, the writes, FormatFinish and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
     // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
     // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
@@ -609,13 +609,13 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "write", "writeLine" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "heap", "write", "writeLine" })]
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "text", "write", "writeLine", "writeLine" })]
+        new[] { "fixed", "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "FormatFinish", "writeLine" },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatFinish", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "heap", "text", "write", "writeLine", "writeLine" })]
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
         var body = Body(source, "f");
@@ -626,6 +626,50 @@ public sealed partial class MirBuildTest
             .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
         var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
         Assert.Single(writers); // One writer local, both arms' (consent 1).
+    }
+
+    // SPEC 22.10.5 (DECISIONS R8-M24 as amended at R8-W2 c3b): an owning interpolation's buffer is the plan's first call, Text.heap, of the
+    // constant capacity 0. A generic direct line makes both buffers before its first branch, Text.fixed over the region, whose Len the
+    // branch's test read first, then Text.heap, and each arm makes only the writer; so each end reads a buffer initialized on every path,
+    // and the owning buffer's one Drop keeps it whole on both, with no flag (fail-before: FormatBuffer of the instance's estimate; each
+    // buffer made in its arm, the owning buffer's Drop flagged and the fixed end's read accepted by A1's rule for a temp).
+    [Fact]
+    public void AGenericLinesBuffersAreMadeBeforeItsFirstBranch()
+    {
+        var program = Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        int Next(int block, List<string> calls)
+        {
+            for (; body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call or MirTerminatorKind.Goto } terminator; block = terminator.Target)
+            {
+                if (terminator.Kind == MirTerminatorKind.Call)
+                {
+                    calls.Add(Step(body, terminator));
+                }
+            }
+
+            return block;
+        }
+
+        var before = new List<string>();
+        var branch = body.Blocks[Next(0, before)].Terminator;
+        Assert.Equal(MirTerminatorKind.SwitchInt, branch.Kind);
+        Assert.Equal(["fixed", "heap"], before);
+        var heap = body.Blocks.ToArray().Single(x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "heap" }).Terminator;
+        Assert.Equal(MirConstKind.Integer, body.Consts[body.Operands[heap.Start].Arg].Kind);
+        Assert.Equal(Int128.Zero, body.Consts[body.Operands[heap.Start].Arg].Bits);
+        foreach (var arm in new[] { Assert.Single(body.Cases.Slice(branch.Start, branch.Count).ToArray()).Target, branch.Target })
+        {
+            var calls = new List<string>();
+            _ = Next(arm, calls);
+            Assert.Equal("ErasedWriter", calls[0]); // Each arm makes only the writer; the writes follow their join.
+        }
+
+        var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();
+        Assert.DoesNotContain(lines, static x => x.StartsWith("flags", StringComparison.Ordinal));
+        Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[keep]", StringComparison.Ordinal));
     }
 
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported

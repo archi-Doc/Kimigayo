@@ -462,7 +462,7 @@ public sealed partial class FunctionCodegenTest
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
-        Assert.DoesNotContain("@" + LegacyRuntimeHelpers.FormatFixed.Name + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+        Assert.DoesNotContain(runtime.ToString(), Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
     // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its

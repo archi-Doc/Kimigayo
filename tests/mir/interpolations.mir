@@ -64,7 +64,7 @@ fn format @9
       _12 = &uniq two-phase (*_4): uniq/Utf8Writer @121 s1
       StorageLive(_13) [clear f0] @27 s1
       StorageLive(_14) [clear f1] @27 s1
-      _14 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb4 [set f1] @27 s1
+      _14 = heap(const 0_isize) -> bb4 [set f1] @27 s1
   bb4:
       StorageLive(_15) @27 s1
       StorageLive(_16) @27 s1
@@ -255,7 +255,7 @@ fn label @36
   _28: Never temp @41
   bb0:
       StorageLive(_3) @41
-    * _3 = intrinsic FormatBuffer(const 10_isize, const type (i32, string)) -> bb1 @41
+    * _3 = heap(const 0_isize) -> bb1 @41
   bb1:
       StorageLive(_4) @41
       StorageLive(_5) @41
@@ -389,7 +389,7 @@ fn show @47
   bb0:
       StorageLive(_2) @57 s1
       StorageLive(_3) @57 s1
-    * _3 = intrinsic FormatBuffer(const 2_isize, const type (T)) -> bb1 @57 s1
+    * _3 = heap(const 0_isize) -> bb1 @57 s1
   bb1:
       StorageLive(_4) @57 s1
       StorageLive(_5) @57 s1
@@ -530,12 +530,12 @@ fn print @61
       _7 = &uniq two-phase _3: uniq/[33 of u8] @67
       _4 = fixed<_>(move _7) -> bb1 @67
   bb1:
+      StorageDead(_7) @67
       StorageLive(_8) @67
       _8 = &uniq two-phase _4: uniq/FixedBuffer @67
       _5 = intrinsic ErasedWriter<FixedBuffer>(move _8) -> bb2 @67
   bb2:
       StorageDead(_8) @67
-      StorageDead(_7) @67
       StorageLive(_9) @67
       _9 = &uniq two-phase _5: uniq/Utf8Writer @67
       _6 = intrinsic FormatSegment(move _9, const 0_isize, const type (i64)) -> bb3 @67
@@ -656,7 +656,7 @@ fn forms @79
   bb0:
       StorageLive(_2) @82 s1
       StorageLive(_3) @84 s1
-    * _3 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb1 @84 s1
+    * _3 = heap(const 0_isize) -> bb1 @84 s1
   bb1:
       StorageLive(_4) @84 s1
       StorageLive(_5) @84 s1
@@ -731,7 +731,7 @@ fn forms @79
       StorageLive(_21) @88 s1
       StorageLive(_22) @90 s1
       StorageLive(_23) @90 s1
-    * _23 = intrinsic FormatBuffer(const 2_isize, const type (i32)) -> bb15 @90 s1
+    * _23 = heap(const 0_isize) -> bb15 @90 s1
   bb15:
       StorageLive(_24) @90 s1
       StorageLive(_25) @90 s1
@@ -851,7 +851,7 @@ fn early @97
   bb0:
       StorageLive(_1) @101 s1
       StorageLive(_2) @101 s1
-    * _2 = intrinsic FormatBuffer(const 12_isize, const type (())) -> bb1 @101 s1
+    * _2 = heap(const 0_isize) -> bb1 @101 s1
   bb1:
       StorageLive(_3) @101 s1
       StorageLive(_4) @101 s1

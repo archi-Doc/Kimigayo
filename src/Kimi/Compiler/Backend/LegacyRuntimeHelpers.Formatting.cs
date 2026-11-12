@@ -6,26 +6,16 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>The legacy runtime's estimate of an owning interpolation's private buffer (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
-/// DECISIONS R3-10): its literal bytes plus each value's maximum encoded bytes (<see cref="FormattingTypes.Bound"/>), an
-/// unbounded value counted 0 and making the estimate unbounded, a sum past the maximum object size discarding it. The one rule MIR code
-/// generation reads over an interpolation step's operands.</summary>
+/// <summary>The legacy runtime's estimate of an owning interpolation's later writes (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
+/// DECISIONS R3-10): their literal bytes plus each value's maximum encoded bytes (<see cref="FormattingTypes.Bound"/>), an unbounded value
+/// counted 0, a sum past the maximum object size discarding it. The one rule MIR code generation reads over an interpolation step's
+/// operands; the default is the estimate of no bytes and no value.</summary>
 /// <param name="Total">The sum, -1 once discarded.</param>
-/// <param name="Bounded">Whether every value added is bounded.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct FormatEstimate(long Total, bool Bounded)
+internal readonly record struct FormatEstimate(long Total)
 {
-    /// <summary>Gets the estimate of no bytes and no value.</summary>
-    internal static FormatEstimate Empty => new(0, Bounded: true);
-
-    /// <summary>Gets the capacity of the private heap buffer: the sum when bounded, else 0 (a buffer that starts unallocated).</summary>
-    internal long Capacity => this.Unbounded ? 0 : this.Total;
-
     /// <summary>Gets the adapter's hint: the sum, 0 once discarded.</summary>
     internal long Hint => this.Total < 0 ? 0 : this.Total;
-
-    /// <summary>Gets a value indicating whether the estimate bounds no buffer: a value is unbounded or the sum was discarded.</summary>
-    internal bool Unbounded => !this.Bounded || this.Total < 0;
 
     /// <summary>Adds a literal's bytes or a value's maximum (-1 for an unbounded value).</summary>
     /// <param name="amount">The bytes, or -1.</param>
@@ -33,7 +23,7 @@ internal readonly record struct FormatEstimate(long Total, bool Bounded)
     internal FormatEstimate Add(long amount)
     {
         var bytes = Math.Max(0, amount);
-        return new(this.Total < 0 || this.Total > long.MaxValue - bytes ? -1 : this.Total + bytes, this.Bounded && amount >= 0);
+        return new(this.Total < 0 || this.Total > long.MaxValue - bytes ? -1 : this.Total + bytes);
     }
 }
 
@@ -50,20 +40,6 @@ internal static partial class LegacyRuntimeHelpers
         "__kimi_format_finish",
         "void",
         [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
-
-    /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): the HeapBuffer's construction in FormatHeap's routine (a
-    /// direct line's region is Text.fixed's body since R8-W2 a2). Text.fixed is a body; this is a second statement of its construction,
-    /// temporary until W2 (FormatBuffer).</summary>
-    internal static readonly FunctionAbi FormatFixed = Slotted(
-        "__kimi_text_fixed",
-        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "capacity", AbiParameterKind.Context)]);
-
-    /// <summary>The runtime's HeapBuffer of a capacity (<c>__kimi_text_heap</c>): an owning interpolation's heap buffer (FormatBuffer's
-    /// routine). Text.heap is a body; this is a second statement of its construction and allocation, temporary until W2
-    /// (FormatBuffer).</summary>
-    internal static readonly FunctionAbi FormatHeap = Slotted(
-        "__kimi_text_heap",
-        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("i64", "capacity", LogicalIndex: 0), RuntimeAbi.Location, RuntimeAbi.LocationLength]);
 
     /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
     /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
@@ -95,13 +71,9 @@ internal static partial class LegacyRuntimeHelpers
             parts[i] = reader.ReadToEnd();
         }
 
-        // The fixed and heap buffers; the erased writer's kept runtime defines Text.writer's routine.
-        return ExpandRuntime(string.Join('\n', parts), [FormatFixed, FormatHeap]);
+        // No marked routine since R8-W2 c3b (the buffers are the library's); the erased writer's kept runtime defines Text.writer's routine.
+        return ExpandRuntime(string.Join('\n', parts), []);
     }
-
-    // A signature that writes the caller's result slot.
-    private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
-        => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
     // Code generation's expanded runtime texts (G350): the CLR initializes this class when a writer (WriteFormattingRuntime) first reads
     // one for a module, never on the check path, whose collector reads the ABIs (Row, IntrinsicRows) but no text; no other member reads

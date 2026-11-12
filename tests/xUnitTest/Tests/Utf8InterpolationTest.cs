@@ -13,10 +13,12 @@ public class Utf8InterpolationTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString())));
     }
 
+    // SPEC 22.10.5 (R8-W2 c3b): the buffer starts empty (Text.heap(0)), and the first reservation grows it once by its bytes, the deferred
+    // literal and the hint of the later positions: here the literal's 13 bytes and the value's 2 (fail-before: the estimate, 13 + 20).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BoundedOwningInterpolationUsesOneAllocation()
-        => NativeAllocationAudit.WriteFixture("Utf8InterpolationBounded", "let n = 42@i64\nlet text = \"My number is \\(n)\"\nConsole.writeLine(text)", 1, 1, 33, "My number is 42\n");
+        => NativeAllocationAudit.WriteFixture("Utf8InterpolationBounded", "let n = 42@i64\nlet text = \"My number is \\(n)\"\nConsole.writeLine(text)", 1, 1, 15, "My number is 42\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -174,12 +176,13 @@ public class Utf8InterpolationTest
     }
 
     // SPEC 22.10.1, 22.10.5: an interpolated literal passed to `write`, or embedded in a $tryWrite, first builds its owning string, a
-    // bounded one in at most one allocation; writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.
+    // bounded one in at most one allocation, of its written bytes when no bounded value follows the first (R8-W2 c3b; fail-before: the
+    // estimate, 13); writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 1, 13)]
-    [InlineData("Heap", "var buffer = Text.heap(4)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 2, 17)]
-    [InlineData("TryWrite", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "$tryWrite(writer@uniq, \"<\\(\"[\\(7)]\")>\")", "<[7]>", 1, 13)]
+    [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 1, 4)]
+    [InlineData("Heap", "var buffer = Text.heap(4)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 2, 8)]
+    [InlineData("TryWrite", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "$tryWrite(writer@uniq, \"<\\(\"[\\(7)]\")>\")", "<[7]>", 1, 3)]
     public void AnInterpolatedWriteValueAllocatesOnlyItsString(string name, string setup, string write, string expected, int allocations, int bytes)
     {
         var source = setup + "\nvar writer = Text.writer(buffer@uniq)\nmatch " + write + "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"full\")\n" +

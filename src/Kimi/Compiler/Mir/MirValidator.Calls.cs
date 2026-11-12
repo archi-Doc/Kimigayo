@@ -20,20 +20,15 @@ namespace Kimi.Compiler.Mir;
 //   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
 internal sealed partial class MirValidator
 {
-    // R3-10: the constants an estimate carries, its literal bytes and its values' Types (FormatBuffer's from operand 0; a FormatSegment's,
-    // the later ones', after its adapter; MirBuilder.Format's Estimate).
+    // R3-10: the constants an estimate carries, its literal bytes and its values' Types (a FormatSegment's, the later ones', after its
+    // adapter; MirBuilder.Format's Estimate).
     private static readonly MirConstKind[] EstimateConstants = [MirConstKind.Integer, MirConstKind.TypeToken];
 
     // A whole local's index, -1 for another Place.
     private static int Whole(MirPlace place, int locals) => place is { Projection: 0, Root: >= 0 and var root } && root < locals ? root : -1;
 
     // An owning interpolation's step's first constant operand and the kinds of its constants (above); none for another intrinsic.
-    private static (int First, MirConstKind[] Kinds) Steps(IntrinsicId id) => id switch
-    {
-        IntrinsicId.FormatBuffer => (0, EstimateConstants),
-        IntrinsicId.FormatSegment => (1, EstimateConstants),
-        _ => (0, []),
-    };
+    private static (int First, MirConstKind[] Kinds) Steps(IntrinsicId id) => id == IntrinsicId.FormatSegment ? (1, EstimateConstants) : (0, []);
 
     // Whether a step's constant is of its position's kind: its values' Types a token of their Tuple, read element by element.
     private static bool Fits(in MirConst constant, MirConstKind kind)
