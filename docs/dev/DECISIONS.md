@@ -2508,6 +2508,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
+  - Amended by R4-M200 (PLAN G793, 2026-11-12): D3's slot-rooted Loan is `DefaultArgumentBorrow_Kd` only where its tier is decided,
+    recorded after the replay; D4 (2) takes an exclusive Loan that R26-borrow did not decide; any other Loan found is the located
+    `Unsupported_Kd` (R4-M198's undecided class).
 - **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the
   proposal written at the owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals
   に提案書として書いてください。」; answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`.
@@ -6247,21 +6250,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
     in a holder reached only through one.
   - Record moves (Q13; dev to the unit, by program; no acceptance move): kClosureMixedStoreRests, kTupleBorrowStoreRests,
     kClosureMixedDestRests, mEnv3Rests, mTuple3BorrowRests (unsettled): ComparisonLoanConflict_Kd -> `Unsupported_Kd` at the same
-    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (labelled valid in G775's reviews; PLAN
-    G788's triage reads them unsettled by SPEC 15.6 Holders and 15.6.4, an independent label check pending):
-    ComparisonLoanConflict_Kd -> `Unsupported_Kd`; the six invalid programs of the record selection: ComparisonLoanConflict_Kd ->
-    `Unsupported_Kd` (still rejected); sTookPerTierBad, sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second
-    record at `var p` ComparisonLoanConflict_Kd -> `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class);
-    hOwnRested2Bad (invalid): `Unsupported_Kd` -> ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather
-    read holders in).
+    subject (due, R4-M198's undecided class); oSelfStoreOk, sSeedRestedOk, rLaterWriteOk (valid; an independent SPEC label check,
+    2026-11-12): ComparisonLoanConflict_Kd -> `Unsupported_Kd`, a Language error replaced by the limit (PLAN G788 keeps it); the six
+    invalid programs of the record selection: ComparisonLoanConflict_Kd -> `Unsupported_Kd` (still rejected); sTookPerTierBad,
+    sTookPerTierSwapBad: the decided conflict at `*p = ...` kept, the second record at `var p` ComparisonLoanConflict_Kd ->
+    `Unsupported_Kd` (E's content past a resting holder, PLAN G788's class); hOwnRested2Bad (invalid): `Unsupported_Kd` ->
+    ComparisonLoanConflict_Kd (due; dev's verdict depended on the order the gather read holders in).
   - Not covered: R26-borrow (`MirBorrows.Defaults.DefaultBorrows`) does not read the tier; it reports every slot-rooted candidate
     whatever its `Outcome` (PLAN G793; twin rKeepRestsU). The own-step Warning and Activations' scans keep R4-M198's named limit.
+  - Amended by R4-M200 (PLAN G793, 2026-11-12): R26-borrow reads the tier too.
   - Cost: per pass instance at most two reads of a holder's state and stores (one per read key), a Shared set read in full by two
     vias per tier, a transit value taken once per tier; `Restamp` one more holderCount per view; warm 0 B.
   - Rejected: tagging W's stores past a resting holder with Φ_U (every conflict such a store implies also holds in the pun layout,
     where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
     dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
     the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
+- **R4-M200 R26-borrow reads its Loans' tier** (2026-11-12; Middle, A5; Minor; PLAN G793; the Middle's Q13 ruling) SPEC 7.2.3,
+  23.1.1; extends R4-M198's undecided class to R26-borrow; amends R4-M98 D3 and D4 (2) and R4-M199's "Not covered"; removes PLAN
+  G793 and R26-borrow from the readers that do not read the tier.
+  - Rule: R26-borrow's verdict per Loan is the Join (`MirOutcome`) of its candidates' `Outcome` over the view's Returns
+    (`MirBorrows.Defaults.DefaultBorrows`; the check takes no value, `TakesStores`), recorded after the replay at the Loan's site
+    (`DefaultAccesses`): decided, `DefaultArgumentBorrow_Kd`; else an exclusive slot-rooted Loan, R26-access's
+    `DefaultArgumentAccess_Kd` (D4 (2) now takes a Loan R26-borrow did not decide); else Limit, a Loan found only in sets carrying
+    Φ_U, the located `Unsupported_Kd` (`MirBorrows.Limit`).
+  - Record selection (Q13, the Middle's ruling): an exclusive slot-rooted Loan found only at Limit is `DefaultArgumentAccess_Kd`
+    alone (rKeepUniqRestsBad): SPEC 7.2.3's access rule fails in every layout, the Loan's mode and its slot root being facts of the
+    Loan, not of a write; only the code R4-M98 D4's one code per failure picks rests on the write, so no `Unsupported_Kd` is due
+    beside it.
+  - Record moves (Q13; dev to the unit, by program; no acceptance move): rKeepRestsU (unsettled): `DefaultArgumentBorrow_Kd` ->
+    `Unsupported_Kd` at the same subject (due, R4-M198's undecided class); rKeepBesideBad (invalid): the resting Loan's
+    `DefaultArgumentBorrow_Kd` -> `Unsupported_Kd`, the decided Loan's kept (still rejected); rKeepUniqRestsBad (invalid):
+    `DefaultArgumentBorrow_Kd` -> `DefaultArgumentAccess_Kd` at the same subject. R26-borrow's records enter the report after the
+    replay, so within a template a `DefaultArgumentBorrow_Kd` may follow the view's other A5 records in insertion order.
+  - Cost: one Join per slot-rooted candidate at a Return; `defaulted` keeps its array, one byte per Loan; no new walk.
+  - Rejected: recording at each Return (a template has a check Return per non-value end, so a Limit then a decided sighting of one
+    Loan would give two records and the reverse order one).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9008,6 +9031,9 @@ resumed by R4-M86 (2026-10-20).
     reads this fact (PLAN G293). Rejected: one use per interned Type (a struct's `T` is shared by methods with different premises); the
     binding's written Type as the fact (misses `let u = t` and the primitive and Tuple subjects); re-running the conformance proof at
     the capture (a consumer re-running a check); Binding's null for a rejected projection (R5-M155 (c)).
+  - Superseded in part by BU-184 (PLAN G721): its fact (`projectionForms`, `ProjectionUseOf`), its reader in `Capture` and its
+    "Open" are deleted with the capture Type allowlist; no capture rests on a projection use. The `AddPendingPrerequisite` stance
+    stays.
 
 - **BU-60 A nested definition holds the instance of its nearest enclosing declaration that has one; a Field initializer's Closure holds
   its Type's instance modulo Origins, from one producer; its readers do not see an instance with an Origin position** (2026-10-30, unit
@@ -12045,6 +12071,19 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
     would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
     read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
+- **BU-179 Call retention reads the operation contract's no-store inputs: a NoStore input is no output (PLAN G780, C-189)**
+  (2026-11-12; Front, Binding; Major, an acceptance mover; the Middle's consent C-262) SPEC 4.8.4, 5.2 Placement, 5.6, 15.6.4.
+  - `TyCtxt.Retains` forms no `OutputRetention` for an input through which the callee's operation contract stores no value
+    (`KimiLibraryCatalog.NoStore`, e.g. `Raw.slice`'s storage): 15.6.4's writable storage is what the instantiated public contract
+    writes, so rule A forms no row there and nothing unties it. A range selection (`RawSlice` under `Raw.slice`'s declaration) and a
+    written `Raw.slice` no longer store {Φ_E, Φ_W} into the array their storage addresses; with R4-M63's amendment (F2b) a reslice
+    of a range selection stores nothing there either.
+  - A5 reads Retains alone: the skipped Writes entry drops Keep ({Φ_E, Φ_W}, Φ_N), Cover (PLAN G338) and the MirWrites limit and
+    depth facts at that output; nothing is stored there. MirValidator's `Keeps` can only relax.
+  - NoStore stays the one published fact, read by Retains and the pun rule with one meaning; it does not fold into `CallRetention`:
+    the pun rule needs every store, a scalar one included, which retention does not publish (BU-145's rejected column stands).
+  - Rejected: A5's Keep reading NoStore (a consumer correcting its owner's published fact; `MirValidator`'s `Keeps` would keep the
+    contradicting reading); a `CallRetention` column (BU-145).
 - **BU-175 A Type walk has no count of its own (PLAN G647)** (2026-11-12; Front, Binding and MIR; Major; the Binding half's design
   review 1 REVISE, design review 2 ACCEPT, implementation review 1 REJECT and its re-check ACCEPT, F's rulings 1-3; the Middle's
   consent C-205, REVISE then ACCEPT WITH NOTES) IMPL A.4; SPEC 13.5.3, 22.6.
@@ -12257,6 +12296,72 @@ resumed by R4-M86 (2026-10-20).
     lose; `Subst` stays the interned form after selection).
   - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
     (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
+
+- **BU-180 A list is read by index, a node's children by the one walk (PLAN G609)** (2026-11-11; Front, Binding and Parsing; Major;
+  redesigned one level up by its first review's B1; design `front\G609\design-r2.md` and its review ACCEPT, implementation review
+  ACCEPT) No SPEC rule; the warm contract (G89-2, for a rejected program too).
+  - Cause: a warm rebind allocates nothing, but `foreach` over an interface-typed list calls `IEnumerable<T>.GetEnumerator`, which
+    boxes a `List<T>` enumerator (40 B) or allocates an array's (32 B) whenever the list is nonempty; `Koto.ChildNodes` built a
+    `List<Koto>` per read, a second traversal beside `ChildSlots`. Valid programs (`ValidateInheritedNames`, the test message check)
+    and rejected ones (`BindUnappliedArguments`, `MarkOmittedHeaders`) allocated on a warm rebind.
+  - Rule: the compiler reads a published list by index and a node's children only through `Koto.VisitChildren`, the one walk
+    (`ChildSlots` over the node's `ForEachChildSlot`).
+  - Sites: 21 Binding loops and `TyCtxt.RequirementSignatures` read by index. The three `ChildNodes` readers walk: the
+    recovered-ExpressionKoto arm calls `BindUnknownChildren`, the test message check is a cached `KotoVisitor` (`MessageTransfers`,
+    whose `Root` is set only during its walk) and `CompileTimeConditionEvaluator`'s recovered form a visitor.
+    `Kotonoha.DocumentationSources` publishes `IReadOnlyList<DocumentationSource>` (same storage).
+  - Check: `ArchitectureRulesTest.InterfaceEnumerationsStayAtTheirSites` reads the IL of every `Kimi.Compiler` type and holds its
+    interface `GetEnumerator` calls at ten listed cold methods (parsing, printing, adding sources, MIR dumps), keyed by top-level
+    type and method (a lambda's, local function's or state machine's under its declaring method), by set equality: every other
+    `Kimi.Compiler` method calls none, Compilation's pipeline included, since the cause's first fix (52dc76fd1, R6-check H5 T61) was
+    there and not in Binding. Limit: an enumeration a library method makes for the compiler (LINQ over an interface, `AddRange`,
+    `string.Join` or a constructor over an `IEnumerable<T>`) is not seen; review reads those.
+  - Deleted: `Koto.ChildNodes` (COMPILER_ARCHITECTURE's forbidden child-walk members now name it); `ChildSlots`' collect mode (its
+    field, constructor and two branches); the recursive `ValidMessageTransfers`; the recovered arm's own loop. Tests collect through
+    `KotoTree.Children`. Supersedes the per-site fixes 52dc76fd1 (its index reads stay, now held by the rule) and
+    `claude/f-g609`@4a9ad04d2 (held).
+  - Rejected: a non-boxing published list type (a struct boxes wherever it is passed as `IReadOnlyList<T>`, a span cannot be stored
+    or captured; about 48 properties and their consumers); a rule over `box` instructions (no closed family: diagnostic causes
+    passed as `object`; a constrained call boxes without one).
+
+- **BU-184 An environment binding holds any captured Type but a pair layer whose plan Reborrows by case (until G254) and a pair
+  target or projection under an identity premise (until G170)** (2026-11-11; PLAN G721, G254, G170; Front, Binding; Major, an
+  acceptance mover; design reviews 1-3 REVISE, 4 ACCEPT, implementation review 1 ACCEPT; the owner's O-166 (a) and O-171 (a); on
+  BU-168's plan; supersedes BU-61's fact and its reader) SPEC 7.7.2, 8.2.3, 8.14, 13.5.5, 15.6.3, 15.8.2.
+  - `Binding.Capture`'s Type allowlist (e1e9ebb16, written for the emitter before MIR) admitted one abstract Type kind, a Type
+    parameter, so a capture of a pair target `T`, of an abstract projection `T.Tag` or of a pair layer was a located
+    `Unsupported_Kd` at the entry. The allowlist is deleted: instance lowering stores an environment field at its case Type as it
+    stores a local.
+  - Interim row (1), removal condition PLAN G254's unit: a pair layer (`BoundType.IsPairLayer`, published as one definition with
+    `ContainsPairLayer`) other than the original `s/T` whose one plan (BU-168) Reborrows in some admitted case, the owner case
+    included (`BareReborrows`), is not captured: a body's bare use of it would Reborrow there, and no rule contains that Reborrow in
+    the call receiver (G254). The original `s/T` was captured before and reaches that gap already (G254's own forms). A pair layer
+    whose plan never Reborrows is captured, and an omitted list over it Copies by `CopiesInEveryCase` (BU-168).
+  - Interim row (2), removal condition PLAN G170's identity query: a pair target or a projection (an abstract Type other than a Type
+    parameter and a pair layer) is not captured where a Type-identity premise is available in scope: `ConstraintEnvironment`
+    publishes `HasTypeIdentity`, set where `ConstraintEnvironment.Add` registers the premise, beside `HasParameterIdentity`; an
+    Invalid environment is not read. A premise may make such a Type a pair layer that no plan reads (O-171 (a)); conservative, no
+    Type comparison or identity walk. Grounds other than a written identity premise (associated-Type requirements, completed
+    bindings) are not read; none was found to make a pair target a pair layer.
+  - Records: a written entry gets a located `Unsupported_Kd`; an omitted list's use gets `InvalidCaptureBinding_Kd` (the
+    function-level `Unsupported` surfaces no record): on an invalid program for row (1), and a pre-existing Language error on a
+    valid omitted list over a premise-made pair target for row (2).
+  - Moves (Q17 class 3). Valid, newly accepted: a capture of a pair target, of an abstract projection and of a pair layer whose plan
+    never Reborrows (r09, r12, r14, r16, r25, r27, r29v, r31v, q07, t11, y17o), an omitted list over one included (r21, r22: `s/i32`
+    under `owner or ref` and `ref`). Records moved on programs rejected before, dependent under rule W and no Q13 regression: t01
+    and t01m (an ill-formed premise, `MissingOriginBinding_Kd`) lose the entry's `Unsupported_Kd`; y11 and y11u gain
+    `TransferRequired_Kd` beside `InvalidConstraint_Kd`; y17, y17v and y17r take their concrete twin's `UnprovenOriginRelation_Kd`.
+    No invalid program is newly accepted.
+  - BU-61's projection-use fact (`projectionForms`, `ProjectionUseOf`), read only by the allowlist's projection branch, is deleted
+    with it. BU-61's "Open" reader (the annotated local's initializer `TypeMismatch_Kd`, PLAN G293, no longer a PLAN row) is dropped
+    with the fact; a later fix of that record forms its own fact. BU-61's `AddPendingPrerequisite` stance stays for
+    OwnedConversions. A bare `[t]` of a rejected projection now gets `TransferRequired_Kd t`, as `let u = t` does (BU-84; counted
+    under rule W).
+  - Rejected: widening the allowlist (a shape allowlist MIR does not need); the row as one representation kind (missed the family,
+    design review 2, B2); a row on every pair layer but the original (keeps valid Copy-only captures at `Unsupported_Kd` once BU-168
+    plans them); a node fact alone (misses premise-made pair targets, design review 3, B3); deleting the gate for pair layers too
+    (widens G254, B1); a located `Unsupported_Kd` at each use that Reborrows by case (C-235's interim: 18 valid `s/T` programs).
+  - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -19754,3 +19859,5 @@ R8-M* and R9-M* by the stage of the recording unit.
     (`Container`, `Parts`, `Bracket`, `Enumerator`, ...) for their own members; R9-M6's verdict is unchanged (Build's only nested
     type, `NativeToolchain.NativeBuild`, is private).
   - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).
+  - Amended by G781 (2026-11-12): Documentation no longer reads `PropertyAccessorKoto`; the arm was unreachable (SPEC 2.3 makes no
+    accessor a documentation target).

@@ -96,6 +96,11 @@ public sealed partial class MirBorrowsTest
         ["pair-application-null"] = "func write<T>(target: uniq/T during a, q: raw/T during a, v: T) => ()\n" +
             "func pn<s/U>(x: s/i32 during b, m: s/U, t: uniq/(ref/(s/i32 during b) during c) during a)\n" +
             "    s is owner or ref\n    var local = x@copy\n    write(t, null, local@ref)\n",
+        ["g786-four-causes"] = "func put(p: raw/(ref/i32 during a), v: ref/i32 during a)\n    unsafe => *p = v\n" +
+            "func shape(c: i32, target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x0: ref/i32 during a = q\n" +
+            "    var x1: ref/i32 during a = q\n    var x2: ref/i32 during a = q\n    var x3: ref/i32 during a = q\n    var p = x0@raw\n" +
+            "    if c == 1 => p = x1@raw\n    if c == 2 => p = x2@raw\n    if c == 3 => p = x3@raw\n    var r = local@ref\n    put(p, r)\n" +
+            "    target@follow = x0\n    local = 2\n",
         // pins
         ["m-write"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    let r = x@ref\n    x = 1\n    return r\n",
         ["m-write-var"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    var r = x@ref\n    x = 1\n    return r\n",
@@ -180,8 +185,9 @@ public sealed partial class MirBorrowsTest
     // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
     // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
     // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
-    // fail-before: independent), and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
-    // (chain-retention: no conflict at `local`, a Chain row read as one read).
+    // fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and a conflict with more causes than the
+    // record's first fact buffer holds (four raw addresses joined into p, each a Refuted relation; PLAN G786, fail-before: an exception).
+    // Fail-before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -216,6 +222,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("two-views", "pp: let local = 1 <- r")]
     [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
     [InlineData("pair-application-null", "pn: var local = x@copy <- local@ref")]
+    [InlineData("g786-four-causes", "shape: local = 2 <- x0@raw; x1@raw; x2@raw; x3@raw")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -292,7 +299,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(37, causes);
+        Assert.Equal(41, causes);
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
