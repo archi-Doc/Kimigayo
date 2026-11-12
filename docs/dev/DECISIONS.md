@@ -11905,7 +11905,6 @@ resumed by R4-M86 (2026-10-20).
     (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
     empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
     1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
-  - Extended by BU-178 (PLAN G769): a misplaced item's selector is judged on its own.
   - Partly superseded by BU-178 (G769): one rejection per item.
 
 - **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
