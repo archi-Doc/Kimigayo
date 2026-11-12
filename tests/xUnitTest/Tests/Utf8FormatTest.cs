@@ -50,6 +50,7 @@ public class Utf8FormatTest
     [InlineData("String", "\"abc\"", "abc")]
     [InlineData("View", "Text.utf8(\"君\")", "君")]
     [InlineData("Unit", "()", "()")]
+    [InlineData("Wrapping", "(-5@i32)@Wrapping<i32>", "-5")]
     public void GenericRequirementUsesTheBuiltinWitness(string name, string value, string expected)
     {
         const string Prefix = """
@@ -91,25 +92,29 @@ public class Utf8FormatTest
 
     // SPEC 22.10.1 (design review 2, R2-B2; R8-S2d1): a direct `format` has no failure test of its own, only the adapter `write` has, so
     // on a failed writer an empty string's and an empty view's `format` reserve nothing and return Ok, while a non-empty one's
-    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1).
+    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1). A string's `format` is
+    // called through `T is Utf8Format` (SPEC 22.10.2: a built-in conformance adds no member); a view's is its declared member.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ADirectFormatOfEmptyOutputOnAFailedWriterReturnsOk()
     {
         const string Source = """
+            func put<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+                T is Utf8Format
+                return value.format(writer)
             var bytes = [1 of 0@u8]
             var buffer = Text.fixed(bytes@uniq)
             var writer = Text.writer(buffer@uniq)
             match (writer@uniq).write("ab")@move
                 .Ok(_) => $abort("fits")
                 .Err(_) => ()
-            match "".format(writer@uniq)@move
+            match put("", writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty string")
             match Text.utf8("").format(writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty view")
-            match "x".format(writer@uniq)@move
+            match put("x", writer@uniq)@move
                 .Ok(_) => $abort("non-empty")
                 .Err(_) => ()
             match writer.status()@move

@@ -72,7 +72,10 @@ public class BuiltinArithmeticContractTest
     [Fact]
     public void GenericWrappingEvidenceSuppliesBinaryAndUnaryRequirements()
     {
-        const string Program = "func add<T>(left: ref/Wrapping<T>, right: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return left.added(right)\nfunc negative<T>(value: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return value.negated()\nlet value: Wrapping<u8> = 255\nrequire add(value, 1) == 0 and negative(value) == 1 else => $abort(\"wrapping\")";
+        // SPEC 13.3.3: Wrapping<T> gains no named members; its entailed conformances serve generic use.
+        const string Program = "func sum<U>(left: ref/U, right: ref/U) -> U\n    U is Addable<U>\n    U.(Addable<U>).Output is U\n    return left.added(right)\n" +
+            "func opposite<U>(value: ref/U) -> U\n    U is Negatable\n    U.(Negatable).Output is U\n    return value.negated()\n" +
+            "func add<T>(left: ref/Wrapping<T>, right: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return sum(left, right)\nfunc negative<T>(value: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return opposite(value)\nlet value: Wrapping<u8> = 255\nrequire add(value, 1) == 0 and negative(value) == 1 else => $abort(\"wrapping\")";
         ScalarEmissionTest.EmitFixture("BuiltinArithmeticGenericWrapping", Program, string.Empty);
     }
 

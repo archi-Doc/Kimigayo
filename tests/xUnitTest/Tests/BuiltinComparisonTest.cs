@@ -23,7 +23,6 @@ public class BuiltinComparisonTest
             require equal(first, same) and not equal(first, last) else => $abort("string equality")
             require order(first, last) < 0 and order(last, first) > 0 else => $abort("string order")
             require order(first, same) == 0 and order(empty, first) < 0 else => $abort("string boundary")
-            require first.equals(same) and first.compare(last) < 0 else => $abort("direct string")
             let unit = ()
             require equal(unit@ref, unit@ref) else => $abort("Unit equality")
             Console.writeLine(first)
@@ -54,7 +53,7 @@ public class BuiltinComparisonTest
             let first: {{type}} = {{minimum}}
             let last: {{type}} = {{maximum}}
             require order(first@ref, last@ref) < 0 and order(last@ref, first@ref) > 0 else => $abort("order")
-            require order(first@ref, first@ref) == 0 and first.equals(first@ref) else => $abort("equal")
+            require order(first@ref, first@ref) == 0 and first == first else => $abort("equal")
             """;
         ScalarEmissionTest.EmitFixture("ComparisonBuiltinBoundary" + type, source, string.Empty);
     }
@@ -106,7 +105,6 @@ public class BuiltinComparisonTest
             require equal(nan@ref, nan@ref) and not equal(nan@ref, zero@ref) else => $abort("NaN contract")
             require not equal(zero@ref, nan@ref) and equal(zero@ref, negativeZero@ref) else => $abort("float contract")
             require not (nan == nan) and nan != nan else => $abort("IEEE equality")
-            require first.equals(first@ref) and first.compare(last@ref) < 0 else => $abort("direct requirements")
             Console.writeLine("Builtin comparison witnesses preserved.")
             """;
         ScalarEmissionTest.EmitFixture("ComparisonBuiltinScalars", Source, "Builtin comparison witnesses preserved.\n");
