@@ -85,6 +85,40 @@ public sealed partial class Binding
         }
     }
 
+    // Interim until PLAN G585 (SPEC 10.2 row 2 at an element position after selection: the borrowed temporary's Origin as an input of
+    // the call's solve, its completion and its lowering are missing): each element of a Tuple or array literal `part` at its selected
+    // value Type `type` (FitComposite's SourceType at the argument) that the fit borrowed as a temporary (an aggregate at a `ref/`
+    // element Type, FitComposite's borrow row, read by ChildPattern) is a located Unsupported_Kd, and the call rests on it (final: a
+    // later reading does not re-evaluate it). A join borrowed as an element is not fitted yet (NoApplicableOverload_Kd; PLAN G729). A
+    // function value's call binds its argument at its parameter Type instead (CompleteValueCallPart), as the base does. The first such
+    // element, or null.
+    private Koto? FailBorrowedElements(Koto part, BoundType? type)
+    {
+        Koto? failed = null;
+        var core = KotoHelper.UnwrapParentheses(part);
+        var elements = core switch
+        {
+            TupleLiteralKoto tuple => tuple.Elements,
+            ArrayLiteralKoto array => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            var at = ChildPattern(core, i, type);
+            if (at is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } && this.KindOf(elements[i]) == PartKind.Aggregate)
+            {
+                this.Fail(elements[i], BindingFailure.Unsupported);
+                failed ??= elements[i];
+            }
+            else if (this.FailBorrowedElements(elements[i], at) is { } inner)
+            {
+                failed ??= inner;
+            }
+        }
+
+        return failed;
+    }
+
     // R3 (DECISIONS BU-104): the candidate's child rows, composed once at its first solve, where the probe's facts (a waiting join, its
     // flattened nested joins, each part's recorded kind) are live, and retained in childRows for every later reading.
     private void RetainChildRows(ref SlotSolution solution)

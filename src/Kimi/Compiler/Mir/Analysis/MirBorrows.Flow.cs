@@ -121,7 +121,7 @@ internal sealed partial class MirBorrows
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
-        var receiving = this.wCount == 0 ? null : cases.Type(this.body.TypeOf(place)!); // Rule W's receiving part (MirBorrows.Causes).
+        var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
             var slot = place.Root < 0 ? Escaped : this.slots[place.Root];

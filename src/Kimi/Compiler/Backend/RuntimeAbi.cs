@@ -114,6 +114,13 @@ internal static class RuntimeAbi
         ResultSlot = true,
     };
 
+    // SPEC 22.10.2: a float's shortest round-trip text into a 24-byte destination, its length returned: the FormatFloat intrinsic's
+    // routine (Storage.formatFloat, R8-S2c), defined by the float formatting part (LlvmModuleText.FormatFloat).
+    internal static readonly FunctionAbi FormatFloat = new(
+        "__kimi_format_float",
+        "i64",
+        [new("i64", "bits", AbiParameterKind.Value, 0), new("i1", "narrow", AbiParameterKind.Value, 1), new("ptr", "destination", AbiParameterKind.Value, 2)]);
+
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue

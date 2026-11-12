@@ -318,15 +318,14 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnboundTypeArgument);
         }
 
-        var rejected = new RejectedCandidate[count];
-        var next = 0;
+        var start = this.rejectedRows.Count;
         for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
         {
             var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-            rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true);
+            this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true));
         }
 
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+        this.RecordRejected(use, start);
         return this.Fail(use, BindingFailure.Ambiguous);
     }
 

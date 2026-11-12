@@ -483,7 +483,7 @@ public sealed partial class Binding
                 if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j] is { Pattern: { } pattern, Part: var part } &&
                     KotoHelper.UnwrapParentheses(part).BoundType is { } typed && !ReferenceEquals(typed, BoundType.Never) &&
                     !this.WaitsForValueCallSolve(part, pattern) &&
-                    this.AdaptInput(part, pattern, this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                    this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.CollectOriginInference(pattern, adapted, inference);
                 }

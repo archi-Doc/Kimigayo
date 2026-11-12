@@ -49,6 +49,21 @@ public class CaptureDiagnosticTest
         Assert.Equal(("declaration", "capture entry", source.IndexOf("func [", StringComparison.Ordinal) + 6), (related.Role, related.Label, related.Span!.Value.Start));
     }
 
+    // PLAN G765: a list's repeats are rows reused between passes, so a warm rebind of a list that repeats an entry or a parameter
+    // allocates nothing (SPEC 7.7.2).
+    [Theory]
+    [Trait("Purpose", "Allocation")]
+    [InlineData("public func main() -> ()\n    let x: i32 = 1\n    let g = func [x, x] () => x\n    require g() == 1 else => $abort(\"g\")\n")]
+    [InlineData("public func main() -> ()\n    let x: i32 = 1\n    let f = func [x] (x: i32) => x\n    require f(2) == 2 else => $abort(\"f\")\n")]
+    public void AWarmRepeatedCaptureReusesItsFacts(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd)], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
     // The repeated capture reaches the command rendering and both language-server placements at the later entry.
     [Fact]
     public void ARepeatedCaptureNameIsPublished()
