@@ -157,16 +157,16 @@ public static partial class Parser
         if (IsCompileTimeSwitchStart(ref reader))
         {
             var arms = CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
+            while (arms.TryNext(ref reader, out var arm))
             {
-                if (invalidItems)
+                if (arm.Kind == CompileTimeSwitchArmKind.InvalidItems)
                 {
                     list.EnterExcluded(ref reader);
                     var start = BeginInvalidSwitchItems(ref reader);
                     ParseItems(ref reader, ref list, stopAtCaseGroupBoundary: true);
                     EndInvalidSwitchItems(ref reader, start);
                 }
-                else if (selected)
+                else if (arm.Kind == CompileTimeSwitchArmKind.Selected)
                 {
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
@@ -174,7 +174,7 @@ public static partial class Parser
                 else
                 {
                     list.EnterExcluded(ref reader);
-                    var region = BeginExcludedRegion(ref reader, header, header.Start);
+                    var region = BeginExcludedRegion(ref reader, arm.Header, arm.Header.Start);
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
                     EndExcludedRegion(ref reader, region);
