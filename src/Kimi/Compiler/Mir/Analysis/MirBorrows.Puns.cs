@@ -75,7 +75,7 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
+        if (cases.TypeOf(place) is var stored && Punnable(stored).Scalar == Extent.None && !this.Hidden(stored))
         {
             return;
         }
@@ -319,7 +319,7 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return PunAt(this.Pointered(place) == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
+        return PunAt(this.Unknown(place), facts);
     }
 
     // The Type of the Place entry `entry` names where a write there may pun a raw pointer, else null: a raw layer at the Place's own

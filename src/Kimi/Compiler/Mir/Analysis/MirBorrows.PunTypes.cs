@@ -138,6 +138,31 @@ internal sealed partial class MirBorrows
         return most != Extent.Positive && AdtDef.Base(type) is { } parent ? Most(most, this.Pointered(cases.Type(parent))) : most;
     }
 
+    // The unknown write's answer at a Place of a Type (R4-M198's one gate): a pun where the Place surely holds a raw pointer's byte,
+    // undecided where it only may.
+    private PunWrite Unknown(BoundType place) => this.Pointered(place) == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided;
+
+    // What a written part Holdings lists as no stored Type does at a Place (the written side's fold, Within and Scalared): an abstract
+    // part the unknown write's answer (SPEC 8.15.1, 5.2: a binding may be a Scalar); a form with no row undecided (Holdings' contract);
+    // an erased environment nothing (no raw Place lies within a Function value, SPEC 5.2); null for a stored part (Inline) or a layer.
+    private PunWrite? Unstated(in Hold entry, BoundType place) => entry.Step switch
+    {
+        HoldStep.Abstract => this.Unknown(place),
+        HoldStep.Unsupported => PunWrite.Undecided,
+        _ => null,
+    };
+
+    // Whether a written Type is itself an abstract part (Holdings' one Abstract entry): the seen store's judge answers it as the unknown
+    // write (Designated), and its gate passes it (MirBorrows.Puns.Punning).
+    private bool Hidden(BoundType type)
+    {
+        var start = this.punHolds.Count;
+        _ = types.Holdings(type, null, null, this.punHolds);
+        var hidden = this.punHolds.Count == start + 1 && this.punHolds[start].Step == HoldStep.Abstract;
+        this.punHolds.RemoveRange(start, this.punHolds.Count - start);
+        return hidden;
+    }
+
     // The leading chain's one step under the case view (TyCtxt.Leading, Binding's): the part the specification places at the address of
     // a value of the row's Type, `element` whether it is a fixed array's element (SPEC 4.1: element i at offset i * stride), else a
     // C-layout struct's first Field (IMPL 21.1.2); null where it places none. A row has no path of its own (a Place's case Type, a
@@ -211,6 +236,11 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
+        if (this.Hidden(write))
+        {
+            return this.Unknown(place);
+        }
+
         if (Punnable(write).Scalar != Extent.Positive)
         {
             return PunWrite.Undecided;
@@ -275,6 +305,10 @@ internal sealed partial class MirBorrows
             {
                 result = Worse(result, this.Within(place, cases.Type(part), on: false));
             }
+            else if (this.Unstated(this.punHolds[i], place) is { } unstated)
+            {
+                result = Worse(result, unstated);
+            }
         }
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
@@ -293,7 +327,8 @@ internal sealed partial class MirBorrows
         _ = types.Holdings(type, null, null, this.punHolds);
         for (var i = start; !found && i < this.punHolds.Count; i++)
         {
-            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } && this.Scalared(cases.Type(part));
+            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } ? this.Scalared(cases.Type(part))
+                : this.punHolds[i].Step is HoldStep.Abstract or HoldStep.Unsupported; // Unstated's parts that may write.
         }
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
