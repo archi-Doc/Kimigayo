@@ -393,8 +393,11 @@ public sealed partial class Binding
 
                 if (type.Kind == BoundTypeKind.SemanticsAdaptation)
                 {
+                    // The re-formed cases may be the binder's application (TypeFamily), which the argument applies as any application.
                     var family = this.TypeFamily(type.Symbol!, (SemanticsMask)type.Length, scratch.AsSpan(0, type.Components.Count));
-                    return family.Kind == BoundTypeKind.SemanticsAdaptation ? this.SubstituteFamily(family, whole) : family;
+                    return family.Kind == BoundTypeKind.SemanticsAdaptation ? this.SubstituteFamily(family, whole)
+                        : TryPairLayer(family, out var formed, out var target) && ReferenceEquals(formed, type.Symbol!.WholeType)
+                        ? this.ApplySemantics(whole, target, family.Origin) : family;
                 }
 
                 return this.ApplySemantics(whole, scratch[0], type.Origin is { } slotOrigin ? this.SubstituteSlotOrigin(slotOrigin, substitution) : null);

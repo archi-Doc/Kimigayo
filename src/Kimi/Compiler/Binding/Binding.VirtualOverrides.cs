@@ -199,7 +199,7 @@ public sealed partial class Binding
         call.VirtualBaseLookupType = null;
         call.VirtualImplementation = null;
         call.VirtualImplementingType = null;
-        if (call.VirtualIsDirect && ReferenceTypes.ViewTarget(call.ReceiverOperation.SourceType) is { } receiver)
+        if (call.VirtualIsDirect && call.ReceiverOperation.Source is { } receiverSource && this.ViewTarget(call.ReceiverOperation.SourceType, receiverSource) is { } receiver)
         {
             call.VirtualBaseLookupType = AdtDef.Base(receiver);
             for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
