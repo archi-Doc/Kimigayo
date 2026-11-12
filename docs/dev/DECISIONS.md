@@ -12074,6 +12074,58 @@ resumed by R4-M86 (2026-10-20).
   - Permanent (SPEC 9.7). Cost: one set lookup per qualified Case construction; warm 0 B. Open (design review 2's N1, pre-existing):
     `CompleteEnumOrigins` rewrites a Case construction's use Type (and its plan) when a local's Origin declaration resolves, but not
     its member access or its qualifier, which keep the pre-rewrite Type; no hover or MIR reader of them was found failing.
+
+- **BU-169 A body's leading region is decided by the parsed operand at `is`; Binding alone judges a Constraint subject; one invalid
+  subject is one record (PLAN G507)** (2026-11-11; Front, Parsing and Binding; Major; design revision 5, design review 4 and
+  implementation review ACCEPT; the owner's O-161 (R), O-167, O-169 (a), O-178 (a)) SPEC 7.5, F.6.2, F.8, F.9, 23.1.2.
+  - Owner rulings: O-161 (R): a subject is rooted in a generic parameter when its projection chain's base names it (SPEC 7.5, D-350,
+    D-356). O-167: no speculative parse with rollback, no diagnostics rollback; `validSubject` is the one judge. O-169 (a):
+    left-factoring at `is`.
+  - Parsing. In a body, a leading item that derives `ConstraintSubject "is"` (F.6.2) is a Constraint, whatever its subject names.
+    - A Name-path subject (`"::"? (Name | Self) ("." Name)* is`) is taken by dev's selector `HasSimpleConstraintSubject` and read by
+      `ParseConstraintSubject`. The selector is exact for what it accepts: every such item derives ConstraintClause. A lone
+      primitive before `is` is decided from two tokens, because no lone `Self` or primitive is an expression (F.9).
+    - Otherwise the expression parser parses the item's operand once, stopping before `is`:
+      `ParseExpression(ComparisonBindingPower + 1)`. At `is`, `AsConstraintSubject` reads the operand's shape: a TypeQualifier chain
+      (Names, root Names, `Self`, `. Name` and `.(C)` members, Type arguments; PathQualifier heads Unit, Tuple, FixedArray and
+      BoundContainerQualifier) ending in `. Name`, with one final call of OriginAtoms converted to the OriginApplication. If it
+      reads as a subject, the item is a Constraint and `FinishConstraint` reads `IsRequirement`; otherwise `ContinueExpression`
+      finishes the expression statement.
+    - `TryParseStatementItem` is `ParseBlockItem`'s statement dispatch, shared, not copied.
+    - The declaration regions keep reading any Type before `is` (`IsTypeConstraintStart`, without its former body branch), and
+      `IsConstraintSubject` reports a Type that is no subject (BU-119).
+    - Two shape tests of F.6.2's ConstraintSubject, over two trees. `IsConstraintSubject` judges a Type tree that a declaration
+      region has already parsed as a Type; it reports a Type that is no subject, and only the top node matters because `ParseType`
+      admits only Type syntax below. `AsConstraintSubject` classifies an expression tree in a body: it must check the whole
+      qualifier chain, because the expression grammar admits calls, indexes and groups there, and it converts the final call. Their
+      inputs (Type nodes against expression nodes) and their decisions (report against classify) differ, so they stay a pair, not
+      one test.
+    - Placement stays Parsing's: after the region a Constraint is one only if its subject is rooted in a generic parameter (its base
+      Name: `IsRootedInGenericParameter`), and then it is misplaced; a destructor's or an accessor's body takes none.
+  - Binding. `validSubject` is the one judge. One failed-subject rule: a subject that formed no Type because of a failure in it
+    (`HasFailureCauses`) binds the requirement against no subject in every region, and a rejecting verdict rests on it; when a
+    clause whose subject formed is rejected, `BindConstraint` publishes the clause as the pending prerequisite of exactly the
+    projection uses its subject's binding registered. `IsDerived`'s part rule counts a part that is Invalid or has published failure
+    causes.
+  - Acceptance move (Q17 class 1), named as a class: an unparenthesized leading item whose operand ends in a call whose arguments
+    are all OriginAtoms (`k`, `static`, `a.b`, `(a and b)`) is a Constraint (SPEC 7.5, F.6.2, F.8). Instances c01, a02, a03 and g03,
+    accepted on dev, are rejected; their two records are PLAN G747's (R7-N6).
+  - Record moves (Q13), by F's rulings: `AssociatedIdentityTest.AnAmbiguousSubjectKeepsIndependentRequirementAndExpressionFailures`
+    (G705) loses the clause's `InvalidConstraint_Kd` over its ambiguous subject, a dependent record (O-169 (a) condition 3), and the
+    independent ones stay; a Unit, Tuple or FixedArray head is a Constraint with one record, `UnresolvedBinding_Kd` at the head
+    (Binding forms no Type for it); a Tuple head with a non-expression element (`(U, i32)`) keeps the expression parser's record.
+  - Limit (the owner's O-178 (a), verbatim 「O-178 a」; a later unit designs the node; PLAN G767): a parenthesized function-type head,
+    such as `((U) -> U).(C).X is Copy` (q03), keeps dev's records. The expression grammar builds no node for `(...) -> Type`. Its
+    group fails as an expression (`ExpectedSyntax_Kd` at `->`), and the recovered group has the shape of `((u))`. So no shape test
+    over parsed nodes can take it, and reading the recorded error, a scanner or a mode would break O-167 and O-169 (a). The program
+    is rejected either way: every such subject is invalid in a function by SPEC 7.5 (R). Only its records differ (P1's form: the
+    later premises are misplaced).
+  - Rejected: a predicate over raw tokens (revision 1 was wider than the production, B1; revision 2 was a copy of the ContainerPath
+    scanner, B5; revision 3's shared scanner read any group as an OriginAtom, B7); a speculative parse with rollback (records cannot
+    be undone: O-163, O-167); Binding classifying, since SPEC 7.5 is syntactic; classifying by the root Name (a SPEC change against
+    O-167); a consumer walk to the clause (B3); the projection range through the requirement (B6).
+  - Closes PLAN G507 with the failed-subject records (x01, x02, r01, i04, i12), except P1's parenthesized function-type head (the
+    limit above, PLAN G767).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
