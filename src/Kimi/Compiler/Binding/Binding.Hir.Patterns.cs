@@ -40,7 +40,7 @@ public sealed partial class Binding
             {
                 var place = adjust.Acquire != HirAcquire.None || position.Parent < 0 ? HirPlaceKind.Unset
                     : plan.Positions[position.Parent].Kind == BoundPatternKind.Case ? HirPlaceKind.Downcast : HirPlaceKind.Field;
-                uses.FixAdjust(position.Source, adjust, new(place, (byte)position.ImplicitFollows));
+                uses.FixAdjust(position.Source, adjust, new(place, (ushort)position.ImplicitFollows));
             }
         }
     }

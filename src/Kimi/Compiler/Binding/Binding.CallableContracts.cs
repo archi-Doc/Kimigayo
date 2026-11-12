@@ -14,102 +14,109 @@ public sealed partial class Binding
         }
 
         var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
-        for (var i = 0; i < requirement.InputCount; i++)
+        var demanded = this.RentTypes(requirement.InputCount);
+        var count = 0;
+        try
         {
-            var required = requirement.Input(i);
-            var actual = implementation.Input(i);
-            if (required is null || actual is null)
+            for (var i = 0; i < requirement.InputCount; i++)
             {
-                if (required != actual)
+                var required = requirement.Input(i);
+                var actual = implementation.Input(i);
+                if (required is null || actual is null)
+                {
+                    if (required != actual)
+                    {
+                        return ConstraintProof.Refuted;
+                    }
+
+                    continue;
+                }
+
+                required = this.ContractType(required, scope, self);
+                if (i == requirement.ReceiverIndex && path is not null)
+                {
+                    required = this.ProjectRequirementReceiver(required, self, declaringType)!;
+                    if (required is null)
+                    {
+                        return ConstraintProof.Refuted;
+                    }
+                }
+
+                // SPEC 8.6.3, 8.4.2: the slots correspond before the requirement's premises in `scope` normalize either side.
+                var corresponded = Corresponding(actual);
+                actual = this.ProjectCallableType(actual, declaringType);
+                if (actual is null || corresponded is null ||
+                    !SignatureEquals(required, this.ContractType(corresponded, scope), requirement.Binder, implementation.Binder))
                 {
                     return ConstraintProof.Refuted;
                 }
 
-                continue;
+                demanded[count++] = required;
+                this.MatchInputOrigins(actual, required, implementation.Binder, origins, inputs);
+                this.CollectOriginInference(actual, required, inference);
             }
 
-            required = this.ContractType(required, scope, self);
-            if (i == requirement.ReceiverIndex && path is not null)
+            var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
+            if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
             {
-                required = this.ProjectRequirementReceiver(required, self, declaringType)!;
-                if (required is null)
-                {
-                    return ConstraintProof.Refuted;
-                }
+                this.CollectOriginInference(projected, expected, inference, result: true);
             }
 
-            // SPEC 8.6.3, 8.4.2: the slots correspond before the requirement's premises in `scope` normalize either side.
-            var corresponded = Corresponding(actual);
-            actual = this.ProjectCallableType(actual, declaringType);
-            if (actual is null || corresponded is null || !SignatureEquals(required, this.ContractType(corresponded, scope), requirement.Binder, implementation.Binder))
+            // SPEC 15.3.7, 15.6.1, the owner's (a): a whole-contract comparison; each of its proofs, its solve's too, assumes the own
+            // well-formedness of the requirement as substituted (Self, the Type's arguments), as 10.7's does (ContractFits).
+            var demandedInputs = count == 0 ? BoundType.Unit : this.types.Tuple(demanded.AsSpan(0, count));
+            var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, expected ?? BoundType.Unit]);
+            var comparison = new CallableInstance(null, null, signature, requirement.Binder, null);
+            inference.Comparison = comparison;
+
+            // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
+            if (!(implementation.Binder is FunctionKoto solved
+                ? this.SolveCallOriginInference(solved, inference, origins, inputs, requirement.Binder, declaringType)
+                : this.SolveOriginInference(inference, origins, inputs, requirement.Binder, declaringType)))
             {
                 return ConstraintProof.Refuted;
             }
 
-            this.MatchInputOrigins(actual, required, implementation.Binder, origins, inputs);
-            this.CollectOriginInference(actual, required, inference);
-        }
-
-        if (implementation.Result is { } produced && requirement.Result is { } demanded)
-        {
-            var actual = this.ProjectCallableType(produced, declaringType);
-            if (actual is not null)
+            for (int i = 0, j = 0; i < requirement.InputCount; i++)
             {
-                this.CollectOriginInference(actual, this.ContractType(demanded, scope, self), inference, result: true);
-            }
-        }
+                if (requirement.Input(i) is null)
+                {
+                    continue;
+                }
 
-        // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
-        if (!(implementation.Binder is FunctionKoto solved
-            ? this.SolveCallOriginInference(solved, inference, origins, inputs, requirement.Binder, declaringType)
-            : this.SolveOriginInference(inference, origins, inputs, requirement.Binder, declaringType)))
-        {
-            return ConstraintProof.Refuted;
-        }
-
-        for (var i = 0; i < requirement.InputCount; i++)
-        {
-            if (requirement.Input(i) is not { } input)
-            {
-                continue;
-            }
-
-            var required = this.ContractType(input, scope, self);
-            if (i == requirement.ReceiverIndex && path is not null)
-            {
-                required = this.ProjectRequirementReceiver(required, self, declaringType)!;
-                if (required is null)
+                var required = demanded[j++];
+                var actual = Translate(implementation.Input(i)!);
+                if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder, comparison) ||
+                    !this.ProvesInputPremises(actual, required, requirement.Binder, comparison))
                 {
                     return ConstraintProof.Refuted;
                 }
             }
 
-            var actual = Translate(implementation.Input(i)!);
-            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) ||
-                !this.ProvesInputPremises(actual, required, requirement.Binder, default))
+            if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType, comparison))
             {
                 return ConstraintProof.Refuted;
             }
-        }
 
-        if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType, default))
+            var result = implementation.Result is { } output ? Translate(output) : null;
+            if (result is not null && implementation.Binder is FunctionKoto function &&
+                !this.ProvesResultPremises(function, result, requirement.Binder, comparison))
+            {
+                return ConstraintProof.Refuted; // SPEC 15.3.7: the implementation's result premises follow from the requirement's.
+            }
+
+            if (result is null || expected is null)
+            {
+                return ConstraintProof.Unknown;
+            }
+
+            var fits = this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder, comparison);
+            return fits ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        }
+        finally
         {
-            return ConstraintProof.Refuted;
+            this.typeScratch.Return(demanded, clearArray: true);
         }
-
-        var result = implementation.Result is { } output ? Translate(output) : null;
-        if (result is not null && implementation.Binder is FunctionKoto function && !this.ProvesResultPremises(function, result, requirement.Binder, default))
-        {
-            return ConstraintProof.Refuted; // SPEC 15.3.7: the implementation's result premises follow from the requirement's.
-        }
-
-        var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
-        if (result is null || expected is null)
-        {
-            return ConstraintProof.Unknown;
-        }
-
-        return this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
 
         // An implementation Type with the requirement's slots for its own and its declaring Type's arguments projected.
         BoundType? Corresponding(BoundType type)

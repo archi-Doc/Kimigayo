@@ -280,7 +280,7 @@ public sealed partial class Binding
                     {
                         // SPEC 8.7.3: the target must be an Object Target. Generic targets and a Contract's
                         // Self are proven from their premises at the definition deadline.
-                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
+                        if (inner.IsProofDecided)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }

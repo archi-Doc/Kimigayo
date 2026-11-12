@@ -57,6 +57,10 @@ public class IndexableContractTest
     // A Point whose part an element storing a reference to it reaches (SPEC 3.4.3, 10.2; PLAN G147 (2b)).
     private const string Stored = "struct Inner\n    public var x: i32 = 0\n    public init() => ()\nstruct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\n";
 
+    // A user Addable, whose compound assignment takes the arithmetic route (SPEC 13.3.4).
+    private const string Num = "struct Num\n    Self is Addable<Num>\n    associate Addable<Num>.Output is Num\n    public init() => ()\n" +
+        "    public func added(self: ref/Self, right: ref/Num) -> Num => Num.init()\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "CopyRead", Pair + "var pair = Pair<i32>.init(1, 2)\nlet second = pair[1]\nlet key: isize = 0\nrequire second == 2 and pair[key] == 1 else => $abort(\"read\")\npair[key] = 5\nrequire pair[0] == 5 else => $abort(\"write\")\nConsole.writeLine(\"ok\")", "ok\n" },
@@ -100,6 +104,35 @@ public class IndexableContractTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
+
+    // SPEC 13.7.1, 4.7.1, 23.1.2 (PLAN G782): every assignment, plain or compound and whatever its route, has its destination checked
+    // whatever its value: a call's result, a literal and a `let` path are no writable Place, each reported beside the value's own record.
+    // A failed value, on the operator path or the arithmetic route, had skipped the check (the MIR validator's InternalInvariant_Kd or no
+    // destination record). A writable destination adds no record (the twins); a user route completes at its destination.
+    [Theory]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.index(0) -= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) |= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData("var names: Dictionary<i64, i32> = [:]\nnames.indexUniq(1) *= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("let names: Dictionary<i64, string> = [:]\nnames[1] = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("func get() -> i32 => 1\nget() += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("let x: i32 = 1\nx += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("let a: [2 of i32] = [1, 2]\na[0] += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("let a: [2 of i32] = [1, 2]\na[0] = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Stored + "let p = Point.init()\np.inner.x += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("var n: i32 = 1\nlet r = n@ref\nr@follow = nope", "SharedPathAccess_Kd,UnresolvedBinding_Kd")]
+    [InlineData("1 += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData("1 = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
+    [InlineData(Pair + Num + "var pair = Pair<Num>.init(Num.init(), Num.init())\nlet n = Num.init()\npair.indexUniq(0) += n", "InvalidAssignment_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair[0] += nope", "UnresolvedBinding_Kd")]
+    [InlineData("var x: i32 = 1\nx %= nope", "UnresolvedBinding_Kd")]
+    [InlineData(Pair + Num + "var pair = Pair<Num>.init(Num.init(), Num.init())\nlet n = Num.init()\npair[0] += n", "")]
+    [InlineData("var names: Dictionary<i64, i32> = [:]\nnames[1] += 1", "")]
+    public void AnAssignmentsDestinationIsCheckedWhateverItsValue(string source, string codes)
+        => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
     // SPEC 3.4.3, 10.2 (PLAN G147 (2b)): a part below an element storing a shared reference is read through one shared reference, which
     // restarts the dependency at that stored reference, so it depends on the stored reference's Origin, not on the selection.

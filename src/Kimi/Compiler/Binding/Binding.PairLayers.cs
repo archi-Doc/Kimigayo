@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.3, 7.3), with their admitted sets.
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
+    private int termWalks;
+
+    /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer followed by OperandTerminal,
+    /// PairSubject, PairTerminal, FormedApplication or SharedReferenceThroughLayers, and a part entered by CollectCallRelations,
+    /// FailedOriginRelation, AddTypeClauseObligations, SolveOmittedOrigins, Occurs or CExchangeable; read by the scaling tests.</summary>
+    internal int TermWalkWork => this.termWalks;
 
     /// <summary>Decomposes a pair layer (SPEC 13.5.5): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
     /// occurrence of it (<c>s/T during a</c>, SPEC 8.1.2), or an application <c>s/U</c> to another Type. The pair target <c>T</c>
@@ -33,6 +39,12 @@ public sealed partial class Binding
             whole = pair;
             target = type.Components[0];
             return true;
+        }
+
+        // BoundType.IsAbstractType excludes a pair's own Type by its symbol alone, so every such Type decomposes above.
+        if (type is { Kind: BoundTypeKind.Parameter, Symbol.Kind: BindingSymbolKind.SemanticsTarget })
+        {
+            throw new InvalidOperationException($"The pair `{type}` has no whole Type or target (InternalInvariant).");
         }
 
         whole = target = null!;
@@ -146,8 +158,9 @@ public sealed partial class Binding
         }
 
         var exclusive = admitted == SemanticsMask.Uniq && !ReachedThroughShared(node);
-        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) is var inner && inner != SemanticsMask.None; depth++)
+        while (this.FollowablePair(target, scope, out var next) is var inner && inner != SemanticsMask.None)
         {
+            this.termWalks++;
             exclusive &= inner == SemanticsMask.Uniq;
             target = next;
         }
@@ -161,8 +174,9 @@ public sealed partial class Binding
     // at its operand). The outer layer's Origin bounds the result in every case: each inner Origin outlives it.
     private BoundType? PairTerminal(BoundType target, BindingScope scope, bool exclusive = false)
     {
-        for (var depth = 0; depth < 16 && this.FollowablePair(target, scope, out var next) is var admitted && admitted != SemanticsMask.None; depth++)
+        while (this.FollowablePair(target, scope, out var next) is var admitted && admitted != SemanticsMask.None)
         {
+            this.termWalks++;
             if (exclusive && (admitted & SemanticsMask.Ref) != 0)
             {
                 return null;

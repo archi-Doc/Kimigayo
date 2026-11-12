@@ -37,6 +37,9 @@ public partial class KimiLibraryShapeTest
         (WitnessMembers.UnitFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F32Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f32, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F64Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f64, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.String, KimiDeclarationId.Utf8Format, "func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.WrappingFormat, KimiDeclarationId.Utf8Format, "func format<I>(self: ref/Wrapping<I>, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.IntegerFormat, KimiDeclarationId.Utf8Format, "func format<I>(self: ref/I, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
     ];
 
     // Code generation and the runtime call these bodiless functions by position: parameter order,
@@ -106,8 +109,8 @@ public partial class KimiLibraryShapeTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
-        // formatFloat (R8-S2c).
-        Assert.Equal(187, KimiLibraryCatalog.Entries.Length);
+        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1).
+        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -188,7 +191,7 @@ public partial class KimiLibraryShapeTest
         var path = entry.Owner ?? entry.Container switch
         {
             KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
+            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer or KimiLibraryContainer.Utf8Slice => "Text." + entry.Container,
             KimiLibraryContainer.FixedArray => "Storage.FixedArray",
             _ => entry.Container.ToString(),
         };

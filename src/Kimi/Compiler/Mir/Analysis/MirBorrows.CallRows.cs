@@ -20,6 +20,9 @@ namespace Kimi.Compiler.Mir;
 //   position call.Count, where TyCtxt.HasReceiverInput says the contract has it; every other slot as MirCallee.Position maps it), and an
 //   intrinsic's Value for the operand the builder adds beyond its declaration. The records and the referent stores map through the one
 //   Position.
+// - SPEC 4.8.4, 5.6 (R4-M40): that operand, RawSlice's backing, ties the result: `x[r]` is `x.slice(r)`, during its backing, and reaches
+//   what the backing's value reaches. Only a written `Raw.slice`, whose backing is the builder's Unit constant (nothing backs it), keeps
+//   its declaration's untied result, a fresh anchor tied to no argument (SPEC 15.6).
 // - PD13 (SPEC 7.7.3; R4-M126 (iii), R4-M148): a Call whose acquired receiver, the Semantics of its callee operand's case Type, is
 //   Exclusive while the callee's case Type admits a Shared one (TyCtxt.ClosureReceiverIn) holds the view: each rejection of it is recorded
 //   as the located Unsupported_Kd at its subject (MirBorrows.Reports). Plan sets the fact in the forward solve, which plans every
@@ -56,7 +59,8 @@ internal sealed partial class MirBorrows
         => receiver < 0 ? MirCallee.Position(callee.Symbol, slot) : slot == 0 ? receiver : slot - 1;
 
     // A Call's plan into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, the result's kinds with an intrinsic's
-    // Value for the operand the builder adds beyond its declaration (MirDescriptors); a default template's call P9's (SPEC 7.2.3, R4-M93):
+    // Value for the operand the builder adds beyond its declaration (MirDescriptors), which ties the result unless it is a constant (SPEC
+    // 4.8.4, 5.6; R4-M40); a default template's call P9's (SPEC 7.2.3, R4-M93):
     // its inputs are the prologue's shared borrows of the slots, and each input's Content, its slot's value, reaches the untied result; no
     // store. Whether the result is untied.
     private bool Plan(in MirTerminator call)
@@ -96,6 +100,7 @@ internal sealed partial class MirBorrows
         if (callee.Kind == MirCalleeKind.Intrinsic && MirDescriptors.Of((IntrinsicId)callee.Arg).Retained is >= 0 and var added)
         {
             this.resultKinds[added] |= RetentionKind.Value;
+            untied &= this.body.Operands[call.Start + added].Kind == MirOperandKind.Const;
         }
 
         return untied;

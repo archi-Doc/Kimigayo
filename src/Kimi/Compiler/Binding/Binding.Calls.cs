@@ -416,9 +416,9 @@ public sealed partial class Binding
                     out _,
                     out _,
                     out _,
-                    out _,
+                    out var failure,
                     out _);
-                if (state != CandidateApplicability.Applicable)
+                if (AsSelected(state, failure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
@@ -451,13 +451,13 @@ public sealed partial class Binding
                 selectedType = this.ConstructionType(selected, selectedType, solveFrame.Types);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
                 !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructionTargets.Contains(constructedMember.Left))
             {
                 Complete(constructedMember.Left, selectedType);
             }

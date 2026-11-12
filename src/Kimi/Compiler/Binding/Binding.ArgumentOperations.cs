@@ -97,9 +97,10 @@ public sealed partial class Binding
     internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && layers < 64; type = type.Components[0])
+        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
         {
             layers++;
+            this.termWalks++;
             if (ReferenceEquals(type.Components[0], referent))
             {
                 BoundOrigin? origin = null;
@@ -173,32 +174,20 @@ public sealed partial class Binding
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
-        if (ScalarReferent(type) is not { } referent)
+        if (this.ReadTypeReferent(type, node) is not { } read)
         {
-            // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
-            // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
-            var scope = this.ConstraintScope(node);
-            if (this.ReadTypeReferent(type, scope) is { } read)
-            {
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.7.4: a read Type.
-                return read;
-            }
-
-            if (type is not null &&
-                this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
-                this.PairTerminal(target, scope) is { } terminal &&
-                (terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : ScalarReferent(terminal)) is { } scalar)
-            {
-                this.implicitPairFollows[node] = admitted;
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, scalar);
-                return scalar;
-            }
-
             return type;
         }
 
-        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
-        return referent;
+        // A qualifying pair layer is one of the followed layers (SPEC 3.4.3), also below another one (s/(t/U)): the read is
+        // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
+        if (TryPairLayer(type, out _, out _))
+        {
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+        }
+
+        this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);
+        return read;
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
@@ -410,9 +399,10 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && actual.Kind == BoundTypeKind.SemanticsApplication))
+        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && TryAdaptationSelector(actual, out _)))
         {
-            // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value. A written
+            // SPEC 13.5.6: an explicit borrow of a slot storing a pair layer, an application or an adaptation family (SPEC 13.5.5,
+            // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
             // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
             var exclusive = target == SemanticsKind.Uniq;
             if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : !judged || this.LendsPlace(source, scope, exclusive, out _))

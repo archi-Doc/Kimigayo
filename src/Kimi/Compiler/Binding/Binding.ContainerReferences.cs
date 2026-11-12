@@ -8,6 +8,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The construction qualifiers that leave their own slots open (ConstructionTargetType), for the pass.
+    private readonly HashSet<Koto> inferredConstructionTargets = new(ReferenceEqualityComparer.Instance);
+
     // A container keeps its own slots first, followed by its parent's effective slots.
     // Slot symbols retain their original binder and ordinal; spelling is not identity.
     internal static int ContainerSlot(Koto binder, BindingSymbol parameter)
@@ -280,6 +283,22 @@ public sealed partial class Binding
                 earlier = (candidate, span, set, scalar);
             }
         }
+    }
+
+    // SPEC 9.7, 9.7.1, 10.8.1: a construction qualifier whose own Type-argument list is omitted: its environment from the path, its own
+    // arguments those of `supplied`, else its own parameters, open, and the qualifier an inferred construction target, which the
+    // construction completes with its solved Type.
+    private BoundType? ConstructionTargetType(Koto syntax, BindingSymbol symbol, BindingScope scope, BoundType? supplied)
+    {
+        var own = ((DeclarationContainerKoto)symbol.Declaration).GenericParameterNodes.Count;
+        var arguments = own == 0 ? default : ((BoundType[])(supplied ?? this.SelfType(symbol)).Components).AsSpan(0, own);
+        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
+        if (type is not null && own != 0 && supplied is null)
+        {
+            this.inferredConstructionTargets.Add(syntax);
+        }
+
+        return type;
     }
 
     private BoundType? BindContainerReference(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context, ReadOnlySpan<BoundType> own)
