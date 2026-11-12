@@ -55,14 +55,17 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     internal bool ResultSlot { get; init; }
 
-    internal bool CallerLocation { get; init; }
+    /// <summary>Gets the flags of <see cref="Abi.Of"/>'s input this signature records as given (<see cref="Abi.Recorded"/>).</summary>
+    internal Abi.Flags Flags { get; init; }
+
+    internal bool CallerLocation => (this.Flags & Abi.Flags.CallerLocation) != 0;
 
     /// <summary>Gets this signature under a name, for its definition and calls (<see cref="Abi.Of"/> gives none).</summary>
     /// <param name="name">The physical name.</param>
     /// <returns>A signature with the same parameters, result and flags.</returns>
     internal FunctionAbi Named(string name) => new(name, this.Result, this.Parameters)
     {
-        NoReturn = this.NoReturn, ResultSlot = this.ResultSlot, CallerLocation = this.CallerLocation,
+        NoReturn = this.NoReturn, ResultSlot = this.ResultSlot, Flags = this.Flags,
     };
 
     /// <summary>Gets the cached <c>define ... {</c> line, including the profile attribute group.</summary>
