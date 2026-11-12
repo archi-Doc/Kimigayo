@@ -19144,10 +19144,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     5. `FormatKind` for `SegmentText` and `FormatLiteral`: removed at W2.
     6. The `Utf8Format` part of `IsGenericWrapping`'s premise and of `RequirementMember` (a second statement of `Wrapping<T>`'s
        formatting conformance once S2d1 declares it): removed at S2d1.
-  - **Vocabulary.** `CompilerFunctionKind` unchanged at S2a; S2c +`StorageFormatFloat` and S2b2 +`FormatInteger128` (producers of
-    plan-kept intrinsics, R8-M5's precedent; removed at R8-G1), S2d2 −`BuiltinFormat`. `KimiDeclarationId` +3 and catalog entries +3
-    at S2a (180 → 183 on dev 947b2de43, after R8-W2 a2's +2): the three groups' `format` functions, until G1 (RQ9; not a closed
-    vocabulary). `WitnessMembers` +3 (local, R8-M4).
+  - **Vocabulary.** `CompilerFunctionKind` unchanged at S2a; S2c +`StorageFormatFloat` and S2b2 +`StorageFormatInteger128`
+    (producers of plan-kept intrinsics, R8-M5's precedent; removed at R8-G1), S2d2 −`BuiltinFormat`. `KimiDeclarationId` +3 and
+    catalog entries +3 at S2a (180 → 183 on dev 947b2de43, after R8-W2 a2's +2): the three groups' `format` functions, until G1
+    (RQ9; not a closed vocabulary). `WitnessMembers` +3 (local, R8-M4).
   - **Moves.** None in acceptance or records; `.ll` only; the census Builtin → Body (Body 37 → 38, Builtin 174 → 173);
     `Utf8ConversionBool`: none. `FunctionCodegenTest`'s bool, char and Unit shim rows are re-pointed at `i16`/`u16`, still on the
     shim.
@@ -19290,6 +19290,59 @@ R8-M* and R9-M* by the stage of the recording unit.
     its note may cite them.
   - **S2d1's move (a), pinned by S2b1.** A dependent Holder verdict over an ill-formed `Wrapping<T>` is not reported, its formation
     records are: `Utf8FormatBindingTest.AHolderOverAnIllFormedWrappingReportsOnlyItsFormation` (S2d1's implementation review I-N2).
+  - **Owner, S2b2.** The `IntegerFormat` row covers every concrete integer Type: its width condition, temporary 7, is removed. i128
+    and u128 run `specialize func format<i128>` and `specialize func format<u128>` in `IntegerFormat` (SPEC 8.13): the digits come
+    from `Storage.formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize` (`StorageOperations.kimi`; the u128's ASCII
+    decimal digits at the end of the array and their count, 1 to 39; it allocates nothing and never Aborts), the sign from the body,
+    then one leaf write. The intrinsic covers only the u128 division, which the backend does not generate (IMPL 21.3.3); it is
+    interim by RQ16 (a).
+  - **A specialization keeps its original's name and caller location, S2b2** (the design's F1 and F2; 1fe481d45, behavior unchanged;
+    SPEC 8.13.2, 8.13.3, 22.5.1). A specialization has no name, so a catalog row names the original: `KimiLibrary.FindDeclaration`
+    skips specializations. A specialization's ABI is its original's: `Binding.SpecializationOriginal` publishes a verified
+    specialization's `Original`, `TyCtxt.Original` gives the function whose call contract and ABI a body keeps (a specialization's
+    original, else the function itself), and `ModuleCodegen`'s signature reads `KimiLibraryCatalog.RequiresCallerLocation` through
+    it, so the specializations' leaf Aborts at the user's write.
+  - **A4 reading, S2b2** (F4; worded by the Middle's M-N1, C-258). `IntegerFormat.format<I>`'s one summary, read for all twelve
+    integers, holds both specializations (SPEC 15.6.4). At the `Storage.formatInteger128` call A4 reads the `FormatInteger128`
+    intrinsic's descriptor row (`MirDescriptors`: `Intrinsic(MirEffect.None, 2)`, the value and the destination, no effect of its
+    own); the Storage family's `Inputs` class (`TyCtxt.Bodyless`) applies only where the function is reached without a call. The
+    outcome is the same. The same reading holds for R8-M34's `FormatFloat` and R8-M18's `ErasedReserve`, where those entries say
+    "effect `Inputs` by the family". The N8 twin (an environment effect in `format<i128>`) made every integer `confined` row report,
+    `toString(42)` included.
+  - **The runtime, S2b2.** The 128-bit part is its own module part: `FormatInteger128Runtime.ll.in` holds `__kimi_decimal_div10`
+    (moved from `Utf8FormatRuntime.ll.in`) and `__kimi_format_integer128` (`RuntimeAbi.FormatInteger128`:
+    `i64 (i128 value, ptr destination)`; the reduced `__kimi_format_integer`). A lazy nested `LlvmModuleText.FormatInteger128`
+    expands it once, on first use (`LlvmModuleText.FormatInteger128Runtime`), and the frame writes it under
+    `ModuleCodegen.Needs.FormatInteger128` (256), which `IntrinsicRows`' FormatInteger128 row (`Unproduced` -> `Requested`)
+    requests. `ModuleCodegen.Needs` widened from a byte to `ushort` (R8-M34: "the next part widens it").
+  - **Temporaries, S2b2.** Temporary 7 is removed. Temporary 1 (the narrowing) and the `BuiltinFormat` path now serve no Type: dead,
+    staged to R8-S2d2 (its whole row); `FunctionCodegenTest.NoBuiltinFormattableTypeReachesTheShim` pins it over
+    `FormattingTypes.IsBuiltin`'s domain. Temporary 3's note: `format_builtin` keeps only arm 16 (`SegmentText`, temporary 5, W2);
+    `FormatKind` 9 and 10 stay while `IsBuiltin` answers them, until S2d2.
+  - **Vocabulary, S2b2.** `CompilerFunctionKind` 29 -> 30 (+`StorageFormatInteger128`, the owner's O-177 (a), verbatim 「O-177 a」;
+    S2d2's `BuiltinFormat` deletion returns it to 29); `KimiDeclarationId` +1 (`StorageFormatInteger128`) and catalog entries 191 ->
+    192; `IntrinsicId` unchanged (`FormatInteger128` now produced; its MIR descriptor `(None, 2)`; G730's pinned Abort and
+    Allocation sets unchanged).
+  - **Moves, S2b2.** None in acceptance or records (gate: 369 generated programs, 0 record moves; A5 oracle 1,764 programs, 0
+    differences). `.ll`: every module with the formatting runtime loses `decimal_div10`, `format_integer` and `format_builtin`'s
+    arms 9 and 10; a module that formats an i128 or a u128 defines the 128-bit part and, through a writer it receives, no formatting
+    runtime. The census (TyCtxtTest's corpus pin): Builtin 3 -> 2, Body 208 -> 209; the 2 left are Milestone25's tuple Comparable
+    and Milestone31's `Wrapping<u8>` Equatable.
+  - **KimiLibrarySize, S2b2 (R8-M28).** The unit crosses no Granule (`TheStatedSizeIsTheLibrarys` passes at bea222b88). Its landing
+    refresh restates `Stated.TypeKeys` 2,048 -> 3,072 (e7bc0f80c): the library merged with dev b400006e2 counts 2,050 Type keys,
+    rounded up to the 1,024 Granule (R8-M28's rule; the Front's consent C-257); every other count still rounds to its statement.
+  - **RP8, S2b2 (T-159; no stop).** A e4c245889 (the Strings kernel's `wide` part, the compiler unchanged), B bea222b88
+    (`artifacts/benchmarks/r8-s2b2-o2-20261112-151739`, `r8-k1a-20261112-153421`). O2: every kernel but Strings is the same code and
+    within its A=A (Interpolation 0.997; R5-M135 plain 1.001 within 0.983-1.008); Strings, the gate, is faster: 0.939 [0.893,
+    0.984], R5-M147 address-matched pairs 0.921-0.933 against A=A 0.997-1.002. Compile cost (Hello, Milestone26, Strings; 6 rounds):
+    Bind B/A' at most 1.020 (Milestone26 cold; A'/A 1.001), under RP8's 1.03; warm 0 B in every stage; cold bytes +0.5 to +0.9% (the
+    library's two specialization bodies). O0: not recorded (the run reached its 6-minute stop before a kernel finished).
+  - **Tests, S2b2** (implementation review 1's I-N2). The caller-location rule is pinned at the lowest layer that observes it, the
+    IR location pair, as S2b1's I-N5: under the F2 mutation (the head without `TyCtxt.Original`'s read)
+    `ATableBodyWriteReportsItsCallersLocation`'s i128 and u128 rows, the i128 Item row and
+    `AnInterpolatedWriteReportsItsCallersLocation` fail; `Utf8WriterTest`'s native I128 and U128 Abort rows are pins (they pass at
+    base through the shim and at head through the specializations). Open for the next formatting unit (the Middle's M-N3): the
+    specialization filter in `KimiLibraryShapeTest.EachWitnessGroupDeclaresItsContractsRequirements` is now redundant.
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
