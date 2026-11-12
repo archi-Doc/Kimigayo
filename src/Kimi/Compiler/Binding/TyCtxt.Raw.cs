@@ -14,6 +14,8 @@ namespace Kimi.Compiler;
 // punnable set (Punnable, its one owner), which A5's pun rule reads.
 internal sealed partial class TyCtxt
 {
+    private readonly Dictionary<BoundType, bool> punnable = new(); // Punnable's answer per composite Type, memoized like the interning.
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
     // Case payload or base clause writes without `during`, which an instance's kept parts (StoredParts) state as Unstated at any depth
     // below them, through every nested instance, Type argument, pair slot's argument, element and `during self` pointee they reach; false
@@ -30,39 +32,6 @@ internal sealed partial class TyCtxt
     // (ElementAccess) and MIR's move paths (MirMoveData.Resolve) read it per step. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
         (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container) || AdtDef.IsEnum(container));
-
-    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
-    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
-    // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
-    // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A read of the Type
-    // that ends with it (no bound of its own); total; allocates nothing.
-    internal static bool Punnable(BoundType type)
-    {
-        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
-        {
-            return true;
-        }
-
-        switch (type.Kind)
-        {
-            case BoundTypeKind.Semantics when type.Semantics == Parsing.SemanticsKind.Owner && type.Components.Count > 0:
-            case BoundTypeKind.FixedArray:
-                return Punnable(type.Components[0]);
-            case BoundTypeKind.Tuple:
-                // By index: a foreach over the interface would allocate an enumerator per call.
-                for (var i = 0; i < type.Components.Count; i++)
-                {
-                    if (!Punnable(type.Components[i]))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            default:
-                return false;
-        }
-    }
 
     // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
     // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
@@ -109,6 +78,47 @@ internal sealed partial class TyCtxt
     // Signature numbers it (the catalog's NoStoreRow: `slice` its storage, `initialize` its value, `release` its storage, `transferBytes`
     // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
+
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
+    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
+    // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A function of the
+    // interned Type, each composite one decided once (`punnable`, kept like the interning: a Type's answer never changes); a walk that
+    // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
+    internal bool Punnable(BoundType type)
+    {
+        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        {
+            return true;
+        }
+
+        var parts = type switch
+        {
+            { Kind: BoundTypeKind.Tuple } => type.Components.Count,
+            { Kind: BoundTypeKind.FixedArray } or { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Owner, Components.Count: > 0 } => 1,
+            _ => -1,
+        };
+
+        if (parts < 0)
+        {
+            return false;
+        }
+
+        if (!this.punnable.TryGetValue(type, out var answer))
+        {
+            answer = true;
+
+            // By index: a foreach over the interface would allocate an enumerator per call.
+            for (var i = 0; answer && i < parts; i++)
+            {
+                answer = this.Punnable(type.Components[i]);
+            }
+
+            this.punnable[type] = answer;
+        }
+
+        return answer;
+    }
 
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
