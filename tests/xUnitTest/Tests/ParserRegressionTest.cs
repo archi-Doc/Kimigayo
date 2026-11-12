@@ -924,7 +924,7 @@ public class ParserRegressionTest
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         Assert.Contains(TestDiagnostics.Of(compilation, restoredFunction.CodeContext.SourceDocument!), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
-        Assert.Empty(restoredGroup.ChildNodes);
+        Assert.Empty(restoredGroup.Children());
     }
 
     [Fact]
@@ -977,17 +977,44 @@ public class ParserRegressionTest
         Assert.Equal("replacement", change.Text);
     }
 
-    // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
-    // declaration does not permit is diagnosed, never read as a runtime test; parentheses make the test executable.
+    // SPEC 7.5: every function, constructor, destructor and accessor body begins with its leading region. An item that derives
+    // ConstraintClause is a Constraint there whatever its subject names (Binding judges the subject), never a runtime test, and the
+    // region goes on after it; parentheses make the test executable, and a Type that is no ConstraintSubject before `is` is an
+    // expression, which ends the region.
     [Theory]
-    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 1)]
+    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 0)]
+    [InlineData("func f<T, U>(value: U)\n    Box<U>.(C).X is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(value: T)\n    (T, T).(C).X is Copy\n    S.(C).X(a) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T, U>(value: U)\n    Box<U> is Copy\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(value: T)\n    g(value) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    make().inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    make().inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(hs: Array<H>)\n    hs[0].inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(hs: Array<H>)\n    hs[0].inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    (h).inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    (h).inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek(1).inner is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek(1) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek(k) is Dog\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    [2 of T].(C).X is Copy\n    T.(C).LentItem(static) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek((n + 1)) is Dog\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.pair(n, (n * 2)) is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    h.peek((n)) is Dog\n    h.pair(n, m) is Dog\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.flag((a and b)) is Dog\n    ().(C).X is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    h.peek(a).inner is Dog\n    T is Copy\n    ()", 1)]
+    [InlineData("func f<T>(h: H)\n    T.(C).LentItem(a) is Copy\n    T is Copy\n    ()", 0)]
+    [InlineData("func f<T>(h: H)\n    (T, T).(C).X is Copy\n    (h).(C).X is Copy\n    T is Copy\n    ()", 1)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    public func m(self)\n        Holder.make().inner is Dog\n        E is Copy\n        ()\n", 1)]
+    [InlineData("struct W<E>\n    var item: i32\n    public init(item: i32)\n        Holder.make().inner is Dog\n        E is Copy\n        self.item = item\n", 1)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    public computed first: i32\n        get() -> i32\n            Holder.make().inner is Dog\n            return 0\n", 0)]
+    [InlineData("struct W<E>\n    var item: i32 = 0\n    drop\n        Holder.make().inner is Dog\n        ()\n", 0)]
     [InlineData("func f(value: i32)\n    (value is Dog)\n    ()", 0)]
     [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
     [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    drop\n        T is Copy\n        ()\n", 1)]
     [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
-    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
+    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 0)]
     public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)
     {
         var (_, diagnostics) = Parse(source);
@@ -1072,5 +1099,36 @@ public class ParserRegressionTest
     {
         var kotonoha = ParseTestHelper.Parse(source);
         return (kotonoha.RootKoto, TestDiagnostics.Of(kotonoha));
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // SPEC 7.5 (G507): the leading region is decided on the one parse of each item's operand, so a body's parse allocation grows
+        // linearly with its leading Constraints and the items after them: doubling both doubles the increment.
+        [Fact]
+        public void ALongLeadingRegionParsesInLinearAllocation()
+        {
+            int[] counts = [100, 200, 400];
+            var bytes = AllocationMeasurement.MeasureSeries(counts.Length, index =>
+            {
+                var source = new System.Text.StringBuilder("func f<T>(h: H)\n");
+                for (var i = 0; i < counts[index]; i++)
+                {
+                    source.Append("    T.(C).X").Append(i).Append("(a) is Copy\n");
+                }
+
+                for (var i = 0; i < counts[index]; i++)
+                {
+                    source.Append("    h.peek(").Append(i).Append(")\n");
+                }
+
+                var text = source.Append("    ()\n").ToString();
+                return () => ParseTestHelper.Parse(text);
+            });
+            var (small, medium, large) = (bytes[0], bytes[1], bytes[2]);
+            Assert.True(large - medium <= (medium - small) * 5 / 2, $"{small} {medium} {large}");
+        }
     }
 }

@@ -33,7 +33,9 @@ internal enum LookupRole : byte
     Value,
 }
 
-// How a lookup ended; None is a use no lookup has published.
+// How a lookup ended; None is a use no lookup has published. Projection: the path names an associated Type of its left's Type (SPEC
+// 8.5.2): the suffix `.(C)`, a Name its Core left may have an associated Type of and declares no member Type of, or any Name after a
+// projection; the reader forms it through BindAssociatedProjection.
 internal enum PathEnd : byte
 {
     None,
@@ -41,6 +43,7 @@ internal enum PathEnd : byte
     Unresolved,
     Ambiguous,
     QualificationStop,
+    Projection,
 }
 
 public sealed partial class Binding
@@ -126,9 +129,7 @@ public sealed partial class Binding
             ContractKoto => LookupRole.ContractReference, // A parent (F.6 ContractParentList, SPEC 8.4.3).
             MemberAccessKoto member when grouped && (ReferenceEquals(member.Right, node) || !bound)
                 => LookupRole.ContractReference, // `.(C).Name` (8.5.2) and the selector `(C).Name` (8.5.1).
-            // SPEC 9.6: a path's intermediate component, the selector `C.Name` too. ProjectionQualifier still looks up the `C` of `T.C.X`
-            // unqualified in this row (dev's reading; SPEC 8.5.2 makes it an ordinary path: R7-N1e2-2b).
-            MemberAccessKoto => LookupRole.Qualifier,
+            MemberAccessKoto => LookupRole.Qualifier, // SPEC 9.6: a path's intermediate component, the selector `C.Name` too.
             EffectBoundKoto => grouped ? LookupRole.ContractReference : LookupRole.Qualifier, // `effect (A).r` (8.11.1), `effect A.r` (9.6).
             AliasKoto => LookupRole.Qualifier, // SPEC 18.2.1, 9.5.1.
             TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq }
@@ -312,7 +313,7 @@ public sealed partial class Binding
             case PathEnd.QualificationStop:
                 this.RecordQualificationStop(path.Use, path.Stop);
                 return null;
-            case PathEnd.Unresolved:
+            case PathEnd.Unresolved or PathEnd.Projection:
                 return null;
             default:
                 throw new UnreachableException();
@@ -530,6 +531,25 @@ public sealed partial class Binding
     // the declaration's own Type selects an inherited member, so a qualifier's arguments and Origins never change the selection.
     private ResolvedPath ResolveMember(MemberAccessKoto member, in ResolvedPath qualifier, BindingScope scope, LookupRole role, int arity)
     {
+        // SPEC 8.5.2, F.5: `L.(C)` names a projection whatever Type its left is, by the left walk's end: a projection, a selected Core (a
+        // parameter, a pair target and `Self` included) or a Type the walk names no symbol of (a built-in, a tuple, an array, or a missing
+        // name: Unresolved), which the former binds by BindType with its own records. A left that ended with its own record (Ambiguous,
+        // QualificationStop) keeps that end; a selected non-Core (a group, a Contract) is no projection base.
+        if (member.Right is ParenthesizedTypeKoto)
+        {
+            return qualifier.End switch
+            {
+                PathEnd.Projection or PathEnd.Unresolved => new(PathEnd.Projection, null, member),
+                PathEnd.Selected => new(IsCore(qualifier.Symbol!) ? PathEnd.Projection : PathEnd.Unresolved, null, member),
+                _ => qualifier,
+            };
+        }
+
+        if (qualifier.End == PathEnd.Projection)
+        {
+            return new(PathEnd.Projection, null, member); // SPEC 8.5.2: a projection's own associated Type, `T.(C).X`.
+        }
+
         if (qualifier.End != PathEnd.Selected)
         {
             return qualifier;
@@ -571,7 +591,13 @@ public sealed partial class Binding
             return new(selected is null ? PathEnd.Unresolved : PathEnd.Selected, selected, member);
         }
 
-        return new(PathEnd.Unresolved, null, member);
+        // SPEC 8.5.2, 9.6: a Name the Core declares no member Type of is a projection unless the Core is a declared struct or enum whose
+        // conformances (declarations, once registered) name no associated Type of it: then it stays the missing member Type it is. Before
+        // they register every one may (G621's early read); a parameter's, a pair target's or `Self`'s candidates are premises, completed
+        // later (an override's selection), so its Name stays a projection. The former decides with evidence.
+        var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.conformancesRegistered ||
+            (left.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
+        return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
     }
 
     // SPEC 9.6: `::A.B` starts at the Compilation root of the use's Kotonoha, ignoring locals and aliases.

@@ -25,7 +25,7 @@ public sealed partial class Binding
     /// <param name="context">The caller's syntax node.</param>
     /// <returns>The proof result after identity-preserving substitution.</returns>
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
-        => this.ProveConstraint(this.SubstituteConstraint(constraint, binder, arguments), this.ConstraintScope(context));
+        => this.ProveConstraint(this.SubstituteConstraint(constraint, new CallSubstitution(binder, arguments)), this.ConstraintScope(context));
 
     // The scope a node's names and premises are judged in: its nearest enclosing scope, where a match arm's body is in its pattern's
     // scope (SPEC 14.8.2) and a standard witness bridge has its conformance path's premises (SPEC 11.9.2).
@@ -74,6 +74,19 @@ public sealed partial class Binding
 
     private static bool IsSelfConstraint(IsKoto clause)
         => clause.Left is IdentifierNameKoto { IdentifierName: "Self" };
+
+    // SPEC 7.5, 8.5.2: the base of a subject's projection chain (`T` of `T.(C).X.(D).Y`), below transparent wrappers; the subject itself
+    // when it is no projection. Its published symbol is the root of a subject that formed no Type.
+    private static Koto SubjectBase(Koto subject)
+    {
+        var node = UnwrapTransparentType(subject)!;
+        while (node is MemberAccessKoto projection)
+        {
+            node = UnwrapTransparentType(projection.Left)!;
+        }
+
+        return node;
+    }
 
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
@@ -442,13 +455,26 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
+        var subjectProjections = this.projectionUses.Count; // The projection uses the subject's binding registers: from here to subjectEnd.
         var symbol = this.TypeName(clause.Left, bindingScope); // The subject's one lookup (Requirement, SPEC 8.2.1).
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
-        var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
-        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left);
+        var subjectEnd = this.projectionUses.Count; // The requirement's own projection uses come after it and stay its own (SPEC 23.1.2).
+        // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
+        // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
+        var failedSubject = subject is null &&
+            (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
+        // Closed subjects are valid in a struct's, an enum's and, Self apart, a Contract's region.
+        var closedScope = scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause));
+        // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here,
+        // as a formed one is below: its root (RootedInput) is the base its projection chain published (SPEC 7.5, 8.8.1: `T.(D).Item`,
+        // D missing), and whether it is closed is not known yet, so any subject is pending where closed subjects are valid. A root no
+        // source can make an input (`U is Copy` in a function) is decided now.
+        var pendingRoot = subject is null ? SubjectBase(clause.Left).BoundSymbol : null;
+        var unresolvedSubject = subject is null && this.HasUnresolvedConstraintSyntax(clause.Left) &&
+            (RootedInput(pendingRoot is { IsGenericInput: true }, pendingRoot) || closedScope);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
@@ -484,15 +510,26 @@ public sealed partial class Binding
         var input = symbol is { IsGenericInput: true } || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
-        var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null &&
-            !this.DependentType(subject, unresolvedProjection: false);
-
-        // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
-        // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
-        var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+        var closedSubject = closedScope && subject is not null && !this.DependentType(subject, unresolvedProjection: false);
+        var validSubject = subject is not null && (RootedInput(input, root?.Symbol ?? symbol) || closedSubject ||
+            (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
+            if (failedSubject)
+            {
+                // SPEC 23.1.2: the clause's verdict reads its failed subject directly; the subject's record is the one.
+                this.AddPrerequisite(clause, clause.Left);
+            }
+            else
+            {
+                // A projection of the formed subject is proved in the environment this verdict makes invalid: it rests on the clause.
+                for (var i = subjectProjections; i < subjectEnd; i++)
+                {
+                    this.AddPendingPrerequisite(this.projectionUses[i].Use, clause);
+                }
+            }
+
             this.Fail(clause, BindingFailure.InvalidConstraint);
         }
 
@@ -512,92 +549,15 @@ public sealed partial class Binding
             }
         }
 
+        // A subject's root valid here, the one statement for a formed subject and a pending one: an input, and (SPEC 7.5) in a function
+        // its own parameter or one of its declaring Type, the Container whose scope the member is declared in (Indexing; a conditional
+        // block's member included), never a local function's enclosing function. A closed subject is the other valid subject, where
+        // closed subjects are valid (closedScope: never a function).
+        bool RootedInput(bool input, BindingSymbol? rootSymbol)
+            => input && (scope.Owner is not FunctionKoto member || ReferenceEquals(rootSymbol?.Scope, scope) ||
+                (rootSymbol?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope)));
+
         // Self clauses remain implementation obligations, never assumptions.
-    }
-
-    private BoundConstraint BindRequirement(Koto node, BoundType? subject, bool semantics, BindingScope scope)
-    {
-        BoundConstraint result;
-        switch (node)
-        {
-            case ParenthesizedKoto parentheses:
-                result = this.BindRequirement(parentheses.Operand, subject, semantics, scope);
-                break;
-            case UnaryKoto { Akind: KotoKind.Not } not:
-                result = this.NegateConstraint(this.BindRequirement(not.Operand, subject, semantics, scope));
-                break;
-            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } binary:
-                var left = this.BindRequirement(binary.Left, subject, semantics, scope);
-                var right = this.BindRequirement(binary.Right, subject, semantics, scope);
-                result = this.InternConstraint(new(binary.Akind == KotoKind.And ? ConstraintKind.And : ConstraintKind.Or, left: left, right: right));
-                break;
-            default:
-                if (subject is null)
-                {
-                    result = this.InternConstraint(new(ConstraintKind.Error));
-                }
-                else if (semantics)
-                {
-                    var name = node is IdentifierNameKoto identifier ? identifier.IdentifierName : node is TypeSemanticsKoto { Type: null } typeName ? typeName.Identifier : string.Empty;
-                    result = SemanticsMaskHelper.TryParse(name, out SemanticsMask mask)
-                        ? this.InternConstraint(new(ConstraintKind.Semantics, subject, mask: mask))
-                        : this.InternConstraint(new(ConstraintKind.Error));
-                }
-                else
-                {
-                    // One lookup serves both readings, a Contract and a complete Type, in its position's row: Requirement, or a
-                    // conditional conformance's Contract Reference (SPEC 9.2, 8.8; no group, no stage 4).
-                    var requirement = this.NamePath(node, scope);
-                    var target = requirement.Symbol;
-                    if (target is { IsContract: true })
-                    {
-                        if (target.Intrinsic == IntrinsicKind.Callable)
-                        {
-                            result = this.BindCallableRequirement(node, subject, scope, target);
-                            if (result.Kind == ConstraintKind.Error && this.FailedSignaturePart(node) is { } part)
-                            {
-                                // SPEC 23.1.2: a Callable signature that failed for a part of its own syntax rests on that part.
-                                (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[node] = part;
-                            }
-
-                            break;
-                        }
-
-                        target = this.BindContractReference(node, target, scope);
-                        if (target is null)
-                        {
-                            return this.InternConstraint(new(ConstraintKind.Error));
-                        }
-
-                        result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
-                    }
-                    else
-                    {
-                        // A complete Type (SPEC 8.2), formed from the requirement's own lookup (BindNamedType).
-                        var type = this.BindType(node, scope);
-                        result = type is null ? this.InternConstraint(new(this.HasUnresolvedConstraintSyntax(node) ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.TypeIdentity, subject, type));
-                    }
-                }
-
-                break;
-        }
-
-        if (result.Kind == ConstraintKind.Error)
-        {
-            // SPEC 23.1.2: a transparent wrapper is the requirement it wraps, so the failure rests on that node; one that failed already
-            // keeps its own record, whatever wraps it.
-            this.Fail(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint);
-        }
-        else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)
-        {
-            node.BindingState = BindingState.Unresolved;
-        }
-        else if (node.BoundType is null)
-        {
-            Complete(node, BoundType.Boolean);
-        }
-
-        return result;
     }
 
     // Adds a fact and its conjuncts; true when one of them is an Error. BindConstraints and BindAssociatedSpecification name their clause

@@ -636,6 +636,74 @@ public sealed partial class MirBorrowsTest
                     usep(slot)
                 """));
 
+    // SPEC 15.6 Holders, 15.6.4, 5.2.1 (PLAN G582): a keeper held by value (no dereference: a Field or a Tuple element of the argument)
+    // is that argument's own value, so a raw layer without an Origin that the call writes through it never keeps the keeper's Loan, and
+    // `usep(slot)` is valid (keeperOk, keeperTupOk, as uBad's `usep(slot)`). That exclusion is 15.6.4's raw-layer sentence only: safe
+    // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
+    // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
+    // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
+    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
+    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    [Fact]
+    public void AByValueKeeperIsItsArgumentsOwnValue()
+        => Assert.Equal(
+            [
+                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
+                "keeperTupResultBad: usep(slot)",
+            ],
+            Problems("""
+                func usep<T>(p: raw/T) => ()
+                struct K {s}
+                    public var r: uniq/(raw/u8) during s
+                    public init(r: uniq/(raw/u8) during s) => self.r = r
+                func f(w: K during a) => ()
+                func fTup(w: (uniq/(raw/u8) during a, i32)) => ()
+                func fBorrowed(w: uniq/(K during a)) => ()
+                func fChain(w: (uniq/(K during a) during b, i32)) => ()
+                func fOther(w: K during a, t: uniq/(raw/u8)) => ()
+                func fResult(w: K during a) -> raw/u8
+                    return null
+                func fTupResult(w: (uniq/(raw/u8) during a, i32)) -> raw/u8
+                    return null
+                func keeperOk()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    f(w@move)
+                    usep(slot)
+                func keeperTupOk()
+                    var slot: raw/u8 = null
+                    fTup((slot@uniq, 1))
+                    usep(slot)
+                func keeperBorrowedBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fBorrowed(w@uniq)
+                    usep(slot)
+                func keeperChainBad()
+                    var slot: raw/u8 = null
+                    var kk = K.init(r: slot@uniq)
+                    fChain((kk@uniq, 1))
+                    usep(slot)
+                func keeperOtherBad()
+                    var other: raw/u8 = null
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fOther(w@move, other@uniq)
+                    slot = null
+                    usep(other)
+                func keeperResultBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    let x = fResult(w@move)
+                    usep(slot)
+                    usep(x)
+                func keeperTupResultBad()
+                    var slot: raw/u8 = null
+                    let x = fTupResult((slot@uniq, 1))
+                    usep(slot)
+                    usep(x)
+                """));
+
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-52, BU-40): `append` and `insertOrReplace` write only their result and their receiver's element
     // storage, so the raw layers an added value holds by value (an enum's payload, a struct's Field, an Option's Type argument) are no
     // storage they write, and `slot`, which the added value addresses, keeps nothing of the call: appEnumOk, dictEnumOk, appStructOk and
@@ -1402,6 +1470,146 @@ public sealed partial class MirBorrowsTest
                     let h = make(big@ref, one@ref)
                     inspect(h.r)
                     big = 3
+
+                """));
+
+    // SPEC 4.8.4, 5.6, 15.6.4 (PLAN G780; C-189): a range selection, a written Raw.slice and Raw.release store nothing through their
+    // storage, so the holder array `values` keeps `cell`'s address alone and `keep` stores `spare` (r's Loan) in `cell`: valid while
+    // `cell` is dead after `kk = 2` (range, written, released); Raw.initialize stores through its storage, here a pointer from an integer
+    // (SPEC 5.5), and a read of `cell` after `kk = 2` keeps the Loan live (the Bad twins). The narrowing follows the declaration, not its
+    // signature: a user function of Raw.slice's shape may store through its storage (userBad, 15.6.4's public contract). `released`
+    // releases a stack element's address and `initializedBad` initializes an Initialized Place: both break 5.6's run-time preconditions
+    // and only probe the analysis. A reslice's range selection stores nothing through its backing either, its Slice tied to that backing
+    // (DECISIONS R4-M63's amendment): subRange `sl[0..1]`, nested `values[..][1..]`, whole `sl[..]` and ending `sl[..1]` are valid while
+    // `values` is dead after `kk = 2`; nestedReadAfter reads it after (ARangeSelectionsSliceReachesWhatItsBackingReaches holds the other
+    // twins). Fails on dev 63878b639: range, written and released conflict (Raw.slice's storage took rule A's untied store); the
+    // reslices on dev 3dc197857.
+    [Fact]
+    public void ASliceOrReleaseStoresNothingThroughItsStorage()
+        => Assert.Equal(
+            ["rangeBad: kk = 2", "writtenBad: kk = 2", "userBad: kk = 2", "initializedBad: kk = 2", "nestedReadAfter: kk = 2"],
+            Problems("""
+                func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+                func mine(storage: raw/(raw/(raw/u8)), length: isize) => ()
+                func range()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let sl = values[..]
+                    keep(values[0], spare)
+                    kk = 2
+                func rangeBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let sl = values[..]
+                    keep(values[0], spare)
+                    kk = 2
+                    let z = cell
+                func written()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        let w = Raw.slice(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                func writtenBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        let w = Raw.slice(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                    let z = cell
+                func userBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    var values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    mine(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                func released()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        Raw.release(values[1]@raw)
+                    keep(values[0], spare)
+                    kk = 2
+                func initializedBad(n: usize)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    var values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let q = n@raw/(raw/u8)
+                    unsafe
+                        Raw.initialize(values[0]@raw, q)
+                    keep(values[0], spare)
+                    kk = 2
+                func subRange()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[0..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nested()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func whole()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func ending()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nestedReadAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                    let z = part[0]
 
                 """));
 

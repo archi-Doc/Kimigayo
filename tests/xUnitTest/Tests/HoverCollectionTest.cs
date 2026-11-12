@@ -1,10 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -41,6 +43,35 @@ public sealed class HoverCollectionTest : IDisposable
         {
             Assert.Contains("Available bound: confined", Assert.Single(hover.Hover.Effects).Text);
         }
+    }
+
+    // IMPL A.4, 21.3.2 (PLAN G761): a graph of 65,536 modules is Completed, rejected by the one ModuleCountLimit_Kd at the root project
+    // file, with test presence Unknown (no source was parsed); collecting hover over that unanalyzed compilation leaves it unchanged.
+    [Fact]
+    public void OptionalCollectionKeepsAModuleCountRefusal()
+    {
+        var root = Path.Combine(this.directory, "App", "App.kimiproj");
+        var target = $"Targets={{\"{WindowsProfile.Target}\"}}";
+        var files = new Dictionary<string, byte[]>(SourceIdentity.PathComparer);
+        var dependencies = new StringBuilder();
+        for (var i = 1; i <= SyntaxTable.LibraryModule; i++)
+        {
+            dependencies.Append($"L{i}={{PackageId=\"l{i}\" PackageVersion=\"1\" Project=\"../L{i}/L{i}.kimiproj\"}} ");
+            var library = $"OutputKind=\"Library\" PackageId=\"l{i}\" PackageVersion=\"1\" {target}";
+            files.Add(Path.Combine(this.directory, $"L{i}", $"L{i}.kimiproj"), Encoding.UTF8.GetBytes(library));
+        }
+
+        files.Add(root, Encoding.UTF8.GetBytes($"OutputKind=\"Library\" {target} Dependencies={{{dependencies}}}"));
+        var inputs = new ProjectFiles(files);
+        var cancellation = TestContext.Current.CancellationToken;
+        var resolution = DependencyResolver.Resolve(root, WindowsProfile.Target, Compilation.CurrentLanguageVersion, cancellation, null, false, inputs);
+        files.Add(DependencyLock.PathForProject(root), DependencyLock.Serialize(resolution));
+        var plain = Run(root, false, inputs);
+        var hover = Run(root, true, inputs);
+        Assert.Equal((CheckOutcome.Completed, false, TestPresence.Unknown, null), (hover.Outcome, hover.Accepted, hover.Presence, hover.HoverFault));
+        var error = Assert.Single(hover.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ModuleCountLimit_Kd), root), (error.Code, hover.Sources[error.Source].Path));
+        Assert.Equal(JsonSerializer.Serialize(plain), JsonSerializer.Serialize(hover));
     }
 
     // Hover's display of a Type is bounded by HoverLimits.Depth (HOVER "Deterministic limits"), counted per part of G348-d's explicit
@@ -203,10 +234,11 @@ public sealed class HoverCollectionTest : IDisposable
         Assert.All(sources, static source => Assert.Equal(source.Source.Path, source.LogicalName));
     }
 
-    private static CheckOutput Run(string path, bool collect)
+    private static CheckOutput Run(string path, bool collect, CheckInputSource? inputs = null)
     {
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, path, out var project));
-        return CheckService.Run(project, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken, collectHover: collect);
+        inputs ??= CheckInputSource.Disk;
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, path, inputs, out var project, out _));
+        return CheckService.Run(project, WindowsProfile.Target, CheckMode.Product, false, inputs, TestContext.Current.CancellationToken, collectHover: collect);
     }
 
     private static Compilation Create(bool collect)
@@ -232,5 +264,15 @@ public sealed class HoverCollectionTest : IDisposable
             compilation.Library.Kotonoha.DocumentationSources.SelectMany(static source => source.Comments),
             static comment => comment.Source.Path.EndsWith("/ArrayOperations.kimi", StringComparison.Ordinal) && comment.Declaration is FunctionKoto { IsConstructor: true, Parameters: [{ InternalName: "capacity" }] });
         Assert.Contains("zero allocates nothing", constructor.GetText().Text);
+    }
+
+    // Project and lock files from memory, and no source in any directory.
+    private sealed class ProjectFiles(Dictionary<string, byte[]> files) : CheckInputSource
+    {
+        public override byte[] ReadAllBytes(string path) => files.TryGetValue(path, out var bytes) ? bytes : throw new FileNotFoundException(path);
+
+        public override SourceContent ReadSource(string path) => throw new FileNotFoundException(path);
+
+        public override string[] GetFiles(string directory, string pattern) => [];
     }
 }

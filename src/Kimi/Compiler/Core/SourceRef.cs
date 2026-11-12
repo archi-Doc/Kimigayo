@@ -39,4 +39,4 @@ internal readonly record struct SourceRef(ushort Module, int Id)
 /// <param name="Syntax">The syntax.</param>
 /// <param name="Scope">The index of its scope in the body's scope table.</param>
 /// <param name="StatementStart">Whether it starts a source statement.</param>
-internal readonly record struct SourceInfo(SourceRef Syntax, ushort Scope, bool StatementStart);
+internal readonly record struct SourceInfo(SourceRef Syntax, int Scope, bool StatementStart);

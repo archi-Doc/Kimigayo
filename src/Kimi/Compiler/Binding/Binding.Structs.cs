@@ -18,7 +18,6 @@ public sealed partial class Binding
     private const int StorageRejected = -1;
 
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
 
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
@@ -93,8 +92,7 @@ public sealed partial class Binding
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
-        var result = this.MemberType(type, subst.Declaring) is { } member
-            ? this.SubstituteType(member, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder) : null;
+        var result = this.Substitute(type, new CallSubstitution(originBinder, subst.Types, subst.Lengths, subst.Origins) { SlotOwner = binder, Images = subst.Inputs, Declaring = subst.Declaring });
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
@@ -331,17 +329,27 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, arity: -1);
-        if (qualifier is null)
+        var path = this.NamePath(member.Left, scope, arity: -1);
+        var projection = path.End == PathEnd.Projection ? UseNode(member.Left) as MemberAccessKoto : null;
+        var projected = projection is not null ? this.BindAssociatedProjection(projection, scope) : null;
+        if (path.Symbol is null && projected is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
             return null;
         }
 
-        var type = this.ConstructorQualifierType(member.Left, qualifier, scope);
+        // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
+        var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
+            // DECISIONS BU-61, BU-184 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's
+            // use, the qualifier formed above.
+            if (projection is not null && projected is not null)
+            {
+                this.AddPendingPrerequisite(member, projection);
+            }
+
             this.FailConstructorAbsence(member, type);
             return null;
         }
@@ -349,6 +357,7 @@ public sealed partial class Binding
         member.Right.BindingState = BindingState.Resolved;
         member.Right.BoundSymbol = constructor;
         member.BoundSymbol = constructor;
+        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
         return constructor;
     }
 
@@ -366,18 +375,12 @@ public sealed partial class Binding
         }
 
         if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
-            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 } declaration)
+            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);
         }
 
-        var pattern = this.SelfType(symbol);
-        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), ((BoundType[])pattern.Components).AsSpan(0, declaration.GenericParameterNodes.Count));
-        if (type is not null)
-        {
-            this.inferredConstructorTargets.Add(syntax);
-        }
-
+        var type = this.ConstructionTargetType(syntax, symbol, scope, null);
         syntax.BoundSymbol = symbol;
         return Complete(syntax, type);
     }

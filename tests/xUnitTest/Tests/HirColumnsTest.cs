@@ -112,6 +112,24 @@ public sealed class HirColumnsTest
     // built-in witness (a Shim), and an Abort or Fail call diverges.
     // SPEC 7.2.3: Res is a read of the symbol (HirTables.ResOf): a parameter's read walks its parents up to its function and no further, so
     // the work of a publish's reads grows with the reads, each bounded by its depth below the function, not with what surrounds the function.
+    // PLAN G647 (SPEC 3.4.3): the PlaceShape column's Layers is the exact number of layers a Field's receiver is followed through, past
+    // the 16 the count once stopped at and past a byte. The Type is composed in the body, so no Origin is named.
+    [Theory]
+    [InlineData(17)]
+    [InlineData(33)]
+    [InlineData(300)]
+    public void AReceiversLayersAreCountedExactly(int layers)
+    {
+        var chain = string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"    let r{i + 1} = r{i}@ref\n"));
+        var c = MinimalEmissionTest.Analyze("struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
+            "func f() -> i32\n    let n = Node.init(weight: 1)\n    let r1 = n@ref\n" + chain + $"    return r{layers}.weight\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var read = Reachable(c.Kotonoha).OfType<MemberAccessKoto>().Last();
+        Assert.Equal(layers, HirTables.PlaceOf(read.Left).Layers);
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
     [Fact]
     public void AParameterReadWalksOnlyToItsFunction()
     {
