@@ -266,7 +266,7 @@ Ordinary members are nonvirtual. A virtual slot is selected statically; the obje
 
 ### 6.4.1. Declarations
 
-`virtual func` declares a virtual slot and its original implementation; `override func` supplies an implementation of an inherited slot. Modifier recognition and order follow [§F.3](appendices/F-syntax-summary.md#f3-keywords); the two cannot be combined. Both must be safe instance functions with a body and an `objref/Self` or `objuniq/Self` receiver (bare `self` is `ref/Self` and ineligible), without own Type, Semantics or length parameters. An original is a non-private member of an `open struct`; an override is a member of a derived struct. Type and group functions, requirements, Properties, accessors, `init` and `drop` are never virtual.
+`virtual func` declares a virtual slot and its original implementation; `override func` supplies an implementation of an inherited slot (grammar: `OverrideDeclaration`, [§F.6.3](appendices/F-syntax-summary.md#f63-functions-parameters-and-bindings)). Modifier recognition and order follow [§F.3](appendices/F-syntax-summary.md#f3-keywords); the two cannot be combined. Both must be safe instance functions with a body and an `objref/Self` or `objuniq/Self` receiver (bare `self` is `ref/Self` and ineligible), without own Type, Semantics or length parameters. An original is a non-private member of an `open struct`; an override is a member of a derived struct. Type and group functions, requirements, Properties, accessors, `init` and `drop` are never virtual.
 
 The original alone owns the public contract; an override inherits it as an explicit specialization does ([§8.13.2](08-generics-constraints-and-contracts.md#8132-inherited-contract)), mapping only the receiver Self to the derived Self:
 
