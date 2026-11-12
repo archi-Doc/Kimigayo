@@ -228,7 +228,13 @@ public sealed partial class Binding
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
         var first = this.positionClasses.Count;
-        var result = borrow && !this.FitsOwnTypeAt(node, type, scope) ? CandidateApplicability.Inapplicable : this.ProbeAggregateArgument(node, valueType, scope);
+        var result = this.ProbeAggregateArgument(node, valueType, scope);
+        if (result == CandidateApplicability.Applicable && borrow && this.KindOf(node) == PartKind.Aggregate &&
+            this.TemporaryTarget(node, type, scope) is null && !this.HasTypeWithoutExpectation(node, valueType, scope))
+        {
+            result = CandidateApplicability.Inapplicable; // A fill or mixed range at `ref/U` whose own Type is not U (K2, K3).
+        }
+
         if (result != CandidateApplicability.Applicable)
         {
             this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
@@ -263,17 +269,40 @@ public sealed partial class Binding
             (core.BoundType is null && ControlFlowExpression(core) is { } join && this.SurveyResult(join, scope).Literal) ? target : null;
     }
 
-    // SPEC 4.3.3, 4.6.2 rule 2, 12.3.1 (PLAN G585, K's K2/K3): a composite at `ref/U` that is no such temporary (a fill, a mixed range)
-    // takes nothing from U: its literal parts keep the Type its own parts give them (a fill's literal element its default, a mixed
-    // range's literal boundary its typed boundary's), so it fits only where that Type is U. A join keeps its own rows (FitsJoin).
-    private bool FitsOwnTypeAt(Koto node, BoundType type, BindingScope scope)
-        => this.TemporaryTarget(node, type, scope) is not null || KotoHelper.UnwrapParentheses(node) switch
+    // SPEC 10.2.1, 12.3.1, 4.3.3, 4.6.2 rules 2 and 3 (PLAN G585, K's K2 and K3): a composite at `ref/U` that is no temporary of U
+    // (TemporaryTarget: a fill, a mixed range) takes nothing from U: it is typed with no expected Type, as binding it with none types it
+    // (BindAndAdaptNode, a let), and fits only where that Type is U. Whether `part` has the Type `type` so, read only, where the probe
+    // fitted its shape and parts (ProbeAggregateArgument): a Literal part at any depth keeps its default (PartDefault), a literal-only
+    // boundary takes its other boundary's Type, else i32 (OtherBoundaryType); a typed, waiting or failed part is the probe's.
+    private bool HasTypeWithoutExpectation(Koto part, BoundType type, BindingScope scope)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        if (core is RangeKoto range && IsMixedRange(range))
         {
-            ArrayLiteralKoto { FillLength: not null, Elements: [var element] } => !IsUnfittedLiteral(element) ||
-                type.Components[0] is not { Kind: BoundTypeKind.FixedArray, Components: [var item] } || ReferenceEquals(this.LiteralDefault(element), item),
-            RangeKoto => type.Components[0] is not { Kind: BoundTypeKind.Constructed, Components: [var start, var end] } || ReferenceEquals(start, end),
-            _ => true,
-        };
+            return this.KeepsBoundaryType(range.Start, type.Components[0], this.IndependentRangeBoundary(range.End, this.EndType)) &&
+                this.KeepsBoundaryType(range.End, type.Components[1], this.IndependentRangeBoundary(range.Start, this.StartType));
+        }
+
+        if (core is not (TupleLiteralKoto or ArrayLiteralKoto))
+        {
+            return this.KindOf(core) != PartKind.Literal || ReferenceEquals(this.PartDefault(core, scope), type);
+        }
+
+        var elements = core is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)core).Elements;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 4.6.2 rules 2 and 3: whether a written boundary that is literal-only has the Type `type` beside the other boundary's Type.
+    private bool KeepsBoundaryType(Koto? boundary, BoundType type, BoundType? other)
+        => boundary is null || !IsLiteralOnlyPosition(boundary) || ReferenceEquals(this.OtherBoundaryType(boundary, other), type);
 
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {

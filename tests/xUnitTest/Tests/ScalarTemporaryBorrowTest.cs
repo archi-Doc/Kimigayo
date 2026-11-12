@@ -14,6 +14,10 @@ public class ScalarTemporaryBorrowTest
 
     private const string Literals = "func kf(x: ref/[2 of i64]) -> i32 => 0\nfunc kg(x: ref/[2 of i32]) -> i32 => 0\nfunc km(x: ref/Range<i64, i32>) -> i32 => 0\nfunc kn(x: ref/Range<i64, i64>) -> i32 => 0\nfunc t(c: bool, s: string, b: u8, v: i32, w: i64) -> i32\n";
 
+    private const string Composites = "func kfe(x: ref/Range<i32, FromEnd<i32>>) -> i32 => 0\nfunc kcf(x: ref/ClosedRange<i32, FromEnd<i32>>) -> i32 => 0\nfunc kfs(x: ref/Range<FromEnd<i32>, i32>) -> i32 => 0\nfunc kft(x: ref/[2 of (i64, i64)]) -> i32 => 0\nfunc kfu(x: ref/[2 of (i32, i32)]) -> i32 => 0\nfunc kff(x: ref/[2 of [2 of i64]]) -> i32 => 0\n";
+
+    private const string Values = "func kv(p: ref/[2 of i32] during a, q: ref/i32 during a) -> ref/i32 during a => q\nfunc kr(p: ref/Range<i32, i32> during a, q: ref/i32 during a) -> ref/i32 during a => q\nfunc kt(p: ref/(i32, i32) during a, q: ref/i32 during a) -> ref/i32 during a => q\nfunc ke(p: (ref/[2 of i32] during a, i32), q: ref/i32 during a) -> ref/i32 during a => q\nfunc t(n: ref/i32, v: i32) -> i32\n";
+
     private const string Inspect = "func inspect<T>(value: ref/T) -> () => ()\nfunc makeValue() -> i64 => 1\n";
 
     // SPEC 10.2: an owner scalar temporary is materialized once and shared-borrowed for a ref/T argument.
@@ -103,7 +107,9 @@ public class ScalarTemporaryBorrowTest
 
     // SPEC 12.3.1, 14.9.2 step 3 (PLAN G585, K's K1-K3): at ref/U a literal source, or a join holding one, is fitted to U, so each
     // misfit is its own record at U (one at `s`, one at `1`; one at `300`, also beside a resting join); a fill and a mixed range take
-    // nothing from U (4.3.3, 4.6.2 rule 2), at a let and at a call alike, while their own Type fits (the i32 controls).
+    // nothing from U (4.3.3, 4.6.2 rule 2), at a let and at a call alike, while their own Type fits (the i32 controls): each Literal
+    // part of a fill keeps its default at any depth (a Tuple, a join, a nested fill), and a literal-only boundary takes its typed
+    // boundary's Type, `T` for `FromEnd<T>` (the FromEnd rows are valid).
     [Theory]
     [InlineData("string", Literals + "    let x: ref/string = if c => s else => 1\n", "TransferRequired_Kd: let x: ref/string = if c => s else => 1 | TypeMismatch_Kd: let x: ref/string = if c => s else => 1")]
     [InlineData("u8", Literals + "    let x: ref/u8 = if c => b else => 300\n", "InvalidNumericLiteral_Kd: let x: ref/u8 = if c => b else => 300")]
@@ -112,7 +118,25 @@ public class ScalarTemporaryBorrowTest
     [InlineData("range", Literals + "    let x: ref/Range<i64, i32> = 0..v\n", "TypeMismatch_Kd: let x: ref/Range<i64, i32> = 0..v")]
     [InlineData("range-call", Literals + "    let r = km(0..v)\n", "NoApplicableOverload_Kd: let r = km(0..v)")]
     [InlineData("controls", Literals + "    let x: ref/[2 of i32] = [2 of 1]\n    let r = kg([2 of 1]) + kn(0..w)\n", "")]
+    [InlineData("fill-tuple-call", Composites + Literals + "    let r = kft([2 of (1, 2)])\n", "NoApplicableOverload_Kd: let r = kft([2 of (1, 2)])")]
+    [InlineData("fill-join-call", Composites + Literals + "    let r = kf([2 of if c => 1 else => 2])\n", "NoApplicableOverload_Kd: let r = kf([2 of if c => 1 else => 2])")]
+    [InlineData("fill-nested-call", Composites + Literals + "    let r = kff([2 of [2 of 1]])\n", "NoApplicableOverload_Kd: let r = kff([2 of [2 of 1]])")]
+    [InlineData("fill-controls", Composites + Literals + "    let r = kfu([2 of (1, 2)]) + kf([2 of w]) + kg([2 of if c => 1 else => 2])\n", "")]
+    [InlineData("fromend-call", Composites + Literals + "    let x: ref/Range<i32, FromEnd<i32>> = v..^1\n    let r = kfe(v..^1) + kcf(v..=^1) + kfs(^1..v)\n", "")]
     public void FitsALiteralSourceAtTheReferent(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "    return 0\n()", records);
+
+    // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a function value's call takes the Place Origin of every borrowed temporary that waits for its
+    // solve as an input of its Origins, as a direct call does: a fill, a mixed range or a Tuple literal at the root, a fill at an
+    // element. Kept past its statement, the temporary is the Loan record.
+    [Theory]
+    [InlineData("fill", Values + "    let g = kv\n    let r = g([2 of 1], n)\n", "")]
+    [InlineData("range", Values + "    let g = kr\n    let r = g(0..v, n)\n", "")]
+    [InlineData("tuple", Values + "    let g = kt\n    let r = g((1, 2), n)\n", "")]
+    [InlineData("element", Values + "    let g = ke\n    let r = g(([2 of 1], 3), n)\n", "")]
+    [InlineData("fill-use", Values + "    let g = kv\n    let r = g([2 of 1], n)\n    let b: i32 = r\n", "ComparisonLoanConflict_Kd: let r = g([2 of 1], n)")]
+    [InlineData("range-use", Values + "    let g = kr\n    let r = g(0..v, n)\n    let b: i32 = r\n", "ComparisonLoanConflict_Kd: let r = g(0..v, n)")]
+    public void AFunctionValueCallBorrowsItsWaitingTemporaries(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "    return 0\n()", records);
 
     [Theory]

@@ -452,6 +452,18 @@ public sealed partial class Binding
         return meet;
     }
 
+    // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a part that waits at `ref/U during a` for a value call's solve is a borrowed owner temporary,
+    // of U (TemporaryTarget) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
+    // `a`, by the key of a named call's evidence walk (InferComposite, InferLiteral: InferTemporary).
+    private void AddTemporaryBound(Koto part, BoundType pattern, OriginInference inference, BindingScope scope)
+    {
+        if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } origin } &&
+            (this.KindOf(part) == PartKind.Aggregate || this.TemporaryTarget(part, pattern, scope) is not null))
+        {
+            AddInputBound(inference, origin, this.PlaceOrigin(part));
+        }
+    }
+
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. A waiting part,
     // which has no actual yet, and a failed one (rule W, DECISIONS BU-79) are no evidence (SPEC 10.5.1). An argument is read by its rows
@@ -477,6 +489,10 @@ public sealed partial class Binding
             {
                 this.CollectOriginInference(parameters.Components[i], actual, inference);
             }
+            else if (solution.Rows[i].Part is { } root)
+            {
+                this.AddTemporaryBound(root, parameters.Components[i], inference, scope);
+            }
 
             for (var j = start; j < end; j++)
             {
@@ -487,10 +503,9 @@ public sealed partial class Binding
                 {
                     this.CollectOriginInference(pattern, adapted, inference);
                 }
-                else if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Pattern: { Origin: { } origin } borrowed, Part: var temporary } &&
-                    this.TemporaryTarget(temporary, borrowed, scope) is not null)
+                else if (this.childRows[j] is { Pattern: { } borrowed, Part: var temporary })
                 {
-                    AddInputBound(inference, origin, this.PlaceOrigin(temporary)); // SPEC 10.2 row 2, 15.3.6: as InferTemporary.
+                    this.AddTemporaryBound(temporary, borrowed, inference, scope);
                 }
             }
 
