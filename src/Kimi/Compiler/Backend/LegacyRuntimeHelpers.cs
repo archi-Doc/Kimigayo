@@ -14,8 +14,8 @@
 // function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4 X39; DECISIONS R5-M116):
 // writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; the
-// formatting runtime's text is written once when a caller requests it; warm writes allocate nothing; the expanded runtime texts (Texts) are built only when a code
-// generation writer first reads one, never on the check path (G350).
+// formatting runtime's text is written once when a caller requests it; warm writes allocate nothing; the expanded runtime texts
+// (Texts) are built only when a code generation writer first reads one, never on the check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a writer's destination for its kind (WriterKind),
 // or use LINQ.
 

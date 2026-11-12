@@ -12,10 +12,11 @@ namespace XunitTest;
 // Text operations, the buffers, the windows, the adapter's write, the conversions and writeLine of a view are bodies, called with their
 // operands, result slot and, for a CallerLocation row, the caller's location, at a direct call, an Item's Value call and an adapter's
 // entry; the formatting runtime is written once on request; a user formatter runs through the bodies; every built-in Type's witness is a
-// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering.
+// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word;
+// natively. The kinds are the formatting runtime's own numbering.
 public sealed partial class FunctionCodegenTest
 {
-    // A Library without a formatting row: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
+    // A Library without the formatting runtime: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
     // validateUtf8), writeLine of a view (a body), a writer's status, Text.fixed's Item called and erased.
     private const string Buffers =
         "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
@@ -138,10 +139,10 @@ public sealed partial class FunctionCodegenTest
     public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
 
-    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program calls no formatting row: writeLine of a view and the buffer, window and Text
-    // operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
+    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program requests no formatting runtime: writeLine of a view and the buffer, window and
+    // Text operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
     [Fact]
-    public void FormattingRowsCallTheirRoutine()
+    public void BufferWindowTextAndViewOperationsAreBodies()
     {
         var c = Analyze(Buffers, OutputKind.Library);
         var text = Generate(c);
@@ -451,8 +452,8 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(ir.Functions, x => CalleesOf(x).Contains(ir.Function(reserve)));
     }
 
-    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module that calls a formatting row, and is the text the
-    // old generator wrote.
+    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module whose Text.writer or owning interpolation's
+    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote.
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {
