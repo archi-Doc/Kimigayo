@@ -19843,6 +19843,34 @@ R8-M* and R9-M* by the stage of the recording unit.
     it asserts completion, which also holds before). Open for S2d1 (I-N1): f32/f64 rows in
     `FunctionCodegenTest.ATableBodyWriteReportsItsCallersLocation` (the IR layer of revision 3's CallerLocation rule); S2c pins it
     by the native Abort rows.
+- **R8-M35 SPEC 8.7.4's Contract list is one Binding member, `PrimitiveIntegerSupplies`; Position and PositionRange bound `format`
+  (PLAN G771)** (Back, 2026-11-12; the owner's O-208 (c), verbatim 「O-208 c」; Major, an acceptance mover; the Front's C-269 on the
+  Binding hunks, the Middle's C-270 on the A4 rows; no timing slot, R7-M21 (1)) SPEC 8.7.4, 8.7.5, 8.11.1, 8.11.3, 4.6.1, 4.6.3,
+  3.1.1.
+  - Cause: SPEC gave a requirement call of `format` on an abstract integer or position no bound, so a `confined` generic that
+    formats one was an error (also at a concrete instantiation, SPEC 15.6.4). In Binding, what a proven `T is PrimitiveInteger`
+    proves for T was an inline list in `ProveConformance`, and `AvailableEffectBounds` read only the premise facts whose subject is
+    T, so it saw PrimitiveInteger and never the Position it supplies.
+  - Rule: `Position` and `PositionRange` declare `effect Utf8Format.format confined` (SPEC 8.11.1's Contract item; `Core.kimi`). The
+    Contracts a PrimitiveInteger premise proves (Equatable, Comparable, Utf8Format, Position) are listed once, in
+    `PrimitiveIntegerSupplies` (`Binding.IntegerPositions.cs`, by `KimiDeclarationId`). `ProveConformance` proves them for T;
+    `AvailableEffectBounds` adds each of them for a premise fact whose Contract refines PrimitiveInteger, with that fact as the
+    evidence premise (the hover names Position's item and the PrimitiveInteger premise). A4 is unchanged: `MirEffects.Require` asks
+    `DispatchBounds`, which asks `AvailableEffectBounds`. The Copy and Owned a PrimitiveInteger supplies stay in
+    `Binding.Capabilities`, the arithmetic Contracts in `Binding.ArithmeticContracts` and `Binding.BuiltinArithmetic`.
+  - Temporary: member lookup's Position clause (`Binding.ContractCalls.cs`) stays its own statement of 8.7.4's supply, unedited.
+    Removal condition: PLAN G776 decides the member calls an entailed built-in conformance gives; the clause then reads
+    `PrimitiveIntegerSupplies` or goes (the Front's C-269 (B2)).
+  - Moves: invalid -> valid by the owner's SPEC revision: a `confined` generic formatting an abstract `T is PrimitiveInteger`, a
+    `Wrapping<T>` over it, a `P is Position` or an `R is PositionRange` (`MirEffectsTest`'s rows, named in the Q row). Through
+    `write`, an interpolation or `toString` they are valid by IMPL 21.3.4's rows only (PLAN G795); a direct `.format` on a
+    `T is PrimitiveInteger` resolves through the temporary clause (PLAN G776). The library's own conformances to both Contracts now
+    owe the bound and meet it.
+  - Rejected: (a) 8.7.4 states the bound for PrimitiveInteger (an exception to 8.11.1's "exactly the bounds of C and its ancestors"
+    and a special case in Binding); (b) keep SPEC and close G771; (d) a bound on `Utf8Format.format` itself (user formatters may
+    have effects, SPEC 22.10.1). In Binding: (A) a third copy of the list inside `AvailableEffectBounds`; (B1) member lookup reading
+    the list (it would make `a.compare(b)` resolve, G776's open question).
+  - Not verified: the static-Loan reach of the bound (static `@ref` is `Unsupported_Kd`).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
