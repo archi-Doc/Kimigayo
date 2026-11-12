@@ -62,41 +62,6 @@ public sealed partial class Binding
         return SubjectMode.Exclusive;
     }
 
-    private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
-    {
-        var a = plan.PositionStorage[earlier];
-        var b = plan.PositionStorage[later];
-        if (a.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding)
-        {
-            return true;
-        }
-
-        if (a.Kind != b.Kind || a.Case != b.Case)
-        {
-            return false;
-        }
-
-        if (a.Kind == BoundPatternKind.Literal)
-        {
-            return a.Literal == b.Literal;
-        }
-
-        var x = earlier + 1;
-        var y = later + 1;
-        while (x < a.End && y < b.End)
-        {
-            if (!ContainsPattern(plan, x, y))
-            {
-                return false;
-            }
-
-            x = plan.PositionStorage[x].End;
-            y = plan.PositionStorage[y].End;
-        }
-
-        return x == a.End && y == b.End;
-    }
-
     private void ResetMatches()
     {
         foreach (var plan in this.matches.Values)
@@ -601,6 +566,7 @@ public sealed partial class Binding
 
     private void CompletePatternAcquisitions()
     {
+        this.PatternContainmentWork = 0;
         foreach (var plan in this.matches.Values)
         {
             var scope = this.ConstraintScope(plan.Syntax);
@@ -628,17 +594,7 @@ public sealed partial class Binding
             // Publish coverage warnings only after all Pattern Type checks have completed.
             if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
             {
-                for (var later = 1; later < plan.Arms.Count; later++)
-                {
-                    for (var earlier = 0; earlier < later; earlier++)
-                    {
-                        if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
-                        {
-                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, earlier));
-                            break;
-                        }
-                    }
-                }
+                this.WarnContainedPatterns(plan);
             }
         }
     }
