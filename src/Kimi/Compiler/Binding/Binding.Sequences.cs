@@ -72,7 +72,7 @@ public sealed partial class Binding
         source.Iteration?.Decomposition.Reset(null);
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
-        source.Mode = SubjectModeOf(source.Iterable, iterable);
+        source.Mode = this.SubjectModeOf(source.Iterable, iterable);
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
             // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the

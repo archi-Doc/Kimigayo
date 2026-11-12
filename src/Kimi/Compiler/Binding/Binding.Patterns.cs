@@ -29,39 +29,6 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
-    // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
-    // is not a safe reference. Reference layers that are all uniq/objuniq give Exclusive, and a ref/objref layer, or a
-    // shared layer on the path of a bare Place, bounds the mode to Shared. A bare Place (borrowed in place) is Shared,
-    // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
-    private static SubjectMode SubjectModeOf(Koto expression, BoundType? type)
-    {
-        var bare = IsBarePlace(expression);
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
-        {
-            return bare ? SubjectMode.Shared : SubjectMode.ByValue;
-        }
-
-        if (bare && ReachedThroughShared(expression))
-        {
-            return SubjectMode.Shared;
-        }
-
-        for (var layer = type; layer is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; layer = layer.Components[0])
-        {
-            if (layer.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
-            {
-                return SubjectMode.Shared;
-            }
-
-            if (layer.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq))
-            {
-                break;
-            }
-        }
-
-        return SubjectMode.Exclusive;
-    }
-
     private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
     {
         var a = plan.PositionStorage[earlier];
@@ -321,13 +288,46 @@ public sealed partial class Binding
         return this.FinishResult(match, resultContext);
     }
 
+    // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
+    // is not a safe reference. Reference layers that are all uniq/objuniq give Exclusive, and a ref/objref layer, or a
+    // shared layer on the path of a bare Place, bounds the mode to Shared. A bare Place (borrowed in place) is Shared,
+    // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
+    private SubjectMode SubjectModeOf(Koto expression, BoundType? type)
+    {
+        var bare = IsBarePlace(expression);
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return bare ? SubjectMode.Shared : SubjectMode.ByValue;
+        }
+
+        if (bare && ReachedThroughShared(expression))
+        {
+            return SubjectMode.Shared;
+        }
+
+        for (var layer = type; layer is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; layer = layer.Components[0])
+        {
+            if (layer.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            {
+                return SubjectMode.Shared;
+            }
+
+            if (layer.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq))
+            {
+                break;
+            }
+        }
+
+        return SubjectMode.Exclusive;
+    }
+
     // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
     // stored uniq/objuniq reference is Reborrowed exclusively, a stored ref/objref reference is Copied, and any other
     // stored value is shared-borrowed.
     private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
     {
         borrow = null;
-        mode = SubjectModeOf(expression, type);
+        mode = this.SubjectModeOf(expression, type);
         if (type is null || ReferenceEquals(type, BoundType.Never) || !IsBarePlace(expression))
         {
             return type;
