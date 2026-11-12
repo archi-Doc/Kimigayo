@@ -261,6 +261,50 @@ public class LibraryImportTargetBindingTest
         AssertImportRecord(c, code, at, code is null);
     }
 
+    // PLAN G647 (SPEC 22.6): a borrow of a C-exchangeable referent is C-exchangeable through every borrow layer, past the 32 steps the
+    // walk once counted; a borrow of bool is the located Unsupported_Kd at every depth.
+    [Theory]
+    [InlineData("i32", 33, null)]
+    [InlineData("i32", 65, null)]
+    [InlineData("bool", 2, DiagnosticCode.Unsupported_Kd)]
+    [InlineData("bool", 33, DiagnosticCode.Unsupported_Kd)]
+    [InlineData("bool", 65, DiagnosticCode.Unsupported_Kd)]
+    public void ABorrowIsCExchangeableThroughEveryLayer(string terminal, int layers, DiagnosticCode? code)
+    {
+        var type = TypeDagScalingTest.RefLayers(layers, terminal);
+        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported(value: " + type + ") -> i32", "codec");
+        AssertImportRecord(c, code, code is null ? null : type, code is null);
+    }
+
+    // The walk's steps grow with the borrow layers (TermWalkWork counts each Type it enters).
+    [Fact]
+    public void TheCExchangeableWalkIsLinearInTheLayers()
+    {
+        var work = new[] { 16, 32, 64 }.Select(static layers =>
+        {
+            var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported(value: " + TypeDagScalingTest.RefLayers(layers, "i32") + ") -> i32", "codec");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return (long)c.Binding.TermWalkWork;
+        }).ToArray();
+        Assert.True(work[1] > work[0] && MirBorrowsTest.Grows(work, 2), string.Join(' ', work));
+    }
+
+    // SPEC 22.6 admits a C-layout struct with eligible Fields at any nesting, and (the owner's O-138 (a)) one that reaches itself through a
+    // borrow. Until the O-138 (a) checker unit the Field steps of one path stop at a limit (Binding.CLayoutFieldBound, PLAN G647): 32
+    // nested structs are judged, and 33, or a struct that reaches itself, are the import's located Unsupported_Kd, never a stack failure.
+    [Theory]
+    [InlineData(32, null)]
+    [InlineData(33, DiagnosticCode.Unsupported_Kd)]
+    [InlineData(0, DiagnosticCode.Unsupported_Kd)]
+    public void CLayoutFieldStepsStopAtTheLimit(int structs, DiagnosticCode? code)
+    {
+        var declarations = structs == 0 ? "#Layout(\"C\")\nstruct S0\n    public var v: i32\n    public var next: ref/S0 during static\n"
+            : "#Layout(\"C\")\nstruct S1\n    public var v: i32\n" +
+                string.Concat(Enumerable.Range(2, structs - 1).Select(static k => $"#Layout(\"C\")\nstruct S{k}\n    public var f: S{k - 1}\n"));
+        var c = AnalyzeImport(declarations + "group Native\n    " + Import + $"\n    public unsafe func imported(value: ref/S{structs}) -> i32", "codec");
+        AssertImportRecord(c, code, code is null ? null : $"ref/S{structs}", code is null);
+    }
+
     // A borrow of Weak, which Binding does not support yet, has only Weak's own record at its Type. (A borrow of a struct whose C layout is
     // unavailable is 22.6's Unsupported_Kd above since DECISIONS R4-M134 Q8: the declaration is no error.)
     [Theory]

@@ -144,6 +144,27 @@ public sealed class PairBarePositionTest
             "public func main()\n    Console.writeLine(\"p\")\n",
             code);
 
+    // SPEC 13.5.6, 3.4.2 (PLAN G756): `y@ref` and `y@uniq` borrow the written slot `y` whatever it stores, an adaptation family `p@s`
+    // too, as for the concrete `p@objref` and `p@objuniq`. Labels from SPEC: the first three are valid (a shared borrow of a `let` slot,
+    // used later; an exclusive one of a `var` slot); the others are invalid with the concrete layer's records: `@uniq` of a `let` slot
+    // (13.5.5's example), and, while the shared borrow `r` of `y` lives, an exclusive borrow of `y`, a Move of its source `p`, a
+    // replacement of `y` and a Move of `y` (15.6).
+    [Theory]
+    [InlineData("    let y = p@s\n    let r = y@ref\n", "")]
+    [InlineData("    let y = p@s\n    let r = y@ref\n    let k = r\n    _ = k\n    _ = r\n", "")]
+    [InlineData("    var y = p@s\n    let u = y@uniq\n", "")]
+    [InlineData("    let y = p@s\n    let u = y@uniq\n", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("    var y = p@s\n    let r = y@ref\n    let u = y@uniq\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let y = p@s\n    let r = y@ref\n    let q = p@move\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    var y = p@s\n    let r = y@ref\n    y = p@s\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let y = p@s\n    let r = y@ref\n    let w = y@move\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AnAdaptationFamilySlotIsBorrowed(string body, string code)
+        => AssertCheck(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "func f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n" + body + "    return 0\n" +
+            "public func main()\n    Console.writeLine(\"p\")\n",
+            code);
+
     // SPEC 7.7.2, 3.5, 8.2.3: a bare entry of a written exclusive layer Reborrows whatever its referent, an identity premise on the
     // referent included, and a written shared layer Copies (dev's verdict, kept by PLAN G748/G755, which plan node-form pair layers only).
     [Theory]

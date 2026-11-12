@@ -174,7 +174,7 @@ public enum SyntaxForm : ushort
     /// <summary>An 'origin' clause after an accessor or an executable item.</summary>
     OriginClause,
 
-    /// <summary>A Constraint prefix after an executable item, or one whose subject the declaration does not permit.</summary>
+    /// <summary>A Constraint prefix after an executable item, or in a destructor's or an accessor's body, which takes none.</summary>
     ConstraintPrefix,
 
     /// <summary>A '?' after a bare Semantics shorthand such as 'ref'.</summary>

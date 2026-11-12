@@ -14,11 +14,12 @@ public sealed partial class Binding
     private void ResetPass(BindingMode mode)
     {
         this.ResetInferenceMetrics();
-        this.inferredConstructorTargets.Clear();
+        this.inferredConstructionTargets.Clear();
         this.callInferenceFailures?.Clear();
         this.storageVersion++;
         this.signatureWalks = 0;
         this.memberWalks = 0;
+        this.termWalks = 0;
         this.baseSteps = 0;
         this.inheritedSteps = 0;
         this.inheritedPremiseSteps = 0;
