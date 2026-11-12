@@ -11929,6 +11929,7 @@ resumed by R4-M86 (2026-10-20).
     (BU-162 leaves the selector's form to Binding's reader); `ParseBareParenthesizedType` for the group (a Type list reader: an
     empty group or a list became Binding's, judged only for an applying item, so non-applying items lost their record; design review
     1 B1); judging every item's selector in Binding (Binding records no syntax code, and an item holds one rejection).
+  - Partly superseded by BU-178 (G769): one rejection per item.
 
 - **BU-174 A failure fact's variable-length part is rows reused between passes (PLAN G765)** (2026-11-11; Front, Binding; Major;
   design review 1 ACCEPT) No SPEC rule; the warm contract (G89-2, the prerequisite store's).
@@ -12051,6 +12052,8 @@ resumed by R4-M86 (2026-10-20).
     itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
     C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
     a revisit on the path ends the walk.
+  - Amended by BU-181 (PLAN G703): the walk of `OperandTerminal`, a site above, is now `Binding.LayersTerminal`, which
+    `OperandTerminal` (after its premises) and `ReadTypeReferent` call; the rule is unchanged.
 - **BU-167 A qualifier with its own list omitted before `.init` or a Case reference is one inferred construction target (PLAN
   G745)** (2026-11-11; Front, Binding; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation review ACCEPT) SPEC 9.7, 9.7.1,
   6.5.2.
@@ -12128,6 +12131,59 @@ resumed by R4-M86 (2026-10-20).
     O-167); a consumer walk to the clause (B3); the projection range through the requirement (B6).
   - Closes PLAN G507 with the failed-subject records (x01, x02, r01, i04, i12), except P1's parenthesized function-type head (the
     limit above, PLAN G767).
+- **BU-181 Two Type predicates state what the Kind lists asked; the value read's terminal is the operand walk** (Front, 2026-11-11;
+  PLAN G703; Major; design reviews 1 and 2 REVISE, 3 ACCEPT; the Middle's RP17 consent C-219; on R8-M9 and BU-175 (G647)) SPEC
+  8.2.3, 8.7.3, 8.7.4, 8.1.1, 3.4.3, 3.5.3, 10.2, 13.5.2, 13.6.4.
+  - **Rule.** `BoundType.IsProofDecided` (SPEC 8.7.3): a proof alone decides the Type's built-in conformances and roles: an abstract
+    Type by a premise, or a pair's own `s/T` by its admitted set (Parameter, TargetProjection, AssociatedProjection).
+    `BoundType.IsAbstractType` (SPEC 8.2.3): a Type parameter, a pair target, a Contract's Self, an unresolved projection: the first
+    set without a pair's own `s/T`. No reader holds a Kind list or reads the admitted set.
+  - **Each site's read.** `IsProofDecided`: `IsGenericInteger`, `IntegerApplicability`, `ShiftCountApplicability`,
+    `NegationApplicability`, `IsReadType` (they omitted the pair target: G703's cause C1); `Binding.Types`' Object Target
+    obligation, `Binding.InlineLayouts`' projection subject, `Binding.ContractCalls.RequirementMember` (each asks a proof; a pair's
+    own `s/T` under one admitted Semantics was not shown unreachable, so their set is unchanged). `IsAbstractType`:
+    `Binding.AssociatedFormation.AssociatedOriginsOutlive`, `HoverBuilder.Variables`, `Binding.OriginRequirements` (each excluded
+    the pair before the list), `Binding.RuntimeTypeTests` (SPEC 13.6.4; the pair target enters, the pair's own Type cannot be
+    written as a target). `MirOrigins.Causes.FixedOrigins` keeps its own meaning ("a Type an instance decides"; the Middle's
+    commit).
+  - **The proof site.** A pair of one admitted Semantics is identified with its head in `Binding.Capabilities.SymbolicCapability`:
+    under a Semantics fact whose mask is `owner`, the proof of `s/T is C` for an intrinsic capability C (or of an application `s/U`)
+    is the proof of its target. It is the only place that reads the admitted set for this question.
+  - **Invariant.** `Binding.TryPairLayer` decomposes every Parameter whose symbol is a `SemanticsTarget`; one it cannot is
+    `InvalidOperationException` (InternalInvariant), since `IsAbstractType` excludes a pair by its symbol alone.
+  - **The read terminal.** `Binding.LayersTerminal(type, scope)` is the one walk of SPEC 3.4.3's safe value-reference layers (ref,
+    uniq, qualifying pair layers, any order, count-free as G647 made `OperandTerminal`); `OperandTerminal` applies its premises and
+    calls it, `ReadTypeReferent` calls it for the value read (SPEC 3.5.3, 10.2) and ends in `IsReadType`, which now answers a
+    primitive Scalar too. `ReadReferent` is one read of `ReadTypeReferent` (its `ScalarReferent` arm and its pair arm are deleted).
+    A conversion's operand is read before a case is selected (`Binding.Conversions`; SPEC 13.5.2).
+  - **Temporary structure.** `SharedReferenceThroughLayers` (SPEC 10.2's shared-reference row) still walks ref and uniq layers
+    itself. Removal condition: it takes its layers from `LayersTerminal`'s walk and meets a pair layer's slot per case, and
+    `let r: ref/i32 = x` with `x: ref/(s/i32 during a)` is accepted (its own A5-moving unit, after G647; PLAN G794).
+  - **Rejected.** `or TargetProjection` at each list (one more case of an open family at five sites); one predicate for both
+    questions (design review 2: it rejected `let v: s/T = 1` under `s is owner`); the read terminal through `OperandTerminal` with
+    its premises (its forms are G542's and G355's).
+
+- **BU-178 A misplaced effect item's selector is judged on its own (PLAN G769)** (2026-11-12; Front, Binding; Major; design review 1
+  REVISE (B1), design review 2 ACCEPT, implementation review 1 REVISE (B1), implementation review 2 ACCEPT (notes N3, N4 optional);
+  commits 611178cc2 and c8f9a7f6a on `claude/f-g769`; extends BU-173) SPEC 8.11.1, F.6.2, 23.1.2; DIAGNOSTICS 4.3.
+  - Rule: `SelectorReference` (from `EffectTarget`: one lookup, `WrittenReference`, `QualifierReference`) reads the selector and its
+    scope only. An applying item reads it in `EffectTarget`; a misplaced item (`BindEffectBound`) records its position, then judges
+    its selector on its own; a fault is kept under the selector and published as the item's second record (condition 1). No verdict
+    of the item reads that judgment, so it runs with no consultation frame open (`SuspendConsultation`), as an applying item's
+    (`PrepareEffectBounds`) and a Callable list's (`PrepareCallableEffects`) do: the misplacement never rests on the selector
+    (implementation review 1's B1: inside the item's `BindNode` frame, a syntax Error among the selector's Type arguments made both
+    records derived).
+  - Moves: records on invalid programs only (Q13): +1 independent `InvalidEffectBound_Kd` per misplaced item with a faulty selector
+    (`((A))`, `(ref/A)`, a non-Contract, an unknown name, a bare generic); dependent, counted by code: +1 `InvalidEffectBound_Kd`
+    per misplaced item whose selector holds a syntax Error (`()`, `(P<>)`, `(P<[i32; 2]>)`).
+  - Rejected: the selector as its own subject (moves every applying record to the selector); a parser rejection of `((A))` (BU-162);
+    two causes in one record (DIAGNOSTICS 4.3).
+  - Supersedes, in part, BU-173's rejected option "judging every item's selector in Binding" (F, design review 1's B1): of its two
+    reasons, "an item holds one rejection" no longer holds (DIAGNOSTICS 4.3 condition 1 lets one node hold several independent
+    problems; `ReportParameterShapes` is the precedent), so a misplaced item's selector fault is the item's second record; "Binding
+    records no syntax code" still holds: the selector's syntax faults (an empty group, a list) stay the parser's, and Binding judges
+    only the Contract reference's form, kind and formation. BU-173 gains the line "Partly superseded by BU-178 (G769): one rejection
+    per item".
 - **BU-182 The substitution of a call is one value: `CallSubstitution` (PLAN G707, G700)** (2026-11-10; Front, Binding; Major, an
   acceptance mover; design reviews 1 REJECT and 2 ACCEPT, implementation reviews 1 REVISE and 2 ACCEPT; on BU-136) SPEC 15.6.4, 10.1
   step 5, 15.3.7, 15.3.1.
