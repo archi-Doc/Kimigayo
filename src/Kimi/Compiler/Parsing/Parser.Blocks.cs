@@ -361,8 +361,13 @@ public static partial class Parser
     private static bool IntroducesDeclaration(ref TokenReader reader)
         => IsContainerDeclarationStart(ref reader) ||
             reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
-            IsFunctionDefinitionStart(ref reader) ||
-            (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
+            IsFunctionDefinitionStart(ref reader) || IsSpecializationStart(ref reader);
+
+    /// <summary>Whether a SpecializationDeclaration starts here (SPEC F.6.3): the contextual keyword <c>specialize</c> before <c>func</c>.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> at a specialization.</returns>
+    internal static bool IsSpecializationStart(ref TokenReader reader)
+        => reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func;
 
     /// <summary>Whether a named function definition starts here (Appendix F.6.1 FunctionDeclaration, F.10 LocalFunction): <c>func</c>
     /// before a Name. <c>func</c> before a parameter or generic parameter list is an anonymous function, an expression (SPEC 9.4).</summary>
@@ -467,7 +472,7 @@ public static partial class Parser
             }
         }
 
-        if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
+        if (IsSpecializationStart(ref reader))
         {
             item = ParseSpecialization(ref reader);
             return true;
