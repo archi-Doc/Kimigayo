@@ -34,8 +34,9 @@ public class Utf8FormatTest
     public void BuiltinFixedWritesHaveNoHeapAllocation(string name, string value, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8Format" + name, Program("try (writer@uniq).write(" + value + ")"), 0, 0, 0, expected + "\n");
 
-    // A view's declared `format`; a built-in conformance adds no member (SPEC 22.10.2), so the scalars, Unit, a string and a wrapping
-    // integer reach the same encoder through `T is Utf8Format` (GenericRequirementUsesTheBuiltinWitness).
+    // The view's row calls the `format` the library declares (DECISIONS R8-S2d1), which SPEC 22.10.2 and 22.9 do not give a view: C-286
+    // (PLAN G776) decides it. The scalars, Unit, a string and a wrapping integer have no `format` member (SPEC 22.10.2) and reach the
+    // same encoder through `T is Utf8Format` (GenericRequirementUsesTheBuiltinWitness).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("View", "Text.utf8(\"a君\").format(writer@uniq)", "a君")]
@@ -91,7 +92,8 @@ public class Utf8FormatTest
     // SPEC 22.10.1 (design review 2, R2-B2; R8-S2d1): a direct `format` has no failure test of its own, only the adapter `write` has, so
     // on a failed writer an empty string's and an empty view's `format` reserve nothing and return Ok, while a non-empty one's
     // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1). A string's `format` is
-    // called through `T is Utf8Format` (SPEC 22.10.2: a built-in conformance adds no member); a view's is its declared member.
+    // called through `T is Utf8Format` (SPEC 22.10.2: a built-in conformance adds no member); the view's calls the `format` the library
+    // declares (DECISIONS R8-S2d1), which SPEC 22.10.2 and 22.9 do not give a view: C-286 (PLAN G776) decides it.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ADirectFormatOfEmptyOutputOnAFailedWriterReturnsOk()

@@ -53,9 +53,9 @@ public class Utf8FormatBindingTest
         Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
     }
 
-    // SPEC 22.10.2 (the valid twin): a declared `format` is a member, a view's and FromEnd's.
+    // The valid twin: FromEnd's `format`, a public member the library declares (LIBRARY), stays a member. A view's `format` has no row
+    // here: SPEC 22.10.2 and 22.9 give a view none, while the library declares one (DECISIONS R8-S2d1); C-286 (PLAN G776) decides it.
     [Theory]
-    [InlineData("Text.utf8(\"text\").format(writer@uniq)")]
     [InlineData("(^1).format(writer@uniq)")]
     public void ADeclaredFormatStaysAMember(string expression)
     {

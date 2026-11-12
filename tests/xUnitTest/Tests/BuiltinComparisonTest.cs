@@ -47,13 +47,16 @@ public class BuiltinComparisonTest
     public void OrderedPrimitiveBoundaries(string type, string minimum, string maximum)
     {
         var source = $$"""
+            func equal<T>(left: ref/T, right: ref/T) -> bool
+                T is Equatable
+                return left.equals(right)
             func order<T>(left: ref/T, right: ref/T) -> i32
                 T is Comparable
                 return left.compare(right)
             let first: {{type}} = {{minimum}}
             let last: {{type}} = {{maximum}}
             require order(first@ref, last@ref) < 0 and order(last@ref, first@ref) > 0 else => $abort("order")
-            require order(first@ref, first@ref) == 0 and first == first else => $abort("equal")
+            require order(first@ref, first@ref) == 0 and equal(first@ref, first@ref) else => $abort("equal")
             """;
         ScalarEmissionTest.EmitFixture("ComparisonBuiltinBoundary" + type, source, string.Empty);
     }
@@ -111,8 +114,9 @@ public class BuiltinComparisonTest
     }
 
     // SPEC 13.4.1, 9.6 (G776-a, the owner's O-194 (a)): the built-in and composed Equatable and Comparable conformances add no member, so
-    // `equals` and `compare` called as members of a scalar, Unit, a string, a Tuple or a reference layer over them name none (fail-before:
-    // each bound); a Constraint or the operators reach them, and a reference to a user Type keeps its declared `equals` (SPEC 3.4.3).
+    // `equals` and `compare` called as members of a scalar, Unit, a string, a Tuple (over a Type parameter too) or a reference layer over
+    // them name none (fail-before: each bound); a Constraint or the operators reach them, and a reference to a user Type keeps its
+    // declared `equals` (SPEC 3.4.3).
     [Theory]
     [InlineData("let a = 1\nlet r = a.equals(a@ref)", "a.equals")]
     [InlineData("let a = 1\nlet r = a.compare(a@ref)", "a.compare")]
@@ -125,16 +129,19 @@ public class BuiltinComparisonTest
     [InlineData("let a = (1, 2)\nlet r = a.equals((1, 2))", "a.equals")]
     [InlineData("let a = (1, 2)\nlet r = a.compare((1, 3))", "a.compare")]
     [InlineData("func f(a: ref/i32) -> bool => a.equals(a)", "a.equals")]
+    [InlineData("func f<T>(p: ref/(T, T)) -> bool\n    T is Equatable\n    return p.equals(p)", "p.equals")]
     public void ABuiltinComparisonConformanceAddsNoMember(string source, string at)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
     }
 
-    // SPEC 3.4.3 (the valid twin): a reference to a user Type reaches its declared `equals`, and a Type parameter its Constraint's.
+    // SPEC 3.4.3 (the valid twin): a reference to a user Type reaches its declared `equals`, and a Type parameter its Constraint's, a
+    // Tuple's element of that Type included.
     [Theory]
     [InlineData("struct Key\n    Self is Equatable\n    public let v: i32\n    public init(v: i32) => self.v = v\n    public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v\nfunc f(k: ref/Key) -> bool => k.equals(k)")]
     [InlineData("func f<T>(a: ref/T) -> bool\n    T is Equatable\n    return a.equals(a)")]
+    [InlineData("func f<T>(p: ref/(T, T)) -> bool\n    T is Equatable\n    return p.0.equals(p.1@ref)")]
     public void ADeclaredOrConstrainedComparisonStaysAMember(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
