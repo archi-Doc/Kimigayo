@@ -12049,6 +12049,8 @@ resumed by R4-M86 (2026-10-20).
     itself; `Binding.CLayoutFieldBound` = 32 Field steps on one path, the import's located `Unsupported_Kd` past it (33 nested
     C-layout structs, valid by SPEC 22.6, and a self-reaching struct, eligible by the owner's O-138 (a)). Removal: PLAN G716, where
     a revisit on the path ends the walk.
+  - Amended by BU-181 (PLAN G703): the walk of `OperandTerminal`, a site above, is now `Binding.LayersTerminal`, which
+    `OperandTerminal` (after its premises) and `ReadTypeReferent` call; the rule is unchanged.
 - **BU-167 A qualifier with its own list omitted before `.init` or a Case reference is one inferred construction target (PLAN
   G745)** (2026-11-11; Front, Binding; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation review ACCEPT) SPEC 9.7, 9.7.1,
   6.5.2.
@@ -12126,6 +12128,37 @@ resumed by R4-M86 (2026-10-20).
     O-167); a consumer walk to the clause (B3); the projection range through the requirement (B6).
   - Closes PLAN G507 with the failed-subject records (x01, x02, r01, i04, i12), except P1's parenthesized function-type head (the
     limit above, PLAN G767).
+- **BU-181 Two Type predicates state what the Kind lists asked; the value read's terminal is the operand walk** (Front, 2026-11-11;
+  PLAN G703; Major; design reviews 1 and 2 REVISE, 3 ACCEPT; the Middle's RP17 consent C-219; on R8-M9 and BU-175 (G647)) SPEC
+  8.2.3, 8.7.3, 8.7.4, 8.1.1, 3.4.3, 3.5.3, 10.2, 13.5.2, 13.6.4.
+  - **Rule.** `BoundType.IsProofDecided` (SPEC 8.7.3): a proof alone decides the Type's built-in conformances and roles: an abstract
+    Type by a premise, or a pair's own `s/T` by its admitted set (Parameter, TargetProjection, AssociatedProjection).
+    `BoundType.IsAbstractType` (SPEC 8.2.3): a Type parameter, a pair target, a Contract's Self, an unresolved projection: the first
+    set without a pair's own `s/T`. No reader holds a Kind list or reads the admitted set.
+  - **Each site's read.** `IsProofDecided`: `IsGenericInteger`, `IntegerApplicability`, `ShiftCountApplicability`,
+    `NegationApplicability`, `IsReadType` (they omitted the pair target: G703's cause C1); `Binding.Types`' Object Target
+    obligation, `Binding.InlineLayouts`' projection subject, `Binding.ContractCalls.RequirementMember` (each asks a proof; a pair's
+    own `s/T` under one admitted Semantics was not shown unreachable, so their set is unchanged). `IsAbstractType`:
+    `Binding.AssociatedFormation.AssociatedOriginsOutlive`, `HoverBuilder.Variables`, `Binding.OriginRequirements` (each excluded
+    the pair before the list), `Binding.RuntimeTypeTests` (SPEC 13.6.4; the pair target enters, the pair's own Type cannot be
+    written as a target). `MirOrigins.Causes.FixedOrigins` keeps its own meaning ("a Type an instance decides"; the Middle's
+    commit).
+  - **The proof site.** A pair of one admitted Semantics is identified with its head in `Binding.Capabilities.SymbolicCapability`:
+    under a Semantics fact whose mask is `owner`, the proof of `s/T is C` for an intrinsic capability C (or of an application `s/U`)
+    is the proof of its target. It is the only place that reads the admitted set for this question.
+  - **Invariant.** `Binding.TryPairLayer` decomposes every Parameter whose symbol is a `SemanticsTarget`; one it cannot is
+    `InvalidOperationException` (InternalInvariant), since `IsAbstractType` excludes a pair by its symbol alone.
+  - **The read terminal.** `Binding.LayersTerminal(type, scope)` is the one walk of SPEC 3.4.3's safe value-reference layers (ref,
+    uniq, qualifying pair layers, any order, count-free as G647 made `OperandTerminal`); `OperandTerminal` applies its premises and
+    calls it, `ReadTypeReferent` calls it for the value read (SPEC 3.5.3, 10.2) and ends in `IsReadType`, which now answers a
+    primitive Scalar too. `ReadReferent` is one read of `ReadTypeReferent` (its `ScalarReferent` arm and its pair arm are deleted).
+    A conversion's operand is read before a case is selected (`Binding.Conversions`; SPEC 13.5.2).
+  - **Temporary structure.** `SharedReferenceThroughLayers` (SPEC 10.2's shared-reference row) still walks ref and uniq layers
+    itself. Removal condition: it takes its layers from `LayersTerminal`'s walk and meets a pair layer's slot per case, and
+    `let r: ref/i32 = x` with `x: ref/(s/i32 during a)` is accepted (its own A5-moving unit, after G647; PLAN G794).
+  - **Rejected.** `or TargetProjection` at each list (one more case of an open family at five sites); one predicate for both
+    questions (design review 2: it rejected `let v: s/T = 1` under `s is owner`); the read terminal through `OperandTerminal` with
+    its premises (its forms are G542's and G355's).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
