@@ -63,11 +63,12 @@ internal sealed partial class ModuleCodegen
             return null; // Recorded.
         }
 
-        // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
-        // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
+        // SPEC 22.5.1, 8.13.2: a caller-location library function, and a specialization of one, whose ABI is its original's
+        // (TyCtxt.Original), receives its caller's location; the old generator's constructor and destructor result slot is its own ABI
+        // choice, which local 0's Type replaces here (IMPL 21.3.1).
         var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
-        var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
-            (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
+        var located = KimiLibraryCatalog.RequiresCallerLocation(this.types.Original(body.Key.Decl));
+        var flags = (located ? Abi.Flags.CallerLocation : Abi.Flags.None) | (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
         return this.Define(item, FunctionPrefix, flags, result, this.parameters.AsSpan(0, count));
     }
 

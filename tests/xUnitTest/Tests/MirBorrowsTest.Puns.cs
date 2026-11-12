@@ -50,6 +50,15 @@ public sealed partial class MirBorrowsTest
             public init()
                 self.tag = 0
                 self.next = null
+        struct WrapT<T>
+            public var value: T
+            public init(value: T)
+                self.value = value@move
+        func mutateAt<U>(x: uniq/U) => ()
+        func lookAt<U>(x: ref/U) => ()
+        enum PunE
+            Ptr(raw/(raw/u8))
+            Num(u64)
         func storePunBad()
             var kk: u8 = 1
             let r = kk@uniq
@@ -854,6 +863,398 @@ public sealed partial class MirBorrowsTest
             setTag(n@raw@raw/u32, 7)
             usep(n.next)
             kk = 2
+        func absTakeBackBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absCallBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            usep(h@raw@raw/T)
+            stash(h[0], spare)
+            kk = 2
+        func absOnTupleRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(h.0, spare)
+            kk = 2
+        func absOnTupleCopyRests<T>(v: T)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/T
+            unsafe => *tp = *tp
+            stash(h.0, spare)
+            kk = 2
+        func absOnTupleCallRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            usep(h@raw@raw/T)
+            stash(h.0, spare)
+            kk = 2
+        func absOffTupleRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let bp = h@raw@raw/u64
+            unsafe
+                let tp = (bp + 1)@raw/T
+                *tp = (*tp)@move
+            stash(h.0, spare)
+            kk = 2
+        func absOffTupleCallRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let bp = h@raw@raw/u64
+            unsafe => usep((bp + 1)@raw/T)
+            stash(h.0, spare)
+            kk = 2
+        func absOffTupleNoWriteOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let bp = h@raw@raw/u64
+            unsafe
+                let tp = (bp + 1)@raw/T
+            stash(h.0, spare)
+            kk = 2
+        func absOffGridBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [2 of raw/(raw/u8)] = [2 of other@raw]
+            let bp = h@raw@raw/u8
+            unsafe
+                let tp = (bp + 3)@raw/T
+                *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absLengthRests<T, length N>(v: T, z: [(N - N) of u16])
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [N of raw/(raw/u8)] = [N of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absLengthNoWriteOk<T, length N>(v: T, z: [(N - N) of u16])
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [N of raw/(raw/u8)] = [N of other@raw]
+            let tp = h@raw@raw/T
+            stash(h[0], spare)
+            kk = 2
+        func absZeroExprRests<T, length N>(v: T, z: [(N - N) of u16])
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [(N - N) of raw/(raw/u8)] = [(N - N) of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absTupleStoreBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [2 of raw/(raw/u8)] = [2 of other@raw]
+            let tp = h@raw@raw/(u64, T)
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absArrayStoreBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/[1 of T]
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absArrayCallBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            usep(h@raw@raw/[1 of T])
+            stash(h[0], spare)
+            kk = 2
+        func absFieldStoreBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/WrapT<T>
+            unsafe => (*tp).value = ((*tp).value)@move
+            stash(h[0], spare)
+            kk = 2
+        func absFieldCallBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            usep(h@raw@raw/WrapT<T>)
+            stash(h[0], spare)
+            kk = 2
+        func absWholeStructOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/WrapT<T>
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absUniqBorrowBad<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => mutateAt((*tp)@uniq)
+            stash(h[0], spare)
+            kk = 2
+        func absReadRefOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => lookAt((*tp)@ref)
+            stash(h[0], spare)
+            kk = 2
+        func absReadCopyOk<T>(v: T)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/T
+            var x = v
+            unsafe => x = *tp
+            stash(h[0], spare)
+            kk = 2
+        func absZeroTakeBackOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func absZeroCallOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [0 of raw/(raw/u8)] = [0 of other@raw]
+            usep(h@raw@raw/T)
+            stash(h[0], spare)
+            kk = 2
+        func absScalarHolderOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var slot: raw/(raw/u8) = other@raw
+            var h: [1 of u64] = [1 of 0]
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*tp)@move
+            stash(slot, spare)
+            kk = 2
+        func absBehindLayerOk<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [1 of raw/(raw/u8)] = [1 of other@raw]
+            let tp = h@raw@raw/(raw/T)
+            unsafe => *tp = *tp
+            stash(h[0], spare)
+            kk = 2
+        func fnStoreOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [2 of raw/(raw/u8)] = [2 of other@raw]
+            let tp = h@raw@raw/((u64) -> u64)
+            unsafe => *tp = (*tp)@move
+            stash(h[0], spare)
+            kk = 2
+        func fnCallOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: [2 of raw/(raw/u8)] = [2 of other@raw]
+            usep(h@raw@raw/((u64) -> u64))
+            stash(h[0], spare)
+            kk = 2
+        func absWideArrayRests<T>(v: T)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/[32 of T]
+            unsafe => *tp = *tp
+            stash(h.0, spare)
+            kk = 2
+        func absWideArrayU8Rests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/[32 of u8]
+            unsafe => *tp = *tp
+            stash(h.0, spare)
+            kk = 2
+        func absArray13Rests<T>(v: T)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (u64, u64, raw/(raw/u8)) = (0, 0, other@raw)
+            let tp = h@raw@raw/[13 of T]
+            unsafe => *tp = *tp
+            stash(h.2, spare)
+            kk = 2
+        func absEnumNumRests<T>(v: T, flag: bool)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var e: PunE = .Ptr(other@raw)
+            if flag
+                e = .Num(5)
+                let tp = e@raw@raw/T
+                unsafe => *tp = *tp
+            match e
+                .Ptr(let q) => stash(q@follow, spare)
+                .Num(let n) => ()
+            kk = 2
+        func absEnumNumU16Rests(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var e: PunE = .Ptr(other@raw)
+            if flag
+                e = .Num(5)
+                let tq = e@raw@raw/u16
+                unsafe => *tq = *tq
+            match e
+                .Ptr(let q) => stash(q@follow, spare)
+                .Num(let n) => ()
+            kk = 2
+        func absEnumNoWriteOk(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var e: PunE = .Ptr(other@raw)
+            if flag
+                e = .Num(5)
+            match e
+                .Ptr(let q) => stash(q@follow, spare)
+                .Num(let n) => ()
+            kk = 2
+        func absEnumPtrRests<T>(v: T)
+            T is Copy
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var e: PunE = .Ptr(other@raw)
+            let tp = e@raw@raw/T
+            unsafe => *tp = *tp
+            match e
+                .Ptr(let q) => stash(q@follow, spare)
+                .Num(let n) => ()
+            kk = 2
+        func absDropThenCallRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/T
+            unsafe => _ = (*tp)@move
+            usep(tp)
+            stash(h.0, spare)
+            kk = 2
+        func absOtherSourceRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var buf: [2 of u64] = [2 of 7]
+            let bq = buf@raw@raw/T
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/T
+            unsafe => *tp = (*bq)@move
+            stash(h.0, spare)
+            kk = 2
+        func absCallThenStoreRests<T>(v: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var h: (raw/(raw/u8), u64) = (other@raw, 0)
+            let tp = h@raw@raw/T
+            usep(tp)
+            unsafe => *tp = (*tp)@move
+            stash(h.0, spare)
+            kk = 2
         """;
 
     // PLAN G667b, SPEC 15.6 (a write may reach every Place its pointer's value carries a non-shared direct Loan or address of), 5.2.1
@@ -887,6 +1288,20 @@ public sealed partial class MirBorrowsTest
     // an enum whose only pointers are in one (zeroInTupleHolderOk, zeroPayloadBranchOk: bytes held, not Loans carried, 4.3.3),
     // holds no pointer, and a write at its address, seen or a call's, is no pun (zeroHolder*Ok, zeroNestBranchOk, lengthZeroNestOk;
     // 4.1, 5.2; the write is undefined when it runs, which is no compile-time error, 1.3).
+    // An abstract written part (PLAN G792, F1; SPEC 8.15.1: every binding, a Scalar of any size among them) is a punnable write that
+    // surely holds a Scalar, judged at its Position: over a pointer, a seen store, a call's write, a Field or an exclusive borrow of it
+    // is the conflict (absTakeBackBad, absCallBad, absTupleStoreBad, absArrayStoreBad, absArrayCallBad, absFieldStoreBad,
+    // absFieldCallBad, absUniqBorrowBad; off the grid of an all-pointer holder, absOffGridBad). Over a Tuple or an enum that holds a
+    // pointer but not only pointers, on its address or off it, the layout and the binding's size decide, as for a written Scalar (the
+    // owner's O-205 (a)): a located Unsupported_Kd where the conflict rests on it, never a Language error, on invalid forms
+    // (absOnTupleCopyRests, absOnTupleCallRests), unsettled ones (absOffTupleRests, absOffTupleCallRests, absArray13Rests,
+    // absEnumPtrRests) and valid ones alike, as their concrete controls (absWideArrayRests and absWideArrayU8Rests: a write past the
+    // holder's provenance; absEnumNumRests and absEnumNumU16Rests: the Num Case at the store), and at a holder's length that is no
+    // constant (limit (c): absLengthRests, absZeroExprRests, the last valid). After a destruction through tp (`_ = (*tp)@move`, or a
+    // non-Copy store's drop of the old value) tp's own address is formed, so its Position is not seen formed (Φ_N) and the write rests;
+    // the undecided write's Φ_M is the set's (R4-M198's named limit, PLAN G599 (b)), so a decided conflict beside it rests too
+    // (absOnTupleRests, absDropThenCallRests, absOtherSourceRests, absCallThenStoreRests). A struct written whole, a Function value, a
+    // read and a pointer to T are no pun; a holder with no pointer byte holds none (the abs*Ok rows, fnStoreOk, fnCallOk).
     // A call that writes through a borrowed holder such a write leaves undecided (a Closure's receiver, IMPL 21.1.1 and R4-M148; a
     // `uniq/` Tuple) may retain what reads through it carry, the other pointer's address included, where the punned pointer reaches
     // (5.2.1 Retained dependencies), and stores spare where that pointer points, other's holder, in either layout. Whether other is
@@ -975,6 +1390,43 @@ public sealed partial class MirBorrowsTest
     [InlineData("arrayWalkOk", "")]
     [InlineData("statedOk", "")]
     [InlineData("sliceReadOk", "")]
+    [InlineData("absTakeBackBad", "absTakeBackBad: kk = 2")]
+    [InlineData("absCallBad", "absCallBad: kk = 2")]
+    [InlineData("absOnTupleRests", "absOnTupleRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOnTupleCopyRests", "absOnTupleCopyRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOnTupleCallRests", "absOnTupleCallRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absWideArrayRests", "absWideArrayRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absWideArrayU8Rests", "absWideArrayU8Rests: kk = 2 Unsupported_Kd")]
+    [InlineData("absArray13Rests", "absArray13Rests: kk = 2 Unsupported_Kd")]
+    [InlineData("absEnumNumRests", "absEnumNumRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absEnumNumU16Rests", "absEnumNumU16Rests: kk = 2 Unsupported_Kd")]
+    [InlineData("absEnumNoWriteOk", "")]
+    [InlineData("absEnumPtrRests", "absEnumPtrRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absDropThenCallRests", "absDropThenCallRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOtherSourceRests", "absOtherSourceRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absCallThenStoreRests", "absCallThenStoreRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOffTupleRests", "absOffTupleRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOffTupleCallRests", "absOffTupleCallRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absOffTupleNoWriteOk", "")]
+    [InlineData("absOffGridBad", "absOffGridBad: kk = 2")]
+    [InlineData("absLengthRests", "absLengthRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absLengthNoWriteOk", "")]
+    [InlineData("absZeroExprRests", "absZeroExprRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absTupleStoreBad", "absTupleStoreBad: kk = 2")]
+    [InlineData("absArrayStoreBad", "absArrayStoreBad: kk = 2")]
+    [InlineData("absArrayCallBad", "absArrayCallBad: kk = 2")]
+    [InlineData("absFieldStoreBad", "absFieldStoreBad: kk = 2")]
+    [InlineData("absFieldCallBad", "absFieldCallBad: kk = 2")]
+    [InlineData("absWholeStructOk", "")]
+    [InlineData("absUniqBorrowBad", "absUniqBorrowBad: kk = 2")]
+    [InlineData("absReadRefOk", "")]
+    [InlineData("absReadCopyOk", "")]
+    [InlineData("absZeroTakeBackOk", "")]
+    [InlineData("absZeroCallOk", "")]
+    [InlineData("absScalarHolderOk", "")]
+    [InlineData("absBehindLayerOk", "")]
+    [InlineData("fnStoreOk", "")]
+    [InlineData("fnCallOk", "")]
     public void AScalarWrittenOverARawPointerLeavesItReachingUnownedStorage(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
