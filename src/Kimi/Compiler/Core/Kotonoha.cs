@@ -214,7 +214,7 @@ public sealed partial class Kotonoha
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
-    public IEnumerable<DocumentationSource> DocumentationSources => this.documentationSources ?? Enumerable.Empty<DocumentationSource>();
+    public IReadOnlyList<DocumentationSource> DocumentationSources => (IReadOnlyList<DocumentationSource>?)this.documentationSources ?? [];
 
     internal void RecordDocumentation(DocumentationSource? documentation)
     {

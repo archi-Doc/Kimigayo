@@ -43,7 +43,7 @@ public class DependentRequirementConstraintBindingTest
     [InlineData("string", false)]
     public void AssociatedRequirementsAreNormalizedAfterSubstitution(string item, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.Origin.Item\n    T is Origin\nfunc use(value: Target<Source>)\n    return");
+        var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.(Origin).Item\n    T is Origin\nfunc use(value: Target<Source>)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());

@@ -180,8 +180,66 @@ public sealed partial class Binding
         return this.ResultSemantics(type, scope) == SemanticsMask.Owner;
     }
 
+    // A family is interned only when no pair application has its cases: SPEC 13.5.1's `p@s` abbreviates `p@s/U`, whose Type is the
+    // application `s/U` (8.2.3: one Type, one representation), so a case list that one application's cases (CaseType) give is that
+    // application, as a list of identical cases is that case (TyCtxt.Intern).
     private BoundType TypeFamily(BindingSymbol pair, SemanticsMask admitted, ReadOnlySpan<BoundType> children)
-        => this.types.Intern(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
+        => this.FamilyApplication(pair, admitted, children) ??
+            this.types.Intern(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
+
+    // The pair application `s/U` (with the outer Origin its borrow cases state) whose case Types over the family's mask are `children` in
+    // SemanticsOrder, or null. `U` and the Origin are read off a layer case; the owner case is `U` itself. The mask is the binder's
+    // admitted set where the family is formed, and no reader of it is in a wider scope (DECISIONS BU-172), so only the cases compare.
+    private BoundType? FamilyApplication(BindingSymbol pair, SemanticsMask admitted, ReadOnlySpan<BoundType> children)
+    {
+        // One case stays that case (TyCtxt.Intern), the concrete Type its application's determined head forms (SPEC 8.2.3).
+        if (children.Length < 2 || pair.WholeType is not { } whole)
+        {
+            return null;
+        }
+
+        BoundType? target = null;
+        BoundOrigin? origin = null;
+        var count = 0;
+        foreach (var mode in SemanticsOrder)
+        {
+            if (admitted.Contains(mode))
+            {
+                var child = children[count++];
+                if (mode == SemanticsKind.Owner)
+                {
+                    target ??= child;
+                }
+                else if (child is { Kind: BoundTypeKind.Semantics, Components: [var below] } && child.Semantics == mode)
+                {
+                    target ??= below;
+                    origin ??= IsBorrow(mode) ? child.Origin : null;
+                }
+            }
+        }
+
+        if (target is null)
+        {
+            return null;
+        }
+
+        var application = ReferenceEquals(target, pair.Type) && (origin is null || ReferenceEquals(origin, this.PairOuterOrigin(pair))) ? whole
+            : this.types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [target], origin: origin);
+        count = 0;
+        foreach (var mode in SemanticsOrder)
+        {
+            if (admitted.Contains(mode))
+            {
+                ReadOnlySpan<PairCase> selected = [new(pair, mode)];
+                if (!ReferenceEquals(this.CaseType(application, selected), children[count++]))
+                {
+                    return null;
+                }
+            }
+        }
+
+        return application;
+    }
 
     private BoundType TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, BoundType? target = null)
     {
@@ -227,13 +285,15 @@ public sealed partial class Binding
         _ => this.Form(whole.Semantics, target, origin),
     };
 
-    private BoundType? SubstituteFamilyArgument(
-        BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, int slot, BoundType whole)
+    private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
+        // A slot the slot owner's column does not bind is the declaring Type's (CallSubstitution.Slot), whose occurrence then takes each case in turn.
+        var declaring = substitution.OwnsSlot(ContainerSlot(substitution.SlotOwner, family.Symbol!)) ? null : substitution.Declaring;
+        var slots = declaring is null ? substitution.Types : (BoundType[])declaring.Components;
         var children = this.RentTypes(whole.Components.Count);
-        var caseArguments = this.typeScratch.Rent(arguments.Length);
+        var caseArguments = this.typeScratch.Rent(slots.Length);
         var cases = this.adaptationCaseScratch.Rent(1);
-        arguments.CopyTo(caseArguments);
+        slots.CopyTo(caseArguments);
         try
         {
             var count = 0;
@@ -243,7 +303,10 @@ public sealed partial class Binding
                 {
                     cases[0] = new(whole.Symbol!, mode);
                     caseArguments[slot] = whole.Components[count];
-                    if (this.SubstituteType(family, binder, caseArguments.AsSpan(0, arguments.Length), lengths, origins, images, originBinder) is not { } child)
+                    var caseSlots = caseArguments.AsSpan(0, slots.Length);
+                    var caseSubstitution = declaring is null ? substitution with { Types = caseSlots }
+                        : substitution with { Declaring = this.types.Rebuild(declaring, caseSlots!, declaring.Origin, (BoundOrigin[])declaring.OriginArguments) };
+                    if (this.Substitute(family, caseSubstitution) is not { } child)
                     {
                         return null;
                     }

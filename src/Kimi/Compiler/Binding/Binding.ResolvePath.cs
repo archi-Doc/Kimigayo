@@ -126,9 +126,7 @@ public sealed partial class Binding
             ContractKoto => LookupRole.ContractReference, // A parent (F.6 ContractParentList, SPEC 8.4.3).
             MemberAccessKoto member when grouped && (ReferenceEquals(member.Right, node) || !bound)
                 => LookupRole.ContractReference, // `.(C).Name` (8.5.2) and the selector `(C).Name` (8.5.1).
-            // SPEC 9.6: a path's intermediate component, the selector `C.Name` too. ProjectionQualifier still looks up the `C` of `T.C.X`
-            // unqualified in this row (dev's reading; SPEC 8.5.2 makes it an ordinary path: R7-N1e2-2b).
-            MemberAccessKoto => LookupRole.Qualifier,
+            MemberAccessKoto => LookupRole.Qualifier, // SPEC 9.6: a path's intermediate component, the selector `C.Name` too.
             EffectBoundKoto => grouped ? LookupRole.ContractReference : LookupRole.Qualifier, // `effect (A).r` (8.11.1), `effect A.r` (9.6).
             AliasKoto => LookupRole.Qualifier, // SPEC 18.2.1, 9.5.1.
             TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq }

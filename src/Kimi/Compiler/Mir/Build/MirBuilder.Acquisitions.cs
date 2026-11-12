@@ -70,7 +70,7 @@ internal sealed partial class MirBuilder
                     _ => MirOperand.Move(place),
                 };
             case HirAdaptation.ReferentRead:
-                return MirOperand.Copy(this.Follow(place, 16, expected));
+                return MirOperand.Copy(this.FollowTo(place, expected));
             case HirAdaptation.Erasure: // SPEC 7.7.4: of the value its ordinary acquisition gives.
                 var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
                 return this.Temporary(
@@ -79,10 +79,10 @@ internal sealed partial class MirBuilder
                     node,
                     into);
             case HirAdaptation.ReferenceRead:
-                place = this.Follow(place, 16, target);
+                place = this.FollowTo(place, target);
                 break;
-            case HirAdaptation.PayloadProjection:
-                place = this.body.Project(place, MirProjectionKind.Deref, 0);
+            case HirAdaptation.PayloadProjection: // The handle's or view's own layer: a Deref, or a pair layer's PairLayer (TyCtxt.Layer).
+                place = this.FollowLayers(place, 1);
                 break;
         }
 
@@ -144,7 +144,7 @@ internal sealed partial class MirBuilder
     {
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
-        place = referent is null ? place : this.Follow(place, 16, referent);
+        place = referent is null ? place : this.FollowTo(place, referent);
         for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(this.body, referent, layer);
             layer = AdtDef.Base(layer))
         {

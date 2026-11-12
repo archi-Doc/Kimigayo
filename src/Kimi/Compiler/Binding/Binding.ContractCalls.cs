@@ -14,7 +14,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && !type.IsProofDecided && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -195,12 +195,6 @@ public sealed partial class Binding
         BoundType? declaringType = null,
         ReadOnlySpan<BoundLength?> lengths = default)
     {
-        if (this.CallMemberPattern(type, binder, declaringType) is not { } memberType)
-        {
-            return null;
-        }
-
-        type = memberType;
         if (self is not null)
         {
             type = this.ContractType(type, scope, self);
@@ -216,10 +210,10 @@ public sealed partial class Binding
             }
         }
 
-        // PLAN G457: the callee's Type slots and its Origins and inputs in one pass, so a Type argument naming the callee's own Origin (a call
-        // in its own body) keeps the caller's; then normalized in the caller's terms.
-        var result = this.SubstituteType(
-            type, CallSlotOwner(binder), arguments, lengths, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))), binder);
+        // PLAN G457, G707: the call's substitution in one pass over the callee's and its declaring Type's slots, so a Type argument naming
+        // either's own slot or Origin (a call in its own body, a call from another member) keeps the caller's; then normalized in the
+        // caller's terms.
+        var result = this.Substitute(type, SubstitutionOf(binder, declaringType, arguments, lengths, origins, inputs));
         return result is null ? null : this.ContractType(result, scope, self);
     }
 

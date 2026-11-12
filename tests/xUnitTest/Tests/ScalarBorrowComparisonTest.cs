@@ -46,6 +46,20 @@ public class ScalarBorrowComparisonTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
+    // PLAN G647 (SPEC 13.4, 13.5.5): a comparison reads its operands' terminals below every qualifying pair layer and every safe
+    // reference layer, past the 8 pair layers and 64 reference layers the walks once counted; bool has no order at any depth.
+    [Theory]
+    [InlineData(true, 9)]
+    [InlineData(true, 17)]
+    [InlineData(true, 33)]
+    [InlineData(false, 65)]
+    public void ComparesTerminalsBelowEveryLayer(bool pair, int layers)
+    {
+        TypeDagScalingTest.AssertLayeredTwins("eq", pair, layers);
+        TypeDagScalingTest.AssertLayeredTwins("lt", pair, layers);
+        Assert.Equal("1*OperatorNotDefined_Kd", DiagnosticCorpus.RecordProfile(TypeDagScalingTest.LayeredForm("lt", pair, layers, false), "Application"));
+    }
+
     // SPEC 13.4: one operand of Type Never compares with any referent; two Never terminals are equal Types.
     [Theory]
     [InlineData("func f(b: i32, a: Never) -> bool => b == a")]

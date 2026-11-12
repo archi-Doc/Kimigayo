@@ -9,12 +9,12 @@ namespace XunitTest;
 public class ProjectedConstraintCallBindingTest
 {
     [Theory]
-    [InlineData("Source.Origin.Item", "i32")]
-    [InlineData("(Source.Origin.Item, i32)", "(i32, i32)")]
-    [InlineData("[2 of Source.Origin.Item]", "[2 of i32]")]
-    [InlineData("Source.Origin.Item or string", "string")]
-    [InlineData("Source.Origin.Item and Copy", "i32")]
-    [InlineData("not Source.Origin.Item", "string")]
+    [InlineData("Source.(Origin).Item", "i32")]
+    [InlineData("(Source.(Origin).Item, i32)", "(i32, i32)")]
+    [InlineData("[2 of Source.(Origin).Item]", "[2 of i32]")]
+    [InlineData("Source.(Origin).Item or string", "string")]
+    [InlineData("Source.(Origin).Item and Copy", "i32")]
+    [InlineData("not Source.(Origin).Item", "string")]
     public void ConcreteProjectedRequirementAdmitsMatchingArgument(string requirement, string argument)
     {
         var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
@@ -29,11 +29,11 @@ public class ProjectedConstraintCallBindingTest
     }
 
     [Theory]
-    [InlineData("Source.Origin.Item", "string")]
-    [InlineData("(Source.Origin.Item, i32)", "(i32, string)")]
-    [InlineData("[2 of Source.Origin.Item]", "[3 of i32]")]
-    [InlineData("Source.Origin.Item and string", "i32")]
-    [InlineData("not Source.Origin.Item", "i32")]
+    [InlineData("Source.(Origin).Item", "string")]
+    [InlineData("(Source.(Origin).Item, i32)", "(i32, string)")]
+    [InlineData("[2 of Source.(Origin).Item]", "[3 of i32]")]
+    [InlineData("Source.(Origin).Item and string", "i32")]
+    [InlineData("not Source.(Origin).Item", "i32")]
     public void RefutedProjectionConstraintRejectsCall(string requirement, string argument)
     {
         var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
@@ -48,11 +48,11 @@ public class ProjectedConstraintCallBindingTest
 
     [Theory]
     [InlineData("i32", true)]
-    [InlineData("Source.Origin.Item", true)]
+    [InlineData("Source.(Origin).Item", true)]
     [InlineData("Copy", false)]
     public void CallerEvidenceIsNormalizedWithoutAssumingCalleeConstraints(string evidence, bool valid)
     {
-        var source = Source("Source.Origin.Item", "i32");
+        var source = Source("Source.(Origin).Item", "i32");
         source = source[..source.LastIndexOf("take<i32>()", StringComparison.Ordinal)] + "func caller<U>()\n    U is " + evidence + "\n    take<U>()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
@@ -66,7 +66,7 @@ public class ProjectedConstraintCallBindingTest
     [InlineData(true)]
     public void ConstructedQualifierSubstitutionUsesItsDeclarationEvidence(bool valid)
     {
-        var source = Source("Source.Origin.Item", "i32").Replace("struct Source", "struct Source<U>\n    U is Copy", StringComparison.Ordinal).Replace("T is Source.Origin.Item", "T is Source<i32>.Origin.Item", StringComparison.Ordinal);
+        var source = Source("Source.(Origin).Item", "i32").Replace("struct Source", "struct Source<U>\n    U is Copy", StringComparison.Ordinal).Replace("T is Source.(Origin).Item", "T is Source<i32>.(Origin).Item", StringComparison.Ordinal);
         if (!valid)
         {
             source = source.Replace("Source<i32>", "Source<string>", StringComparison.Ordinal);
@@ -82,9 +82,9 @@ public class ProjectedConstraintCallBindingTest
     [InlineData("internal", false)]
     public void LateInvalidWitnessCannotMakeNormalizedConstraintUsable(string access, bool valid)
     {
-        var source = access + " contract Hidden\n    associate Value\npublic struct Local\n    Self is Hidden\n    associate Hidden.Value is i32\n" + Source("Source.Origin.Item", "i32")
+        var source = access + " contract Hidden\n    associate Value\npublic struct Local\n    Self is Hidden\n    associate Hidden.Value is i32\n" + Source("Source.(Origin).Item", "i32")
             .Replace("associate Item", "associate Item\n    func f(self: ref/Self, x: i32) -> i32", StringComparison.Ordinal)
-            .Replace("associate Origin.Item is i32", "associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Value) -> i32 => x", StringComparison.Ordinal);
+            .Replace("associate Origin.Item is i32", "associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.(Hidden).Value) -> i32 => x", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         AssertCall(c, valid);
@@ -96,13 +96,13 @@ public class ProjectedConstraintCallBindingTest
     [Fact]
     public void ChangingArgumentRevokesAndRestoresTheRetainedPlan()
     {
-        var c = MinimalEmissionTest.Analyze(Source("Source.Origin.Item", "i32"));
+        var c = MinimalEmissionTest.Analyze(Source("Source.(Origin).Item", "i32"));
         var call = Call(c);
         var plan = call.CallOf();
         Assert.NotNull(plan);
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = Assert.Single(generic.TypeArguments);
-        var donor = MinimalEmissionTest.Analyze(Source("Source.Origin.Item", "string"));
+        var donor = MinimalEmissionTest.Analyze(Source("Source.(Origin).Item", "string"));
         var replacement = Assert.Single(Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments);
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(generic, original, replacement));
@@ -117,7 +117,7 @@ public class ProjectedConstraintCallBindingTest
     [Fact]
     public void WarmProjectedConstraintsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source("([2 of Source.Origin.Item], i32)", "([2 of i32], i32)"));
+        var c = MinimalEmissionTest.Analyze(Source("([2 of Source.(Origin).Item], i32)", "([2 of i32], i32)"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

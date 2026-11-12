@@ -47,14 +47,14 @@ internal sealed partial class MirBuilder
             {
                 var rejected = this.body.AddBlock();
                 var accepted = this.body.AddBlock();
-                this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
+                this.scope = this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
                 var test = this.Guard(guard, rejected, accepted, plan, arm.Pattern, start);
                 this.Enter(rejected, test);
                 this.body.Terminate(rejected, MirTerminator.Goto(next, this.Info(guard)));
                 this.Enter(accepted, test);
             }
 
-            this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
+            this.scope = this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
             var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
             var value = this.TargetBody(arm.Syntax.Body, input);
@@ -106,7 +106,7 @@ internal sealed partial class MirBuilder
         var position = plan.Positions[index];
         var tested = false;
         this.selected[start + index] = place;
-        place = this.Follow(place, position.ImplicitFollows);
+        place = this.FollowLayers(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
             this.LiteralTest(position, place, next);

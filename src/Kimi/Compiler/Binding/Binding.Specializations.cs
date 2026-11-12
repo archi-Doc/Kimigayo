@@ -26,8 +26,9 @@ public sealed partial class Binding
         => function?.Declaration is FunctionKoto declaration && this.specializations.TryGetValue(declaration, out var specialization)
             ? specialization.Original : null;
 
-    /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): through the stored
-    /// Origins of the Type declaring the callee, then the call's Origins and inputs and the pair Origins its Type arguments bind.</summary>
+    /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): the call's Origins and
+    /// inputs, the pair Origins its Type arguments bind and the stored Origins of the Type declaring the callee, in one pass
+    /// (Binding.CallSubstitution).</summary>
     /// <param name="origin">The body's Origin.</param>
     /// <param name="target">The callee.</param>
     /// <param name="declaring">The instantiated Type declaring the callee.</param>
@@ -36,18 +37,7 @@ public sealed partial class Binding
     /// <param name="types">The Type arguments by slot.</param>
     /// <returns>The Origin in the instance.</returns>
     internal BoundOrigin ForwardOrigin(BoundOrigin origin, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, ReadOnlySpan<BoundType?> types)
-    {
-        if (declaring is { Symbol: { } symbol } container)
-        {
-            // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
-            origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
-                ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
-                : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
-        }
-
-        // A body's Origin may name a pair's `o` (SPEC 13.5.5), which the instance binds through its Type arguments.
-        return this.SubstituteStoredOrigin(origin, target.Declaration, origins, inputs, types);
-    }
+        => this.Substitute(origin, SubstitutionOf(target.Declaration, declaring, types, default, origins, inputs));
 
     /// <summary>Lists the verified specializations of a generic original (SPEC 8.13).</summary>
     /// <param name="original">The original generic function.</param>
@@ -310,7 +300,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
-            var constraints = this.CheckConstraints(definition.TypeConstraints, definition, arguments, scope, null, null, lengths);
+            var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope);
             if (constraints != ConstraintProof.Proven)
             {
                 _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
