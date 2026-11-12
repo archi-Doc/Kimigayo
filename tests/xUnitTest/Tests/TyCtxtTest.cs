@@ -1347,7 +1347,8 @@ public sealed partial class TyCtxtTest
 
     // DECISIONS R5-M61 (F package 4.5): every requirement call in a generic body, in the instance a closed call of that body makes, resolves
     // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
-    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
+    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type. The corpus's string, view and wrapping
+    // integer format calls resolve to bodies since R8-S2d1 (114 of them: Builtin 173 -> 59, Body 38 -> 152).
     [Fact]
     public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {
@@ -1365,7 +1366,7 @@ public sealed partial class TyCtxtTest
         WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
         var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
         Assert.True(
-            problems.Count == 0 && counts == "corpus Body 38, Builtin 173, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
+            problems.Count == 0 && counts == "corpus Body 152, Builtin 59, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
             $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));

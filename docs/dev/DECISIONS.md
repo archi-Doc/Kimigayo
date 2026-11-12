@@ -19012,6 +19012,77 @@ R8-M* and R9-M* by the stage of the recording unit.
     by code generation from the Type (a consumer deciding what the table publishes); i128 in Kimigayo (RQ16); one generic group for
     all scalars (R8-M4: one function per requirement).
   - Extended by R8-M34 (R8-S2c, 2026-11-11): the `F32Format` and `F64Format` rows over the producer kind `StorageFormatFloat`.
+  - **Owner, S2d1.** string's Utf8Format is the String row's (`StringWitness.format`, `writer.writeUtf8(Text.utf8(self))`);
+    `Wrapping<T>`'s is a generic table row `WrappingFormat` over both shapes of the Type (a concrete wrapping scalar, argument its
+    `Underlying`; the `Wrapping` construction at an abstract `T`, argument `Components[0]`), body `let value = self@follow@I` then
+    `writer.write(value)` (SPEC 13.5.4; FromEnd's form); `Text.Utf8Slice` declares `Self is Utf8Format` in source with a public
+    `format` (`writer.writeUtf8(self@follow)`), as FromEnd does. Each has a `SourceFunction, CallerLocation` catalog row (SPEC
+    22.5.1, until G1); the view's row reaches its member through a new `KimiLibraryContainer.Utf8Slice`, as FixedBuffer's and
+    HeapBuffer's do. Empty output reserves nothing and has no failure test (SPEC 22.10.1; the leaf's, R2-B2).
+  - **The Wrapping body's write at S2d1, not `value.format(writer)`** (the Middle's N4: C-252's consent text and the plan's N3 named
+    the direct call; the body writes). `write<T>` is a published row (R4-M28), so it composes at the caller; a direct requirement
+    call on the abstract `I` keeps its declaration's bounds (SPEC 15.6.4), and `Utf8Format.format` declares none, so with the direct
+    call a `confined` write of a concrete `Wrapping<u8>` reported `IncompatibleContractImplementation_Kd` (as a generic body's
+    direct `v.format(writer)` on `I is PrimitiveInteger` at `u8` already does at S2c's head: SPEC-conformant; only the owner's open
+    O-182 would change it).
+  - **Why a row for `Wrapping<T>` at S2d1, not a source conformance.** A source conformance needs a public implementation member
+    (SPEC 8.6.3, 9.4.6: `Access(T) ∩ Access(C) ⊆ Access(M)`), and SPEC 3.1.1, SPEC 22.1's row and LIBRARY §1.4 give `Wrapping<T>` no
+    members. A concrete `Wrapping<I>` is a Primitive scalar that `FormattingTypes.IsBuiltin` answers, so a source witness would also
+    be unreachable. The row carries the abstract case too: `Wrapping<T>` has a Type shape at an abstract `T` (as the FixedArray row
+    keys `[N of E]`), and formation requires `T is PrimitiveInteger` (SPEC 3.1.1), so the scope-free arm proves nothing a valid
+    program lacks. `Binding.Contracts.cs`'s `IsGenericWrapping` premise keeps Equatable and Comparable only (not tabled).
+    The table arm, like the IsBuiltin arm, proves only once contract headers are ready, where the premise answered at any time: an
+    abstract `Wrapping<T>` is then proven exactly as every concrete built-in already is, a user Type's conformance is `Unknown`
+    before ready too, and `SignatureVerdict`/`formedParts` keep no pre-ready answer, so no new class of header-time demand arises
+    (to be confirmed at landing by the gate's header-position pairs against `i32`/`Wrapping<u8>` controls).
+  - **Moves, S2d1.** A4's `Require` reads the table for a `Wrapping` construction over an abstract `T` (`TyCtxt.Witnesses`): a
+    `confined` or effect-bounded generic that formats a `Wrapping<T>` reports `IncompatibleContractImplementation_Kd` at its
+    conformance where base reported `Unsupported_Kd` (a Limit): SPEC 8.11.3 gives the abstract `T`'s formatting requirement call
+    unknown environment effects (`Utf8Format.format` declares no bound), a conflict under `confined`, as formatting `T` itself
+    already reported. Valid forms do not move. (Noted for B: SPEC 8.7.4 could supply a bound for `T is PrimitiveInteger`'s built-in
+    formatting; not acted on.) The same class in the other bound positions: a Callable Constraint's `confined` bound
+    (`Unsupported_Kd` -> `UnsatisfiedEffectBound_Kd`) and a confined put with a live borrow of an immutable static, each moving to
+    its bare-`T` program's record.
+    Two valid classes move from `Unsupported_Kd` (the Limit) to accepted (the Middle's hunk review N1, C-252 condition 2; SPEC
+    15.6.4, 4.9.6, 8.11.1, 8.11.3; each equal to its bare control): (a) a generic that formats `Wrapping<T>`, called at `u8` from a
+    `confined` member (the `Wrapping<T>` write composes at the caller, where the integer's callee is known); (b) a `confined`
+    generic whose `T` is also bound by a Contract with `effect Utf8Format.format confined`.
+    Two more moves, accepted by B: (1) a dependent verdict over an ill-formed `Wrapping<T>` argument is not reported; its formation
+    records are (`Holder<Wrapping<T>>` with `E is Utf8Format` and `T` not proven `PrimitiveInteger`: the Holder application's
+    `UnprovenConstraint_Kd` goes, the two at `Wrapping<T>` stay; AGENTS Diagnostics, a node's verdict over a failed child); (2) a
+    Type-qualified Function Item of the view's member, `let show = Text.Utf8Slice.format` then `show(x, writer@uniq)`, valid by SPEC
+    7.3.4, 10.2 and 15.4.4 (the omitted Origin slot is an inference variable of the local), moves from a false Language error
+    (`NoApplicableOverload_Kd` at the call, through the requirement) to the located `Unsupported_Kd` at the Item that members of
+    Origin-bearing containers get (`Binding.UnsupportedReference`, Binding has no inference variables in bodies yet).
+    B's I-N3 (implementation review 1): (1)'s mechanism: the scope-free `WrappingFormat` construction arm answers `Proven` for any
+    `Wrapping` construction, so Holder's `E is Utf8Format` verdict over an ill-formed `Wrapping<T>` is not reported while its two
+    formation records are (a node's own verdict over a failed child; Q13); it cannot widen acceptance, since a written `Wrapping<T>`
+    is always formed with its `PrimitiveInteger` check. (2) is PLAN G10's gap (a Type-qualified instance member as a value). D3-N2's
+    static pair could not observe a static Loan (its Array static and borrow are `Unsupported_Kd`; static Loans are PLAN P42/G78's
+    open work).
+  - **`IsBuiltin` narrowed at S2d1 (F2).** The view's conformance is declared, so `FormattingTypes.IsBuiltin` no longer holds it
+    (otherwise the proof arm and the narrowing keep it on `builtinFormat`); `IsBuiltin` now means "formatted by the compiler's
+    built-in conformance, without a declared or tabled witness", plus the tabled Types temporary 2 still answers.
+    `FormattingTypes.cs` is the Front's (plan §3.1).
+  - **Temporary list, S2d1.** Item 6 superseded: withdrawn at S2d1 (no source conformance exists; the `IsGenericWrapping` admission
+    in `RequirementMember` serves the arithmetic Contracts and was never a Utf8Format statement). Item 3's "beside" note gains
+    nothing: `FormatKind`'s 17 and the routine's `i32 17` case are deleted outright; string's 16 stays for `SegmentText` (item 5).
+  - **Counts, S2d1.** `KimiDeclarationId` +3 (`StringWitnessFormat`, `Utf8SliceFormat`, `WrappingFormatFormat`), catalog 187 -> 190;
+    `WitnessMembers` +1 (`WrappingFormat`, local), `KimiLibraryContainer` +1 (`Utf8Slice`, local); no `CompilerFunctionKind`,
+    `IntrinsicKind`, `IntrinsicId` or diagnostic code.
+  - **Rejected, S2d1.** `Wrapping<T>`'s source conformance (above); keeping the premise's Utf8Format conjunct beside the row (two
+    owners of one conformance); deferring `Wrapping<T>` to S2b1 (moves the question).
+  - **RP8 exception, S2d1 (the owner's O-195 (a), verbatim 「O-195 a」).** S2d1 lands with the O2 Interpolation kernel slower: T-152
+    (A a7cafaad4, B 6d4442652; `artifacts\benchmarks\r8-s2d1-o2-20261112-073238`) B/A 1.128 [1.106, 1.150], R5-M135 aligned 1.076
+    (A=A 0.993-1.013), R5-M147 16 of 16 shifted pairs 1.060-1.079 (A=A 0.978-1.018); Strings within its A=A. Cause (IR at O2, both
+    compilers): the kernel's string writes are `$tryWrite`'s literal segments into a passed writer, lowered as `writer.write("...")`
+    (six per round: "Reading(" and ")" in Reading.format, twice, and ":" and ";" in main). Before S2d1 their witness was the
+    BuiltinFormat routine, whose copy and commit inlined at the call site around one out-of-line runtime reserve, so "Reading("
+    became one constant 8-byte store; since S2d1 it is StringWitness.format, whose leaf `Utf8Writer.writeUtf8` stays out of line
+    (its sole caller `Utf8Writer.reserve` is inlined into it, heap growth and erased paths included) and copies with a
+    run-time-length memcpy. No validation and no second reserve on either side; B's IR with only the leaf marked `alwaysinline`
+    gives the constant store back. Removal condition: PLAN G779's unit lands with Interpolation within A=A (its mechanism, per the
+    owner-reported O-196: `noinline` on the slow path `Utf8Writer.reserve` rather than `alwaysinline` on the leaf).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
