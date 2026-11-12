@@ -106,7 +106,7 @@ internal sealed partial class MirBuilder
         var position = plan.Positions[index];
         var tested = false;
         this.selected[start + index] = place;
-        place = this.Follow(place, position.ImplicitFollows);
+        place = this.FollowLayers(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
             this.LiteralTest(position, place, next);

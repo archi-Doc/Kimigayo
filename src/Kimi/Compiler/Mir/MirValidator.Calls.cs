@@ -7,12 +7,13 @@ namespace Kimi.Compiler.Mir;
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
 //   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
 //   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
-//   a diverging Call's write bit for G131, no Never value written by a returning Call; a constant record only as an input of a Fn call
-//   that keeps nothing of it (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee and
-//   whole-Temp Moves (Placed; PLAN G442).
+//   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
+//   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
+//   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee and whole-Temp Moves
+//   (Placed; PLAN G442).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
-//   StaticSlot, Type, NeverWrite and Operation findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs
-//   to MirValidator.Inputs (G136).
+//   StaticSlot, Type, NeverWrite, Operation, Place and Projection findings; a callee with a signature goes to MirValidator.Signatures
+//   and the Call's inputs to MirValidator.Inputs (G136).
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked; an intrinsic row after
 //   the arity row sees the row's operand count.
 // - Prohibitions: no argument or result Type of a signature (MirValidator.Signatures); an intrinsic row's Type only through the Type
@@ -173,9 +174,13 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.Operation);
             }
 
-            if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
+            if (call.Target < 0)
             {
-                writes[root] |= DivergingWrite; // The destination MirUses does not report.
+                // The destination MirUses does not report, which A5 and code generation still read: a Place the body names, and G131's write.
+                if (this.Names(call.Place) && call.Place is { Projection: 0, Root: >= 0 and var root })
+                {
+                    writes[root] |= DivergingWrite;
+                }
             }
             else if (call is { Place: { Projection: 0, Root: >= 0 and var written } } && written < body.Locals.Length &&
                 body.Locals[written] is { Kind: MirLocalKind.Temp } local && ReferenceEquals(local.Type, BoundType.Never))

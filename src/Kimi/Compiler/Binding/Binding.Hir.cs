@@ -246,13 +246,13 @@ public sealed partial class Binding
         // The layers a node's consumer follows before it projects or borrows the node (SPEC 3.4.3, 13.5.5): every reference, object
         // handle and pair layer of the receiver of a stored Field, a Tuple element, a sequence's metadata or a built-in element, and the pair
         // layers Binding follows at a receiver or Subject down to their terminal target.
-        private byte Layers(Koto node, Koto? parent, HirOp parentOp)
+        private ushort Layers(Koto node, Koto? parent, HirOp parentOp)
         {
             var projected = (parentOp is HirOp.Field or HirOp.Index || (parentOp == HirOp.PrimitiveOp && parent is MemberAccessKoto)) && ReferenceEquals(Operand(parent), node);
             var terminal = projected || !TryPairLayer(node.BoundType, out _, out _) || binding.ImplicitPairAdmitted(node) == SemanticsMask.None ? null : binding.PairTerminalOf(node);
             var type = node.BoundType;
-            byte layers = 0;
-            while ((projected || terminal is not null) && layers < 16 && !ReferenceEquals(type, terminal) && TyCtxt.Layer(type, out type, out _) != HirPlaceKind.Value)
+            ushort layers = 0;
+            while ((projected || terminal is not null) && !ReferenceEquals(type, terminal) && TyCtxt.Layer(type, out type, out _) != HirPlaceKind.Value)
             {
                 layers++;
             }
