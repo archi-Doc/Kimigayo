@@ -165,7 +165,7 @@ public sealed partial class Binding
 
             var operation = write ? property.Setter : property.Getter;
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
-            if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
+            if ((write || update) && sourceReceiver is not null && SharesOwnLayer(sourceReceiver))
             {
                 return this.FailWrite(node, node);
             }
@@ -183,7 +183,7 @@ public sealed partial class Binding
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))
             {
                 if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
-                    (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
+                    (pathSelection.Path is not null || this.ObjectCases(sourceType, scope, out _) != SemanticsMask.None) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
                 {
                     // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
                     if (!this.AdaptInput(sourceReceiver, FixedPattern.Open(required), sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
@@ -194,7 +194,7 @@ public sealed partial class Binding
                             return null;
                         }
 
-                        var objectProjection = IsObjectSemantics(sourceType.Semantics);
+                        var objectProjection = this.ObjectCases(sourceType, scope, out _) != SemanticsMask.None;
                         return this.Fail(node, objectProjection ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, objectProjection);
                     }
 
