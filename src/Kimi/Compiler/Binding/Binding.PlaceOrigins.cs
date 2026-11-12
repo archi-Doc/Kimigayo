@@ -161,9 +161,11 @@ public sealed partial class Binding
             case PathStep.InlinePart:
                 return false;
             case PathStep.PairFollow:
-                var admitted = this.PairAdmitted(path);
-                origin = this.MeetWith(origin, (admitted & SemanticsMask.Borrow) != 0 && next.BoundType is { } pair ? this.OuterOrigin(pair) : null);
-                return (admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0;
+                // The layer is below a met layer when the step outside its Place dereferences a borrow layer, which the walk meets next.
+                var bounded = NextPathStep(next, out var outer) is PathStep.Follow or PathStep.Member or PathStep.BorrowedElement &&
+                    KotoHelper.UnwrapParentheses(outer).BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1, Origin: not null } holder && IsBorrow(holder.Semantics);
+                origin = this.MeetWith(origin, this.FollowedSlot(next.BoundType, this.PairAdmitted(path), bounded, out var shared));
+                return shared;
             case PathStep.UserIndex:
                 origin = this.MeetWith(origin, ElementAccess.IndexerCall(path, false)?.BoundType?.Origin);
                 return true;
@@ -199,9 +201,7 @@ public sealed partial class Binding
             bool ends;
             if (TryPairLayer(type, out _, out _))
             {
-                var admitted = this.LayerAdmitted(type);
-                layer = (admitted & SemanticsMask.Borrow) != 0 ? this.OuterOrigin(type) : null;
-                ends = (admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0;
+                layer = this.FollowedSlot(type, this.LayerAdmitted(type), met is not null, out ends);
             }
             else if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && IsBorrow(type.Semantics))
             {
@@ -220,6 +220,15 @@ public sealed partial class Binding
 
         origin = this.MeetWith(origin, met);
         return shared;
+    }
+
+    // SPEC 13.5.5, 15.6.1: a followed pair layer's part in a dereferenced path's Origin, MeetLayers' and MeetStep's one rule, and whether
+    // it is shared (restarts the dependency): its slot, which exists in the borrow cases only and there outlives every layer outside it
+    // (well-formedness, a premise of those cases alone); so below a met layer (`bounded`) a slot that does not restart adds nothing.
+    private BoundOrigin? FollowedSlot(BoundType? pair, SemanticsMask admitted, bool bounded, out bool shared)
+    {
+        shared = (admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0;
+        return (admitted & SemanticsMask.Borrow) != 0 && (shared || !bounded) && pair is not null ? this.OuterOrigin(pair) : null;
     }
 
     // SPEC 15.6.3: one layer's Origin met, from the outside in, into the Origin the layers outside it reached: a shared layer restarts it

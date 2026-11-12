@@ -368,7 +368,7 @@ public sealed partial class Binding
     private void StringThroughLayers(Koto operand, BoundType type)
     {
         if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceTypes.IsStringReference(type) &&
-            this.SharedReferenceThroughLayers(type, BoundType.String, out _) is { } shared)
+            this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
         {
             this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
         }

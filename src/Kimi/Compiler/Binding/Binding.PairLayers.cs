@@ -198,7 +198,7 @@ public sealed partial class Binding
             kind = ArgumentOperationKind.Borrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
-            this.SharedReferenceThroughLayers(target, pattern.Components[0], out _) is { } inner)
+            this.SharedReferenceThroughLayers(target, pattern.Components[0], scope, out _) is { } inner)
         {
             // The inner shared reference Copies in every admitted case and keeps only its own dependencies.
             adapted = inner;

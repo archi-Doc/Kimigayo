@@ -343,8 +343,28 @@ public class PairFollowTest
         "    let k2 = cmp(n@ref, one@ref)\n" +
         "    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(w) \\(p) \\(q) \\(r) \\(r2) \\(t) \\(t2) \\(k) \\(k2)\")\n";
 
+    private const string Layered =
+        "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
+        "func g(v: ref/i32) -> i32 => v + 0\nfunc both(a: ref/i32, b: uniq/i32) -> i32 => 0\n";
+
+    // PLAN G794 (SPEC 10.2, 3.4.3, 7.3, 14.6.2): the shared-reference row at a let, an argument and a result, a ref/Self receiver and a
+    // borrowing `for` through a qualifying pair layer below a ref layer, in an owner instance and a ref instance of each.
+    private const string LayeredRow = Layered +
+        "func share<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return r + g(x)\n" +
+        "func recv<s/T>(x: ref/(s/Node during m0), m: s/T) -> i32\n    s is value or valueborrow\n    return x.load()\n" +
+        "func total<s/T>(items: ref/(s/Array<i32> during m0), m: s/T) -> i32\n    s is value or valueborrow\n    var sum: i32 = 0\n" +
+        "    for e in items\n        sum += e\n    return sum\n" +
+        "func back<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during x\n    s is owner or ref\n    return x\n" +
+        "public func main()\n    let n: i32 = 20\n    let one: i32 = 1\n    let rn = n@ref\n" +
+        "    let a = share(n@ref, one)\n    let b = share(rn@ref, one@ref)\n" +
+        "    let node = Node.init(7)\n    let rnode = node@ref\n    let c = recv(node@ref, one)\n    let d = recv(rnode@ref, one@ref)\n" +
+        "    let arr: Array<i32> = [1, 2, 3]\n    let rarr = arr@ref\n    let e = total(arr@ref, one)\n    let f = total(rarr@ref, one@ref)\n" +
+        "    let h = back(n@ref, one)\n    let k = back(rn@ref, one@ref)\n" +
+        "    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(f) \\(h + 0) \\(k + 0)\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "LayeredRow", LayeredRow, "40 40 7 7 6 6 20 20\n" },
         { "ImplicitOuterOrigin", ImplicitOuterOrigin, "Implicit outer Origin.\n" },
         { "UniqInstance", UniqInstance, "7 4 8\n" },
         { "NestedLayers", NestedLayers, "Nested layers.\n" },
@@ -856,6 +876,49 @@ public class PairFollowTest
 
         return source.Append("    let a = f17(n, one)\n    let b = f17(r17, one@ref)\n    let c = f18(n, one)\n    let d = f18(r18, one@ref)\n")
             .Append("    Console.writeLine(\"\\(a) \\(b) \\(c) \\(d)\")\n").ToString();
+    }
+
+    // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
+    // through a qualifying pair layer below ref or uniq layers. Below a met layer the slot of an owner- or uniq-admitting pair is implied
+    // by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
+    [Theory]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    return 0")]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    return g(x)")]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during x\n    s is owner or ref\n    return x")]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during m0\n    s is ref\n    return x")]
+    [InlineData("func f<s/T>(x: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
+    [InlineData("func f<s/T, t/U>(x: ref/(s/(t/i32 during m1) during m0), m: s/T, n: t/U) -> i32\n    s is owner or ref\n    t is ref or uniq\n    let r: ref/i32 = x\n    return 0")]
+    [InlineData("func f<s/T>(x: ref/(ref/(s/i32 during m0) during m1), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
+    [InlineData("func f<s/T>(x: ref/(s/Node during m0), m: s/T) -> i32\n    s is value or valueborrow\n    return x.load()")]
+    [InlineData("func f<s/T, t/U>(x: s/(ref/(t/Node during m2) during m1), m: s/T, n: t/U) -> i32\n    s is owner or ref\n    t is owner or ref\n    return x.load()")]
+    [InlineData("func f<s/T>(items: ref/(s/Array<i32> during m0), m: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total")]
+    [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or ref\n    var total: i32 = 0\n    for e in items\n        total += e\n    return total")]
+    [InlineData("func f<s/T>(x: uniq/(s/Node during m0), m: s/T) -> ref/i32 during x\n    s is owner or uniq\n    return x.weight@ref")]
+    [InlineData("func f<s/T>(x: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    let v = r + 0\n    x@follow@follow = 2\n    return v")]
+    public void LayeredPairReadsVerify(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(Layered + source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // Their invalid twins report the violation itself (an Origin, a Loan, a shared path, a pair admitting raw, a wrong referent); an
+    // Exclusive `for` through such a pair is the loop's located limit (PLAN G162, G179).
+    [Theory]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during m0\n    s is owner or ref\n    return x", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let r: ref/i32 = x\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: uniq/i32 = x\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f<s/T>(x: uniq/(s/Node during m0), m: s/T) -> ref/i32 during m0\n    s is owner or uniq\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T>(x: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    x@follow@follow = 2\n    return r + 0", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func f<s/T>(x: uniq/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    return both(x, x@follow@follow@uniq)", DiagnosticCode.CallActivationConflict_Kd)]
+    [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or ref\n    for e in items\n        e@follow = 0\n    return 0", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func f<s/T>(items: ref/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or raw\n    var total: i32 = 0\n    for x in items\n        total += x\n    return total", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("func f<s/T>(items: uniq/(s/Array<i32> during m0), m: s/T) -> i32\n    s is owner or uniq\n    for e in items\n        e@follow = 0\n    return 0", DiagnosticCode.Unsupported_Kd)]
+    public void LayeredPairReadsReject(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(Layered + source);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Contains(code, Codes(c));
     }
 
     private static IEnumerable<DiagnosticCode> Codes(Kimi.Compiler.Compilation c)

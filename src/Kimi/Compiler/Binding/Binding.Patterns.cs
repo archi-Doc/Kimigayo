@@ -290,7 +290,8 @@ public sealed partial class Binding
 
     // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
     // is not a safe reference. Reference layers that are all uniq/objuniq give Exclusive, and a ref/objref layer, or a
-    // shared layer on the path of a bare Place, bounds the mode to Shared. A bare Place (borrowed in place) is Shared,
+    // shared layer on the path of a bare Place, bounds the mode to Shared; a qualifying pair layer (LayerBelow) gives the weakest
+    // mode of its admitted cases, Shared when ref is admitted (SPEC 13.5.5). A bare Place (borrowed in place) is Shared,
     // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
     private SubjectMode SubjectModeOf(Koto expression, BoundType? type)
     {
@@ -305,17 +306,17 @@ public sealed partial class Binding
             return SubjectMode.Shared;
         }
 
-        for (var layer = type; layer is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; layer = layer.Components[0])
+        BindingScope? scope = null;
+        for (var layer = type; layer is not null;)
         {
-            if (layer.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            if (layer is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef, Components.Count: 1 } ||
+                (TryPairLayer(layer, out _, out _) && (this.FollowablePair(layer, scope ??= this.ConstraintScope(expression), out _) & SemanticsMask.Ref) != 0))
             {
                 return SubjectMode.Shared;
             }
 
-            if (layer.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq))
-            {
-                break;
-            }
+            layer = layer is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjUniq, Components: [var view] } ? view
+                : TryPairLayer(layer, out _, out _) || layer.Semantics == SemanticsKind.Uniq ? this.LayerBelow(layer, scope ??= this.ConstraintScope(expression)) : null;
         }
 
         return SubjectMode.Exclusive;

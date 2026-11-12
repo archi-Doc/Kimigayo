@@ -86,22 +86,24 @@ public sealed partial class Binding
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
 
     /// <summary>
-    /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
-    /// layer is Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed
-    /// and meets its Origin into the result.
+    /// SPEC 10.2: safe value-reference layers ending in <paramref name="referent"/> yield one shared reference to it, the layers
+    /// walked as <see cref="LayersTerminal"/> walks them (ref, uniq and qualifying pair layers, SPEC 3.4.3). A <c>ref</c> layer is
+    /// Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed and meets its
+    /// Origin into the result; a pair layer does either by its admitted cases (MeetLayers, SPEC 13.5.5).
     /// </summary>
     /// <param name="actual">The complete Type of the value.</param>
     /// <param name="referent">The referent the expected <c>ref</c> Type names.</param>
+    /// <param name="scope">The scope whose premises give a pair layer's admitted set.</param>
     /// <param name="layers">The number of reference layers followed, or zero when the layers do not end in the referent.</param>
     /// <returns>The shared reference Type, or null.</returns>
-    internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
+    internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, BindingScope scope, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
+        for (var type = actual; this.LayerBelow(type, scope) is { } below; type = below)
         {
             layers++;
             this.termWalks++;
-            if (ReferenceEquals(type.Components[0], referent))
+            if (ReferenceEquals(below, referent))
             {
                 BoundOrigin? origin = null;
                 this.MeetLayers(actual, layers, ref origin); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
@@ -398,7 +400,7 @@ public sealed partial class Binding
             }
 
             if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
-                this.SharedReferenceThroughLayers(actual, pattern.Components[0], out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
+                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
                 // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
                 // layers and, unless one is shared, in those that reach the source.

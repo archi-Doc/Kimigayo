@@ -32,8 +32,8 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3: the Type below the ref, uniq and qualifying pair layers of `type` in `scope`, in any order: the one walk of the safe
-    // value-reference layers, shared by an operand's terminal and a value read's (ReadTypeReferent), one LayerBelow each step. It ends
-    // within the Type's height.
+    // value-reference layers, shared by an operand's terminal, a value read's (ReadTypeReferent) and the shared-reference row's
+    // (SharedReferenceThroughLayers), one LayerBelow each step. It ends within the Type's height.
     private BoundType LayersTerminal(BoundType type, BindingScope scope)
     {
         while (this.LayerBelow(type, scope) is { } below)
