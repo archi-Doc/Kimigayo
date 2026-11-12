@@ -34,7 +34,7 @@ struct Slots<T>
 
 func drain<I>(iterator: uniq/I) -> i64
     I is Iterator
-    I.Iterator.Item is i64
+    I.(Iterator).Item is i64
     var total: i64 = 0
     loop
         match iterator.next()
