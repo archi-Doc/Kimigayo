@@ -15,7 +15,7 @@ namespace Kimi.Compiler.Mir;
 // designation judge, the step rule); a key's layer facts are MirBorrows.PunKeys'. This file holds the rule at its two sites and
 // Position's dataflow.
 // Inputs: A5's sets and entries (G667a), the stored Place's steps (MirSteps), Binding's Place facts through TyCtxt (PlaceKey, Select,
-// Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view.
+// Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view, and SPEC 5.2's punnable set (TyCtxt.Punnable).
 // Outputs: the holder's markers. A pun: {Φ_E, Φ_W}. An undecided write (the layout, a length that is no constant, or a layer with no
 // stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, and what rests on that Φ_E carries Φ_U: a value stored
 // into E through a set carrying Φ_M or Φ_U, and what a read through one gives (Rested). A gather tags what it finds in a set carrying
@@ -76,7 +76,7 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
+        if (Scalar(cases.TypeOf(place)) == Extent.None)
         {
             return;
         }

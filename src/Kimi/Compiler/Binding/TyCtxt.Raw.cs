@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 // address (Leading; C-189, C-211), which A5's pun rule reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
-// addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
+// addresses), whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row), and SPEC 5.2's
+// punnable set (Punnable, its one owner), which A5's pun rule reads.
 internal sealed partial class TyCtxt
 {
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
@@ -29,6 +30,39 @@ internal sealed partial class TyCtxt
     // (ElementAccess) and MIR's move paths (MirMoveData.Resolve) read it per step. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
         (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container) || AdtDef.IsEnum(container));
+
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
+    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
+    // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A read of the Type
+    // that ends with it (no bound of its own); total; allocates nothing.
+    internal static bool Punnable(BoundType type)
+    {
+        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        {
+            return true;
+        }
+
+        switch (type.Kind)
+        {
+            case BoundTypeKind.Semantics when type.Semantics == Parsing.SemanticsKind.Owner && type.Components.Count > 0:
+            case BoundTypeKind.FixedArray:
+                return Punnable(type.Components[0]);
+            case BoundTypeKind.Tuple:
+                // By index: a foreach over the interface would allocate an enumerator per call.
+                for (var i = 0; i < type.Components.Count; i++)
+                {
+                    if (!Punnable(type.Components[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            default:
+                return false;
+        }
+    }
 
     // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
     // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
