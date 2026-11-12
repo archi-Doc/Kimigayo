@@ -26,21 +26,25 @@ internal sealed partial class MirBorrows
     private int[] markRested = []; // By marker: the check that saw it in a Based or Stored pass's set that carries Φ_U.
     private int candidateCount;
 
-    // The tier of what a scan finds: its read key's (Limit for a holder reached only through a set carrying Φ_U, else the pass's), Limit
-    // past Φ_U in its set.
+    // The tier of what a scan finds (ReadTier).
     private MirOutcome tier;
 
-    // The tier a pass's scan starts at, but at a read key reached only through a set carrying Φ_U: Deep in the drop tier, else decided.
+    // A pass's tier: Deep in the drop tier, else decided; a Limit read key's tier is Limit (MirBorrows.CheckSets' TierOf).
     private MirOutcome PassTier => (this.pass & DropTier) != 0 ? MirOutcome.Deep : MirOutcome.Decided;
 
     // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
 
-    // A state found in a holder (-1: a transit value, a state of one part) by the pass, at the tier `at` (its read key's, MirBorrows.CheckSets):
-    // its elements, in ascending order.
+    // A read's tier, fixed before its scan: Limit where the state read carries Φ_U (R4-M198: what a set carrying it holds is tagged with
+    // it), else its read key's `at` (Limit for a holder reached only through such a set, else the pass's).
+    private MirOutcome ReadTier(ulong found, MirOutcome at)
+        => this.sets.Contains(Placed(found), Undecided) || this.sets.Contains(Shared(found), Undecided) ? MirOutcome.Limit : at;
+
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass at its read key's tier `at` (MirBorrows.CheckSets):
+    // its elements, in ascending order, at the read's tier.
     private void Scan(ulong found, int via, MirOutcome at)
     {
-        this.tier = at;
+        this.tier = this.ReadTier(found, at);
         this.Work += this.Count(found);
         foreach (var element in this.ElementsOf(found))
         {
@@ -63,7 +67,6 @@ internal sealed partial class MirBorrows
                 this.Reach(Escaped, scan: true); // Φ_W, always beside Φ_E, is rule W's alone (MirBorrows.Reach).
             }
 
-            this.tier = element == Undecided ? MirOutcome.Limit : this.tier; // Before the set's markers and Loans, in ascending order.
             return;
         }
 

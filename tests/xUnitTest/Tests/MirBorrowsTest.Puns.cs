@@ -331,6 +331,114 @@ public sealed partial class MirBorrowsTest
             c(nothing)
             let r = other@uniq
             other = r@follow@raw@raw/u8
+        func viasRestedFirstBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var cc: raw/u8 = null
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = cc@raw
+            unsafe => *p = spare
+            var m: (raw/(raw/u8), raw/(raw/u8)) = (aa@raw, bb@raw)
+            var h: (u64, raw/(raw/(raw/u8), raw/(raw/u8))) = (0, m@raw)
+            let tp = h@raw@raw/u16
+            unsafe => *tp = 7
+            let hp = h.1
+            var x: (raw/(raw/u8), raw/(raw/u8)) = (null, null)
+            unsafe => x = *hp
+            kk = 2
+            usep(cc)
+            usep(x.0)
+        func viasDecidedFirstBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var m: (raw/(raw/u8), raw/(raw/u8)) = (aa@raw, bb@raw)
+            var h: (u64, raw/(raw/(raw/u8), raw/(raw/u8))) = (0, m@raw)
+            let tp = h@raw@raw/u16
+            unsafe => *tp = 7
+            let hp = h.1
+            var x: (raw/(raw/u8), raw/(raw/u8)) = (null, null)
+            unsafe => x = *hp
+            var cc: raw/u8 = null
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = cc@raw
+            unsafe => *p = spare
+            kk = 2
+            usep(cc)
+            usep(x.0)
+        func ownRestedViasBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var cc: raw/u8 = null
+            var w1: raw/u8 = null
+            var w2: raw/u8 = null
+            var g1: (u64, raw/(raw/u8)) = (0, w1@raw)
+            var g2: (u64, raw/(raw/u8)) = (0, w2@raw)
+            let t1 = g1@raw@raw/u16
+            let t2 = g2@raw@raw/u16
+            unsafe
+                *t1 = 7
+                *t2 = 7
+            let gp1 = g1.1
+            let gp2 = g2.1
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            unsafe
+                aa = *gp1
+                bb = *gp2
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = cc@raw
+            unsafe => *p = spare
+            kk = 2
+            usep(cc)
+            usep(aa)
+            usep(bb)
+        func ownRestedCcLastBad(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w1: raw/u8 = null
+            var w2: raw/u8 = null
+            var g1: (u64, raw/(raw/u8)) = (0, w1@raw)
+            var g2: (u64, raw/(raw/u8)) = (0, w2@raw)
+            let t1 = g1@raw@raw/u16
+            let t2 = g2@raw@raw/u16
+            unsafe
+                *t1 = 7
+                *t2 = 7
+            let gp1 = g1.1
+            let gp2 = g2.1
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            unsafe
+                aa = *gp1
+                bb = *gp2
+            var cc: raw/u8 = null
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = cc@raw
+            unsafe => *p = spare
+            kk = 2
+            usep(cc)
+            usep(aa)
+            usep(bb)
         func zeroArrayOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -637,7 +745,11 @@ public sealed partial class MirBorrowsTest
     // either layout (closureMixedLiveBad), and without the write nothing is reported (closureMixedNoWriteOk) (PLAN G775). The same holds
     // for a location's own store into a holder used after it only through such a write: storing into other a pointer carrying a Loan of
     // other and writing other is valid in every layout (5.2.1: a self-link; 5.5), at most the limit, never a Language error
-    // (selfStoreRests); with other's address in storage the body does not own it conflicts (selfStoreEscBad).
+    // (selfStoreRests); with other's address in storage the body does not own it conflicts (selfStoreEscBad). A decided route stays
+    // decided whatever the order the gather reads holders in: p may address aa, bb or cc, which then share one stored set, and on the
+    // path where it addresses cc, cc holds r's Loan and is used after kk = 2, a route through no undecided write, so kk = 2 conflicts
+    // whether aa and bb are read at the Limit tier through a set carrying Φ_U (via*) or by their own states carrying it (ownRested*),
+    // and whether cc is declared before them or after (15.6).
     [Theory]
     [InlineData("storePunBad", "storePunBad: kk = 2")]
     [InlineData("readPunBad", "readPunBad: kk = 2")]
@@ -659,6 +771,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("selfStoreEscBad", "selfStoreEscBad: other = r@follow@raw@raw/u8")]
     [InlineData("selfStoreNoEscOk", "")]
     [InlineData("selfStoreNoWriteOk", "")]
+    [InlineData("viasRestedFirstBad", "viasRestedFirstBad: kk = 2")]
+    [InlineData("viasDecidedFirstBad", "viasDecidedFirstBad: kk = 2")]
+    [InlineData("ownRestedViasBad", "ownRestedViasBad: kk = 2")]
+    [InlineData("ownRestedCcLastBad", "ownRestedCcLastBad: kk = 2")]
     [InlineData("cLayoutSecondFieldBad", "cLayoutSecondFieldBad: kk = 2")]
     [InlineData("zeroArrayOk", "")]
     [InlineData("lengthArrayRests", "lengthArrayRests: kk = 2 Unsupported_Kd")]
