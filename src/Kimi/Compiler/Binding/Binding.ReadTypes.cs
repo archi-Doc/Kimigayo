@@ -19,9 +19,9 @@ public sealed partial class Binding
             return scalar;
         }
 
-        // A primitive terminal that is not a Scalar is never read; other terminals need their scope.
-        return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            ComparisonReferent(type) is { Kind: not BoundTypeKind.Primitive } terminal && this.IsReadType(terminal, this.ConstraintScope(use)) ? terminal : null;
+        // Only a Type with a layer needs its scope: a ref or uniq layer, or a pair layer, whose admitted set the scope states.
+        return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } || TryPairLayer(type, out _, out _)
+            ? this.ReadTypeReferent(type, this.ConstraintScope(use)) : null;
     }
 
     /// <summary>Gets the terminal of safe value-reference layers that ends in a read Type, or null.</summary>
@@ -35,14 +35,21 @@ public sealed partial class Binding
             return scalar;
         }
 
-        return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            ComparisonReferent(type) is { Kind: not BoundTypeKind.Primitive } terminal && this.IsReadType(terminal, scope) ? terminal : null;
+        // SPEC 3.4.3: the safe value-reference layers are ref, uniq and the qualifying pair layers, in any order (LayersTerminal).
+        return type is not null && this.LayersTerminal(type, scope) is var terminal && !ReferenceEquals(terminal, type) &&
+            this.IsReadType(terminal, scope) ? terminal : null;
     }
 
-    // A non-primitive read Type: a Type parameter proven PrimitiveInteger, or a Type proven to satisfy one of the closed
-    // Contracts. Only Kimi declarations conform to them, so any other nominal Type is rejected without a proof.
+    // SPEC 3.5.3: a read Type is a Scalar, a Type a proof decides (BoundType.IsProofDecided) proven PrimitiveInteger, or a Type
+    // proven to satisfy one of the closed Contracts. Only Kimi declarations conform to them, so any other nominal Type is rejected
+    // without a proof.
     private bool IsReadType(BoundType type, BindingScope scope)
     {
+        if (type.Kind == BoundTypeKind.Primitive)
+        {
+            return ScalarTypes.Supports(type);
+        }
+
         if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
         {
             if (!ReferenceEquals(type.Symbol?.Declaration.CodeContext.Kotonoha, this.Library.Kotonoha))
@@ -50,7 +57,7 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection))
+        else if (!type.IsProofDecided)
         {
             return false;
         }
