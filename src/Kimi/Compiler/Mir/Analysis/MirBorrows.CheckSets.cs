@@ -16,7 +16,9 @@ namespace Kimi.Compiler.Mir;
 // and the location's entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its
 // root's Loans. After every pass, the drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot
 // (MirBorrows.Liveness), its Based and Stored passes again, marked DropTier, with that holder as their via; a slot an earlier pass read is
-// not read again. The elements a pass finds become candidates in MirBorrows.Candidates.
+// not read again. The closure keeps the Limit tier (R4-M198's Φ_U, PLAN G775): a holder a pass reaches only through a set carrying Φ_U
+// is read at that tier, under its own read key, and again where a decided reach finds it, as the dataflow's union keeps Φ_U through
+// Content and Chain. The elements a pass finds become candidates in MirBorrows.Candidates.
 internal sealed partial class MirBorrows
 {
     private const byte Based = 1;
