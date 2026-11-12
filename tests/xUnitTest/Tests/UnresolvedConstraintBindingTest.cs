@@ -165,6 +165,7 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>", "public struct Future", true)]
     [InlineData("public contract C<U>\ngroup G\n    func take<T>()\n        T is C<Future>\n        ()", "public struct Future", true)]
     [InlineData("public contract C<U>\npublic contract Target: C<Future>", "public struct Future", true)]
+    [InlineData("public contract Target: Future<i32>", "public contract Future<U>", true)]
     [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>", "public group Future\n    func z() -> i32 => 0", false)]
     // An associate selector (SPEC 8.5.1) is a Contract reference too: a missing Contract or Type argument.
     [InlineData("public struct Target\n    Self is Future\n    associate Future.Item is i32", "public contract Future\n    associate Item", true)]
@@ -198,6 +199,7 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future, T.(Future).Item is Copy")]
     [InlineData("group G\n    func take<T>()\n        T is Future\n        T.(Future).Item is Copy\n        ()")]
     [InlineData("public contract C<U>\npublic struct Target\n    Self is C<Future>")]
+    [InlineData("public contract Target: Future<i32>")]
     [InlineData("public struct Target\n    Self is Future\n    associate Future.Item is i32")]
     public void FinalBindingRejectsNamesThatRemainMissing(string source)
     {

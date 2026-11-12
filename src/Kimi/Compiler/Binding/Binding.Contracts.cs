@@ -280,12 +280,12 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.3: a generic parent is never deferred; its arity and its arguments are the former's (BindContractReference).
             var generic = ContractApplication(name);
             var parentPath = this.NamePath(name, this.scopes[contract]);
             var parent = parentPath.Symbol;
-            if (parent is null && generic is null && this.PendingReference(syntax, null, this.scopes[contract]))
+            if (parent is null && this.PendingReference(syntax, null, this.scopes[contract]))
             {
+                // A missing parent, generic or not, is pending (BU-151, O-216 (a)): a later source may declare it.
                 shape.HasUnresolvedParents = true;
                 continue;
             }
