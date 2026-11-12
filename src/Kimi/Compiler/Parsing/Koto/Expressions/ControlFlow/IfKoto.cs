@@ -49,13 +49,16 @@ public sealed class IfKoto : ExpressionKoto
         this.branches = branches;
         this.ElseBody = elseBody;
 
-        foreach (var branch in branches)
+        for (var i = 0; i < branches.Count; i++)
         {
-            branch.Condition.Parent = this;
-            branch.Body.Parent = this;
+            branches[i].Condition.Parent = this;
+            this.Adopt(branches[i].Body, SelectionRole.Body, i);
         }
 
-        this.Adopt(elseBody);
+        if (elseBody is not null)
+        {
+            this.Adopt(elseBody, SelectionRole.Body, branches.Count);
+        }
     }
 
     /// <inheritdoc/>

@@ -190,16 +190,8 @@ public sealed partial class Binding
                     return HirPosition.None;
                 case VariableKoto variable:
                     return ReferenceEquals(node, variable.InitializerKoto) && parentOp is HirOp.Body or HirOp.Let ? HirPosition.Evaluated : HirPosition.None;
-                case MatchKoto match:
-                    for (var i = 0; i < match.Arms.Count; i++)
-                    {
-                        if (ReferenceEquals(node, match.Arms[i].Pattern))
-                        {
-                            return HirPosition.Pattern;
-                        }
-                    }
-
-                    return position;
+                case MatchKoto:
+                    return node.SelectionRole == SelectionRole.Pattern ? HirPosition.Pattern : position;
                 case ForKoto loop:
                     return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
                 case InvocationKoto or MacroKoto:

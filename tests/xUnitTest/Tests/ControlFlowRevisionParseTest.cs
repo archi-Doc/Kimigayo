@@ -261,6 +261,40 @@ public class ControlFlowRevisionParseTest
         Assert.False(valueLoop.Body.HasTrailingExpression);
     }
 
+    // PLAN G800 (SPEC 14.7, 14.8): a selection states each Body and Pattern as its part where it attaches it, so the Body rule reads no
+    // arm list; a Subject, a condition and a guard are no part, and a replacement takes its slot's part.
+    [Fact]
+    public void SelectionPartsAreStatedAtAttachment()
+    {
+        foreach (var tree in Versions(Parse("func run() -> i32 => match x\n    .A if c => 1\n    .B\n        if b => 2 else if d => 3 else => 4")))
+        {
+            var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
+            Assert.False(KotoHelper.IsSelectionBody(match, match.Expression));
+            for (var i = 0; i < match.Arms.Count; i++)
+            {
+                Assert.True(KotoHelper.IsSelectionBody(match, match.Arms[i].Body));
+                Assert.Equal((SelectionRole.Body, i), (match.Arms[i].Body.SelectionRole, match.Arms[i].Body.SelectionArm));
+                Assert.Equal((SelectionRole.Pattern, i), (match.Arms[i].Pattern.SelectionRole, match.Arms[i].Pattern.SelectionArm));
+            }
+
+            Assert.Equal(SelectionRole.None, match.Arms[0].Guard!.SelectionRole);
+            var conditional = Assert.IsType<IfKoto>(Assert.IsType<CodeBlockKoto>(match.Arms[1].Body).Items[0]);
+            Assert.False(KotoHelper.IsSelectionBody(match, conditional));
+            for (var i = 0; i < conditional.Branches.Count; i++)
+            {
+                Assert.False(KotoHelper.IsSelectionBody(conditional, conditional.Branches[i].Condition));
+                Assert.Equal((SelectionRole.Body, i), (conditional.Branches[i].Body.SelectionRole, conditional.Branches[i].Body.SelectionArm));
+            }
+
+            Assert.Equal((SelectionRole.Body, 2), (conditional.ElseBody!.SelectionRole, conditional.ElseBody.SelectionArm));
+            var old = match.Arms[0].Body;
+            var replacement = new CodeBlockKoto(old.CodeContext);
+            Assert.True(KotoHelper.Replace(match, old, replacement));
+            Assert.True(KotoHelper.IsSelectionBody(match, replacement));
+            Assert.Equal(SelectionRole.None, old.SelectionRole);
+        }
+    }
+
     private static FunctionKoto Function(Kotonoha tree)
         => Assert.IsType<FunctionKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
 

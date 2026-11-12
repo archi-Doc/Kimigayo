@@ -107,38 +107,9 @@ public static partial class KotoHelper
 
     internal static bool IsBodyExpression(Koto body) => body is ExpressionKoto and not CodeBlockKoto or FunctionKoto { IsAnonymous: true };
 
+    // SPEC 14.7, 14.8: whether the child is a branch's or an arm's Body of its parent, the part the selection attached it as.
     internal static bool IsSelectionBody(Koto parent, Koto child)
-    {
-        if (parent is IfKoto conditional)
-        {
-            if (conditional.ElseBody == child)
-            {
-                return true;
-            }
-
-            for (var index = 0; index < conditional.Branches.Count; index++)
-            {
-                var branch = conditional.Branches[index];
-                if (branch.Body == child)
-                {
-                    return true;
-                }
-            }
-        }
-        else if (parent is MatchKoto match)
-        {
-            for (var index = 0; index < match.Arms.Count; index++)
-            {
-                var arm = match.Arms[index];
-                if (arm.Body == child)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+        => child.SelectionRole == SelectionRole.Body && ReferenceEquals(child.Parent, parent);
 
     internal static bool IsParameterDefault(FunctionKoto function, Koto expression)
     {
