@@ -89,7 +89,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     private struct Transfer(MirBody body, MirMoveData moves, MirCases cases, MirDataflow flow, ulong[] state, MirDrops drops) : IMirFlow, IMirUses
     {
         private SourceRef subject;
-        private ushort scope; // The location's scope.
+        private int scope; // The location's scope.
         private MirLocation at;
         private bool runtime; // Whether the runtime edges reach the block applied.
         private bool placing; // Whether the location places its operands: an Assign of a Use or an aggregate, or a Places Call.
