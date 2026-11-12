@@ -5961,11 +5961,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rule names without issuing a Loan (a raw address or Storage of a Place of its region, or a read of a by-value input's pointer part)
     runs A5, for this rule.
   - Silence (O-62 (a)), as STATUS's Raw pointers row names it: a fact lost at a join, a loop head, a part read or part store, a call
-    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store, non-shared
-    borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a storage record
-    Binding joins with another position that lets the input by Value; storage reached through an own step (an object payload, `during
-    self` storage; PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's receiver;
-    `unsafe` scopes.
+    result, a value read back from storage, or an exposed holder; a landing a redirect in the body may have moved (a store,
+    non-shared borrow, Reborrow or Move in the input's region; a call or drop taking a pointer; a raw Place; an Opaque site); a
+    storage record Binding joins with another position that lets the input by Value; at a destination with a raw layer stating an
+    Origin (all-stated or mixed), storage reached through an own step is read as the layer's referent, as before the own-step item
+    (the owner's O-190 (b)): an invalid store of the input's own value into such a destination's unstated layer passes as a
+    self-link (PLAN G581); a call's store; Closure, accessor, default-template and static-initializer bodies; a destructor's
+    receiver; `unsafe` scopes.
+  - Own step (PLAN G581's own-step item; the owner's O-124 (a), O-190 (b); commits 6006c205d, 36aec0284, 464ce958a, aac23c8a6,
+    0d739af21): the landing fact publishes a depth-1 storage reached past the layer through an own step (an obj/rc/arc payload, SPEC
+    15.6.2) under its layer's part encoded below -1, which no layer's part matches, so it gives no self-link (SPEC 5.2.1: not
+    through an own step). The rule applies the own step only where the destination's own address holds raw layers none of which
+    states an Origin (`MirBorrows.PunKeys`' `AnyStated` over `TyCtxt.OwnLayers`, `static` counted as stated); at any other
+    destination both parts read as their layer's, the judgment before the item (O-190 (b)), so dev's false errors at stated layers
+    (ra1, ra2, c16, c13, c09) stay open for G692. Rejected: a silence at any stated destination (O-188 (a), superseded: it newly
+    accepted invalid stores dev rejects); a single own-step part (dev's reading needs the layer's part back).
   - Cost (review 2's N7): about 3.4 µs warm and 2.2 KB cold per gated body, allocation linear in the gated bodies (the cold Analyze step
     at 400 stores is garbage-collection timing).
   - Rejected: a chain-local landing kill (it re-arms at chain heads, so a redirect before a join or loop head, by a call or through a
@@ -10237,12 +10247,13 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
   - Amended by R7-N1e1 (2026-11-09; Major; the Front's ruling 1, no design review: option A of the N1e design): a Container's Type
     members are read by name through `MemberTypes(container, name)` (SPEC 9.6, 18.2.1: formal parameters, Origins and `Self` are not
-    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check, `ProjectionQualifier`
-    and the unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default
-    alias's segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto
-    the path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
-    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected: a
-    filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
+    opened) in `ResolveMember`, the `::` member step, stages 5 and 6, the qualification repair's selection check,
+    `ProjectionQualifier` (superseded by BU-160: it reads only a parenthesized right, no member by name) and the
+    unavailable-qualifier explanation; it replaces `QualifiedTypeMember`. Four readers do not go through it yet: the default alias's
+    segment walk (`DefaultAliasTarget`, `Imports.cs:70`, a raw read: `Alias={"Box.T"}` is accepted), which R7-N1e3 moves onto the
+    path walk; and the three base-layer reads through a selected table (`MemberLookup.cs:348`, `Qualification.cs:151`, `:253`),
+    which keep their in-loop skip until R7-N1f's `Parameters` table (option B), which also removes `MemberTypes`' filter. Rejected:
+    a filter at stage 5 alone; a `LookupRole` row (the exclusion holds for every role).
 
   - Amended by BU-144 (R7-N1e2-1R): a use's lookup is published on the use and read through `NamePath`; its rejected per-use memo is
     superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
@@ -11408,8 +11419,9 @@ resumed by R4-M86 (2026-10-20).
     library Contract in `[4 of u8].(Indexable<isize>).Element`) now passes the struct and shows g01's two records
     (UnprovenConstraint_Kd, TypeMismatch_Kd): g01, SPEC F.5's own example, is rejected on dev (pre-existing; PLAN G715).
   - Keeps (O-122 (a)): `ProjectionQualifier` reads `T.C.X` as `T.(C).X` (its `C` in the Qualifier row); 8.5.2 makes it an ordinary
-    path; R7-N1e2-2b removes the reading. No test became invalid: the refinement and constraint rows above changed a Provisional
-    expectation, not a program's validity.
+    path; R7-N1e2-2b removes the reading. Superseded by BU-160 (R7-N1e2-2b-1): the reading is gone; only the suffix `.(C).` names a
+    projection's Contract. No test became invalid: the refinement and constraint rows above changed a Provisional expectation, not a
+    program's validity.
   - Removes `Any`, `NoContainer`, `Type`, `Semantics`; the row argument at every `NamePath`/`TypeName` call and
     `LookupAdaptationTarget`; `ResolveAdaptationTarget`'s fallback lookup (NameEvaluationSites ResolvePath.cs 18 -> 17);
     `UseLookup`.
@@ -11624,6 +11636,39 @@ resumed by R4-M86 (2026-10-20).
   - Open: design review 1's N3, triaged 2026-11-11: c01 `keep<() -> u32>(zero)` has G719's cause and joins PLAN G719; c02 is invalid
     as written (SPEC 6.1.1, 9.5: a root function is not visible from a group), so its `UnresolvedBinding_Kd` is correct and its two
     `Unsupported_Kd` are the existing P42 limits (R5-M82).
+- **BU-160 `T.C.X` is an ordinary path; only the suffix `.(C).` names a projection's Contract** (2026-11-11; R7-N1e2-2b-1; Major;
+  design review 1 REVISE, then F's rulings `ruling-e2-2b.md`, `ruling-2b1-filter.md`) SPEC 8.5.2, 9.6, 9.7.3, F.5; the owner's O-101
+  (2)(a), O-122 (a), O-157 (a), verbatim 「すべてa」; PLAN G727.
+  - Rule: `ProjectionQualifier` reads only a parenthesized right, its `C` in the Contract Reference row (BU-151); `T.C.X` and
+    `T.P.C.X` are ordinary paths (9.6), never read as `T.(C).X`. Removed: the group recursion, the unqualified `C`, the
+    `out receiver` (the receiver is the qualifier's left) and `BindAssociatedProjection`'s "unparenthesized with Origins" failure
+    (dead). With G701 (BU-150) the selection test is `IsContract`.
+  - Moves (review condition 6): invalid, accepted before, now UnresolvedBinding_Kd: `T.C.Item` (r04), `T.L.C.Item` (r06),
+    `let p: S.K.Item` (r06f), `T.P.C.E`, `T.K.Item` where `Outer`'s `K` declares no `Item` (q02x); invalid, accepted before, now
+    TypeMismatch_Kd: `return v` at `v: T.K.Item` (q03; dev read it as `T.(K).Item`). Valid, rejected before, now accepted:
+    `T.(C).X.Y` with a `contract X` in scope (q01), `T.K.Item` through T's associated `K` (q02); valid, CheckFaulted_Kd before, now
+    accepted: `T.(C).X.(D).Y` (q01p). Records: `S.C.Item(source)` stays rejected, now as an ordinary path (UnresolvedBinding_Kd at
+    `S.C`); its twin `S.(C).Item(source)` is valid. Likewise G747's
+    AssociatedOriginBindingTest.AnApplicationRestsOnItsFirstFailedPart row `U.L.Item(static)` (`U is L`, written after 2b-1's base):
+    InvalidAssociatedType_Kd before (that deleted Origins failure), now UnresolvedBinding_Kd at `U.L` (the application rests on its
+    failed target); its twin `U.(L).Item(static)` is valid. Milestone20 and the Benchmark corpus are respelled, so the snapshot has
+    no difference.
+  - Tests (the owner's O-157 (a)): every row dev read in the unparenthesized form is respelled `T.(C).X` in behavior-preserving
+    commits first, found by a throwaway trace of that reading over the whole suite (every purpose), the snapshot corpus and the
+    Benchmark corpora: 704 rows in 57 classes, Milestone20 (x6), `Iterators.kimi`, BindingBenchmark "Contracts", and
+    RequirementTypeParsingTest's three syntax-only methods. Expectations that print or key on the spelling follow it:
+    InheritedConformanceTest (3 strings), ConditionalMemberBindingTest, ContractBindingTest, VirtualAssociatedHeaderTest, and
+    ConstraintProjectionApiAccessBindingTest's subject filter (`T.(C).Element` is a Type node wrapping the member access). Kept:
+    `associate C.X` and `P.C.X` heads, `Self is P.C`, StructuredConstraintSubjectBindingTest's `W<Y>.C.A` and `Q.L.Item(a)` (that
+    method pins both spellings) and AssociatedOriginBindingTest's `S.C.Item(source)` row. Rows with each valid twin:
+    AssociatedTypeFormationBindingTest.OnlyTheParenthesizedSuffixNamesAProjectionsContract. Refresh onto dev 4f70e6bd1: the trace
+    rerun on the merged tree read three more rows, G683's
+    ApiAccessBindingTest.AContractsAssociatedSpecificationUsesTheContractsDomain (`Source.Hidden.Element`), respelled
+    `Source.(Hidden).Element` (707 rows in 57 classes); as written they are newly invalid tests (the valid row, public `Hidden`, is
+    rejected, and the two invalid rows lose their Access record). Refresh 2 onto dev 3f391cb35: a scan of every line dev added since
+    4f70e6bd1 finds G747's `U.L.Item(static)` row, kept with its record moved and its valid twin added (Moves).
+  - Rejected: keeping the reading for a module-qualified `C` (a second rule for one form); finding the rewrite set by failing rows
+    (misses rows that pass for another cause and Allocation rows) or by a text grep (nested paths, module paths, `associate` heads).
 - **BU-162 An associate item is read once for every owner (PLAN G683)** (2026-11-11; Front, Parsing and Binding; Major; design
   revision 2, design review 2 and implementation review ACCEPT; the owner's O-160 (a)) SPEC F.6.2, 8.5.1, 8.5.3, 8.5.4, F.5.
   - Rule: `associate` before any start of an AssociatedTypeName introduces the item (`StartsType`, the one start predicate of
@@ -11877,6 +11922,70 @@ resumed by R4-M86 (2026-10-20).
   - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
   - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
     takes this form.
+- **BU-164 A Tuple or array literal argument is ranked position by position: `BoundArgumentOperation.Positions` (PLAN G743)**
+  (2026-11-11; Front, Binding; Major, an acceptance mover: eight valid programs newly accepted (Q17 class 3); design review 2
+  ACCEPT, implementation review ACCEPT; the owner's O-162 (A), SPEC 10.4 by D-354) SPEC 10.4 step 1, 10.5.1, 10.2.2.
+  - **Rule.** Step 1 compares each explicit argument's adaptation class and, for a Tuple or array literal argument, the class of
+    each element position, recursively, as an argument there; step 2 is unchanged (it compares each argument's substituted parameter
+    Type, so `cd([n, m])` with `cd(x: Array<i32>)` beside `cd<length N>(x: [N of ref/i32])` is decided at step 1). A fill stays one
+    argument. An erasure and any other class at one position are incomparable, as at an argument (`CompareClasses`).
+  - **Representation.** `BoundArgumentOperation.Positions`, a slice of `Binding.positionClasses` (owned by the ranking,
+    `Binding.CandidateEvaluation`), holds the positions' classes in the fit's order; `Adaptation` stays the literal's own fit
+    (`Literal` by value, the class the open path gives a literal whose slot stays open; `CrossSemanticsBorrow` for a borrowed
+    temporary). The one writer is the element row `FitElement` (`FitArgument` at the position, called by `ProbeAggregateArgument`);
+    the one reader is `BetterCandidate`. Each candidate evaluation removes what it appended when it ends, beside its retained child
+    rows.
+  - **Comparison.** Two fits of one argument walk its syntax alike, so two fitted candidates record the same positions. A candidate
+    that leaves the argument open (no Type) records none and the pair is compared at the argument only (step 2 then makes it
+    incomparable). Two non-empty, unequal counts are a broken contract: `InternalInvariant_Kd` at the argument, the pair
+    incomparable.
+  - **Not recorded:** a nested literal's or a nested fill's own class at its position: a nested aggregate fits only by value today,
+    so it always ties. Removal condition: the unit that lets a nested literal fit a `ref/(...)` element position (a borrowed
+    temporary, SPEC 10.2 row 2; `r-nref3`, PLAN G746, `NoApplicableOverload_Kd` today) records it.
+  - **Rejected:** an operation slot per position (consumers index operations by argument; the count is known only after the fit); a
+    per-argument summary class (dominance is position by position); a class on the retained position rows (composed from each
+    candidate's pattern, so their structure differs between candidates); a per-candidate array (an allocation per candidate).
+  - Amended by BU-165 (PLAN G746): the "Not recorded" item is replaced by: "A nested literal's own fit is one of the positions: its
+    `FitComposite` class (`Literal` by value, `CrossSemanticsBorrow` for a borrowed temporary at `ref/U`), appended by `FitElement`
+    after the nested literal's own positions. A fill's elements stay no position; the fill's own class is one." In "Representation",
+    `FitElement` is the one writer for every element, a nested literal included.
+- **BU-165 A literal nested in a literal argument fits its element position as an argument (PLAN G746)** (2026-11-11; Front,
+  Binding; Major, an acceptance mover by D-367: invalid programs newly rejected (Q17 class 1), then class 3 at an interim (valid
+  nested borrowed forms move from `NoApplicableOverload_Kd` to the located `Unsupported_Kd`); design review 2 ACCEPT, implementation
+  review ACCEPT; amends BU-164) SPEC 10.2 row 2, 10.5.1, 10.4 step 1.
+  - **Rule.** Each element of a Tuple or array literal argument, a nested literal included, fits as an argument at its position
+    (`FitElement` -> `FitArgument`): at `ref/U` a nested literal is a borrowed temporary of `U` (`FitComposite`), never at `uniq/U`,
+    and it is ranked there by its own class. `ProbeAggregateArgument`'s leaf fallback is deleted; its end is the InternalInvariant
+    that a composite argument is a Tuple or array literal, a join or a mixed range.
+  - **Reading unchanged.** The walks that read child patterns (`ChildPattern`: the rows, the selected call's judgment, positions,
+    waiting callables, a function value's solve) keep the base reading: a literal at `ref/U` has no child positions. Reading `U`'s
+    positions there makes the children evidence without the temporary's Origin input (a function value's call, accepted on the base,
+    then failed); the reading and the input belong together, in G585.
+  - **Interim (removal: PLAN G585).** After a direct call's selection, an aggregate element of a literal argument at a `ref/`
+    element Type (read from the argument's value Type, FitComposite's `SourceType`) is a located `Unsupported_Kd` and the call rests
+    on it, finally (`FailBorrowedElements`, `Binding.ArgumentKinds.Rows`, called once by `Binding.Calls` before
+    `CompleteArguments`): its Origin is no input of the call's solve, and its completion and lowering are unverified. A function
+    value's call completes it as before; a join so borrowed stays `NoApplicableOverload_Kd` (G729).
+  - **Rejected:** stripping `ref/` inside the fit's recursion (a second copy of `FitComposite`'s row); `ConstructedAt` in
+    `ChildPattern` (design review 1 B1: it changed every walk); accepting the nested forms that happen to complete (t-lit, t-gen,
+    a-fill: a narrow subset, AGENTS Diagnostics); the nested temporary's Origin input here (not one path with the root Literal's
+    `InferInput`; the value-call path passes only by reading no children: G585); a non-final failure of the call (its re-evaluation
+    lost the failed part's evidence: `UnboundTypeArgument_Kd`).
+
+- **BU-176 A case that Reborrows an object view lends the object (PLAN G766)** (2026-11-12; Front, Binding; Major; design and
+  implementation reviews ACCEPT) SPEC 3.4.2, 13.5.5, 13.5.6, 15.6.2.
+  - Rule: a case adaptation whose case Reborrows an object view (`objuniq/T` or `objref/T` to an object view, an upcast to a base's
+    view included) lends the object as the view and its path allow, judged by `PlaceAuthority.LendsView`, the judge the concrete
+    `@objref`/`@objuniq` reads (`AdaptObjectBorrow`'s object-borrow arm); every other borrowing case lends the written slot
+    (`BorrowablePlace`) or a Temporary. The failure record stays the slot judge's (`BorrowFailure`: a shared layer on the path is
+    `SharedPathAccess_Kd`).
+  - Moves: valid, newly accepted (were `InvalidAssignment_Kd`): a01-a04, a06, a07, a09-a11, x12b (`q@s/Base` on `q: objuniq/Derived`
+    over a `let` slot) and the review's valid twins x06v, x16b, x20; i05 and i08 now `ComparisonLoanConflict_Kd` (were
+    `InvalidAssignment_Kd`), the concrete twins' record. Remainders: a05 (q03's conditional member) is G764's family (BU-172); i01's
+    write record and `y.n` on `y = r@s/Base` (x12d) stay with PLAN G760; `q@objref` on a pair operand (b01, i04) with G762.
+  - Rejected: calling `AdaptObjectBorrow` per case (it forms the adapted Type and Origin from the operand node, and its handle arm
+    would repeat the case path's `BorrowablePlace`); a `Reborrow` ConversionBinding (the source Type already states it; MIR and HIR
+    read `Borrow` with an object-view source as the Reborrow, as for the concrete form); a list of case forms.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
