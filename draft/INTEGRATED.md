@@ -1392,6 +1392,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
   changed; the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
+- Revision 63 (2026-11-12, plan §14; the owner's decision in K's session): RP8 for a behaviour-preserving R7 unit: no per-unit timing slot; the deterministic checks and the checkpoints after every fifth landed window (DECISIONS R7-M22). Nothing frozen.
   and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
   the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;
