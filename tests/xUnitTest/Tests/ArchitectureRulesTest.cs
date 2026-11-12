@@ -335,7 +335,7 @@ public class ArchitectureRulesTest
             "Parsing/Parser.Functions.cs|TryParseFunctionName|\"init\"",
 
             // The discard Name (SPEC 14.8.1).
-            "Parsing/Parser.ControlFlow.cs|TryParseForBinding|\"_\"",
+            "Parsing/Parser.ControlFlow.cs|ParseForSlot|\"_\"",
             "Parsing/Parser.Syntax.cs|ParsePattern|\"_\"",
 
             // The Origin names static and _ (SPEC 15.2.1, 15.2.3).
