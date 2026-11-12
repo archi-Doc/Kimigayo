@@ -53,7 +53,7 @@ The parameter list of a named function, constructor or Contract function require
 
 `external => internal: T` renames a parameter in either section; renaming alone does not make the name required. External names are unique across the whole list, including the receiver; internal names follow [§9.3](09-names-signatures-and-access.md#93-local-scopes-and-contextual-names).
 
-No other list has a boundary, and specialization headers write none. Foreign declarations allow it but no defaults ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
+No other list has a boundary, and specialization and override headers write none. Foreign declarations allow it but no defaults ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
 
 ### 7.2.2. Name contract and defaults
 
