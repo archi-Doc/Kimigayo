@@ -169,6 +169,12 @@ public sealed partial class RetentionTest
         "func make(h: uniq/H{s})\n    origin s.a outlives s.b\n    h.g = second2\n    h.k = first2\n" +
         "func apply(f: ref/((ref/i32 during a) -> ref/i32 during b), x: ref/i32 during a) -> ref/i32 during b => f(x)\n";
 
+    // G810's shapes: S is not punnable (SPEC 5.2), so a `ref/S` formed through b needs an S Place in `*b`; Dim's lengths read as Constants.
+    private const string ZeroShapes = "func inspect<T>(value: ref/T) => ()\nstruct S\n    public var v: u8\n" +
+        "group Dim\n    public let Zero: isize = 0\n    public let One: isize = 1\n";
+
+    private const string ZeroCall = "    f(t@uniq)\n    inspect(t@ref)\n";
+
     // SPEC 15.6.4, 15.6.1, 15.3.3: a result during an input retains it, a meet retains each operand, a declared `outlives` clause or the
     // well-formedness of a borrowed input makes another input reachable, and an Origin of no output's atoms' closure is not retained. A
     // result naming an abstract part of a borrowed input's referent retains it as Content (step 4). A reachable input is retained by
@@ -396,6 +402,44 @@ public sealed partial class RetentionTest
         Assert.Equal(row, Declared(Bind(form), "f"));
         Assert.Equal(records, MirBorrowsTest.Records(form + $"func g(m: {type})\n    var v = m\n    let w = f(v@ref)\n    v = m\n    let k = {use}\npublic func main() => ()\n"));
     }
+
+    // SPEC 4.1, 15.6.3, 15.6.4 (G810): a constant length 0 holds no element (HoldFlags.Empty), so `*b` has no S Place and `.0` cannot hold a
+    // borrow formed through b: each Ok row's `inspect` is free, after an instantiation or a Constant too, where each twin of length 1 keeps
+    // b's exclusive Loan. A view's run is held also when empty (4.8.1), at the Empty part's own level only: rvSliceBad and
+    // rvSliceInnerEmptyBad keep the Loan, and vSliceEmptyOk's `[2 of S]` lies in no element.
+    [Theory]
+    [InlineData("func f(b: uniq/(ref/S during q, [0 of S]) during q) => ()\nfunc zTupOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [1 of S]) during q) => ()\nfunc zTupBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [0 of [2 of S]]) during q) => ()\nfunc zNestOk(x: S, a: [0 of [2 of S]])\n    var t: (ref/S, [0 of [2 of S]]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [1 of [2 of S]]) during q) => ()\nfunc zNestBad(x: S, a: [1 of [2 of S]])\n    var t: (ref/S, [1 of [2 of S]]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [2 of [0 of S]]) during q) => ()\nfunc zInnerOk(x: S, a: [2 of [0 of S]])\n    var t: (ref/S, [2 of [0 of S]]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [2 of [1 of S]]) during q) => ()\nfunc zInnerBad(x: S, a: [2 of [1 of S]])\n    var t: (ref/S, [2 of [1 of S]]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [(Dim.Zero) of S]) during q) => ()\nfunc zConstOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [(Dim.One) of S]) during q) => ()\nfunc zConstBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<T>(b: uniq/(ref/T during q, [0 of T]) during q) => ()\nfunc zGenOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<T>(b: uniq/(ref/T during q, [1 of T]) during q) => ()\nfunc zGenBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<T>(b: uniq/(ref/S during q, T) during q) => ()\nfunc rvGenTOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<T>(b: uniq/(ref/S during q, T) during q) => ()\nfunc rvGenTBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<length N>(b: uniq/(ref/S during q, [N of S]) during q) => ()\nfunc zLenOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<length N>(b: uniq/(ref/S during q, [N of S]) during q) => ()\nfunc zLenBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("struct H {q}\n    public var r: ref/S during q\n    public var z: [0 of S]\nfunc f(b: uniq/H{h} during q)\n    origin h.q == q\n    _ = 0\nfunc zFieldOk(h: H{p})\n    var t = h@move\n", "")]
+    [InlineData("struct H {q}\n    public var r: ref/S during q\n    public var z: [1 of S]\nfunc f(b: uniq/H{h} during q)\n    origin h.q == q\n    _ = 0\nfunc zFieldBad(h: H{p})\n    var t = h@move\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [0 of [2 of S]]) during q) => ()\nfunc vSliceEmptyOk(v: Slice<S>, a: [0 of [2 of S]])\n    var t: (Slice<S>, [0 of [2 of S]]) = (v@move, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [1 of [2 of S]]) during q) => ()\nfunc vSliceInnerBad(v: Slice<S>, a: [1 of [2 of S]])\n    var t: (Slice<S>, [1 of [2 of S]]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [0 of S]) during q) => ()\nfunc rvSliceBad(v: Slice<S>, a: [0 of S])\n    var t: (Slice<S>, [0 of S]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [2 of [0 of S]]) during q) => ()\nfunc rvSliceInnerEmptyBad(v: Slice<S>, a: [2 of [0 of S]])\n    var t: (Slice<S>, [2 of [0 of S]]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    public void AZeroLengthArrayHoldsNoPlace(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(ZeroShapes + form + ZeroCall + "public func main() => ()\n"));
+
+    // SPEC 4.3.3 (G810): an Empty element keeps its Loans, so a value a call may store there (zWrite: `b@follow = [0 of s]`) or return
+    // (zPass) carries the argument's Loan, and the write of x conflicts while the array lives.
+    [Theory]
+    [InlineData("func f(b: uniq/[0 of ref/i32 during q] during q, s: ref/i32 during q) => ()\nfunc zWriteBad()\n    var x = 1\n    var a: [0 of ref/i32] = []\n    f(a@uniq, x@ref)\n    x = 3\n    inspect(a@ref)\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("func f(b: uniq/[0 of ref/i32 during q] during q, s: ref/i32 during q) => ()\nfunc zWriteOk()\n    var x = 1\n    var a: [0 of ref/i32] = []\n    f(a@uniq, x@ref)\n    inspect(a@ref)\n    x = 3\n", "")]
+    [InlineData("func pass(a: [0 of ref/i32 during p]) -> [0 of ref/i32 during p] => a@move\nfunc zPassBad()\n    var x = 1\n    let r = pass([0 of x@ref])\n    x = 2\n    inspect(r@ref)\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func pass(a: [0 of ref/i32 during p]) -> [0 of ref/i32 during p] => a@move\nfunc zPassOk()\n    var x = 1\n    let r = pass([0 of x@ref])\n    inspect(r@ref)\n    x = 2\n", "")]
+    public void AZeroLengthArrayKeepsItsElementsLoans(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(ZeroShapes + form + "public func main() => ()\n"));
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
     // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
