@@ -3791,8 +3791,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a computed `Receiver` (a capture loop per read); the three missed positions added to `ClosureEffects`' own list (a third fix of an
     open family); a net counting an unlisted use Exclusive in every case (a conservative Language error on valid programs).
 - **R4-M132 Rule W on the MIR, with MirProblem's facts as one representation (2a-2, G:A5-F4's merge unit; design C)** (owner,
-  2026-10-25; superseded in part by R4-M148; amended 2026-11-05 (PLAN G263); verbatim: the departures 「(a) 一括で承認 (推奨)」, publication
-  「(a) PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」) SPEC 15.6, 15.6.4, 15.6.5, 23.1.2.
+  2026-10-25; superseded in part by R4-M148; amended 2026-11-05 (PLAN G263) and 2026-11-14 (PLAN G824); verbatim: the departures
+  「(a) 一括で承認 (推奨)」, publication 「(a) PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」) SPEC 15.6, 15.6.4, 15.6.5,
+  23.1.2.
   - Design C (`2a-2-review.md` §5, units §6: U1 the representation, U2 the result role, U3 rule W, U4 G213's arguments, U5 records):
     A's representation and owner split (indirect markers below `loanBase`, MirOrigins' published causes and `Fixed`, Judge recording
     first), with B's exact R4-M96 scan, per-holder read-through, Content retention, write-through rows, validator rule (corrected),
@@ -3827,15 +3828,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`MirBuilder.Defaults.Copies`). MirValidator: a Result local is a Temp of local 0's Type, read only by the whole Move into `_0`
     that delivers it, else `MirViolation.Local` (no new violation). Code generation reads no role.
   - U3 (rule W): MirOrigins publishes, for the body Judge last judged, each Ref's recorded Refuted problems whose `Reason.Longer` is
-    its own atom (`Causes`, a counting sort by atom; `Refutes`, the gate) and whether a receiving Type holds an Origin and every Origin
-    it holds is Fixed (`Fixed`; a raw layer, a Type parameter, a projection or a Callable fails). MirBorrows (`MirBorrows.Causes.cs`):
-    where `Refutes` is false nothing is set up; else the Loans and guard markers whose Refs' causes cover the run's views are W
-    elements, each with an indirect marker below the Loans (`Indirect`, its markers interned in one pass, `MirLoanSets.Of`);
-    aggregates, part steps, a raw Deref, a Value callee's environment and a read through a part's or E's reference mark; a read through
-    a reference to a whole holder keeps; an arrival into E, `_0` or a Result temp is kept only where `Fixed` holds, into a local only
-    whole or written through a reference to its whole root; joins union; endings remove markers with their Loans. A conflict is derived
-    exactly when every conflicting candidate the check set takes is a W element no carrier keeps (a transit value, a holder other than
-    an escape holder, an escape holder holding its marker), its causes appended as `Cause` facts; err(ended) likewise for γ_H.
+    its own atom (`Causes`, a counting sort by atom; `Refutes`, the gate) and whether a receiving Type holds an Origin and every
+    Origin it holds is Fixed (`Fixed`, under the run's views: an Origin is Fixed where its atom is, or where it is Inferred and
+    every class of those views has one Fixed node that the class's edges reach from it and that reaches it, neither path through
+    another Fixed node, so the body's relations make it equal to that fixed Origin (SPEC 15.6.1, 15.6.5; amended 2026-11-14, PLAN
+    G824: a store through a reassignable local's region slot); MirOrigins forms each class's equal nodes once per Judge from its
+    Fixed nodes, so a query's cost does not grow with the slots queried; no view, a view without a class or a class over the storage
+    limit fails; a raw layer, a Type parameter, a projection or a Callable fails). MirBorrows (`MirBorrows.Causes.cs`): where
+    `Refutes` is false nothing is set up; else the Loans and guard markers whose Refs' causes cover the run's views are W elements,
+    each with an indirect marker below the Loans (`Indirect`, its markers interned in one pass, `MirLoanSets.Of`); aggregates, part
+    steps, a raw Deref, a Value callee's environment and a read through a part's or E's reference mark; a read through a reference
+    to a whole holder keeps; an arrival into E, `_0` or a Result temp is kept only where `Fixed` holds, into a local only whole or
+    written through a reference to its whole root; joins union; endings remove markers with their Loans. A conflict is derived
+    exactly when every conflicting candidate the check set takes is a W element no carrier keeps (a transit value, a holder other
+    than an escape holder, an escape holder holding its marker), its causes appended as `Cause` facts; err(ended) likewise for γ_H.
     `MirReport` merges derivedness (direct wins, causes unioned); the ledger leaves derived problems off the MIR side.
   - U4 (G213): one record of the analyses' storage limit, `MirDataflow.StorageLimit(report, body, views, table, words)`:
     `OwnershipStorageLimit_Kd` at the body with the facts `Required` (the arena's bytes), `Limit` (the byte limit) and `Table` (a
