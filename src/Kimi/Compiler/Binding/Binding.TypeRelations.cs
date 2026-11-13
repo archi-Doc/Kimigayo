@@ -85,8 +85,9 @@ public sealed partial class Binding
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
     // comparison's required signatures (the owner's (a)), and a fixed Origin outlives one only when it is static, since the call that
     // binds it may come after every point of the enclosing body. A meet outlives an Origin when each operand does, and an Origin
-    // outlives a meet when it outlives one operand; nested meets stop at depth 8.
-    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use)
+    // outlives a meet when it outlives one operand; nested meets stop at depth 8. `condition` is the Semantics cases the relation is
+    // required in (SPEC 15.6.5), so a premise of those cases proves it.
+    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, ulong condition = 0)
     {
         var comparison = instance;
         return Outlives(a, b, 0);
@@ -134,7 +135,7 @@ public sealed partial class Binding
             if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
             {
                 // A required per-call Origin relates to another only through the required signatures' own well-formedness.
-                return binding is not null && binding.ProvesOriginOutlives(longer, shorter, use!, comparison);
+                return binding is not null && binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition);
             }
 
             if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))
@@ -142,7 +143,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison);
+            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison, condition);
         }
     }
 
