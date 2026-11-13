@@ -59,12 +59,13 @@ public class NormalizedConstraintProofBindingTest
         Assert.Equal(records, DiagnosticCorpus.RecordProfile(Trees + twin + "public func main() => ()\n") == "clean" ? "clean" : "invalid");
     }
 
-    // DECISIONS R7-C2e2-1: the facts the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
-    // and Derived (an identity view, prepared again before the phase, where its readings are not kept), less the library's: exact. An
-    // entry read across its serial, or one Kept with readings that were not kept, indexes fewer.
+    // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
+    // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
+    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
+    // read across its serial indexes fewer (1,245); one Kept under a table that is not Final indexes 162.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(146, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(1250, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
@@ -77,11 +78,12 @@ public class NormalizedConstraintProofBindingTest
     public void AKeptEntrysReadingsAreNotReadInsideANormalization(string form, string premise, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, Boxed(premise) + "public func main() => ()\n", records);
 
-    // The facts x1's entries index over the library's, exact: the request inside the normalization indexes the view again, so reading
-    // the Kept entry there, without IndexOf's rebuild branch, indexes 57.
+    // The pairs x1's entries index over the library's, exact (a fact of the identity view also under its class key; the table is Final,
+    // so the entry is Kept): the request inside the normalization indexes the view again, so reading the Kept entry there, without
+    // IndexOf's rebuild branch, indexes 64, as does an entry Kept with readings that were not kept.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(81, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+        => Assert.Equal(92, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -242,7 +244,7 @@ public class NormalizedConstraintProofBindingTest
             "func f<T, U>(a: U.(Tree).Child, b: i32) -> (U.(Tree).Child, U.(Tree).Child)\n    T is U\n    T is CopyTree\n" + premise +
             "    let p = (a, a)\n    let y: Box<U>.(K).X = b\n    return p\n";
 
-    // Closure(view)'s facts indexed by a compilation of `source` (the class's scaling measure).
+    // Closure(view)'s pairs indexed by a compilation of `source` (the class's scaling measure).
     private static int ClosureWork(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");

@@ -115,7 +115,7 @@ public sealed partial class Binding
             var selected = decomposition is not null && source.IsTupleBinding && slot is not null && name.IdentifierName != "_"
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
-            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);
+            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach, name);
             symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
             if (iterable is null)
             {
