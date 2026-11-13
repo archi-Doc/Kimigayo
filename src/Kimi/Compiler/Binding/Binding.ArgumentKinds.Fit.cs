@@ -11,6 +11,10 @@ public sealed partial class Binding
     private static ArgumentAdaptation LiteralFitting(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal;
 
+    // Whether a part has a function's kind: an anonymous function, a function group, or a Closure, Function Item or Function value.
+    private static bool IsFunctionValued(PartKind kind, Koto node)
+        => kind is PartKind.Function or PartKind.Reference || node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.Function };
+
     // SPEC 4.3, 10.5.1: the one shape rule of a call argument's Tuple or array literal at a value Type or pattern: a Tuple literal fits a
     // Tuple of its arity; an array literal the fixed array of exactly its length (a fill: of its count), or the owned Array (not a fill).
     // A length an unbound slot decides is open in an open fit (OpenLength): judged after selection.
@@ -130,10 +134,6 @@ public sealed partial class Binding
     // kind misfits its kind, as at a closed Function Type.
     private bool OpenFunction(BoundType type)
         => this.openFit.Owner is { } owner && type.Kind == BoundTypeKind.Function && MentionsSlots(type, owner, this.openFit.Slots);
-
-    // Whether a part has a function's kind: an anonymous function, a function group, or a Closure, Function Item or Function value.
-    private static bool IsFunctionValued(PartKind kind, Koto node)
-        => kind is PartKind.Function or PartKind.Reference || node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.Function };
 
     // SPEC 4.4.1, 10.8 (PLAN G814; O-251 (a)): whether a fixed array's length is a term an unbound length slot decides, in an open fit:
     // the length alone is open, judged after selection; the array's kind and element fit as the closed fit requires.
