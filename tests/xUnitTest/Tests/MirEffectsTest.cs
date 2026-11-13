@@ -730,7 +730,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // (SPEC 8.7.4), so a generic's confined put may format its abstract T: through a formatting function's row or called directly, and
     // as an abstract Wrapping<T>, whose WrappingFormat body runs T's format under the bounds guaranteed for T; without formatting, or at
     // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2). The rows through write, an
-    // interpolation and toString compose format at the caller by IMPL 21.3.4's rows (PLAN G795); the direct call on T resolves through
+    // interpolation and toString compose format at the caller by SPEC 22.10.1's published effects; the direct call on T resolves through
     // member lookup's Position clause (PLAN G776).
     [Theory]
     [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", "")]
@@ -753,8 +753,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 8.11.3, 8.11.1, 4.6.1, 4.6.3 (PLAN G771): a requirement call of format on an abstract P takes the bound of the Contract its
     // premise proves: confined under Position or PositionRange, and none under Utf8Format, which declares no bound (any formatter may
     // bind P); each called directly and through a formatting function's row (write, an interpolation, toString), which composes format
-    // at the caller by IMPL 21.3.4's rows (PLAN G795). The bound covers format alone: a call of Plain's put, which bounds nothing, beside
-    // a bounded format keeps its unknown environment effect.
+    // at the caller by SPEC 22.10.1's published effects. The bound covers format alone: a call of Plain's put, which bounds nothing,
+    // beside a bounded format keeps its unknown environment effect.
     [Theory]
     [InlineData("Position", "        return writer.write(self.p)\n", "")]
     [InlineData("Position", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", "")]
