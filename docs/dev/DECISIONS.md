@@ -9175,6 +9175,9 @@ resumed by R4-M86 (2026-10-20).
     edge with a Dependent end is derived, unless that edge is the last edge of a chain through Dependent nodes that fails between its
     non-Dependent ends; site (1)'s two clauses fall away. Binding's fit records stay direct until A5's chain judgment is published at
     R6-check and H11 retires the fit twins (PLAN G206 (6)). Site (2) is applied by this entry.
+  - Amended by BU-190 (PLAN G739): "Binding's fit records stay direct" except where a fit's Origin conjunct rests: it holds, its
+    positions become body rows A5 judges with the atom Dependent, and `FailedOriginEnvironment`'s walk (G206 (6)'s stopgap) is
+    deleted.
   - Supersedes BU-26's pre-filter (`JudgeOriginObligation`'s verdict on a row with an Unbound end, which region inference or a rejected
     clause could prove) and its clause "derived when that end's binder failed".
   - Records: chains path a hid are reported at their last edge (x-chain-a, t-two-a, m-meet-a, m-operand-a, fan-a, eq-cycle-a, mp-a,
@@ -11992,6 +11995,8 @@ resumed by R4-M86 (2026-10-20).
     result, parameter, Field or payload slot) stays Unbound and reaches its uses: A5 treats it as Dependent, and Binding's fit
     reports `UnprovenOriginRelation_Kd` at uses outside the failed declaration, a counted dependent on a rejected program (Q13; PLAN
     G739).
+  - Amended by BU-190 (PLAN G739): the last sentence's Binding record no longer holds: a fit's or a contract comparison's Origin
+    conjunct over a resting slot holds, so a use outside the failed declaration reports no `UnprovenOriginRelation_Kd`.
   - **Rejected:**
     - Option A, two facts over a hand census (review 4's REJECT).
     - An unavailable contract without failing the owner. Every empty-`Relations` reader would still need the dependence channel, so
@@ -12644,6 +12649,46 @@ resumed by R4-M86 (2026-10-20).
     (2)); `Scalar` deciding punnability from its own per-component answers (a second copy of SPEC 5.2's composite rows).
   - Work per use: a Scalar, raw pointer, array or struct write does the former work; a Tuple write whose parts hold a Scalar adds
     one memo lookup per Tuple level after that Type's first write.
+
+- **BU-190 A fit's or a contract comparison's Origin conjunct over a resting slot holds** (2026-11-13; Front, Binding; Major; PLAN
+  G739; design reviews 1-2; amends BU-159's "Consequences" sentence on G739 and BU-62's "Binding's fit records stay direct") SPEC
+  23.1.2, 15.3.3, 15.3.6, 15.3.7; DECISIONS Q13 rule W.
+  - **Rule.** A conjunct of a fit's Origin position, or of a contract comparison's relation, holds and gives no evidence when one of
+    its ends, resolved at the use, rests: it holds an Unbound atom that rests on a failed part. A meet at the longer end splits into
+    one conjunct per operand (SPEC 15.3.6): a resting operand's conjunct holds and every other operand's is decided as usual; a
+    shorter end with a resting operand holds whole. The atom rests when its declaration has a `PendingCause` (a failed clause, or
+    the Type, alias target or payload operand that failed before completion) or its binder holds its own failure (a failed
+    omission); each leaves an Error, so no valid program meets the rule. A recording fit that held by resting leaves its positions
+    as rows of its body, formed at the fit's entry (`CheckTypeUse`, with the destination), and forming them never changes the fit's
+    answer: a position whose shape forms no row (a Function Type's whole contract) keeps the walk's. A5 judges the rows with the
+    atom Dependent (R4-M118; this entry closes its site (1) row), and a row with no body rests on `UnboundCause` in the declaration
+    judge (BU-62).
+  - **Owner.** `UnboundCause` (`Binding.OriginDeclarations.Failures.cs`; null when nothing failed) is the one statement of the fact,
+    read through `Rests`; `HoldsResting` is the one per-conjunct split, run after each reader's own answer with that reader's leaf
+    (`IOriginConjunct`): the fit (`FitOrigin`, `Binding.OriginProof.cs`), its position search (`OriginFitSearch.OriginPartFails`),
+    and the contract comparison's decision sites, an implementation's claims (`ClaimHolds` in `CompleteImplementationOrigins`) and
+    the Origin inference's bounds (`SolveOriginInference`, which `CompatibleRequirement`'s comparison reaches). The proof
+    (`ProvesOriginOutlives`) is unchanged: resting is a rule of these decisions, never a premise.
+  - **Removed.** `FailedOriginEnvironment`'s walk over the declarations enclosing a use (PLAN G206 (6)'s stopgap): a resting end no
+    longer reaches the recorder. A record with an Unbound end that has no failed part (a per-call image) stays independent outside a
+    failed declaration; inside one, the image's binder's owner is that declaration, which rests it, as the walk did.
+  - **Reason.** The recorder explained the record afterwards by the use's position, so a use outside the failed declaration
+    published a dependent as independent (G739) and a use inside it rested on whatever declaration enclosed it.
+  - **Records (Q13).** On rejected programs only: `UnprovenOriginRelation_Kd` and PLAN G105's `UninitializedPlace_Kd` pair at a
+    constructor go where the fit's end rests, `UnprovenOriginContract_Kd` and `IncompatibleContractImplementation_Kd` where a
+    comparison's does, and `Unsupported_Kd` where a Function value read from such a slot fits an annotated local or a parameter (the
+    twin's independent `TransferRequired_Kd` it hid is reported, fn3; and, g6, the twin's independent Unsatisfied record at the
+    twin's site); 4 expectations that pinned such a dependent move. A5 reports one escape once per value fit that holds by resting
+    inside an annotated initializer: each such `FitsTypeAt` forms rows beside the local's own fit (`CheckTypeUse`), so +1 at
+    `h0@move` beside the kept `let h: C{x} = h0@move` (FailedClause), +1 at `idc(h0@move)` through a call, +2 at `(h0@move, 1)` and
+    `h0@move` in a Tuple local (counted; PLAN G820). No acceptance move.
+  - **Rejected.** Completing the node as the atom's cause's dependent in the recorder (the node loses its Type and A5's chain record
+    at the same statement is lost); a resting record with an `IsDerived` row for `OriginRelation` (it takes the node's one failure
+    slot and derives the declaration judge's independent chain records); holding without a body row (A5 never sees the relation); a
+    distinct Origin kind for a resting slot (fabricates relations for every reader, R4-M118); copying `FailedClauses` in
+    `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
+    of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
+    itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
