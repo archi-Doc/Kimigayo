@@ -1,36 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): the formatting runtime (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the helpers through this
-// static component (promoted, never copied).
-// Input: a Text.writer destination, whose writer kind it gives (WriterKind); the runtime templates (.ll.in); a writer, LLVM SSA names and
-// sizes.
-// Output: LLVM text written to the writer; per helper kind one row, readable by kind before any representation exists (X4); the
-// formatting runtime's text, which Text.writer requests (HelperNeeds.FormattingRuntime) and which calls no library function; the kind
-// Context of Text.writer's destination is the runtime's own number (WriterKind).
-// The one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4
-// X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
-// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; the
-// formatting runtime's text is written once when a caller requests it; warm writes allocate nothing; the expanded runtime texts
-// (Texts) are built only when a code generation writer first reads one, never on the check path (G350).
+// Owns the legacy runtime helpers of code generation until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b; DECISIONS
+// R5-M16): the legacy row map and Text.writer's destination kind (LegacyRuntimeHelpers.Formatting.cs); it writes no runtime text since
+// R8-W2 c4. MIR code generation reads them through this static component (promoted, never copied).
+// Input: a compiler function of the Body disposition; a Text.writer destination, whose writer kind it gives (WriterKind).
+// Output: the one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row,
+// S2-S4 X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c); the kind Context
+// of Text.writer's destination, the number Utf8Writer.reserve's kind switch reads (WriterKind).
+// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; reads
+// allocate nothing.
 // Must not hold module state, take syntax or MIR types, or a BoundType but a writer's destination for its kind (WriterKind),
 // or use LINQ.
 
-#pragma warning disable SA1402 // The helper records are this component's request vocabulary.
+#pragma warning disable SA1402 // The legacy row is this component's vocabulary.
 
 namespace Kimi.Compiler.Backend;
-
-/// <summary>The legacy runtime text a module must hold, which its callers request (X4).</summary>
-[Flags]
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal enum HelperNeeds : byte
-{
-    None = 0,
-
-    /// <summary>The formatting runtime: the UTF-8 buffer, writer, formatting and floating-point routines and the memory
-    /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
-    FormattingRuntime = 8,
-}
 
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): the runtime routine MIR code generation calls for it
 /// through the one call writer.</summary>
