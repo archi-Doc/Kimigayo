@@ -12689,6 +12689,41 @@ resumed by R4-M86 (2026-10-20).
     `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
     of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
     itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
+- **BU-193 The raw Places of a raw Place (SPEC 5.2; PLAN G806)** (2026-11-13; Front, Binding / `TyCtxt`; Major; design reviews 1-4,
+  implementation review ACCEPT WITH NOTES; the Middle's C-279; the owner's O-220 (a), O-228 (a), O-231 (a)).
+  - **Rule.** `TyCtxt.RawPlaces(at, into)` publishes, one level, the raw Places directly within a raw Place of key `at`; the raw
+    Place itself, the Type O-220 (a) names first, is the root its reader holds. Its answer is a closed `RawPlacesAnswer` of three
+    classes, read from Holdings' one form table at the key (no second copy): **Listed** (rows) for `RawPart`'s forms: an `owner`
+    struct's base rows then its stored Fields, a Tuple's elements, a fixed array's one element row; **Empty** (no row) for an enum
+    (a Case payload is reached by matching the enum, which reads it) and a Closure (its environment), and for every form whose
+    Holdings rows hold nothing inline (a referent, a collection's elements, Type arguments, an erased environment, a Scalar);
+    **Undecided** for an `Abstract` row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places), an `Unsupported` row, an unbound
+    part, an `Inline` row of any other form (an `owner` layer, a pair layer's owner case) and Binding's Limit, where the reader
+    takes its own reading, never "empty". Rows are published for `RawPart`'s forms whatever the answer (as Holdings publishes its
+    entries at a Limit; an unbound part gives none); a struct whose base is not Listed is Undecided.
+  - **`RawPart` and `Lead`.** `TyCtxt.RawPart` is the listed forms' test, read per step by `ElementAccess.IsRawPlace` and
+    `MirMoveData.Resolve`; its G672 enum arm is removed (SPEC 5.2 lists Fields and elements; no move read it). A row's `Lead` marks
+    the raw Place's own address where IMPL 21.1 fixes it (`TyCtxt.Leading`'s step: a C-layout first Field; an element row, whose
+    element 0 is there, the grid being the reader's step rule); every other row is off, and a verdict resting on where it lies is
+    the reader's rested located `Unsupported_Kd`. The fact reads no size, offset or length and decides no pun.
+  - **Readers.** A5's pun rule (`Within`, `Scalared`) for the raw Places of a written Type: the rows where the answer is Listed, or
+    Undecided with rows published; the written side's by-value parts (`WrittenBeside`: Holdings' Inline entries, G792's `Unstated`
+    rows), which a whole-value write writes, where it is Empty, or Undecided with no row published (O-231 (a): undecided keeps
+    today's written parts); A5's value-representation revision 3 for a reading Type (the first reader of Undecided: its abstract
+    rule or its located `Unsupported_Kd`); G562-c's remainder for the written Place's path.
+  - **One acceptance move:** a written `UniqSlice<T>` (a library struct that Holdings reads as a view) now writes its stored Fields,
+    so a whole UniqSlice written over raw-pointer bytes writes a Scalar there (uSliceBad4, invalid, newly rejected; uSliceOk4
+    accepted).
+  - **Reason.** No component published the fact, so A5's revisions 1 and 2 counted too few (B3) and then too many (B4) raw Places,
+    and revision 1's fact still mixed "nothing within" with "unknown" (design reviews 1-2, B1 and G2).
+  - **Rejected.** A transitive memoized list per Type (the readers memoize per key); an offset vocabulary with fixed and open values
+    (no reader reads a size); "no rows" for an abstract or unsupported form (a reader would count too few); a second copy of
+    Holdings' form table; a reader that reads "undecided" as "nothing written" (review 3's D1: a silent default that lost two
+    records); narrowing the pun rule's written side to the rows (a whole-value write writes its payload's bytes); a reader's own
+    enumeration.
+  - **Supersedes** G672's sentence "So does an `owner` enum's" in `TyCtxt.RawPart`'s contract (no DECISIONS entry states it; the
+    code comment changes with this unit). The byte-extent query `TyCtxt.Remainder` (O-224 (a)) is not this entry's: it lands with
+    its first reader, G562-c's `Beside`, whose entry records it.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
