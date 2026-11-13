@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Owns unary and binary operator binding: syntax, scope and expected Type enter; bound Types, adaptations and failures leave, and a
-// plain write's kept-write verdict (its plan row's Mode, KeepsWrite).
+// plain write's admitted-misfit verdict (its plan row's Mode, AdmittedMisfit).
 // Operand binding, destination authority, fitting and operator completion retain their order. Arithmetic selection and
 // comparison composition keep their existing owners. This owner neither emits code nor formats diagnostics.
 public sealed partial class Binding
@@ -19,15 +19,15 @@ public sealed partial class Binding
     // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
     // failure is then its value's fit (a Type mismatch, an Origin or Owned fit, a fit's limit), and the write still places a value derived
     // from that failure. A write refused there, or whose target Binding did not type, is not one.
-    private static bool KeepsWrite(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
+    private static bool AdmittedMisfit(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
         HirTables.PlanOf(node).Mode != 0;
 
-    // The one writer of KeepsWrite's verdict, a row only for a write that keeps its write; any other binary keeps its row.
-    private static void KeepWrite(BinaryKoto binary, bool keeps)
+    // The one writer of AdmittedMisfit's verdict, a row only for an admitted misfit; any other binary keeps its row.
+    private static void SetAdmittedMisfit(BinaryKoto binary, bool misfit)
     {
         if (binary.Akind == KotoKind.Equals)
         {
-            HirTables.PlanFor(binary, keeps).Mode = keeps ? (byte)1 : (byte)0;
+            HirTables.PlanFor(binary, misfit).Mode = misfit ? (byte)1 : (byte)0;
         }
     }
 
@@ -141,7 +141,7 @@ public sealed partial class Binding
         binary.ComparisonActive = false;
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-        KeepWrite(binary, keeps: false);
+        SetAdmittedMisfit(binary, misfit: false);
         if (this.TryArithmetic(binary, scope, out var arithmeticResult))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
@@ -205,8 +205,8 @@ public sealed partial class Binding
         var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
             : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
         // A typed target reaching here was admitted: every refusal above (CheckDestination, the Holder record, a reference binding's mode
-        // record) returns at once, so a failure recorded since is its value's fit (KeepsWrite).
-        KeepWrite(binary, keeps: left is not null && binary.BindingFailure != BindingFailure.None);
+        // record) returns at once, so a failure recorded since is its value's fit (AdmittedMisfit).
+        SetAdmittedMisfit(binary, misfit: left is not null && binary.BindingFailure != BindingFailure.None);
         return result;
     }
 

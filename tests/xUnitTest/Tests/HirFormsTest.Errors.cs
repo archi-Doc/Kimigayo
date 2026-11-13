@@ -176,11 +176,16 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): a plain write Binding rejected for its value's fit after admitting its destination keeps
-    // Assign, its target its own Op and its value, which Binding resolved, the Error taken as its derived value (Temporary, None); a write
-    // its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound update Binding rejected stay Error,
-    // their children replaced (fail-before: the first was Error too).
+    // Assign, its target its own Op (a local's Name, a setter's Call) and its value, which Binding resolved, the Error taken as its derived
+    // value (Temporary, None); a write its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound
+    // update Binding rejected stay Error, their children replaced (fail-before: the local's and the setter's writes were Error too).
     [Theory]
     [InlineData("func f()\n    var x: i32 = 0\n    x = \"a\"\n", "x = \"a\"", "Assign Name Error Temporary/None")]
+    [InlineData(
+        "struct C\n    public var count: i32 = 0\n    public computed doubled: i32\n        get() -> i32 => self.count * 2\n" +
+        "        set(value: i32) -> () => self.count = value / 2\n    public init() => ()\nfunc h(c: uniq/C)\n    c.doubled = \"a\"\n",
+        "c.doubled = \"a\"",
+        "Assign Call Error Temporary/None")]
     [InlineData(
         "struct In\n    public var v: i32 = 0\n    public init() => ()\nstruct B\n    public computed inner: In\n        get() -> In => In.init()\n" +
         "    public init() => ()\nfunc h(b: uniq/B)\n    b.inner.v = \"a\"\n",
