@@ -69,18 +69,30 @@
 //   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
 //   answers). No such table is known to grow after the read within a pass.
 //
-// Closure(view) (DECISIONS R7-C2e2-1): a view's index of its Contract facts is one table, an entry per (view scope, requirement
-// Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope, SubjectKey) holding
-// each fact as written, under its subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes, which are the
-// view's), and, under a parameter identity, as the view reads it (Reading). An entry is Kept when its content is Complete: written
-// facts in every phase (a function of the chain's environments, which the serial counts), their class keys when the view has no
-// identity premise or its identity table is Final (W7, the rule the kept rows ask: a table that is not is rebuilt per read), readings
-// where KeptRegion kept them (the one rule), so an entry whose keys are not final or whose preparation formed a reading that was not
-// kept stays owned by its outermost request and goes when that returns. A Kept entry lasts the pass (ClearClosure, in
-// ResetCapabilities) and spares a later outermost request its preparation; its readings are read only in KeptRegion, so outside it
-// an outermost request forms its own (R7-M20) and the entry again. A nested demand reads an entry's written facts and their keys
-// alone (the leaf rule), so it reads any entry. Retained memory is the pool's high water: an entry keeps the largest buckets and
-// lists any view gave it, flat across warm rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion.
+// Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
+// scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
+// kind, SubjectKey).
+// - Rows: a kind has a row when a reader reads it by subject: Contract (Enumerate's walk), TypeIdentity
+//   (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics (DisjointConformanceFacts). The Contract row holds
+//   each fact as written, under its subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes, which are
+//   the view's), and, under a parameter identity, as the view reads it (Reading). The TypeIdentity and Semantics rows hold each fact
+//   as written under its written subject alone, with no class key and no reading: a bucket of theirs holds the facts of one written
+//   subject key, so a reader that pairs by bucket pairs no other subject's fact.
+// - Kept: an entry is Kept when its content is Complete: written facts in every phase (a function of the chain's environments, which
+//   the serial counts), their class keys when the view has no identity premise or its identity table is Final (W7, the rule the kept
+//   rows ask: a table that is not is rebuilt per read), readings where KeptRegion kept them (the one rule), so an entry whose keys
+//   are not final or whose preparation formed a reading that was not kept stays owned by its outermost request and goes when that
+//   returns. A Kept entry lasts the pass (ClearClosure, in ResetCapabilities) and spares a later outermost request its preparation;
+//   its readings are read only in KeptRegion, so outside it an outermost request forms its own (R7-M20) and the entry again. A
+//   nested demand reads an entry's written facts and their keys alone (the leaf rule), so it reads any entry.
+// - Readers: a request (PremiseRefines) and a closure validator's read (BeginClosureRead to EndClosureRead), which is outside any
+//   request and reads the TypeIdentity and Semantics rows. Whoever holds an entry starts no request, since a request's return drops
+//   the entries it does not keep: PremiseRefines entered from a walk or from a validator's read is InternalInvariant, so a validator
+//   takes what it needs from the entry before it judges. An entry a validator's read forms is the read's: formed outside a request,
+//   its Contract row has no class key and no reading, so no request may read it, and it goes back to the pool when the read ends. A
+//   Kept entry serves a read as it is.
+// - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
+//   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion.
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
 // enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
@@ -180,8 +192,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation (a fact as written, under its class key
-    // and as read).
+    // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation, in every row (a Contract, TypeIdentity
+    // or Semantics fact as written; a Contract fact under its class key and as read), the validators' entries included.
     internal int ClosureIndexWork { get; private set; }
 
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
@@ -301,7 +313,7 @@ public sealed partial class Binding
     {
         if (this.enumerateWalking > 0)
         {
-            throw new InvalidOperationException($"PremiseRefines of `{subject}` entered from Enumerate's walk (InternalInvariant; R7-C2a).");
+            throw new InvalidOperationException($"PremiseRefines of `{subject}` entered from Enumerate's walk or a closure validator's read (InternalInvariant; R7-C2a).");
         }
 
         // R7-C2c2: a request keys its subject and its view's facts by the view's identity classes (SPEC 8.2.3), whatever the table's
@@ -447,16 +459,45 @@ public sealed partial class Binding
                 {
                     index.Add(scope, fact, fact, fact.Subject);
                     this.ClosureIndexWork++;
+
+                    // R7-C2c2 c2-1 meets R7-C2e2-2 here: the class-key copy is the Contract row's alone. The other rows keep written
+                    // subjects, so the validators, which pair facts by bucket, never meet a fact of another written subject.
                     if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var at && !ReferenceEquals(at, fact.Subject))
                     {
-                        index.Add(scope, fact, fact, at); // R7-C2c2: also under its class key in the request's view
+                        index.Add(scope, fact, fact, at); // also under its class key in the request's view
                         this.ClosureIndexWork++;
                     }
+                }
+                else if (fact is { Kind: ConstraintKind.TypeIdentity or ConstraintKind.Semantics, Subject: not null })
+                {
+                    index.Add(scope, fact, fact, fact.Subject);
+                    this.ClosureIndexWork++;
                 }
             }
         }
 
         return index;
+    }
+
+    // A closure validator's read of the view `scope` denotes (the class header's Readers): outside any request, and until
+    // EndClosureRead nothing may start one. The entry is a Kept one or the read's own.
+    private ViewIndex BeginClosureRead(BindingScope scope)
+    {
+        if (this.enumerateDepth != 0 || this.enumerateWalking != 0)
+        {
+            throw new InvalidOperationException("A closure validator's read was entered from a request or another read (InternalInvariant; R7-C2e2-2).");
+        }
+
+        var index = this.IndexOf(this.ViewOf(scope), SerialOf(scope));
+        this.enumerateWalking++;
+        return index;
+    }
+
+    // The read ended: an entry it formed goes back to the pool.
+    private void EndClosureRead()
+    {
+        this.enumerateWalking--;
+        this.DropOwnedEntries();
     }
 
     // The outermost request returned: the entries it formed go back to the pool unless Kept.
@@ -612,7 +653,7 @@ public sealed partial class Binding
 
             // A fact is indexed by subject key, as written and as normalized in the view: FactStates confirms a match. A nested demand
             // reads the written facts alone (the leaf rule), so an entry an outermost request prepared serves it too.
-            if (index.Buckets.GetValueOrDefault((current, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
+            if (index.Buckets.GetValueOrDefault((current, ConstraintKind.Contract, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
             {
                 continue;
             }
@@ -692,7 +733,7 @@ public sealed partial class Binding
         => this.enumerateClasses is { } classes && ReferenceEquals(this.ClassKey(a, classes), this.ClassKey(b, classes));
 
     // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
-    // SubjectKey). Its lists stay with it, capacity kept.
+    // kind, SubjectKey). Its lists stay with it, capacity kept.
     private sealed class ViewIndex
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
@@ -704,7 +745,7 @@ public sealed partial class Binding
 
         internal bool Readings { get; private set; }
 
-        internal Dictionary<(BindingScope Scope, BindingSymbol? Symbol, BoundType Type), List<(BoundConstraint Raw, BoundConstraint Fact)>> Buckets { get; }
+        internal Dictionary<(BindingScope Scope, ConstraintKind Kind, BindingSymbol? Symbol, BoundType Type), List<(BoundConstraint Raw, BoundConstraint Fact)>> Buckets { get; }
             = new();
 
         internal void Open(int serial)
@@ -716,11 +757,12 @@ public sealed partial class Binding
             this.used = 0;
         }
 
-        // One fact of an environment of the view under the subject key of `at` (a projection's declaration and receiver, else the
-        // Type; the fact's subject or its class key): `raw` as the environment holds it (its availability), `fact` as the index reads it.
+        // One fact of an environment of the view in its kind's row under the subject key of `at` (a projection's declaration and
+        // receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds it (its availability), `fact`
+        // as the index reads it.
         internal void Add(BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
         {
-            var key = (scope, SubjectKey(at).Symbol, SubjectKey(at).Type);
+            var key = (scope, fact.Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
             if (!this.Buckets.TryGetValue(key, out var list))
             {
                 if (this.used == this.lists.Count)
