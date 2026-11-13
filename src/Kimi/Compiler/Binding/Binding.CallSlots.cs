@@ -80,10 +80,15 @@ public sealed partial class Binding
     // pair (an application, an original or an annotated occurrence), or null when the actual has no such layer. The outer slot is Origin
     // evidence, never compared here. Infer and MatchInputOrigins read it.
     private static BoundType? LayerTarget(BoundType layer, BoundType actual)
-        => layer.Kind == BoundTypeKind.Semantics
-            ? actual is { Kind: BoundTypeKind.Semantics, Components: [var component] } && actual.Semantics == layer.Semantics ? component : null
-            : TryPairLayer(layer, out var whole, out _) && TryPairLayer(actual, out var supplied, out var target) && ReferenceEquals(whole, supplied)
-                ? target : null;
+    {
+        if (layer.Kind == BoundTypeKind.Semantics)
+        {
+            return actual is { Kind: BoundTypeKind.Semantics, Components: [var component] } && actual.Semantics == layer.Semantics ? component : null;
+        }
+
+        return TryPairLayer(layer, out var whole, out _) && TryPairLayer(actual, out var supplied, out var target) && ReferenceEquals(whole, supplied)
+            ? target : null;
+    }
 
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
