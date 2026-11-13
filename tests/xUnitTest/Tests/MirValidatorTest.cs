@@ -17,7 +17,7 @@ namespace XunitTest;
 [Collection(nameof(MirValidatorTest))] // Its fixture's TyCtxt, which MirDumpTest shares, is not thread-safe.
 public sealed class MirValidatorTest(ITestOutputHelper output)
 {
-    // An owning interpolation of a literal, a value and a literal (Text.heap, three FormatSegments, a write, finish, intoString).
+    // An owning interpolation of a literal, a value and a literal (Text.heap, three hint stores, a write, finish, intoString).
     private const string Interpolation = "func f(n: i32) -> string => \"n=\\(n)!\"\n";
 
     // A static, as the static tests write it, and a body reading it on two branches, each after its own staticEnsure (G191).
@@ -102,8 +102,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             {
                 IntrinsicId.RawAllocate, IntrinsicId.RawRelease, IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.WriteStdout, IntrinsicId.MakeObj,
                 IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone, IntrinsicId.TestRequireAbort, IntrinsicId.StaticEnsure,
-                // FormatSegment only stores its hint since R8-W2 c1; the buffer is Text.heap, a body, since c3b, and the end Utf8Writer.finish
-                // and HeapBuffer.intoString, bodies, since c3a.
+                // The buffer is Text.heap, a body, since R8-W2 c3b, the end Utf8Writer.finish and HeapBuffer.intoString, bodies, since c3a,
+                // and the hint a store of the writer's Field since c2b.
             },
             Enum.GetValues<IntrinsicId>().Where(static x => (MirDescriptors.Of(x).Effects & MirEffect.Abort) != 0));
         Assert.Equal(
@@ -788,47 +788,6 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is not null, use.HasFinding);
     }
 
-    // R3-10 (PLAN G157 (37)): an owning interpolation's steps carry their constants, which code generation reads unchecked, each of its
-    // position's kind (the literal bytes an Integer, the values' Types a token of their Tuple): the built bodies are valid, a nested
-    // interpolation's included; a step's constant of another kind or an i32 token is a Type finding at the step (fail-before: none for
-    // another kind). A FormatSegment takes no text since R8-W2 c1 (ALiteralPositionsTextIsAConstantRecord), the buffer is a body's call,
-    // Text.heap, with no estimate since R8-W2 c3b (the FormatBuffer row went with its intrinsic), and the end is two bodies' calls,
-    // Utf8Writer.finish and HeapBuffer.intoString, since R8-W2 c3a (the FormatFinish row went with its intrinsic).
-    [Theory]
-    [InlineData(null, false)]
-    [InlineData(null, true)]
-    [InlineData("later", false)]
-    [InlineData("segment", false)]
-    public void AnInterpolationsStepsCarryItsEstimate(string? broken, bool nested)
-    {
-        var c = MirBuildTest.Compile(nested ? "func f(n: i32) -> string => \"a\\(\"b\\(n)\")c\"\n" : Interpolation);
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var at = broken == "later" ? 1 : 2;
-        MirTerminator[] Steps(IntrinsicId step) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
-            .Where(x => x.Callee is { Kind: MirCalleeKind.Intrinsic } callee && callee.Arg == (int)step)];
-        int Calls(string name) => body.Blocks.ToArray().Count(x => x.Terminator is { Kind: MirTerminatorKind.Call } call && call.Callee.Symbol?.Name == name);
-        var steps = Steps(IntrinsicId.FormatSegment);
-        Assert.Equal(nested ? 5 : 3, steps.Length);
-        Assert.Equal(Enumerable.Repeat(nested ? 2 : 1, 3), new[] { Calls("heap"), Calls("finish"), Calls("intoString") });
-        var step = body.Subject(steps[0].Source);
-        if (broken is not null)
-        {
-            MirConst constant = broken switch
-            {
-                "later" => new(MirConstKind.Bool, BoundType.Boolean, 1),
-                _ => new(MirConstKind.TypeToken, BoundType.I32),
-            };
-            Unsafe.AsRef(in body.Operands[steps[0].Start + at]) = MirOperand.Const(body.Const(constant));
-        }
-
-        (MirViolation, SourceRef)[] expected = broken is null ? [] : [(MirViolation.Type, step)];
-        var findings = new List<MirFinding>();
-        new MirValidator(c.Types).Validate(body, findings);
-        Assert.Equal(expected, findings.Select(static x => (x.Rule, x.Subject)));
-    }
-
     // SPEC 3.1.2, 22.10.3, 22.10.5 (DECISIONS R8-M7; R8-W2 c1): an owning interpolation's literal positions are the second producer of
     // constant records: the literal's record is admitted at Utf8Writer.deferLiteral's text and at string's built-in format's self, ref/string
     // parameters that keep nothing of it, with no finding. The same record at a callee that keeps its input, Text.utf8, is an Operation
@@ -887,8 +846,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its
-    // instance decides; its branch reads the term's value, the body's one Length constant, not the region's Len (R8-W2 c2a replaced a2's
-    // Len(region) by it, plan Revision 1 B1); the body is valid.
+    // instance decides; its branch reads the term's value, the body's one Length constant of that term, not the region's Len (R8-W2 c2a
+    // replaced a2's Len(region) by it, plan Revision 1 B1); the body's other is its first position's hint (R8-W2 c2b); the body is valid.
     [Fact]
     public void AGenericDirectLineBranchesOnItsRegionTermsValue()
     {
@@ -896,7 +855,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var length = Assert.Single(body.Consts.ToArray(), static x => x.Kind == MirConstKind.Length);
+        var lengths = body.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Length).ToArray();
+        Assert.Equal([LengthOperation.InterpolationBound, LengthOperation.InterpolationHint], lengths.Select(static x => ((BoundLength)x.Value!).Operation));
+        var length = lengths[0];
         var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type;
         Assert.Equal((LengthOperation.InterpolationBound, (object)region.LengthExpression!), (region.LengthExpression!.Operation, length.Value!));
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
