@@ -37,16 +37,29 @@ public class Utf8FormatBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
+    // SPEC 22.10.2, 9.6 (G776-a, the owner's O-194 (a)): a built-in Utf8Format conformance adds no member, so `format` called as a member
+    // of a built-in value, a wrapping integer's included, names none (fail-before: each bound), as it names none of an abstract
+    // Wrapping<T> (R8-S2d1's I-N1, the same record); the requirement is reached through `T is Utf8Format` or the adapter `write`.
     [Theory]
-    [InlineData("(42).format(writer@uniq)")]
-    [InlineData("\"text\".format(writer@uniq)")]
-    [InlineData("true.format(writer@uniq)")]
-    [InlineData("1.5.format(writer@uniq)")]
-    [InlineData("Text.utf8(\"text\").format(writer@uniq)")]
-    [InlineData("((200@u8)@Wrapping<u8>).format(writer@uniq)")]
-    [InlineData("(7@u8).format(writer@uniq)")]
-    [InlineData("(7@i128).format(writer@uniq)")]
-    public void DirectBuiltinRequirementSelection(string expression)
+    [InlineData("_ = (42).format(writer@uniq)", "(42).format")]
+    [InlineData("_ = \"text\".format(writer@uniq)", "\"text\".format")]
+    [InlineData("_ = true.format(writer@uniq)", "true.format")]
+    [InlineData("_ = 1.5.format(writer@uniq)", "1.5.format")]
+    [InlineData("_ = ((200@u8)@Wrapping<u8>).format(writer@uniq)", "((200@u8)@Wrapping<u8>).format")]
+    [InlineData("_ = (7@u8).format(writer@uniq)", "(7@u8).format")]
+    [InlineData("_ = (7@i128).format(writer@uniq)", "(7@i128).format")]
+    [InlineData("func put<T>(w: ref/Wrapping<T>, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is PrimitiveInteger\n    return w.format(writer)", "w.format")]
+    public void ABuiltinFormattingConformanceAddsNoMember(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(Prefix + source);
+        Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+    }
+
+    // The valid twin: FromEnd's `format`, a public member the library declares (LIBRARY), stays a member. A view's `format` has no row
+    // here: SPEC 22.10.2 and 22.9 give a view none, while the library declares one (DECISIONS R8-S2d1); C-286 (PLAN G776) decides it.
+    [Theory]
+    [InlineData("(^1).format(writer@uniq)")]
+    public void ADeclaredFormatStaysAMember(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = " + expression);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
