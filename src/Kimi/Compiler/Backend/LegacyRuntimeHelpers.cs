@@ -1,44 +1,29 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of code generation until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b; DECISIONS
-// R5-M16): the legacy row map and Text.writer's destination kind (LegacyRuntimeHelpers.Formatting.cs); it writes no runtime text since
-// R8-W2 c4. MIR code generation reads them through this static component (promoted, never copied).
-// Input: a compiler function of the Body disposition; a Text.writer destination, whose writer kind it gives (WriterKind).
-// Output: the one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row,
-// S2-S4 X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c); the kind Context
-// of Text.writer's destination, the number Utf8Writer.reserve's kind switch reads (WriterKind).
-// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; reads
-// allocate nothing.
-// Must not hold module state, take syntax or MIR types, or a BoundType but a writer's destination for its kind (WriterKind),
-// or use LINQ.
-
-#pragma warning disable SA1402 // The legacy row is this component's vocabulary.
+// R5-M16): Text.writer's destination kind, the one helper left. It writes no runtime text since R8-W2 c4 and maps no compiler function
+// to a runtime routine since R8-W2 d (writeLine's row was the last: every compiler function is an intrinsic or a shim).
+// Input: a Text.writer destination. Output: its writer kind, the kind Context of Text.writer's routine and the number
+// Utf8Writer.reserve's kind switch reads (WriterKind; SPEC 22.9.2, 22.9.4, Windows x64 profile).
+// Invariants: reads allocate nothing.
+// Must not hold module state, take syntax or MIR types, or a BoundType but a writer's destination for its kind, or use LINQ.
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>The legacy row of a compiler function of the Body disposition (X39): the runtime routine MIR code generation calls for it
-/// through the one call writer.</summary>
-/// <param name="Routine">The row's runtime routine.</param>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct LegacyRow(FunctionAbi Routine);
-
-/// <summary>The legacy runtime helpers: the legacy row map and Text.writer's destination kind.</summary>
-[Transitional("R8", Reason = Removal)]
-internal static partial class LegacyRuntimeHelpers
+/// <summary>The legacy runtime helpers: Text.writer's destination kind.</summary>
+[Transitional("R8", Reason = "R8 replaces the legacy runtime helpers with Kimigayo library code.")]
+internal static class LegacyRuntimeHelpers
 {
-    internal const string Removal = "R8 replaces the legacy runtime helpers with Kimigayo library code.";
-
-    /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
-    /// kind to the runtime routine MIR code generation calls for it, and the one test of whether a function is one: every site asks
-    /// it, a Call, a Value call, the copy slots and the routine rows.</summary>
-    /// <param name="kind">The compiler function.</param>
-    /// <returns>Its row; null for None and for a kind of another disposition.</returns>
-    internal static LegacyRow? Row(CompilerFunctionKind kind) => kind switch
+    /// <summary>Gets the writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number <c>__kimi_text_writer</c>
+    /// takes as its kind Context and <c>Utf8Writer.reserve</c>'s kind switch reads, the legacy numbering, which R8 removes with it: a
+    /// FixedBuffer 0 and a HeapBuffer 1, whose buffers the reservation's kind arms reserve themselves, and any other destination 2, whose
+    /// <c>reserve</c> witness the reservation calls through the adapter's dispatch word. The one table code generation reads.</summary>
+    /// <param name="destination">The closed destination Type.</param>
+    /// <returns>Its writer kind.</returns>
+    internal static int WriterKind(BoundType destination) => destination.Symbol?.LibraryDeclaration switch
     {
-        CompilerFunctionKind.None => null,
-        CompilerFunctionKind.WriteLine => new(RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
-        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body =>
-            throw new InvalidOperationException($"The compiler function {kind} has no legacy row."), // A fault: each has a row.
-        _ => null,
+        KimiDeclarationId.FixedBuffer => 0,
+        KimiDeclarationId.HeapBuffer => 1,
+        _ => 2,
     };
 }

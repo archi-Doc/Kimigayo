@@ -10,8 +10,8 @@ namespace Kimi.Compiler.Backend;
 // vocabulary. A Closure calls its body, the collector's target, under its signature (Abi's ConcreteClosure: the environment pointer first, the
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
 // context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
-// function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, a legacy row's by its writer over the Value call's
-// operands (FunctionCodegen.Calls' Legacy; DECISIONS R5-M116), an intrinsic's when it is one runtime routine (Routine); any other
+// function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, an intrinsic's when it is one runtime routine
+// (Routine); any other
 // function's its body target, its function's body or a requirement Item's witness (through its slot when it implements one, BodyRun); a
 // virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); a requirement Item's whose witness is a #LibraryImport
 // function, its Import target (SPEC 22.6; DECISIONS R8-M19); any other is a broken contract (an unsafe function, an import or an internal
@@ -95,17 +95,11 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4: a function Item's call, what it runs (Runs) over the Value call's operands placed by its own key; a compiler function's of
-    // the Body disposition its direct call's legacy row (Legacy; DECISIONS R5-M116); the zero-sized callee value writes nothing.
+    // SPEC 7.7.4: a function Item's call, what it runs (Runs) over the Value call's operands placed by its own key; the zero-sized callee
+    // value writes nothing.
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { } row)
-        {
-            this.Legacy(call, row);
-            return;
-        }
-
         if (this.Runs(item, target, this.InstanceType(call.Place), call.Source, out var given) is { } run)
         {
             this.Invoke(call, run.Signature, new(call.Callee.Symbol, MirBodyKind.Fn), given, run.Slot);

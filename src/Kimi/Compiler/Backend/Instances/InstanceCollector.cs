@@ -7,7 +7,7 @@
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
 // an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
-// MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the
+// MirProgram.StaticInit; the Target and Need columns of the intrinsic rows; LayoutNeeds; the capability table; the
 // compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, the program's

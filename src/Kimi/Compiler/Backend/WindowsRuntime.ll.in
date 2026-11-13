@@ -275,13 +275,3 @@ invalid:
 done:
   ret void
 }
-
-{{__kimi_write_line}}
-entry:
-  %data = load ptr, ptr %text, align 8
-  %length_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 1
-  %length = load i64, ptr %length_ptr, align 8
-  call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
-  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
-  ret void
-}

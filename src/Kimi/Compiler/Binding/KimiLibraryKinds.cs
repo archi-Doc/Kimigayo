@@ -60,7 +60,6 @@ internal readonly record struct IntrinsicContract
 public enum CompilerFunctionKind : byte
 {
     None,
-    WriteLine,
     ConsoleWriteStdout,
     Abort,
     MakeObj,
@@ -142,7 +141,7 @@ internal enum CompilerFunctionEffect : byte
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>
 internal enum DispositionKind : byte
 {
-    Body, // A Kimigayo body: the declaration's own, or for a compiler function the body R8 writes, which until then the backend serves from the legacy runtime helpers.
+    Body, // A Kimigayo body, the declaration's own: no compiler function's (None alone, since R8-W2 d).
     Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
     Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
@@ -155,7 +154,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 {
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
+        CompilerFunctionKind.None => default,
         CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -190,7 +189,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     // built-in items act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
-        CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
         >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
             >= CompilerFunctionKind.BuiltinEquals and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,

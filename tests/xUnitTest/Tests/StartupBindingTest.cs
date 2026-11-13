@@ -189,7 +189,8 @@ public class StartupBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!;
         Assert.Same(c.Library.WriteLine, call.Target);
-        Assert.Equal(CompilerFunctionKind.WriteLine, call.Target.CompilerFunction);
+        Assert.Equal(KimiDeclarationId.WriteLine, call.Target.LibraryDeclaration);
+        Assert.Equal(CompilerFunctionKind.None, call.Target.CompilerFunction); // A Kimigayo body (R8-W2 d).
         Assert.Null(call.Receiver);
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
@@ -198,7 +199,7 @@ public class StartupBindingTest
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (parameter.Kind, parameter.Semantics));
         Assert.Equal("string", Assert.Single(parameter.Components).Name);
         Assert.Null(function.Body);
-        Assert.Null(function.ExpressionBody);
+        Assert.NotNull(function.ExpressionBody); // SPEC 22.1: a library body, the view overload's call over Text.utf8 (R8-W2 d).
     }
 
     [Theory]
@@ -223,6 +224,7 @@ public class StartupBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var target = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.Target;
         Assert.NotSame(c.Library.WriteLine, target);
+        Assert.Null(target.LibraryDeclaration);
         Assert.Equal(CompilerFunctionKind.None, target.CompilerFunction);
     }
 

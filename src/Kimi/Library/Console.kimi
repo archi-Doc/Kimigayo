@@ -1,5 +1,4 @@
 // Signatures implemented by the compiler; loaded into Kimi.Console.
-public func writeLine(text: ref/string)
 /// Writes the `length` bytes at `data` to standard output; Aborts with `KIMI_E_STDOUT` when the host does not accept
 /// them (SPEC 22.7), and may leave partial output.
 ///

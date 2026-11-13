@@ -66,19 +66,14 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its Item's adapter entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
-    // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem), a Body disposition's legacy routine (LegacyRuntimeHelpers.Row); null
-    // for any other row, which is not one routine call (a Shim's, an instruction writer's, an Unproduced row's), and after a broken
-    // contract's record (an intrinsic row's, below).
+    // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem); null for any other row, which is not one routine call (a
+    // Shim's, an instruction writer's, an Unproduced row's), and after a broken contract's record (an intrinsic row's, below).
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        return IntrinsicDisposition.Of(kind) switch
-        {
-            { Kind: DispositionKind.Intrinsic, Id: var id } =>
-                this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
-        };
+        return IntrinsicDisposition.Of(kind) is { Kind: DispositionKind.Intrinsic, Id: var id }
+            ? this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given) : null;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in

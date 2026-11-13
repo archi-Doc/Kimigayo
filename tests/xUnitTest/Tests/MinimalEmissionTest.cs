@@ -34,11 +34,15 @@ public class MinimalEmissionTest
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
         var module = GeneratedIr.Parse(ir);
-        Assert.Contains(module.Startup.Instructions, x => x.Callee == module.Function("__kimi_write_line") &&
-            x.Shape.StartsWith("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ", StringComparison.Ordinal));
+        // SPEC 22.7 (R8-W2 d): the string overload is a Kimigayo body, called with the string borrow and the call's location; no module
+        // holds the runtime routine it was (fail-before: __kimi_write_line).
+        Assert.Contains(
+            module.Startup.Instructions,
+            x => x.Callee?.Signature == "internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)" &&
+                x.Shape.StartsWith("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ", StringComparison.Ordinal));
+        Assert.DoesNotContain("__kimi_write_line", ir);
         Assert.Contains(module.Functions.SelectMany(static x => x.Instructions), x => x.Callee == module.Function("__kimi_destroy_string"));
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
-        Assert.Equal("internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)", module.Function("__kimi_write_line").Signature);
     }
 
     [Theory]

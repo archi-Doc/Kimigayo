@@ -241,7 +241,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 7.7.4, 22.5.1 (DECISIONS R5-M108): an erased compiler function's Item runs its direct call's routine row from its entry, with the
     // entry's own parameters, the row's slot-less values and the location the entry received (the erased call's): Raw.allocate's count, its
-    // element's stride and the location; the console writeLine's borrowed string and the location.
+    // element's stride and the location; the console writeLine's Item, a body's since R8-W2 d, its body with the borrowed string and the
+    // location.
     [Fact]
     public void AnErasedCompilerFunctionItemRunsItsRoutine()
     {
@@ -256,7 +257,7 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([allocate.Parameters[1], allocate.Parameters[3], allocate.Parameters[4]], call.Operands);
         var write = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "wl"))).Entry);
         var line = Assert.Single(CallsOf(write));
-        Assert.Same(ir.Function("__kimi_write_line"), line.Callee);
+        Assert.Same(LineOf(ir, c, view: false), line.Callee);
         Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
     }
 
@@ -266,16 +267,16 @@ public sealed partial class FunctionCodegenTest
     public void ErasedTargetsRun()
         => ScalarEmissionTest.EmitFixture("ErasureTargets", ErasureTargets, "write\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: never\n");
 
-    // SPEC 7.7.4 (DECISIONS R5-M104): a compiler function's Item whose direct call is a legacy runtime row (the console writeLine) calls that
-    // row, over the call's operands and its location.
+    // SPEC 7.7.4 (DECISIONS R5-M104; R8-W2 d): the console writeLine's Item, a CallerLocation body's, calls that body over the call's
+    // operands and its location (fail-before: its legacy runtime row).
     [Fact]
-    public void AConsoleItemCallsItsLegacyRow()
+    public void AConsoleItemCallsItsBody()
     {
         var c = Analyze(
             "func call<F>(f: ref/F)\n    F is Callable<(ref/string) -> ()>\n    f(\"x\")\nfunc show() => call(Console.writeLine)\n", OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "call"))), x => x.Callee == ir.Function("__kimi_write_line"));
+        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "call"))), x => x.Callee == LineOf(ir, c, view: false));
         Assert.Matches(@"^call void @\(ptr noundef nonnull align 8 dereferenceable\(24\) %, ptr @, i64 \d+\)$", call.Shape);
         Assert.Contains(Constant("Hello.kimi:3:5"), text);
     }
