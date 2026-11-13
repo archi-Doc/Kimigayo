@@ -271,7 +271,8 @@ public sealed partial class Binding
     // every case's. PairOrigin (a Place) and SelectLayers (a Pattern path) supply the Place reached and the borrows reaching it.
     private BoundOrigin? PairSlot(BoundType? pair, SemanticsMask admitted, out bool met)
     {
-        met = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0;
-        return (admitted & SemanticsMask.Owner) != 0 || pair is null ? null : this.OuterOrigin(pair);
+        var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
+        met = !shared;
+        return inPlace ? null : slot;
     }
 }

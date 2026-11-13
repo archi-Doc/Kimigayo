@@ -105,9 +105,9 @@ public sealed partial class Binding
             this.termWalks++;
             if (ReferenceEquals(below, referent))
             {
-                BoundOrigin? origin = null;
-                this.MeetLayers(actual, layers, ref origin); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
-                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
+                var walk = default(ContainmentWalk);
+                this.MeetLayers(actual, layers, ref walk); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
+                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk));
             }
         }
 
