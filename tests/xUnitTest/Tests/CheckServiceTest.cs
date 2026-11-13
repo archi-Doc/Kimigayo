@@ -179,6 +179,44 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(output.Diagnostics, static x => x.Note!.Contains("B.kimiproj", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2: the root's language version (IMPL 20.2.2), target (IMPL 20.2.1) and settings (SPEC 19.2.1) read neither the graph nor
+    // the lock, so each is reported beside a dependency that fails to load (IMPL 20.1: a glob TestSources entry; rows P1-P3) or beside a
+    // missing lock over a resolved graph (IMPL 20.5; row L1), in a product and a test check; the check is Blocked (SPEC 23.2.2). A test
+    // check of an unsupported target is refused at its target selection, so P2 is a product row.
+    [Theory]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), true, CheckMode.Product)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), true, CheckMode.Test)]
+    [InlineData("Targets={\"unknown-none-elf\"}", "unknown-none-elf", nameof(DiagnosticCode.UnsupportedTarget_Kd), true, CheckMode.Product)]
+    [InlineData("CompileTimeSettings={os={Bool=true}}", "", nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd), true, CheckMode.Product)]
+    [InlineData("CompileTimeSettings={os={Bool=true}}", "", nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd), true, CheckMode.Test)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), false, CheckMode.Product)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), false, CheckMode.Test)]
+    public void TheRootIsCheckedWhateverTheGraph(string settings, string target, string code, bool leafFails, CheckMode mode)
+    {
+        var project = this.WriteLeafUser(settings, leafFails);
+        var output = this.Run(project, mode, target);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(2, output.Diagnostics.Length);
+        Assert.Single(output.Diagnostics, x => x.Code == code);
+        var graph = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ProjectPreparationFailed_Kd));
+        Assert.Contains(leafFails ? "Leaf.kimiproj" : "Dependency lock is missing", graph.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1.2: artifact production's target restriction reads the configured targets, the graph's resolution and the root's target
+    // read their own inputs, so a build reports all three (row P2 of a build); no phase runs (SPEC 23.2.2).
+    [Fact]
+    public async Task ArtifactProductionReportsTheTargetsOwnRecords()
+    {
+        var path = this.WriteLeafUser("Targets={\"unknown-none-elf\"}", true);
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
+        Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+        Assert.Contains("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
+        Assert.Contains("Leaf.kimiproj", console.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
     // the path syntax depends on that failure and is left out.
     [Theory]
@@ -589,6 +627,18 @@ public sealed partial class CheckServiceTest : IDisposable
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
+    }
+
+    // A root App with the given settings and one dependency Leaf, whose configuration fails at load when asked (IMPL 20.1: a glob
+    // TestSources entry); no lock is written.
+    private string WriteLeafUser(string settings, bool leafFails)
+    {
+        var folder = this.PathOf("Leaf");
+        Directory.CreateDirectory(folder);
+        var tests = leafFails ? " TestSources={\"*.kimi\"}" : string.Empty;
+        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}{tests}");
+        File.WriteAllText(Path.Combine(folder, "main.kimi"), Valid);
+        return this.WriteProject("App", ("main.kimi", Valid), settings, "Use={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../Leaf/Leaf.kimiproj\"}");
     }
 
     private sealed class OverlayInputSource(Dictionary<string, string> overlays) : CheckInputSource
