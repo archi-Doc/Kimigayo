@@ -169,8 +169,9 @@ public sealed partial class Binding
     // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are
     // reported once and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that
     // would wait stay unbound, and the parts of a Tuple, array or Dictionary literal (AggregateParts), a contextual Case and a waiting
-    // nested call are completed alike, a Dictionary of two or more entries whole (ChecksItsParts), as is a Typed part no preparation
-    // reached (after a value call's or a construction's stop). The call was decided before and
+    // nested call are completed alike, as is a Typed part no preparation reached (after a value call's or a construction's stop). A
+    // Dictionary literal whose parts alone form its Type is bound whole instead, as with no expected Type, so that its own Type
+    // formation is judged (FormsItsTypeAlone). The call was decided before and
     // reads no result of these parts, so they are bound with its consultation suspended: none is its prerequisite, and its own record
     // (a failed callee's) stays direct. A control-flow part already bound in this pass is not bound again. Anonymous functions stay
     // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
@@ -232,9 +233,9 @@ public sealed partial class Binding
         }
 
         var aggregate = new AggregateParts(node);
-        if (aggregate.ChecksItsParts)
+        if (this.FormsItsTypeAlone(aggregate))
         {
-            this.BindNode(node, scope); // SPEC 12.4.3, 23.1.2: its own rule over its keys is an independent record (AggregateParts).
+            this.BindNode(node, scope); // SPEC 12.4.1, 12.4.3, 23.1.2: the literal's own Type formation is an independent record.
             return;
         }
 
@@ -250,6 +251,29 @@ public sealed partial class Binding
                 this.CompleteUnselectedPart(nested.ArgumentNodes[i], scope);
             }
         }
+    }
+
+    // SPEC 23.1.2, 12.4.1 (implementation review 1, IR-B1; F's ruling 11): whether an unselected call's literal forms its own Type
+    // (AggregateParts.FormsItsType) from its parts alone, at any number of entries, so that binding it with no expected Type judges
+    // that formation and reports nothing the missing expectation causes: no part awaits its call (it stays unbound, as an anonymous
+    // function does: CompleteUnselected), and each child position holds a part that supplies a Type, its own or a literal's default
+    // (PartAwaits: not Never). An empty literal and a position Never in every part take their position's Type, which no candidate
+    // gave; their parts are completed one by one.
+    private bool FormsItsTypeAlone(AggregateParts parts)
+    {
+        var supplied = 0;
+        for (var i = 0; parts.FormsItsType && i < parts.Count; i++)
+        {
+            var awaits = this.PartAwaits(parts[i]);
+            if ((awaits & Awaiting.Call) != 0)
+            {
+                return false;
+            }
+
+            supplied |= (awaits & Awaiting.Never) == 0 ? 1 << parts.Position(i) : 0;
+        }
+
+        return parts.FormsItsType && supplied == (1 << parts.Children) - 1;
     }
 
     // SPEC 23.1.2: each result of a Join a call completes none of, completed as an argument part is (CompleteUnselectedPart): a Tuple's

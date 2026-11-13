@@ -42,8 +42,9 @@ public sealed partial class Binding
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
     // none. A Literal part is evidence only through the default applied to the selected candidate (SPEC 10.2.1). A waiting part is none,
-    // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple or array literal is evidence by
-    // its parts at their positions, and at a bare slot only when every part is; a mixed range by its range typing (SPEC 4.6.2). The early
+    // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple, array or Dictionary literal
+    // (AggregateParts) is evidence by its parts at their positions, and at a bare slot, as one piece of evidence, only when every part
+    // is (IndependentPositionType); a mixed range by its range typing (SPEC 4.6.2). The early
     // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing. Each
     // argument's contribution to the call (Contribution) is this walk's fact, written to its root row (PositionRow, Contribute).
     private ref partial struct SlotSolution
@@ -402,7 +403,8 @@ public sealed partial class Binding
             return this.Binding.DefaultOf(literal) is not { } literalDefault || this.InferAdapted(pattern, literalDefault, literal);
         }
 
-        // SPEC 10.2 row 2, 15.3.6: a temporary borrowed at `ref/U during a` (a Literal fitted at U, a Tuple or array literal or a mixed range)
+        // SPEC 10.2 row 2, 15.3.6: a temporary borrowed at `ref/U during a` (a Literal fitted at U, a Tuple, array or Dictionary literal or
+        // a mixed range)
         // supplies its Place Origin as an input of `a`, at the root and at every nested position: matched (MatchInputOrigin) and a bound of
         // the call's Origin solve, as a typed input's Origin is (InferAdapted).
         private void InferTemporary(BoundType pattern, Koto part)
@@ -419,8 +421,9 @@ public sealed partial class Binding
             AddInputBound(this.OriginInference, origin, place);
         }
 
-        // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
-        // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
+        // SPEC 10.8, 4.3.1, 12.4.1, 4.6.2: a Tuple, array or Dictionary literal or a mixed range, part by part at their positions; at a
+        // bare slot the whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds
+        // the input's.
         // A join its call classifies, and a join position of aggregates, go by their child positions likewise (SPEC 10.5.1, 14.9.2).
         private bool InferComposite(BoundType pattern, int start, int end, bool late)
         {

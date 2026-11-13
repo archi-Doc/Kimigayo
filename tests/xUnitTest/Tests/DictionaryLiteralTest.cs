@@ -23,6 +23,11 @@ public class DictionaryLiteralTest
         "func both<T>(x: (T, T)) -> i32 => 0\nfunc borrowedFill(a: ref/[2 of Dictionary<i64, i32>]) -> i32 => 0\n" +
         "let c = true\nlet v: i32 = 2\nlet b: i64 = 3\n";
 
+    private const string KeyDeclarations =
+        "func keyed<K, V>(d: Dictionary<K, V>) -> i32\n    K is Equatable\n    return 0\nfunc stop() -> Never => $abort(\"stop\")\n" +
+        "struct Plain\n    public let x: i32\n    public init(x: i32) => self.x = x\n" + ArgumentDeclarations +
+        "let pl = Plain.init(1)\nlet pl2 = Plain.init(2)\n";
+
     [Theory]
     [InlineData("let entries = [1: true, 2: false]", "i32", "bool")]
     [InlineData("let key: u8 = 2\nlet value: i64 = 3\nlet entries = [1: 2, key: value]", "u8", "i64")]
@@ -160,6 +165,32 @@ public class DictionaryLiteralTest
             "let f = callables([\"k\": func [] (x: i64) -> i64 => x])\nlet j = wide(if c => [1: 2] else => [3: 4])\n");
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 23.1.2, 12.4.1, 12.4.3 (implementation review 1, IR-B1; F's ruling 11): a call that selects no candidate keeps its Dictionary
+    // literal's own records at every number of entries: the literal is bound as with no expected Type, so the Dictionary Type it forms
+    // is judged (Dictionary's `K is Equatable`, refuted for Plain) beside the call's own record; a value's Type has no Constraint. A
+    // literal holding an anonymous function, which awaits its call, forms no Type: the function stays unbound and has no record of its
+    // own (CompleteUnselected's contract), as in an array literal. A literal that takes a position's Type from the call (a value
+    // Never in every entry; an empty one, size([:]) above) forms none alone and has no record of the missing expectation.
+    [Theory]
+    [InlineData("wide([pl@move: 1])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("wide([pl@move: 1, pl2@move: 2])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("label([pl@move: 1])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("label([pl@move: 1, pl2@move: 2])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("pair(([pl@move: 1], v))", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("pair(([pl@move: 1, pl2@move: 2], v))", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("keyed([pl@move: 1])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("keyed([pl@move: 1, pl2@move: 2])", "NoApplicableOverload_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("label([1: func [] (x) => x, 2: func [] (z) => z])", "NoApplicableOverload_Kd")]
+    [InlineData("label([1: func [] (x) => x])", "NoApplicableOverload_Kd")]
+    [InlineData("wide([b: pl@move])", "NoApplicableOverload_Kd")]
+    [InlineData("size(if c => [1: 2] else => [3: stop()])", "AmbiguousBinding_Kd")]
+    [InlineData("size([3: stop(), 4: stop()])", "AmbiguousBinding_Kd")]
+    public void AnUnselectedCallsDictionaryLiteralKeepsItsOwnRecords(string use, string code)
+    {
+        var c = MinimalEmissionTest.Analyze(KeyDeclarations + "let r = " + use + "\n");
+        Assert.Equal(code.Split(','), c.Binding.Issues.Select(static x => x.Code.ToString()).Order());
     }
 
     [Theory]

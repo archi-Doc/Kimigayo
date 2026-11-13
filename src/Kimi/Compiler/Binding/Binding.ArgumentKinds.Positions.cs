@@ -65,12 +65,14 @@ public sealed partial class Binding
         // From part `index`, at child position `index`, the step to the next part at that position.
         public int Stride => this.elements?.Count ?? 2;
 
-        // SPEC 12.4.1, 12.4.3, 23.1.2: the literal's own rule over its parts together, beyond each part's position: the entries of a
-        // Dictionary of two or more share one key and one value Type, and its literal keys are compared by value. A call that selects no
-        // candidate binds such a literal as with no expected Type, so the rule runs; one entry or none has no such rule. An array's one
-        // element Type (4.3.1) is not bound so: binding an unselected array whole gave eight records dev does not give, Unsupported_Kd
-        // among them (G267fd revision 3), so its parts are completed one by one as on dev.
-        public bool ChecksItsParts => this.entries is { Count: > 1 };
+        // SPEC 12.4.1, 12.4.3, 23.1.2: whether the literal's own Type formation has rules beyond each part's position: a Dictionary
+        // literal's entries share one key and one value Type, its literal keys are compared by value, and the Dictionary Type it forms
+        // holds its own Constraint on the key Type, whatever the number of its entries (design review 1, B1; implementation review 1,
+        // IR-B1). A call that selects no candidate binds such a literal as with no expected Type when its parts alone form that Type,
+        // so its binder judges the formation (FormsItsTypeAlone). An array's one element Type (4.3.1) is not bound so: binding an
+        // unselected array whole gave eight records dev does not give, Unsupported_Kd among them (G267fd revision 3), so its parts are
+        // completed one by one as on dev.
+        public bool FormsItsType => this.entries is not null;
 
         public Koto this[int index]
             => this.elements?[index] ?? (index % 2 == 0 ? this.entries![index / 2].Key : this.entries![index / 2].Value);
