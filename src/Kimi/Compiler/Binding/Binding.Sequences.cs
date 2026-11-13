@@ -219,31 +219,18 @@ public sealed partial class Binding
         // SPEC 8.3.3: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
         // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
         // (SPEC 4.6.4).
-        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
+        // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
+        var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
-                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
-            (WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null);
+                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
         }
 
-        // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The ordinary call keeps
-        // receiver acquisition, substitutions and Origins; no method-name fallback grants conformance.
-        if (source.EntryCall is not { } call || ((MemberAccessKoto)call.Method).Right is not IdentifierNameKoto name || name.IdentifierName != method)
-        {
-            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
-            source.EntryCall = call = new InvocationKoto(source, member, []);
-        }
-        else
-        {
-            this.ResetSynthetic(call);
-            this.ResetSynthetic(call.Method);
-            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
-        }
-
         this.projectionUses.Add((source, subject, entry));
-        if (this.BindSynthesizedCall(source, call, scope) is not { } iterator)
+        if ((library ? this.BindEntryRequirement(source, scope, subject, entry) : this.BindEntryMember(source, scope, method)) is not { } iterator)
         {
             return false;
         }
@@ -257,6 +244,33 @@ public sealed partial class Binding
         item = option.Components[0];
         this.userIterations.Add((source, subject, iterator, entry));
         return true;
+    }
+
+    // SPEC 14.6.2, 22.1: a built-in Type's entry conformance (a witness-table row) adds no member, so its entry is the requirement call at
+    // the Subject, selected and instantiated as an operator's: the row's witness at a closed Self, the requirement at an abstract one.
+    private BoundType? BindEntryRequirement(ForKoto source, BindingScope scope, BoundType subject, BindingSymbol entry)
+    {
+        var call = source.EntryCall = this.BindSelectedRequirement(source, source.EntryCall, [source.Iterable], subject, entry, entry.Contract!.OwnRequirement()!, scope);
+        return call.BindingFailure == BindingFailure.None && call.BoundCall is { } plan ? plan.ReturnType : null;
+    }
+
+    // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. A declared or abstract entry is the ordinary member call,
+    // which keeps receiver acquisition, substitutions and Origins; no method-name fallback grants conformance (ValidateIterationWitnesses).
+    private BoundType? BindEntryMember(ForKoto source, BindingScope scope, string method)
+    {
+        if (source.EntryCall is not { Method: MemberAccessKoto { Right: IdentifierNameKoto name } } call || name.IdentifierName != method)
+        {
+            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
+            source.EntryCall = call = new InvocationKoto(source, member, []);
+        }
+        else
+        {
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(name);
+        }
+
+        return this.BindSynthesizedCall(source, call, scope);
     }
 
     // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The entry and step are ordinary member calls,

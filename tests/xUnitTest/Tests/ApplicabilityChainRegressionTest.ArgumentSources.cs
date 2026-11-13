@@ -412,18 +412,17 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 10.5.1, 10.4 step 1, 10.2 (PLAN G746): a literal nested in a Tuple or array literal argument fits its element position as an
     // argument there: at ref/(...) a borrowed temporary, ranked Cross-Semantics against a by-value fit's Literal (n1n-n4n oppose or tie
     // where the other candidate was inapplicable; m1n-m4n in a method, an init, a generic and an array of arrays), never an exclusive
-    // borrow (n5n, m5n); its own positions follow. After a direct call's selection a borrowed element is a located Unsupported_Kd until
-    // PLAN G585 (n5-n8: each is valid and becomes accepted there; the base gives NoApplicableOverload_Kd); a function value's call binds
-    // it at its parameter Type as before (m1-m3). The m1-m6 guards keep their base verdict.
+    // borrow (n5n, m5n); its own positions follow. After selection a borrowed element is a temporary at its position, as at the root
+    // (PLAN G585: n5-n8, as a function value's call m1-m3). The m1-m6 guards keep their base verdict.
     [Theory]
     [InlineData("guard", "n1", NestedRanks + "    let q = fn4(((1, 2), 3))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "n2", NestedRanks + "    let q = fn4(((v, 1), 2))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "n3", NestedRanks + "    let q = fg(([n, m], 1))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "n4", NestedRanks + "    let q = fu2(((1, 2), 3))\n    let z: bool = q\n    return 0\n", "")]
-    [InlineData("G746", "n5", NestedRanks + "    let q = fn5(((n, 1), 2))\n    return q\n", "Unsupported_Kd: let q = fn5(((n, 1), 2))")]
-    [InlineData("G746", "n6", NestedRanks + "    let q = fa1(((1, 2), 3))\n    return q\n", "Unsupported_Kd: let q = fa1(((1, 2), 3))")]
-    [InlineData("G746", "n7", NestedRanks + "    let q = fg1(((v, 1), 2))\n    return q\n", "Unsupported_Kd: let q = fg1(((v, 1), 2))")]
-    [InlineData("G746", "n8", NestedRanks + "    let q = fc1(([2 of 7], 3))\n    return q\n", "Unsupported_Kd: let q = fc1(([2 of 7], 3))")]
+    [InlineData("G585", "n5", NestedRanks + "    let q = fn5(((n, 1), 2))\n    return q\n", "")]
+    [InlineData("G585", "n6", NestedRanks + "    let q = fa1(((1, 2), 3))\n    return q\n", "")]
+    [InlineData("G585", "n7", NestedRanks + "    let q = fg1(((v, 1), 2))\n    return q\n", "")]
+    [InlineData("G585", "n8", NestedRanks + "    let q = fc1(([2 of 7], 3))\n    return q\n", "")]
     [InlineData("G746", "n1n", NestedRanks + "    let q = fn3(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fn3(((n, 1), 2))")]
     [InlineData("G746", "n2n", NestedRanks + "    let q = fh(([n, m], 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fh(([n, m], 1))")]
     [InlineData("G746", "n3n", NestedRanks + "    let q = fk((((n, 1), 2), 3))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk((((n, 1), 2), 3))")]
