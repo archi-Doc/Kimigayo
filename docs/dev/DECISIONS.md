@@ -12857,7 +12857,9 @@ resumed by R4-M86 (2026-10-20).
       whose binder is outside it and is no Container it is a member of below that body. They are carried as an environment Tuple and
       judged by the same rule.
     - A bound argument's own atoms, its own Origins and its Constraint-set slots are never fixed atoms, and a function in no body (a
-      Container's member) has no signature part.
+      Container's member) has no signature part. Every enclosing parameter is an Owned part of a nested function's Item, used or not
+      (6.1.3, 15.2.3; the owner's O-249 Q4 (a)); dev and this unit still accept j09bunused, j14bunused, j18callableowned and
+      j21genmethod: PLAN G846.
     The Item leaf answers Copy only.
   - The erasure (7.7.4) judges the environment Tuple (`ErasureSubject`). The required Function Type states the signature part.
     `FailOwnedConversion` maps a failed member with `CapabilityParts.MemberAt`.
@@ -12880,6 +12882,8 @@ resumed by R4-M86 (2026-10-20).
     a8Tcopy, a10Tres and x6meet, x8bstructT and x10bstructS (an enclosing struct's `T` and Origin), and review 3's y1fnsig, y3fnsigT
     (inside a Function Type parameter), y5local (an enclosing local's Origin) and z1toplocal (a root function naming a top-level
     local's Origin).
+  - A relation clause naming an enclosing Origin (`origin c outlives a`) is part of SPEC 15.3.4's signature for an Item's Owned
+    parts (the owner's O-249 Q3 (a)); y4rel stays rejected, as on dev.
   - Rejected alternatives:
     - an Item Type carrying its inherited arguments (G149's representation);
     - a nested-Item-only clause;
