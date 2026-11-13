@@ -179,8 +179,8 @@ The closed Contracts `Position` and `PositionRange` fix the position and range T
 
 | Contract | Member | Guarantee |
 | --- | --- | --- |
-| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types, `FromEnd<T>`, `Start` and `End` conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
-| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform. |
+| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned; `format` has the `confined` bound, which a generic `format` call on a position uses. The integer Types, `FromEnd<T>`, `Start` and `End` conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
+| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned; `format` has the `confined` bound. `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform. |
 
 The position and range Types are Copy, Owned and Equatable. The non-integer position Types and the range Types have no public constructor and provide neither Comparable nor arithmetic; integer positions keep their integer operations. Every one other than the integers also publishes `resolve(self: Self, length: isize)`, which Aborts where `tryResolve` returns None.
 

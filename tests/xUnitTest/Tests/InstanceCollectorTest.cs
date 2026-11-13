@@ -1524,7 +1524,8 @@ public sealed partial class InstanceCollectorTest
     // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is its declared member, written, called directly and called through a
     // `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which writes its
     // integer through the IntegerFormat body at u8 (R8-S2b1; fail-before: Builtin Utf8Slice and Builtin Wrapping<u8> BuiltinFormat, then
-    // Builtin u8 BuiltinFormat).
+    // Builtin u8 BuiltinFormat). The direct `view.format` calls the member the library declares, which SPEC 22.10.2 and 22.9 do not
+    // give a view: C-286 (PLAN G776) decides it.
     [Fact]
     public void AViewAndAWrappingIntegerFormatThroughTheirWitnesses()
     {
