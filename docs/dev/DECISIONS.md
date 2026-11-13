@@ -12689,6 +12689,13 @@ resumed by R4-M86 (2026-10-20).
     `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
     of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
     itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
+- **BU-194 G799: `Binding.RowReset` (temporary)** (2026-11-13; Front, Binding; Major without a separate design review, F's ruling 1;
+  PLAN G799; implementation review ACCEPT WITH NOTES) SPEC 23.1.2. The indexer resets each node's HIR row at its visit; an effect
+  item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
+  is indexed, and the rebind after an append gives the fresh compilation's verdict.
+  - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
+  - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
+    `BindEffectBound` (consumers deciding the indexer's reset).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
