@@ -44,17 +44,6 @@ internal static class ReferenceTypes
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || type is { IsObjectBorrow: true };
 
-    // The object that a handle or an object borrow designates, through stored references; null for any other Type.
-    internal static BoundType? ViewTarget(BoundType? type)
-    {
-        while (IsStorage(type))
-        {
-            type = type!.Components[0];
-        }
-
-        return type is { HandleMode: not null } or { IsObjectBorrow: true } ? type.Components[0] : null;
-    }
-
     // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and iterates directly.
     internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
 
@@ -104,7 +93,7 @@ internal static class ReferenceTypes
     // SPEC 13.4: a string comparison operand is a string or safe reference layers ending in one.
     internal static bool EndsInString(BoundType? type)
     {
-        for (var depth = 0; depth < 64 && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; depth++)
+        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             type = type.Components[0];
         }

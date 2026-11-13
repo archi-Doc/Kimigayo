@@ -77,6 +77,24 @@ public sealed partial class Binding
     private BindingSymbol? QualifierReference(Koto qualifier, BindingSymbol selection, BindingScope scope)
         => selection.IsContract ? this.BindContractReference(qualifier, selection, scope) : selection;
 
+    // Provisional mode (BU-151; SPEC 9.2, 9.5): a Contract use that formed no reference is pending when a name in it is missing and none
+    // of it is rejected, the constraint visitor's one answer (HasUnresolvedConstraintSyntax). A use whose lookup selected nothing has no
+    // mark yet: BindType over the published lookup records its missing name, as at every other Type position.
+    private bool PendingReference(Koto use, BindingSymbol? selection, BindingScope scope)
+    {
+        if (this.capabilityMode != BindingMode.Provisional)
+        {
+            return false;
+        }
+
+        if (selection is null)
+        {
+            this.BindType(use, scope);
+        }
+
+        return this.HasUnresolvedConstraintSyntax(use);
+    }
+
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
         // SPEC 8.4, 9.7: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written

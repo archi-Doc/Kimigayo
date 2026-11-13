@@ -124,6 +124,18 @@ public class TestExecutionAnalysisTest
         Assert.DoesNotContain("__kimi_test_observe", output.ToString());
     }
 
+    // A warm rebind checks a message's transfers without allocating (PLAN G609: 384 B a literal message, 1,920 B a call's).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("$expect(1 == 1, message: \"ok\")")]
+    [InlineData("$expect(1 == 1, message: text())")]
+    public void WarmMessageChecksAllocateNothing(string body)
+    {
+        var c = Analyze("func text() -> string => \"ok\"\n#Test\nfunc sample()\n    " + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+    }
+
     internal static Compilation Analyze(string source)
     {
         var c = Compilation.CreateForTest();

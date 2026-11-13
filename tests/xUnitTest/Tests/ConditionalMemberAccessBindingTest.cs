@@ -10,9 +10,9 @@ public class ConditionalMemberAccessBindingTest
 {
     [Theory]
     [InlineData(false, "Hidden")]
-    [InlineData(false, "Source.Hidden.Item")]
+    [InlineData(false, "Source.(Hidden).Item")]
     [InlineData(true, "Hidden")]
-    [InlineData(true, "Source.Hidden.Item")]
+    [InlineData(true, "Source.(Hidden).Item")]
     public void PublicConditionalMemberCannotExposeRestrictedPremise(bool property, string requirement)
     {
         var c = MinimalEmissionTest.Analyze(Source(property, requirement, "public"));
@@ -32,7 +32,7 @@ public class ConditionalMemberAccessBindingTest
     [InlineData(true, "private")]
     public void NarrowMemberDomainsCanPublishInternalPremises(bool property, string access)
     {
-        var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", access));
+        var c = MinimalEmissionTest.Analyze(Source(property, "Source.(Hidden).Item", access));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertMember(c, property, true);
         var restored = CompilationTestHelper.Reload(c);
@@ -45,7 +45,7 @@ public class ConditionalMemberAccessBindingTest
     [InlineData(true)]
     public void PublicPremisesRemainAvailableToPublicMembers(bool property)
     {
-        var source = Source(property, "([2 of Source.Hidden.Item], i32)", "public").Replace("internal contract Hidden", "public contract Hidden", StringComparison.Ordinal);
+        var source = Source(property, "([2 of Source.(Hidden).Item], i32)", "public").Replace("internal contract Hidden", "public contract Hidden", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         AssertMember(c, property, true);
@@ -68,7 +68,7 @@ public class ConditionalMemberAccessBindingTest
     public void InvalidPublishedPremiseCannotSupplyWitness(bool property)
     {
         var requirement = property ? "property value: i32 has get" : "func value() -> i32";
-        var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", "public").Replace("internal contract C", "internal contract C\n    " + requirement, StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Source(property, "Source.(Hidden).Item", "public").Replace("internal contract C", "internal contract C\n    " + requirement, StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
         AssertMember(c, property, false);
         Assert.False(Definition(c).IsVerified);
@@ -79,7 +79,7 @@ public class ConditionalMemberAccessBindingTest
     [InlineData("internal", true)]
     public void CallCertificateObservesPublishedPremiseAccess(string access, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze(Source(false, "Source.Hidden.Item", access) + "\nS<i32>.value()");
+        var c = MinimalEmissionTest.Analyze(Source(false, "Source.(Hidden).Item", access) + "\nS<i32>.value()");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last()).CallOf() is not null);
     }
@@ -89,7 +89,8 @@ public class ConditionalMemberAccessBindingTest
     [InlineData(true)]
     public void UnusedInvalidMemberDoesNotInvalidateIndependentMembers(bool property)
     {
-        var source = Source(property, "Source.Hidden.Item", "public") + "\n        internal func sibling() -> i32 => 2\n    public func outside() -> i32 => 3";
+        var source = Source(property, "Source.(Hidden).Item", "public") + "\n        internal func sibling() -> i32 => 2\n" +
+            "    public func outside() -> i32 => 3";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         AssertMember(c, property, false);
@@ -103,9 +104,9 @@ public class ConditionalMemberAccessBindingTest
     [InlineData(true)]
     public void NarrowingTheMemberRestoresItsCertificate(bool property)
     {
-        var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", "public"));
+        var c = MinimalEmissionTest.Analyze(Source(property, "Source.(Hidden).Item", "public"));
         var original = Member(c);
-        var donor = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", "internal"));
+        var donor = MinimalEmissionTest.Analyze(Source(property, "Source.(Hidden).Item", "internal"));
         var replacement = Member(donor);
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = Block(c);
@@ -123,7 +124,7 @@ public class ConditionalMemberAccessBindingTest
     [InlineData(true)]
     public void WarmPublishedPremiseChecksAllocateNothing(bool property)
     {
-        var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", "internal"));
+        var c = MinimalEmissionTest.Analyze(Source(property, "Source.(Hidden).Item", "internal"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

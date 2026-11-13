@@ -4,10 +4,11 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// SPEC 22.10.2's Types whose Utf8Format conformance is built in (IsBuiltin), SPEC 22.10.5's bounded ones and rule L's stack limit
-// (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables every phase reads by Type. A bound is the
-// implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or library formatter's Type, a
-// string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row).
+// SPEC 22.10.2's Types whose Utf8Format conformance is built in, except Utf8Slice, which declares its own (IsBuiltin; each a witness
+// table row, which states and proves it, DECISIONS R8-M30; read by RequirementMember's member gathering until PLAN G776 deletes it),
+// SPEC 22.10.5's bounded ones and rule L's stack limit (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables
+// read by Type. A bound is the implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or
+// library formatter's Type, a string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row).
 internal static class FormattingTypes
 {
     /// <summary>Rule L's windows-x64 limit: a direct bounded interpolation whose literal bytes and value bounds sum to at most this many

@@ -953,7 +953,9 @@ public sealed partial class RetentionTest
     // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
     // it; Raw.allocate's, a raw pointer without an Origin, retains every argument with its chain and is untied (SPEC 15.6.4's rule A,
     // DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee retains `p` and its own chain. A raw input's pointee is its own
-    // writable storage, which retains it as a read through it.
+    // writable storage, which retains it as a read through it, except where the operation contract stores no value through the input
+    // (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780), e.g. Raw.slice's storage: no writable storage there, an unstated
+    // layer included (fail-before: rule A's untied store 0 and store 1).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
@@ -962,10 +964,13 @@ public sealed partial class RetentionTest
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
+    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
+    [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "store 0: own {0 Content}, reached {}")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
+    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
@@ -1019,6 +1024,28 @@ public sealed partial class RetentionTest
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
     public void AnAbstractPartHoldsARawArgumentWhereThePremisesOrAnErasedCallableMakeItOne(string function, string expected)
         => Assert.Equal(expected, Declared(Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + function + "\n"), "f"));
+
+    // PLAN G647 (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): a carrier occurs in an abstract part at any depth of its
+    // components, so a chain of projections over T keeps a raw argument's own value where `T is MakeW` hands the body a callee that
+    // may retain it in a T: the row through 34 projections is the row through one. A pin, not a regression: the walk (Occurs) once
+    // stopped at 32 components, and this pair has the same rows with that count, so no missed retention was shown.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(34)]
+    public void ACarrierOccursInAnAbstractPartAtAnyDepth(int depth)
+    {
+        Assert.Contains("1 Value", Row(1), StringComparison.Ordinal);
+        Assert.Equal(Row(1), Row(depth));
+
+        static string Part(int projections) => "T" + string.Concat(Enumerable.Repeat(".(Chain).Next", projections));
+
+        static string Row(int projections)
+            => Declared(
+                Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\ncontract Chain\n    associate Next\n" +
+                    $"func f<T>(dst: uniq/{Part(projections)}, p: raw/u8)\n    T is MakeW\n" +
+                    string.Concat(Enumerable.Range(0, projections).Select(static i => $"    {Part(i)} is Chain\n")) + "    return\n"),
+                "f");
+    }
 
     // The call records of the rule above: a user call of the G297 shape and an erased requirement callee (DECISIONS BU-66).
     [Fact]

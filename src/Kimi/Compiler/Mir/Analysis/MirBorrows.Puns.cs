@@ -19,9 +19,10 @@ namespace Kimi.Compiler.Mir;
 // Outputs: the holder's markers. A pun: {Φ_E, Φ_W}. An undecided write (the layout, a length that is no constant, or a layer with no
 // stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, and what rests on that Φ_E carries Φ_U: a value stored
 // into E through a set carrying Φ_M or Φ_U, and what a read through one gives (Rested). A gather tags what it finds in a set carrying
-// Φ_U apart (MirBorrows.Candidates), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject (R4-M153's
-// path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid row, or an
-// address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
+// Φ_U apart (MirBorrows.Candidates), and what it reaches only through such a set, the holders it names and their stores
+// (MirBorrows.CheckSets' read keys, PLAN G775), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject
+// (R4-M153's path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid
+// row, or an address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
 // The sites: a seen store writes the stored Place, typed where a raw Place from its last Deref to it is designated; a call, through
 // each input its contract may store through (TyCtxt.NoStore), every raw Place within the Types its input's layers lead to
 // (TyCtxt.OwnLayers at the input's root key), then, past each holder its entries name, within those the parameter's next layers lead
@@ -75,12 +76,12 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(this.CaseType(place)).Scalar == Extent.None)
+        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
         {
             return;
         }
 
-        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
+        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
         for (var i = 0; i < count; i++)
         {
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
@@ -275,7 +276,7 @@ internal sealed partial class MirBorrows
 
         for (var i = last; ; i++)
         {
-            var at = this.CaseType(place with { Projection = i + 1 < count ? this.walk[i + 1].Prefix : place.Projection });
+            var at = cases.TypeOf(place with { Projection = i + 1 < count ? this.walk[i + 1].Prefix : place.Projection });
             if (on && this.Leads(held, at, grid: false))
             {
                 return PunWrite.Typed;
@@ -328,7 +329,7 @@ internal sealed partial class MirBorrows
     private BoundType? Holder(int entry, out PunKey facts)
     {
         facts = this.punKeys[this.EntryKey(entry)];
-        return facts.RawInline && this.CaseType(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
+        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
     }
 
     // A displacement of a raw pointer (SPEC 5.3) by its pointee's stride.
@@ -347,7 +348,7 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Count(value);
         foreach (var element in this.sets.Elements(value))
         {
-            if (this.PunEntry(element) is >= 0 and var entry && !this.Step(this.CaseType(this.loans[entry].Place), of, field))
+            if (this.PunEntry(element) is >= 0 and var entry && !this.Step(cases.TypeOf(this.loans[entry].Place), of, field))
             {
                 return this.sets.Union(value, this.offgridSet);
             }
@@ -373,7 +374,7 @@ internal sealed partial class MirBorrows
             var element = kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
             if (element || kind is MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.Downcast)
             {
-                value = this.Stepped(value, this.CaseType(place with { Projection = this.walk[i].Prefix }), this.Field(i));
+                value = this.Stepped(value, cases.TypeOf(place with { Projection = this.walk[i].Prefix }), this.Field(i));
             }
         }
 
@@ -382,7 +383,4 @@ internal sealed partial class MirBorrows
 
     // The Field the step at `i` of the walk buffer selects, else -1.
     private int Field(int i) => this.walk[i].Kind == MirProjectionKind.Field ? this.walk[i].Arg : -1;
-
-    // A Place's case Type under the view.
-    private BoundType CaseType(MirPlace place) => cases.Type(this.body.TypeOf(place)!);
 }

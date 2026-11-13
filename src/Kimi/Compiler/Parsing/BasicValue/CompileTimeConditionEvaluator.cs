@@ -38,11 +38,7 @@ internal static class CompileTimeConditionEvaluator
         {
             // The parser's guess of a rejected form: its parts are checked on their own, and its value rests on the syntax Error
             // (DIAGNOSTICS.md §4.3).
-            foreach (var part in node.ChildNodes)
-            {
-                _ = TryEvaluateValue(compilation, part, out _);
-            }
-
+            node.VisitChildren(new RecoveredParts(compilation));
             return false;
         }
 
@@ -129,5 +125,11 @@ internal static class CompileTimeConditionEvaluator
 
         value = default;
         return false;
+    }
+
+    // A recovered form's parts, each checked on its own.
+    private sealed class RecoveredParts(Compilation compilation) : KotoVisitor
+    {
+        public override void Visit(Koto node) => TryEvaluateValue(compilation, node, out _);
     }
 }
