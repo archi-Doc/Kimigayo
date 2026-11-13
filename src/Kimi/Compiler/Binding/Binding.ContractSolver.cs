@@ -11,7 +11,8 @@
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) an available direct Contract fact of the view stating
 //   the subject or a Type of its identity class, as written and, under a parameter identity, as the view reads it (Reading); (2) a
 //   Self-dependent clause of a row of a proper prefix of the subject's projection chain, Self being that prefix, whose stated subject
-//   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors.
+//   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors. Rows (1) and (2) take the Contract at the
+//   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally).
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers itself to Supply; availability
 //   is asked per fact, lazily, in the caller's order. Enumerate is a leaf of the judgment graph: its walk compares interned Types
 //   (FactStates, AssociatedIdentityMatches) and their class keys (SameClass: ClassKey reads a built table and interns) and calls no
@@ -601,7 +602,7 @@ public sealed partial class Binding
                 if ((states || this.SameClass(fact.Subject!, subject)) && this.AvailableConstraintFact(environment, raw, out _) &&
                     this.AvailableContractPremise(fact.Contract!))
                 {
-                    Add(rows, this.AppliedAssociatedContract(fact, states ? subject : fact.Subject!)); // a key's spelling never reaches it
+                    Add(rows, this.RowContract(fact, subject, states));
                 }
             }
         }
@@ -630,10 +631,10 @@ public sealed partial class Binding
                     }
 
                     if (premise is { Kind: ConstraintKind.Contract, Subject: { } stated, Contract: { } symbol } &&
-                        (AssociatedIdentityMatches(stated, subject) || this.SameClass(stated, subject)) &&
+                        ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)) &&
                         this.AvailableContractPremise(symbol))
                     {
-                        Add(rows, symbol);
+                        Add(rows, this.RowContract(premise, subject, states));
                     }
                 }
             }
@@ -664,6 +665,13 @@ public sealed partial class Binding
             }
         }
     }
+
+    // A row's Contract from the constraint stating it, for rows (1) and (2) alike (R7-C2c2 c2-2, the owner's O-248 (b)): a use's Origin
+    // arguments are applied to the Contract when the constraint states the subject as written (its universal family pattern, SPEC
+    // 8.5.1; positionally, by binder, SPEC 8.5.4); a class match reads the constraint's own subject, so a key's spelling never reaches
+    // the application.
+    private BindingSymbol RowContract(BoundConstraint stating, BoundType subject, bool states)
+        => this.AppliedAssociatedContract(stating, states ? subject : stating.Subject!);
 
     // R7-C2c2: the walk's identity: two Types of one class of the request's view (ClassKey).
     private bool SameClass(BoundType a, BoundType b)
