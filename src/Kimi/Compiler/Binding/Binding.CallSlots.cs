@@ -67,6 +67,10 @@ public sealed partial class Binding
         => inferred && slot < owner.GenericParameterNodes.Count && constructed.Components[slot] is { Kind: BoundTypeKind.Parameter } open &&
             ReferenceEquals(open.Symbol?.Scope.Owner, owner);
 
+    // SPEC 8.1.2, 10.8: what fixes pair slot `slot`'s binder: the slot's binding, else its first source's Type (the selector evidence).
+    private static BoundType? Selector(SlotFrame frame, int slot)
+        => slot < frame.Types.Length ? frame.Types[slot] ?? frame.Selectors[slot] : null;
+
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
     private BoundType? CallMemberPattern(BoundType type, Koto binder, BoundType? declaringType)
@@ -164,10 +168,6 @@ public sealed partial class Binding
 
         return pattern;
     }
-
-    // SPEC 8.1.2, 10.8: what fixes pair slot `slot`'s binder: the slot's binding, else its first source's Type (the selector evidence).
-    private static BoundType? Selector(SlotFrame frame, int slot)
-        => slot < frame.Types.Length ? frame.Types[slot] ?? frame.Selectors[slot] : null;
 
     // SPEC 10.8: whether a pattern still holds an application whose pair binder no source has fixed, read as FormedApplication forms
     // (a bound application's target is still in the callee's terms). Such an input waits until every source of its binder is in.
