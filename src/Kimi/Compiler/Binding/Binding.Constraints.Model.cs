@@ -167,7 +167,8 @@ internal sealed class ConstraintEnvironment : ICheckCause
     }
 
     /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
-    /// of the identity relation; G721's interim reads it until G170's identity query answers which Types it makes identical.</summary>
+    /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity
+    /// query answers which Types it makes identical.</summary>
     internal bool HasTypeIdentity { get; set; }
 
     internal void Reset()
