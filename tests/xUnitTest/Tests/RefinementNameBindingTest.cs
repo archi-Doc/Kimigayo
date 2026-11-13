@@ -18,8 +18,6 @@ public class RefinementNameBindingTest
     [InlineData("(Origin)", false)]
     [InlineData("::Origin<i32>", false)]
     [InlineData("::Api.Origin<i32>", false)]
-    [InlineData("::ref/Origin", false)]
-    [InlineData("::(Origin)", false)]
     public void RefinementParentsAreContractNames(string parent, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
@@ -42,7 +40,9 @@ public class RefinementNameBindingTest
     [InlineData("Api.Origin<>")]
     [InlineData("::Origin<>")]
     [InlineData("::Api.Origin<>")]
-    public void EmptyGenericListsRemainSyntaxErrors(string parent)
+    [InlineData("::ref/Origin")] // SPEC F.5: only a TypeSegment follows '::'.
+    [InlineData("::(Origin)")]
+    public void ParentsOutsideTheGrammarAreSyntaxErrors(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
         Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
