@@ -224,6 +224,10 @@ public sealed partial class Binding
     // evidence by UnsolvedKey, parameters up and inputs down, all below UnsolvedKey / 2, so IsCallRegion holds for every one.
     private BoundOrigin CallRegion(Koto call, int index) => this.OpenOrigin(call, UnsolvedKey + index);
 
+    // SPEC 8.1.2, 10.8: the open region of a solve's node (a call, a function reference's use) for the outer Origin that an annotated
+    // occurrence of pair slot `slot`'s original leaves to other evidence; keyed apart from argument evidence and from CallRegion.
+    private BoundOrigin AnnotatedOuterRegion(Koto source, int slot) => this.OpenOrigin(source, (UnsolvedKey / 4) - slot);
+
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {
         if (!this.openOrigins.TryGetValue((source, key), out var origin))

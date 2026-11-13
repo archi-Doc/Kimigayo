@@ -285,19 +285,24 @@ public sealed partial class Binding
 
             var callee = actual;
             actual = binding.SignatureAtFunction(fixedPattern.Type, actual);
-            pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
-            var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
+            // SPEC 8.1.2, 10.8: Origins are matched at the formed pattern, and only once it holds no open application: an input that
+            // still does is inferred again after every source of its binders (SettleWaiting). Infer forms the pattern itself.
+            var formed = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
+            var known = formed.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
             var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
-            binding.MatchInputOrigins(pattern, actual, binder, this.Origins, this.Inputs, quantifier);
-            if (pattern.CarriesOrigin && actual.CarriesOrigin)
+            if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Types))
             {
-                this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
-                binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                if (binding.PartContribution(source) == Contribution.Evidence)
+                binding.MatchInputOrigins(formed, actual, binder, this.Origins, this.Inputs, quantifier);
+                if (formed.CarriesOrigin && actual.CarriesOrigin)
                 {
-                    // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
-                    binding.CollectInputPremises(pattern, pattern, this.OriginInference, this.Call);
+                    this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
+                    binding.CollectOriginInference(formed, actual, this.OriginInference, known: quantifier);
+                    if (binding.PartContribution(source) == Contribution.Evidence)
+                    {
+                        // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
+                        binding.CollectInputPremises(formed, formed, this.OriginInference, this.Call);
+                    }
                 }
             }
 
@@ -308,7 +313,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            var structural = pattern.Kind == BoundTypeKind.Function;
+            var structural = formed.Kind == BoundTypeKind.Function;
             return binding.Infer(
                 pattern,
                 actual,
@@ -336,7 +341,11 @@ public sealed partial class Binding
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
                     type = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, type); // As InferAdapted (U1.6g (c)).
-                    binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
+                    if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Types))
+                    {
+                        binding.MatchInputOrigins(binding.FormedApplication(pattern, this.SlotOwner, this.Types), type, this.Binder, this.Origins, this.Inputs); // As InferAdapted.
+                    }
+
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
                 default:

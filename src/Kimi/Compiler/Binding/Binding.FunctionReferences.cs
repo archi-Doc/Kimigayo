@@ -275,14 +275,14 @@ public sealed partial class Binding
     {
         proof = ConstraintProof.Proven;
         var count = function.GenericArguments.Count;
-        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, true) ||
+        if (!this.InferReferenceSlots(use, symbol, function, required, frame, container, false, true, true) ||
             (explicitReference is not null && !this.ExplicitReferenceAgrees(explicitReference, frame, count, false, function, scope)))
         {
             // SPEC 10.8, 15.3.6: bindings of one slot that differ only in their Origins are an Origin failure, not a structural one;
             // when only per-call Origins of S would satisfy the slot, the reference's record names that slot and those parameters.
             // A Constraint that the met binding does not prove is judged first, as for a binding without a conflict, since neither an Origin
             // of the slot nor a wrapper would repair it.
-            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, true) &&
+            if (this.InferReferenceSlots(use, symbol, function, required, frame, container, true, true, true) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, frame, count, true, function, scope)))
             {
                 if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
@@ -351,8 +351,8 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.8: binds a reference's slots from the parameters of S and, with `result`, from its result; `commonOrigins` meets
-    // the Origins that two positions give one slot, as a call's inference would.
-    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
+    // the Origins that two positions give one slot, as a call's inference would. `use` is the solve's node (inferenceSource).
+    private bool InferReferenceSlots(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
     {
         frame.ClearTypes(function.GenericArguments.Count);
         if (lengths)
@@ -360,18 +360,27 @@ public sealed partial class Binding
             frame.ClearLengths(function.GenericArguments.Count);
         }
 
-        var parameters = required.Components[0];
-        for (var i = 0; i < function.Parameters.Count; i++)
+        var saved = this.inferenceSource;
+        this.inferenceSource = (use, function);
+        try
         {
-            if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+            var parameters = required.Components[0];
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
-                return false;
+                if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
+                    !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                {
+                    return false;
+                }
             }
-        }
 
-        return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-            this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+            return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
+                this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+        }
+        finally
+        {
+            this.inferenceSource = saved;
+        }
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
@@ -472,7 +481,7 @@ public sealed partial class Binding
         var fromResult = this.infer.Rent(count);
         try
         {
-            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
+            if (!this.InferReferenceSlots(use, symbol, function, required, frame, container, true, false, true))
             {
                 return null;
             }

@@ -129,10 +129,15 @@ public sealed partial class Binding
         return (mask & bit) == 0 ? null : family.Components[BitOperations.PopCount(mask & (bit - 1))];
     }
 
+    // SPEC 8.1.2: whether a pair slot's binding is abstract, the Semantics not yet known: a pair's original or occurrence (Parameter,
+    // whose Semantics is the constructor default) or an application (Semantics Parameter). ApplySemantics, the substitution of a family
+    // and HasOuterSlot read it.
+    private static bool IsAbstractBinding(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
+
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none.
     private static bool HasOuterSlot(BoundType binding)
-        => IsBorrow(binding.Semantics) || binding.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        => IsBorrow(binding.Semantics) || IsAbstractBinding(binding) || binding.Kind == BoundTypeKind.SemanticsAdaptation;
 
     // Short adaptations select the output mode with the input case; a fixed mode maps every input case. The cases are the binder's
     // admitted set at the adaptation (SPEC 8.3.4, 8.15.2: a conditional member's or block's premises included), not at its declaration,
@@ -284,12 +289,13 @@ public sealed partial class Binding
     private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
     {
         { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),
-        { Kind: BoundTypeKind.Parameter } or { Semantics: SemanticsKind.Parameter }
-            => this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin),
+        // The pair's own target gives its original (one representation, as FamilyApplication forms it), with the occurrence's slot.
+        _ when IsAbstractBinding(whole) && whole.Symbol is { WholeType: { } original } pair && ReferenceEquals(target, pair.Type)
+            => origin is null || ReferenceEquals(origin, this.PairOuterOrigin(pair)) ? original : this.WithOrigins(original, origin, []),
+        _ when IsAbstractBinding(whole) => this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin),
         { Kind: BoundTypeKind.Semantics } => this.types.Rebuild(this.types.PairBinding(whole), [target], IsBorrow(whole.Semantics) ? origin : null, []),
         _ => this.Form(whole.Semantics, target, origin),
     };
-
     private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
         // A slot the slot owner's column does not bind is the declaring Type's (CallSubstitution.Slot), whose occurrence then takes each case in turn.
@@ -332,7 +338,7 @@ public sealed partial class Binding
 
     private BoundType? SubstituteFamily(BoundType family, BoundType whole)
     {
-        if (whole.Kind == BoundTypeKind.Parameter || whole.Semantics == SemanticsKind.Parameter)
+        if (IsAbstractBinding(whole))
         {
             if (whole.Symbol is not { } selector)
             {
