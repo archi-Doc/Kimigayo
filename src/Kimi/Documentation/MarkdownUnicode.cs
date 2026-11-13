@@ -8,9 +8,11 @@ internal static class MarkdownUnicode
 {
     // CommonMark's character classes (2.1), each a generated row of MarkdownUnicodeData (Unicode 15.0.0) read above ASCII: whitespace
     // is Zs plus TAB, LF, FF and CR (neither VT nor NEL), punctuation the P and S categories. Outside the text (scalar < 0) is
-    // whitespace, not punctuation.
+    // whitespace, not punctuation. Above the Whitespace row's last scalar (U+3000) one compare answers, as for kana and Kanji.
     internal static bool IsWhitespace(int scalar)
-        => scalar < 128 ? scalar is < 0 or 0x20 or (>= 0x09 and <= 0x0D and not 0x0B) : InRanges(MarkdownUnicodeData.Whitespace, scalar);
+        => scalar < 128
+            ? scalar is < 0 or 0x20 or (>= 0x09 and <= 0x0D and not 0x0B)
+            : scalar <= MarkdownUnicodeData.WhitespaceLast && InRanges(MarkdownUnicodeData.Whitespace, scalar);
 
     internal static bool IsAsciiPunctuation(char value) => value is (>= '!' and <= '/') or (>= ':' and <= '@') or (>= '[' and <= '`') or (>= '{' and <= '~');
 
