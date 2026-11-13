@@ -73,16 +73,19 @@ public class FunctionItemTest
     public void NestedItemsKeepTheEnclosingFunctionsFixedSlots(string body)
         => Assert.Equal(string.Empty, Records("public func main() => ()\n" + body));
 
-    // The invalid twins: a nested function's value meets its direct call's judges (CALL is the value's call, then the direct call).
+    // The invalid twins: a nested function's value meets its direct call's judges, A5's Loan conflict and Unknown fixed relation
+    // included (the value's form binds f at LET and calls it at CALL; the direct call drops LET and calls pk).
     [Theory]
-    [InlineData("func h(anchor0: ref/u8 during a) -> raw/u8 during a\n    func pk(q: raw/u8 during a, anchor: ref/u8 during a) -> raw/u8 during a => q\n    var kk: u8 = 0\n    CALL(null, kk@ref)", "ComparisonLoanConflict_Kd var kk: u8 = 0; UnsatisfiedOriginRelation_Kd kk@ref")]
-    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(anchor: ref/u8 during a) -> i32 => 0\n    var kk: u8 = 0\n    CALL(kk@ref)", "UnsatisfiedOriginRelation_Kd kk@ref")]
-    [InlineData("func h<T>(x: ref/T during a, v: T) -> i32\n    func pk(y: ref/T during a) -> i32 => 0\n    CALL(v@ref)", "UnsatisfiedOriginRelation_Kd v@ref")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> raw/u8 during a\n    func pk(q: raw/u8 during a, anchor: ref/u8 during a) -> raw/u8 during a => q\n    var kk: u8 = 0\n    LET\n    return CALL(null, kk@ref)", "ComparisonLoanConflict_Kd var kk: u8 = 0; UnsatisfiedOriginRelation_Kd kk@ref")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(anchor: ref/u8 during a) -> i32 => 0\n    var kk: u8 = 0\n    LET\n    return CALL(kk@ref)", "UnsatisfiedOriginRelation_Kd kk@ref")]
+    [InlineData("func h<T>(x: ref/T during a, v: T) -> i32\n    func pk(y: ref/T during a) -> i32 => 0\n    LET\n    return CALL(v@ref)", "UnsatisfiedOriginRelation_Kd v@ref")]
+    [InlineData("func h(source: uniq/i32 during os, bound: ref/i32 during ob) -> i32\n    origin os outlives ob\n    func pk(value: uniq/i32 during ob) -> uniq/i32 during ob => value\n    LET\n    let child = CALL(source)\n    let seen = source@follow\n    child@follow = 42\n    return seen", "ComparisonLoanConflict_Kd source@follow")]
+    [InlineData("func h(a: ref/i32 during p, b: ref/i32 during q) -> i32\n    func pk(x: ref/i32 during p) -> i32 => x@follow\n    LET\n    return CALL(b)", "UnprovenOriginRelation_Kd b")]
     public void NestedItemsMeetTheirDirectCallsJudges(string body, string records)
     {
-        foreach (var call in new[] { "let f = pk\n    return f", "return pk" })
+        foreach (var (bind, callee) in new[] { ("\n    let f = pk", "f"), (string.Empty, "pk") })
         {
-            var source = "public func main() => ()\n" + body.Replace("CALL", call, StringComparison.Ordinal);
+            var source = "public func main() => ()\n" + body.Replace("\n    LET", bind, StringComparison.Ordinal).Replace("CALL", callee, StringComparison.Ordinal);
             Assert.Equal(records, Records(source));
         }
     }
