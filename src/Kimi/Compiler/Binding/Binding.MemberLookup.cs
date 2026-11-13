@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,6 +10,10 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(
         KimiLibrarySize.Stated.MemberSelections, ReferenceEqualityComparer.Instance);
+
+    // The side of each member access whose member was selected (PLAN G724, B4): published by the former that selected it (SelectMember,
+    // BaseMember, ConstructorMember), its own fact beside the lookup's selection, since a constructor access has a side and no selection.
+    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(KimiLibrarySize.Stated.MemberSides, ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
@@ -169,94 +174,120 @@ public sealed partial class Binding
             return null;
         }
 
+        var qualifierPath = this.NamePath(member.Left, scope);
+        if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
+        {
+            // SPEC 8.5.2, 9.6: a projection qualifier is a Type whose members are its normal form's and its Constraints' requirements.
+            // Selecting one (a Case, a Type function, a requirement member) is not implemented yet (PLAN G724): a located Unsupported_Kd
+            // at the member; construction (`.init`) is ConstructorMember's.
+            Complete(member.Left, projected);
+            this.Fail(member, BindingFailure.Unsupported);
+            return null;
+        }
+
+        var qualifier = qualifierPath.Symbol;
+        return this.TypeSideMember(member, qualifier, right.IdentifierName, scope, expected) is { } typeSide
+            ? this.SelectMember(member, qualifier, typeSide, this.ValueSideMember(member, right.IdentifierName, scope), scope)
+            : null;
+    }
+
+    // SPEC 9.6: the Type path of `qualifier.name`: a requirement member of the qualifier's Type, a member of the Type or group the
+    // qualifier forms, or a nested declaration. Formed when the qualifier was bound as a Type or a group; null when that binding failed
+    // (its record).
+    private SideSelection? TypeSideMember(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? expected)
+    {
         BindingSymbol? typeMember = null;
-        BindingSymbol? valueMember = null;
-        MemberSelection typeSelection = default;
-        MemberSelection valueSelection = default;
-        BoundType? qualified = null; // The Type path's binding of the qualifier.
-        var qualifier = this.TypeName(member.Left, scope);
         if (qualifier?.Type is { } type && !qualifier.IsContract)
         {
             typeMember = this.RequirementMember(member, scope, type, true);
         }
 
-        if (qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope))
+        if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.TryGetValue(qualifier.Declaration, out var typeScope))
         {
-            if (qualifier.Type is not null)
-            {
-                var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
-                var callQualifier = originQualifier && IsCallee(member);
-                if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
-                    : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
-                {
-                    return null;
-                }
-
-                qualified = qualifiedType;
-                typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
-                typeMember = typeSelection.Member ?? typeMember;
-                if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null))
-                {
-                    return null;
-                }
-            }
-            else if (qualifier.Declaration is GroupKoto { IsRoot: false })
-            {
-                if (this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is not { } groupType)
-                {
-                    return null;
-                }
-
-                if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
-                {
-                    this.Fail(member.Left, BindingFailure.InvalidOrigin);
-                    return null;
-                }
-
-                qualified = groupType;
-                typeSelection = this.LookupTypeMember(groupType, right.IdentifierName, scope);
-                typeMember = typeSelection.Member;
-            }
-            else if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate))
-            {
-                typeMember = candidate;
-            }
+            return new(typeMember, default, false);
         }
 
-        var valuePossible = this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope);
-        if (valuePossible)
+        if (qualifier.Type is not null)
         {
-            var receiverType = this.BindNode(member.Left, scope);
-            this.ReceiverThroughLayers(member.Left, receiverType);
-            this.ReceiverElement(member.Left, receiverType);
-            // SPEC 3.4.3: selection continues at the referent of each safe value-reference layer and, under the
-            // object view rules, at the payload of an object handle or view.
-            while (true)
+            var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
+            var callQualifier = originQualifier && IsCallee(member);
+            if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
+                : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
             {
-                while (receiverType is not null && this.ViewBelow(receiverType, scope) is { } below)
-                {
-                    receiverType = below;
-                }
-
-                if (receiverType is not null)
-                {
-                    // A nominal member takes priority over a requirement member of the same receiver.
-                    valueMember = this.RequirementMember(member, scope, receiverType, false);
-                    valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
-                    valueMember = valueSelection.Member ?? valueMember;
-                }
-
-                // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
-                if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
-                {
-                    break;
-                }
-
-                receiverType = pairTarget;
+                return null;
             }
+
+            var selection = this.LookupTypeMember(qualifiedType, name, scope);
+            return originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !selection.Ambiguous ? selection.Member : null)
+                ? null : new(selection.Member ?? typeMember, selection, true);
         }
 
-        if (valuePossible && qualified is not null && (typeMember is null) == (valueMember is null))
+        if (qualifier.Declaration is GroupKoto { IsRoot: false })
+        {
+            if (this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is not { } groupType)
+            {
+                return null;
+            }
+
+            if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
+            {
+                this.Fail(member.Left, BindingFailure.InvalidOrigin);
+                return null;
+            }
+
+            var selection = this.LookupTypeMember(groupType, name, scope);
+            return new(selection.Member, selection, true);
+        }
+
+        return new(typeScope.Values.TryGetValue(name, out var candidate) ? candidate : typeMember, default, false);
+    }
+
+    // SPEC 9.6, 3.4.3: the value path of `qualifier.name`: a member of the qualifier's value, at the referent of each safe value-reference
+    // layer, the payload of an object handle or view and the target of a qualifying pair layer. Formed when the qualifier may be a value.
+    private SideSelection ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
+    {
+        if (!this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope))
+        {
+            return default;
+        }
+
+        BindingSymbol? valueMember = null;
+        MemberSelection valueSelection = default;
+        var receiverType = this.BindNode(member.Left, scope);
+        this.ReceiverThroughLayers(member.Left, receiverType);
+        this.ReceiverElement(member.Left, receiverType);
+        while (true)
+        {
+            while (receiverType is not null && this.ViewBelow(receiverType, scope) is { } below)
+            {
+                receiverType = below;
+            }
+
+            if (receiverType is not null)
+            {
+                // A nominal member takes priority over a requirement member of the same receiver.
+                valueMember = this.RequirementMember(member, scope, receiverType, false);
+                valueSelection = this.LookupTypeMember(receiverType, name, scope, receiverType);
+                valueMember = valueSelection.Member ?? valueMember;
+            }
+
+            // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
+            if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
+            {
+                return new(valueMember, valueSelection, true);
+            }
+
+            receiverType = pairTarget;
+        }
+    }
+
+    // SPEC 9.6: selects the member of `qualifier.name` from its two paths and publishes it: the member, its selection and, for a Type-side
+    // member, the qualifier.
+    private BindingSymbol? SelectMember(MemberAccessKoto member, BindingSymbol? qualifier, SideSelection typeSide, SideSelection valueSide, BindingScope scope)
+    {
+        var typeMember = typeSide.Member;
+        var valueMember = valueSide.Member;
+        if (typeSide.Formed && valueSide.Formed && (typeMember is null) == (valueMember is null))
         {
             // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
             // read the Type path's binding of the shared node, so neither finding no member nor both paths finding it decides the form.
@@ -267,52 +298,54 @@ public sealed partial class Binding
             return null;
         }
 
-        if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
+        if (typeSide.Selection.Ambiguous || valueSide.Selection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
             return null;
         }
 
         var selected = typeMember ?? valueMember;
-        if (selected is null && (typeSelection.Hidden ?? valueSelection.Hidden) is { } hidden)
+        if (selected is null)
         {
-            member.BoundSymbol = hidden;
+            if ((typeSide.Selection.Hidden ?? valueSide.Selection.Hidden) is { } hidden)
+            {
+                member.BoundSymbol = hidden;
+                this.Fail(member, BindingFailure.Access);
+            }
+
+            return null;
+        }
+
+        var typeSelection = typeSide.Selection;
+        if (typeMember is not null && selected.EnumCase is null && qualifier?.Declaration is EnumKoto)
+        {
+            // Only Case construction may infer the enum qualifier's missing arguments.
+            var qualifiedType = this.BindTypeStructure(member.Left, scope, this.TypeContext(member.Left, scope));
+            if (qualifiedType is null || this.CompleteOrigins(qualifiedType, member.Left as TypeSemanticsKoto, member.Left, scope, this.TypeContext(member.Left, scope)) is not { } completeType)
+            {
+                return null;
+            }
+
+            typeSelection = typeSelection with { DeclaringType = completeType };
+            Complete(member.Left, completeType);
+        }
+
+        if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
+        {
             this.Fail(member, BindingFailure.Access);
             return null;
         }
 
-        if (selected is not null)
+        this.memberSelections[member] = typeMember is not null ? typeSelection : valueSide.Selection;
+        this.memberSides[member] = typeMember is not null ? MemberSide.Type : MemberSide.Value;
+        if (typeMember is not null)
         {
-            if (typeMember is not null && selected.EnumCase is null && qualifier?.Declaration is EnumKoto)
-            {
-                // Only Case construction may infer the enum qualifier's missing arguments.
-                var qualifiedType = this.BindTypeStructure(member.Left, scope, this.TypeContext(member.Left, scope));
-                if (qualifiedType is null || this.CompleteOrigins(qualifiedType, member.Left as TypeSemanticsKoto, member.Left, scope, this.TypeContext(member.Left, scope)) is not { } completeType)
-                {
-                    return null;
-                }
-
-                typeSelection = typeSelection with { DeclaringType = completeType };
-                Complete(member.Left, completeType);
-            }
-
-            if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
-            {
-                this.Fail(member, BindingFailure.Access);
-                return null;
-            }
-
-            this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
-            if (typeMember is not null)
-            {
-                PublishQualifier(member.Left, qualifier!);
-            }
-
-            member.BoundSymbol = selected;
-            right.BoundSymbol = selected;
-            right.BindingState = BindingState.Resolved;
+            PublishQualifier(member.Left, qualifier!);
         }
 
+        member.BoundSymbol = selected;
+        member.Right.BoundSymbol = selected;
+        member.Right.BindingState = BindingState.Resolved;
         return selected;
     }
 
@@ -429,6 +462,21 @@ public sealed partial class Binding
     }
 
     private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
+
+    // One path of a member access (SPEC 9.6): the member it found (a requirement member or a nested declaration when its lookup found
+    // none), its member lookup, and whether the path was formed (the qualifier bound as a Type or a group, or read as a value).
+    private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, bool Formed);
+
+    // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
+    private enum MemberSide : byte
+    {
+        Type,
+        Value,
+    }
+
+    // The published side of a member access whose member was selected; a reader of one without it breaks the formers' contract.
+    private MemberSide MemberSideOf(MemberAccessKoto member)
+        => this.memberSides.TryGetValue(member, out var side) ? side : throw new UnreachableException("A member access without a published side.");
 
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {

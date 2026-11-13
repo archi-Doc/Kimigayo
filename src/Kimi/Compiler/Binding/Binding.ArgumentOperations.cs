@@ -434,7 +434,7 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && TryAdaptationSelector(actual, out _)))
+        else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Raw || (explicitBorrow && TryAdaptationSelector(actual, out _)))
         {
             // SPEC 13.5.6: an explicit borrow of a slot storing a pair layer, an application or an adaptation family (SPEC 13.5.5,
             // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
@@ -458,7 +458,8 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 10.2: an owner temporary, including a defaulted literal, may be shared-borrowed; its
+            // SPEC 10.2: an owner temporary, including a defaulted literal and a raw/U value (raw is no reference or handle slot; PLAN
+            // G585, K's K4: `null` at ref/(raw/U)), may be shared-borrowed; its
             // exclusive borrow is explicit or implicit for a receiver (SPEC 3.6, 7.3). A getter result
             // is a MemberAccessKoto with a Symbol and is never exclusively acquired (SPEC 11.5).
             referent = actual;

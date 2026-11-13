@@ -498,19 +498,6 @@ public sealed partial class Binding
                 }
             }
 
-            Koto? borrowedElement = null;
-            for (var i = 0; i < argumentCount; i++)
-            {
-                var element = this.FailBorrowedElements(call.ArgumentNodes[i], selectedOperations[i].SourceType);
-                borrowedElement ??= element;
-            }
-
-            if (borrowedElement is not null)
-            {
-                this.AddPrerequisite(call, borrowedElement); // Interim until PLAN G585: the call rests on its borrowed element.
-                return this.Fail(call, BindingFailure.Unsupported);
-            }
-
             var completed = this.CompleteArguments(call, scope, selectedOperations);
             var formed = this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), selectedOperations, out defaults);
             if (!completed)
@@ -681,6 +668,7 @@ public sealed partial class Binding
         }
     }
 
+    // A call's receiver: a synthetic callee's own, or a member access's qualifier when its published side is Value (PLAN G724, B4).
     private Koto? CallReceiver(Koto callee)
-        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
+        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && this.MemberSideOf(member) == MemberSide.Value ? member.Left : null;
 }

@@ -2,7 +2,9 @@
 
 using System.Text;
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -168,6 +170,38 @@ public class DependencyConfigurationTest
         rootNode.Edges.Add("Lib", libraryNode.Key);
         libraryNode.Edges.Add("Other", otherNode.Key);
         Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode, otherNode])));
+    }
+
+    // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
+    // one Resource record at preparation, which still succeeds and publishes its one outcome, AnalyzesNoModule: the sources, which the
+    // resolver has read, are neither established nor parsed, no phase runs, the check completes rejected (SPEC 23.2.2;
+    // Project.CheckFrontEnd) and its test presence is Unknown, since no source was parsed (SPEC 23.3).
+    [Theory]
+    [InlineData(65_535, true)]
+    [InlineData(65_536, false)]
+    public void ModuleCountIsLimitedBelowTheLibraryOrdinal(int count, bool supported)
+    {
+        var c = Compilation.CreateForTest();
+        var input = new DependencyInput("library.kimiproj", new() { OutputKind = OutputKind.Library }, [], []);
+        var nodes = new DependencyNode[count];
+        nodes[0] = new("root", new("root.kimiproj", c.Project.ProjectFile, [], []), -1, string.Empty);
+        for (var i = 1; i < count; i++)
+        {
+            nodes[i] = new($"library@{i}", input, 0, string.Empty);
+        }
+
+        Assert.True(c.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.Equal(supported ? count : 0, c.SourceModules.Length);
+        Assert.Equal((!supported, supported ? TestPresence.No : TestPresence.Unknown), (c.AnalyzesNoModule, CheckService.ScanTestPresence(c)));
+        if (supported)
+        {
+            Assert.Empty(TestDiagnostics.Of(c));
+            return;
+        }
+
+        var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ModuleCountLimit_Kd), DiagnosticCategory.Resource, DiagnosticSeverity.Error), (error.Code, error.Category, error.Severity));
+        Assert.Equal([("modules", "65536"), ("limit", "65535")], error.Reason!.Select(static x => (x.Name, x.Value)));
     }
 
     private sealed class NativeSuppliesComparer : IEqualityComparer<ProjectFile?>
