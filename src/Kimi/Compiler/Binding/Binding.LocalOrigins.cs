@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 // A local's omitted Origins (SPEC 15.3.6, 15.4.4): the Origins its initializer infers while it binds, and the Origins its annotation
 // omits, inferred from the initializer's Type and solved with the local's clauses.
 // - Responsibility: ResolveInitializerOrigins closes the initializer's acquisition (initializerOrigins, whose bounds the fits record in
-//   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving a
-//   mutable local's slots and every slot no fit binds regions (LocalRegionSlot); SolveLocalBounds solves the slots its clauses bound.
+//   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving the
+//   local's slots regions (LocalRegionSlot), `let` or `var`; SolveLocalBounds solves the slots its clauses bound.
 // - Inputs: the local's declared and initializer Types, the bounds its initializer's fits recorded, its clauses (originDeclarations).
 // - Outputs: the replacements of the local's two Origin declarations, the local's rewritten Types and annotation nodes, the discharged
 //   inference obligations of resolved Origins, and the region bounds that publish their resolutions.
@@ -160,23 +160,15 @@ public sealed partial class Binding
             if (pending.Kind == OriginKind.Inference && !IsLocalRegion(pending))
             {
                 declaration ??= this.OriginDeclarationFor(owner);
-                if (IsMutableDeclaration(owner))
+                // SPEC 15.3.4, 15.4.2, 15.6.5 (PLAN G492): the slot is the local's region, `let` or `var`, bounded by the initializer's fit, so
+                // the local's name denotes its own Origin, a fixed Origin of a nested signature that names it, never the body's solution.
+                var region = declaration.Forming.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
+                    ? previous : this.LocalRegionSlot(owner, slot--);
+                declaration.Forming.Replacements[pending] = region;
+                this.originStateVersion++;
+                if (!ReferenceEquals(value, pending))
                 {
-                    var region = declaration.Forming.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
-                        ? previous : this.LocalRegionSlot(owner, slot--);
-                    declaration.Forming.Replacements[pending] = region;
-                    this.originStateVersion++;
-                    if (!ReferenceEquals(value, pending))
-                    {
-                        this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
-                    }
-                }
-                else
-                {
-                    // SPEC 15.3.6: the slot itself is no candidate, so a slot bound only to itself is a local region (DECISIONS R4-M112).
-                    declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value)
-                        : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--) : value;
-                    this.originStateVersion++;
+                    this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
                 }
 
                 if (declaration.Forming.Relations.Count != 0)

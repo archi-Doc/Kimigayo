@@ -134,7 +134,7 @@ public sealed partial class Binding
     // `slot` is the local's next region slot (BindVariableCore; a Pattern binding's or for slot's first, BindingTypeOf).
     private BoundType LocalBorrowType(BoundType type, Koto owner, Koto value, int slot)
     {
-        if (!IsMutableDeclaration(owner) || !type.StoresOrigin)
+        if (!IsRegionOwner(owner) || !type.StoresOrigin)
         {
             return type;
         }
