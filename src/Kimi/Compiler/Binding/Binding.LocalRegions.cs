@@ -113,6 +113,12 @@ public sealed partial class Binding
         return CollectionsMarshal.AsSpan(region.Sources);
     }
 
+    // The `index`-th Origin a bound recorded as outliving `origin` directly, as its bound's value has it (LocalRegionSources follows them
+    // to the finite sources); null past the last.
+    internal BoundOrigin? LocalRegionBound(BoundOrigin origin, int index)
+        => this.localRegions.TryGetValue(origin, out var region) && index < region.Parents.Count
+            ? this.OriginAtUse(region.Parents[index], region.Values[index]) : null;
+
     internal bool HasRegionBounds(BoundOrigin origin)
         => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
 

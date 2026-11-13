@@ -297,6 +297,17 @@ public sealed partial class Binding
                     this.AddStoredPremises(environment, stored, places[i], OriginPremiseRule.LocalPlace, false);
                     closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
                 }
+                else if (this.LocalRegionOf(environment, places[i], body) is { } region)
+                {
+                    // SPEC 15.4.4, 15.6.5 (PLAN G492): a region of a local of the body is bounded by each Origin the body recorded as
+                    // outliving it, a stored value's or another region's, in turn; a later store only adds bounds.
+                    for (var bound = 0; this.LocalRegionBound(region, bound) is { } longer; bound++)
+                    {
+                        AddPremiseEdge(environment, this.PremiseNode(environment, longer), places[i], OriginPremiseRule.LocalPlace);
+                    }
+
+                    closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
             }
 
             return;
@@ -317,6 +328,12 @@ public sealed partial class Binding
         => environment.Closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
+
+    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
+    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
+            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
