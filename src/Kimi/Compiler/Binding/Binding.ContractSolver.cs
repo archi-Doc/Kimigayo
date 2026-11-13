@@ -9,13 +9,15 @@
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names);
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) an available direct Contract fact of the view stating
-//   the subject, as written and, under a parameter identity, as the view reads it (Reading); (2) a Self-dependent clause of a row of a
-//   proper prefix of the subject's projection chain, Self being that prefix, whose stated subject is the subject as written; (3) a
-//   Contract's own Self; (4) a row's ancestors.
+//   the subject or a Type of its identity class, as written and, under a parameter identity, as the view reads it (Reading); (2) a
+//   Self-dependent clause of a row of a proper prefix of the subject's projection chain, Self being that prefix, whose stated subject
+//   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors.
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers itself to Supply; availability
 //   is asked per fact, lazily, in the caller's order. Enumerate is a leaf of the judgment graph: its walk compares interned Types
-//   (FactStates, AssociatedIdentityMatches) and calls no judgment, so a request demands only while it prepares its view
-//   (IndexNormalized), and a demand made there reads the written facts alone; PremiseRefines entered from a walk is InternalInvariant.
+//   (FactStates, AssociatedIdentityMatches) and their class keys (SameClass: ClassKey reads a built table and interns) and calls no
+//   judgment, so a request demands only while it prepares its view (ClassesOf, IndexNormalized); a demand made there is a request
+//   over its own view, with its own classes (restored on return), and reads that view's written facts and keys alone; PremiseRefines
+//   entered from a walk is InternalInvariant.
 //   Enumerate's request tables (memo, index, pools) live for one outermost request and are keyed by the view value (the scope and
 //   its serial, taken once per request), so a scope re-parented within a request is another view; a preparation that moves its own
 //   view is InternalInvariant. The walk reads the requirement Contract (ContractSupply's rewrites substitute
@@ -24,12 +26,19 @@
 //   below). The caller of Reading holds its view's serial: a loop that writes the chain only
 //   through Reading (Supply's, IndexNormalized's) passes its last observation and a formation takes it again; a loop with other
 //   writes (SymbolicCapability's judgments) takes one per fact. A write added to such a loop outside Reading breaks this.
-//   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3). Enumerate is complete modulo
-//   identity of supplied subjects (facts and clause instances): a derivation that must rewrite a supplied subject by an identity
-//   premise or a binding yields no row (beside `T is CopyTree`, `U is T` supplies nothing to U's projections while `T is U` does);
-//   R7-C2c2's identity key map adds those rows, and a missing row only rejects.
+//   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3).
+// - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class; a
+//   constructed member's conformance is ResolveConformance's. That is the implementation's limit, not SPEC's rule: where it is
+//   Unknown, a premise is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on
+//   base, until c2-4 (a constructed member's conformance with premises for its arguments). Each request keys its
+//   subject, its view's facts and the walk's comparisons by its own view's classes (ClassKey, Binding.TypeIdentity's: a class's least
+//   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
+//   rows. The written subject is walked beside its key and both refine, so a key only adds rows. A key never leaves the supply: no
+//   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
+//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), and other clause kinds at depth (the
+//   eager supply's one level until c2-2, c2-3); a missing row only rejects.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
-//   only Reading calls (temporary until R7-C2c2 keys Types by identity class); Enumerate's walk and what it calls never
+//   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion); Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
 //   each in the kept region alone (both below); no second scheduler; no read sets. From C3 (C1 §5), broken until then by the
@@ -55,14 +64,18 @@
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
 //   and the PrepareTypeStorage memo (per storageVersion).
+// - PremiseRefines' answer may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
+//   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
+//   answers). No such table is known to grow after the read within a pass.
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's Closure(scope) holds a view's rows with its index and
 // readings and deletes enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
 // - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), and a
 //   Contract's head depth per Contract.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
-//   preparation that formed no reading: each fact of its index was a kept, Complete reading, so the index is a function of the key
-//   and the pass. Nested demands never read or fill the rows.
+//   preparation that formed no reading, a view with no identity premise or a Final identity table (its keys are then a function of
+//   the view and the pass; a view with a derived identity fact keeps none until R7-C2e2): each fact of its index was a kept, Complete
+//   reading, so the index is a function of the key and the pass. Nested demands never read or fill the rows.
 // - Lifetime: one epoch (KeepsAcrossRequests, the one phase fact; ClearKeptRows, the one clear). In the capability phase it is the
 //   capability epoch, which ClearCapabilityResults ends with the capability results and the component summaries; before the phase it
 //   is one outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
@@ -262,9 +275,10 @@ public sealed partial class Binding
     private int enumerateWalking;
     private int enumerateKeptPoolNext;
     private int readingFormations;
+    private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
 
     // SPEC 8.3.2's refinement row: the premises of `scope` supply `subject is R` for a refinement R of `contract`. The subject is as
-    // its reader has it (identity is the request boundary's: the reader's subject and, for the outermost request, the view's facts).
+    // its reader has it, walked beside its class key in the view (the contract's Identity).
     private bool PremiseRefines(BoundType subject, BindingSymbol contract, BindingScope scope)
     {
         if (this.enumerateWalking > 0)
@@ -272,14 +286,22 @@ public sealed partial class Binding
             throw new InvalidOperationException($"PremiseRefines of `{subject}` entered from Enumerate's walk (InternalInvariant; R7-C2a).");
         }
 
+        // R7-C2c2: a request keys its subject and its view's facts by the view's identity classes (SPEC 8.2.3), whatever the table's
+        // finality; finality decides only whether the rows may be kept for a later request.
+        var classes = HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null;
+        var key = classes is null ? subject : this.ClassKey(subject, classes);
         var view = this.ViewOf(scope);
         var serial = SerialOf(scope);
-        var keep = this.enumerateDepth == 0 && this.KeptRegion;
-        if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept))
+        var keep = this.enumerateDepth == 0 && this.KeptRegion && (classes is null ? !HasTypeIdentity(scope) : classes.Final);
+        if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept) &&
+            (ReferenceEquals(key, subject) || this.enumerateKept.ContainsKey((key, view, serial, this.activeRequirementContract))))
         {
-            return RowsRefine(kept, contract);
+            return RowsRefine(kept, contract) ||
+                RowsRefine(this.enumerateKept.GetValueOrDefault((key, view, serial, this.activeRequirementContract)), contract);
         }
 
+        var enclosing = this.enumerateClasses;
+        this.enumerateClasses = classes;
         this.enumerateDepth++;
         try
         {
@@ -306,13 +328,14 @@ public sealed partial class Binding
             this.enumerateWalking++;
             try
             {
-                var rows = this.Enumerate(subject, view, serial);
+                var refines = RowsRefine(this.Enumerate(subject, view, serial), contract);
+                refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, serial), contract);
                 if (keep)
                 {
                     this.KeepRows(view, serial);
                 }
 
-                return RowsRefine(rows, contract);
+                return refines;
             }
             finally
             {
@@ -321,6 +344,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.enumerateClasses = enclosing;
             if (--this.enumerateDepth == 0)
             {
                 this.enumerateMemo.Clear();
@@ -387,7 +411,11 @@ public sealed partial class Binding
             {
                 if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null })
                 {
-                    this.IndexFact(view, serial, scope, fact, fact);
+                    this.IndexFact(view, serial, scope, fact, fact, fact.Subject);
+                    if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var key && !ReferenceEquals(key, fact.Subject))
+                    {
+                        this.IndexFact(view, serial, scope, fact, fact, key); // R7-C2c2: also under its class key in the request's view
+                    }
                 }
             }
         }
@@ -421,7 +449,8 @@ public sealed partial class Binding
 
             for (var i = start; i < this.enumerateNormalized.Count; i++)
             {
-                this.IndexFact(view, serial, this.enumerateNormalized[i].Scope, this.enumerateNormalized[i].Raw, this.enumerateNormalized[i].Fact);
+                var (scope, raw, fact) = this.enumerateNormalized[i];
+                this.IndexFact(view, serial, scope, raw, fact, fact.Subject!);
             }
 
             this.enumerateNormalized.RemoveRange(start, this.enumerateNormalized.Count - start);
@@ -524,10 +553,11 @@ public sealed partial class Binding
             for (var f = 0; f < facts.Count; f++)
             {
                 var (raw, fact) = facts[f];
-                if (this.FactStates(fact, subject, out _) && this.AvailableConstraintFact(environment, raw, out _) &&
+                var states = this.FactStates(fact, subject, out _);
+                if ((states || this.SameClass(fact.Subject!, subject)) && this.AvailableConstraintFact(environment, raw, out _) &&
                     this.AvailableContractPremise(fact.Contract!))
                 {
-                    Add(rows, this.AppliedAssociatedContract(fact, subject));
+                    Add(rows, this.AppliedAssociatedContract(fact, states ? subject : fact.Subject!)); // a key's spelling never reaches it
                 }
             }
         }
@@ -550,7 +580,7 @@ public sealed partial class Binding
                 foreach (var (_, _, premise) in new ContractSupply(this, shape, root, view.Premises))
                 {
                     if (premise is { Kind: ConstraintKind.Contract, Subject: { } stated, Contract: { } symbol } &&
-                        AssociatedIdentityMatches(stated, subject) &&
+                        (AssociatedIdentityMatches(stated, subject) || this.SameClass(stated, subject)) &&
                         this.AvailableContractPremise(symbol))
                     {
                         Add(rows, symbol);
@@ -585,11 +615,15 @@ public sealed partial class Binding
         }
     }
 
+    // R7-C2c2: the walk's identity: two Types of one class of the request's view (ClassKey).
+    private bool SameClass(BoundType a, BoundType b)
+        => this.enumerateClasses is { } classes && ReferenceEquals(this.ClassKey(a, classes), this.ClassKey(b, classes));
+
     // One fact of an environment of the view under its subject key (a projection's declaration and receiver, else the Type): `raw` as
     // the environment holds it (its availability), `fact` as the index reads it.
-    private void IndexFact(EvidenceView view, int serial, BindingScope scope, BoundConstraint raw, BoundConstraint fact)
+    private void IndexFact(EvidenceView view, int serial, BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
     {
-        var key = (view, serial, scope, SubjectKey(fact.Subject!).Symbol, SubjectKey(fact.Subject!).Type);
+        var key = (view, serial, scope, SubjectKey(at).Symbol, SubjectKey(at).Type);
         if (!this.enumerateIndex.TryGetValue(key, out var list))
         {
             if (this.enumerateFactPoolNext < this.enumerateFactPool.Count)

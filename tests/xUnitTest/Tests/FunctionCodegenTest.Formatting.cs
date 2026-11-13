@@ -326,9 +326,9 @@ public sealed partial class FunctionCodegenTest
         Assert.EndsWith($", ptr @, i64 {Located(Source, "\"n=")})", call.Shape, StringComparison.Ordinal);
     }
 
-    // SPEC 22.5.1, 22.10.2, 8.13.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's and an
-    // integer's format witnesses are the witness table's bodies, i128's and u128's IntegerFormat's specializations, which keep its
-    // CallerLocation (TyCtxt.Original), and the view's its declared member, each with a CallerLocation row, so the write instance forwards
+    // SPEC 22.5.1, 22.10.2, 8.13.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's, a view's
+    // and an integer's format witnesses are the witness table's bodies, i128's and u128's IntegerFormat's specializations, which keep its
+    // CallerLocation (TyCtxt.Original), each with a CallerLocation row, so the write instance forwards
     // the location it received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose
     // reservation Aborts there (fail-before: no body instance; without the rows, or a specialization's original, no location pair).
     [Theory]
@@ -453,7 +453,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module whose Text.writer or owning interpolation's
-    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote.
+    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote; a module without formatting defines
+    // none of its routines (FormatSegment's hint routine's definition the marker).
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {
@@ -463,7 +464,9 @@ public sealed partial class FunctionCodegenTest
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
-        Assert.DoesNotContain("@" + LegacyRuntimeHelpers.FormatFixed.Name + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+        var hint = "define internal void @" + LegacyRuntimeHelpers.FormatHint.Name + "(";
+        Assert.Contains(hint, runtime.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(hint, Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
     // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
