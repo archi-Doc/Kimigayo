@@ -182,7 +182,7 @@ public sealed partial class Binding
         {
             if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
                 ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
-                arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
+                arguments[slot] is { } binding && !HasOuterSlot(binding))
             {
                 inputs[i] = BoundOrigin.Static;
             }

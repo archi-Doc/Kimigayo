@@ -185,7 +185,7 @@ public sealed partial class Binding
         var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
-        var frame = this.infer.Rent(slots);
+        var frame = this.infer.Rent(slots, use);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
         var settled = this.RentSlotSet(count);

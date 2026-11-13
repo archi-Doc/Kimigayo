@@ -282,7 +282,7 @@ public sealed partial class Binding
                 return this.SubstituteFamilyArgument(type, substitution, slot, selection);
             }
 
-            if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
+            if (!IsAbstractBinding(selection))
             {
                 return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, substitution, query) : null;
             }
@@ -304,14 +304,7 @@ public sealed partial class Binding
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole)
                 : type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } ? this.types.PairBinding(whole) : whole;
-            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation))
-            {
-                // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
-                // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, this.SubstituteSlotOrigin(replacement, substitution), (BoundOrigin[])projected.OriginArguments);
-            }
-
-            return projected;
+            return type.Origin is { } replacement ? this.AnnotatedOriginal(projected, this.SubstituteSlotOrigin(replacement, substitution)) : projected;
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.

@@ -301,7 +301,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.infer.Rent(slotStride);
+        var bindings = this.infer.Rent(slotStride, call);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try

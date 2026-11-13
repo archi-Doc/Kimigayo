@@ -115,6 +115,76 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 10.8 ("collected together"; traversal order never chooses; every source of a binder, an application included, fixes it before
+    // the expected result fills): an input whose pattern holds an application of a binder no source has fixed waits. A waiting input
+    // that no longer holds one is inferred; when none can be, every waiting input not yet a source is inferred once as one (its originals
+    // bind, and its applications give selector evidence for, its own binders), and those it formed are inferred again. Called before the
+    // expected result and after it (for a binder only the expected result fixes); one still open keeps its open parts unbound.
+    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
+    {
+        var call = solution.Call;
+        var function = solution.Function;
+        var owner = CallSlotOwner(function);
+        while (!waiting.IsEmpty)
+        {
+            var settled = false;
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame))
+                {
+                    if (!InferWaiting(ref solution, function, mapping, i))
+                    {
+                        return false;
+                    }
+
+                    waiting.Remove(i);
+                    settled = true;
+                }
+            }
+
+            if (settled)
+            {
+                continue;
+            }
+
+            var bound = BoundSlots(solution.Frame);
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (waiting.Contains(i) && !sourced.Contains(i))
+                {
+                    sourced.Add(i);
+                    if (!InferWaiting(ref solution, function, mapping, i))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            if (BoundSlots(solution.Frame) == bound)
+            {
+                return true;
+            }
+        }
+
+        return true;
+
+        static bool InferWaiting(ref SlotSolution solution, FunctionKoto function, int[] mapping, int i)
+            => solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
+                ? solution.InferArgument(evidencePattern, solution.Call.ArgumentNodes[i], late: false) : solution.Call.ArgumentNodes[i].BoundType is null;
+
+        // The slots a source has fixed: bound, or a pair binder known by its selector evidence.
+        static int BoundSlots(SlotFrame frame)
+        {
+            var count = 0;
+            for (var i = 0; i < frame.Types.Length; i++)
+            {
+                count += (frame.Types[i] is null ? 0 : 1) + (frame.Selectors[i] is null ? 0 : 1);
+            }
+
+            return count;
+        }
+    }
+
     private CandidateApplicability TryCandidateCore(
         ref SlotSolution solution,
         int[] mapping,
@@ -137,6 +207,7 @@ public sealed partial class Binding
         var origins = solution.Origins;
         var inputs = solution.Inputs;
         var declaringType = solution.DeclaringType;
+        var sourced = this.RentSlotSet(call.ArgumentNodes.Count);
         var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var open = this.RentSlotSet(call.ArgumentNodes.Count);
         var openSignatures = this.RentSlotSet(call.ArgumentNodes.Count);
@@ -237,9 +308,9 @@ public sealed partial class Binding
                     continue; // A parameter Type that failed to bind is a wildcard (rule W; TryCandidate reads it at the verdict).
                 }
 
-                if (this.FormedApplication(type, CallSlotOwner(function), frame.Types).Kind == BoundTypeKind.SemanticsApplication)
+                if (this.HasOpenApplication(type, CallSlotOwner(function), frame))
                 {
-                    waiting.Add(i); // SPEC 10.2: solved together; s/U is matched once another argument fixes s.
+                    waiting.Add(i); // SPEC 10.8: an application is formed only after every source of its binder (SettleWaiting).
                     continue;
                 }
 
@@ -261,13 +332,9 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; !waiting.IsEmpty && i < call.ArgumentNodes.Count; i++)
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
             {
-                if (waiting.Contains(i) && (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
-                    ? !solution.InferArgument(evidencePattern, call.ArgumentNodes[i], late: false) : call.ArgumentNodes[i].BoundType is not null))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
+                return CandidateApplicability.Inapplicable;
             }
 
             if (!solution.InferCallableSignatures(mapping, operations))
@@ -299,6 +366,12 @@ public sealed partial class Binding
                     solution.OriginInference ??= this.BeginOriginInference(call, function);
                     this.CollectOriginInference(returnPattern, expected, solution.OriginInference, result: true);
                 }
+            }
+
+            // SPEC 10.8: the expected result is the last source of a binder; an input formed only now is inferred now.
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            {
+                return CandidateApplicability.Inapplicable;
             }
 
             if (argumentMap.DefaultsUsed != 0)
@@ -594,6 +667,7 @@ public sealed partial class Binding
             this.ReturnSlotSet(openSignatures);
             this.ReturnSlotSet(open);
             this.ReturnSlotSet(waiting);
+            this.ReturnSlotSet(sourced);
         }
     }
 
