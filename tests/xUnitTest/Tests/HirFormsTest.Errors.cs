@@ -175,6 +175,24 @@ public sealed partial class HirFormsTest
         Assert.All(nodes.Where(x => !ReferenceEquals(x, error)), static x => Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow), HirTables.AdjustOf(x)));
     }
 
+    // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): a plain write Binding rejected for its value's fit after admitting its destination keeps
+    // Assign, its target its own Op and its value, which Binding resolved, the Error taken as its derived value (Temporary, None); a write
+    // refused at its destination (through a shared reference) and a compound update Binding rejected stay Error, their children replaced
+    // (fail-before: the first was Error too).
+    [Theory]
+    [InlineData("func f()\n    var x: i32 = 0\n    x = \"a\"\n", "x = \"a\"", "Assign Name Error Temporary/None")]
+    [InlineData("struct S\n    public var v: i32 = 0\n    public init() => ()\nfunc f(r: ref/S)\n    r.v = \"a\"\n", "r.v = \"a\"", "Error Syntax Syntax Unset/None")]
+    [InlineData("func f()\n    var x: i32 = 0\n    x += \"a\"\n", "x += \"a\"", "Error Syntax Syntax Unset/None")]
+    public void ARejectedWriteKeepsItsWriteWithADerivedValue(string source, string text, string rows)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var write = (BinaryKoto)Reachable(c.Kotonoha).First(x => x.ToString() == text);
+        Assert.NotEqual(BindingFailure.None, write.FailureOf());
+        var value = HirTables.AdjustOf(write.Right);
+        Assert.Equal(rows, $"{HirTables.Op(write)} {HirTables.Op(write.Left)} {HirTables.Op(write.Right)} {value.Acquire}/{value.Adaptation}");
+    }
+
     // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read has no value (the lexer's published absence,
     // CharLiteralKoto.Value): the HIR publishes it Error, derived from the lexer's record, not Broken, while Binding binds and checks it
     // as a `char`, so its consumer's record stays (TypeMismatch_Kd at an `i32` initializer, whose failed declaration replaces it); a

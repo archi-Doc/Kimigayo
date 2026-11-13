@@ -585,7 +585,8 @@ public sealed class MirInitTest
     // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS M-G105; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
     // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
     // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
-    // reference's old referent are not (fail-before: the whole write was one Opaque naming its target as a use, so ReassignedLet_Kd was
+    // reference's old referent are not; its target's operands are evaluated (SPEC 13.7.1 step 2), so a move there is a later use's
+    // MovedPlace_Kd (fail-before: the whole write was one Opaque naming its target as a use, so ReassignedLet_Kd and that MovedPlace_Kd were
     // lost and UninitializedPlace_Kd or ComparisonLoanConflict_Kd reported).
     [Theory]
     [InlineData("func f()\n    let x: i32 = 1\n    x = \"a\"\n", "ReassignedLet_Kd x = \"a\" 1")]
@@ -594,6 +595,10 @@ public sealed class MirInitTest
     [InlineData("struct S\n    public let f: i32\n    public let n: string\n    public init()\n        self.f = \"a\"\n        self.n = \"x\"\n", "")]
     [InlineData("struct S\n    public let f: i32\n    public init()\n        self.f = 1\n        self.f = \"a\"\n", "ReassignedLet_Kd self.f = \"a\" 1")]
     [InlineData("func f() -> i32\n    var a = 1\n    var slot: ref/i32 = a@ref\n    slot = \"a\"\n    a = 3\n    return slot@follow\n", "")]
+    [InlineData(
+        "func k(s: string) -> isize => 0\nfunc h(s: string) -> i32\n    var a: [3 of i32] = [1, 2, 3]\n    a[k(s@move)] = \"a\"\n    let u = s@move\n" +
+        "    return a[0]\n",
+        "MovedPlace_Kd s 1")]
     public void ARejectedWriteKeepsItsWrite(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 

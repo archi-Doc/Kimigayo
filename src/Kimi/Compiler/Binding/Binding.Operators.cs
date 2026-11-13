@@ -4,7 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Owns unary and binary operator binding: syntax, scope and expected Type enter; bound Types, adaptations and failures leave.
+// Owns unary and binary operator binding: syntax, scope and expected Type enter; bound Types, adaptations and failures leave, and a
+// plain write's kept-write verdict (its plan row's Mode, KeepsWrite).
 // Operand binding, destination authority, fitting and operator completion retain their order. Arithmetic selection and
 // comparison composition keep their existing owners. This owner neither emits code nor formats diagnostics.
 public sealed partial class Binding
@@ -22,11 +23,11 @@ public sealed partial class Binding
         HirTables.PlanOf(node).Mode != 0;
 
     // The one writer of KeepsWrite's verdict, a row only for a write that keeps its write; any other binary keeps its row.
-    private static void AdmitWrite(BinaryKoto binary, bool admitted)
+    private static void KeepWrite(BinaryKoto binary, bool keeps)
     {
         if (binary.Akind == KotoKind.Equals)
         {
-            HirTables.PlanFor(binary, admitted).Mode = admitted ? (byte)1 : (byte)0;
+            HirTables.PlanFor(binary, keeps).Mode = keeps ? (byte)1 : (byte)0;
         }
     }
 
@@ -140,7 +141,7 @@ public sealed partial class Binding
         binary.ComparisonActive = false;
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-        AdmitWrite(binary, admitted: false);
+        KeepWrite(binary, keeps: false);
         if (this.TryArithmetic(binary, scope, out var arithmeticResult))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
@@ -203,7 +204,9 @@ public sealed partial class Binding
 
         var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
             : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
-        AdmitWrite(binary, admitted: left is not null && binary.BindingFailure != BindingFailure.None); // The destination admitted above.
+        // A typed target reaching here was admitted: every refusal above (CheckDestination, the Holder record, a reference binding's mode
+        // record) returns at once, so a failure recorded since is its value's fit (KeepsWrite).
+        KeepWrite(binary, keeps: left is not null && binary.BindingFailure != BindingFailure.None);
         return result;
     }
 
