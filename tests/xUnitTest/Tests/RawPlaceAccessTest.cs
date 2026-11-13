@@ -176,13 +176,14 @@ public class RawPlaceAccessTest
     }
 
     // SPEC 15.1.6, 3.4.1, 5.3: a raw Place Subject, `*p` or `p[n]`, is a bare Place, borrowed in place and never acquired by value; with
-    // shared access its payload binds `ref/T`, also for a Copy T, so a `var` copy of the binding is a `ref/i32` that 7 does not fit.
+    // shared access its payload binds `ref/T`, also for a Copy T, so a `var` copy of the binding is a `ref/i32`: 7 assigned to it is a
+    // temporary borrowed for the assignment (SPEC 10.2 row 2 and Temporaries; PLAN G585), which the later read of y outlives.
     [Theory]
     [InlineData("func f(p: raw/Option<string>)\n    unsafe\n        match (*p)\n            .Some(let s) => ()\n            .None => ()\n", null)]
     [InlineData("func f(p: raw/Array<string>) -> usize\n    var n: usize = 0\n    unsafe\n        for s in (*p)\n            n += 1\n    return n\n", null)]
     [InlineData("func f(p: raw/Option<Resource>) -> i32\n    unsafe\n        match p[1]\n            .Some(let x) => return x.value\n            .None => return 0\n", null)]
     [InlineData("func f(p: raw/Option<i32>) -> i32\n    unsafe\n        match (*p)\n            .Some(let x) => return x@follow\n            _ => return 0\n", null)]
-    [InlineData("func f(p: raw/Option<i32>) -> i32\n    unsafe\n        match (*p)\n            .Some(let x)\n                var y = x\n                y = 7\n                return y\n            _ => return 0\n", "TypeMismatch_Kd: 7")]
+    [InlineData("func f(p: raw/Option<i32>) -> i32\n    unsafe\n        match (*p)\n            .Some(let x)\n                var y = x\n                y = 7\n                return y\n            _ => return 0\n", "ComparisonLoanConflict_Kd: 7")]
     public void ARawPlaceSubjectIsBorrowedInPlace(string function, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Resource + function));
 
