@@ -68,6 +68,30 @@ internal sealed partial class InstanceCollector
         => this.types.EnclosingDeclaration(definition) is not { } enclosing || !this.types.Instantiates(enclosing) ||
             ReferenceEquals(subst.Target, enclosing) || (ReferenceEquals(subst.Declaring?.Symbol, enclosing) && !HasLengthSlot(enclosing));
 
+    // The checks of a body's request that read only the request, the definition and its substitution, never its body (DECISIONS R5-M183);
+    // false when one refused it with its record. `erased` is the substitution's erased form, null for a definition that does not
+    // instantiate.
+    private bool Requested(SourceRef site, BindingSymbol? definition, Subst? subst, out Subst? erased)
+    {
+        erased = null;
+        if (definition is not null && this.types.Instantiates(definition) && (subst is null || (erased = this.types.Erase(subst)) is null))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
+            return false;
+        }
+
+        // SPEC 6.1.3, 8.13.3: an instance of a definition generic in its context holds the instance it instantiates in; a substitution that
+        // does not carry it is the EnclosingInstance gap (Capability's row: a nested function's call until a representation of the chain,
+        // DECISIONS R5-M43; a Closure in no instance, the closure's own identity, R5-M157, BU-60).
+        if (erased is not null && !this.CarriesInstance(subst!, definition!))
+        {
+            this.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
+            return false;
+        }
+
+        return true;
+    }
+
     // The item of a callee body requested at a site of an item's body (its located subject), admitted once per key (KD1): keyed by its
     // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A definition whose
     // substitution does not carry the instance it instantiates in (CarriesInstance) is a capability gap, and a new key's instance needs its
@@ -77,23 +101,7 @@ internal sealed partial class InstanceCollector
     private int Admit(int parent, SourceRef site, MirBody target, Subst? subst)
     {
         var set = this.Set;
-        Subst? erased = null;
-        if (target.Key.Decl is { } decl && this.types.Instantiates(decl) && (subst is null || (erased = this.types.Erase(subst)) is null))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, site); // An instance without its substitution.
-            return -1;
-        }
-
-        // SPEC 6.1.3, 8.13.3: an instance of a definition generic in its context holds the instance it instantiates in; a substitution that
-        // does not carry it is the EnclosingInstance gap (Capability's row: a nested function's call until a representation of the chain,
-        // DECISIONS R5-M43; a Closure in no instance, the closure's own identity, R5-M157, BU-60).
-        if (erased is not null && !this.CarriesInstance(subst!, target.Key.Decl!))
-        {
-            this.Report(Capability.Code(CapabilityGap.EnclosingInstance), site);
-            return -1;
-        }
-
-        if (target.HasFinding)
+        if (!this.Requested(site, target.Key.Decl, subst, out var erased) || target.HasFinding)
         {
             return -1;
         }
