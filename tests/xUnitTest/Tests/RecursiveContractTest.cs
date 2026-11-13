@@ -36,8 +36,12 @@ public sealed class RecursiveContractTest
 
     // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
     // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
-    private const string Orders = "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other is Tree\n    associate Free\n" +
-        "contract AT3: Tree, Copy\n    Self.(Tree).Child is AT3\n    Self.(Tree).Alias is Self.(Tree).Child\ncontract AT2: Tree, Copy\n" +
+    private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
+
+    private const string OrdersHead = "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other is Tree\n    associate Free\n" +
+        "contract AT3: Tree, Copy\n    Self.(Tree).Child is AT3\n";
+
+    private const string OrdersTail = "contract AT2: Tree, Copy\n" +
         "    Self.(Tree).Child is AT3\nfunc needsTree<V>(v: ref/V)\n    V is Tree\n    ()\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\n";
 
     // SPEC 8.3.3: each recursive Contract of the S5 proposal's 2.1, through the premise supply of `T is C` (SPEC 8.3.2): Tree; CopyTree,
@@ -203,6 +207,9 @@ public sealed class RecursiveContractTest
     [InlineData("C2c22", "o7-sig", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, s: ref/T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is AT2\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
     [InlineData("C2c22", "o8-deeper-first", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, s: ref/T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias.(Tree).Child>(s)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
     [InlineData("C2c22", "o10-final", Orders + "func probe<T, U>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    U is T\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    // Without AT3's identity clause the subject is only Tree (SPEC 8.3.1: a required Constraint succeeds only when Proven): the kept
+    // Tree row never answers Copy (o1's invalid twin).
+    [InlineData("C2c22", "o1-tree-copyn", OrdersHead + OrdersTail + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(r)")]
     // The group review's twins (q1, q2 are idd1, idd2): premise order under `U is T`, mutual Contracts, demand order, a clause
     // joining a deeper Type to a shallower one (q6, eager at depth 1).
     [InlineData("C2c22", "q3a-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    U is T\n    T is MTI\n    return (value, value)\n", "")]
