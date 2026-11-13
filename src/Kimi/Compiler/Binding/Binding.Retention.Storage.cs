@@ -27,15 +27,8 @@ namespace Kimi.Compiler;
 // so the walk names every storage past the root; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
 // Must not: judge an Origin relation (the premise closure's), decide which source a position can hold (the fits'), or read the call's
 // arguments or solved Origins.
-// Also the parts the value at a Place's key holds at its own address by the walk's by-value criterion (OwnParts, read by OwnLayers in
-// Binding.Retention.PlaceKeys.cs; TyCtxt.OwnLayers: A5's covering and pun rule read them).
-
-/// <summary>A part a value holds at its own address (<see cref="Binding.OwnLayers"/>; SPEC 5.2.1, 5.7, 15.6.4): a raw layer
-/// (<see cref="Layer"/>) with its step at the Place (Holdings' under its holding instance; a `during self` layer's, where the path
-/// dereferences, the step of the Origin reading it gives), or, Layer null, another part that reaches storage with its step;
-/// <see cref="Past"/> the key of the Place past the step (a raw layer's pointee, a borrow's referent, an abstract part itself; Type null
-/// where no Type states it).</summary>
-internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceKey Past);
+// The walk's by-value criterion (ByValue) also serves the key walk (OwnParts, Binding.Retention.PlaceKeys.cs); the walked signature's
+// declared counterparts are paired by the one rule in Binding.Retention.Declared.cs.
 
 public sealed partial class Binding
 {
@@ -63,7 +56,6 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
     private readonly List<Hold> retentionHeld = new(); // HeldRun's runs, a stack: each caller reads its run and removes it.
     private readonly List<BoundType> retentionReads = new(); // Reads' runs, a stack.
-    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder)> ownSeen = new(); // OwnLayers' walked keys, reused.
 
     // An abstract part a carrier stands for: a Type parameter that is no pair layer, or a pair's target (RetentionWalk's carriers).
     private static bool IsCarrier(BoundType type)
@@ -72,16 +64,6 @@ public sealed partial class Binding
     // An abstract part, a carrier or an associated projection, whose instance's storage the body does not see (SPEC 8.15.1): a position it
     // is holds what reaches it, and a referent it is holds any part by value.
     private static bool Abstract(BoundType type) => type.IsAbstract && !TryPairLayer(type, out _, out _);
-
-    // The declared counterpart of a Type's component `index` (StorageAt.Signature, RetentionAtom.Signature): that component of the declared
-    // Type where it has the same constructor; null below a Type parameter's image or any other declared Type.
-    private static BoundType? DeclaredComponent(BoundType? declared, BoundType type, int index)
-        => Same(declared, type) && (uint)index < (uint)declared!.Components.Count ? declared.Components[index] : null;
-
-    // Whether a declared Type has the constructor of an instantiated one: its kind, Semantics, symbol and arity.
-    private static bool Same(BoundType? declared, BoundType type)
-        => declared is not null && declared.Kind == type.Kind && declared.Semantics == type.Semantics && ReferenceEquals(declared.Symbol, type.Symbol) &&
-            declared.Components.Count == type.Components.Count;
 
     // Whether an entry is a borrow's referent (SPEC 15.6.3): a shared or exclusive dereference, a raw layer's only where its Origin's
     // members state what it admits; a pair's raw case states none.
@@ -163,10 +145,9 @@ public sealed partial class Binding
     private void Reach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
-        var declared = at.Signature;
         if (TryPairLayer(type, out _, out var target))
         {
-            var written = declared is not null && TryPairLayer(declared, out _, out var declaredTarget) ? declaredTarget : null;
+            var written = this.SignaturePast(at.Signature, type, default);
             this.Past(environment, target, targets, IsInvariantLayer(type, this), layer, below with { Signature = written });
             if (at.Source.Input >= 0 && this.Referent(run, out _) is null)
             {
@@ -188,12 +169,12 @@ public sealed partial class Binding
         }
         else if (first.Step is HoldStep.Shared or HoldStep.Exclusive)
         {
-            var written = declared is null ? null : this.BorrowReferent(declared, out _, out _);
+            var written = this.SignaturePast(at.Signature, type, first);
             this.Past(environment, first.Part!, targets, first.Step == HoldStep.Exclusive, layer, below with { Signature = written });
         }
         else if ((first.Flags & HoldFlags.ReadOnly) != 0)
         {
-            this.Past(environment, first.Part!, targets, written: false, layer: -1, below with { Signature = DeclaredComponent(declared, type, 0) });
+            this.Past(environment, first.Part!, targets, written: false, layer: -1, below with { Signature = this.SignaturePast(at.Signature, type, first) });
         }
         else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased or HoldStep.Unsupported))
         {
@@ -217,7 +198,7 @@ public sealed partial class Binding
         }
 
         var step = this.RawStepAt(type, at.Written, at.Holder, at.Signature);
-        below = below with { Signature = DeclaredComponent(at.Signature, type, 0) };
+        below = below with { Signature = this.SignaturePast(at.Signature, type, this.retentionHeld[run.Start]) };
         if (step == HoldStep.Own)
         {
             this.Admitted(environment, run, below);
@@ -241,7 +222,7 @@ public sealed partial class Binding
         {
             if (this.retentionHeld[i].Holds != HoldContent.AnyOf)
             {
-                this.StorageWalk(environment, this.retentionHeld[i].Part, i == run.Start ? at : at with { Signature = null });
+                this.StorageWalk(environment, this.retentionHeld[i].Part, i == run.Start ? at : at with { Signature = Below(at.Signature, null) });
                 continue;
             }
 
@@ -307,19 +288,13 @@ public sealed partial class Binding
     private void Parts(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
         var captured = at.Captured || type.Kind == BoundTypeKind.Closure; // A Closure's parts are its environment's bindings.
-        var declared = new HeldRange(run.End, run.End);
-        if (!captured && Same(at.Signature, type))
-        {
-            declared = this.HeldRun(at.Signature!, null, null, out _);
-        }
-
-        var paired = declared.End - declared.Start == run.End - run.Start; // The declared Type's parts, in the same order.
+        var declared = this.DeclaredRun(at.Captured ? null : at.Signature, type, run);
         for (var i = run.Start; i < run.End; i++)
         {
             var part = this.retentionHeld[i];
             if (this.ByValue(type, part))
             {
-                var signature = paired ? this.retentionHeld[declared.Start + i - run.Start].Part : null;
+                var signature = this.DeclaredPart(at.Signature, declared, run, i);
                 var holder = type.Kind == BoundTypeKind.Closure ? at.Holder : part.Holder; // A binding lies in the storage holding the Closure.
                 var below = at with { Written = part.Written, Holder = holder, Depth = at.Depth + 1, Captured = captured, Signature = signature };
                 this.StorageWalk(environment, part.Part, below);
@@ -671,49 +646,15 @@ public sealed partial class Binding
         _ => false,
     };
 
-    // OwnLayers from a part (Type, Written, Holder), each key once per call; retentionHeld is read as a stack (each run removed).
-    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, in PlaceKey at, List<OwnLayer> into)
-    {
-        if (!this.ownSeen.Add((type, written, holder)))
-        {
-            return true;
-        }
-
-        var (start, sees) = (this.retentionHeld.Count, this.BodySees(type));
-        var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
-        var raw = start < this.retentionHeld.Count && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
-        if (raw && complete)
-        {
-            var layer = this.retentionHeld[start];
-            into.Add(new(type, this.LayerStep(layer.Step, at), new(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at))));
-        }
-
-        for (var i = start; !raw && complete && i < this.retentionHeld.Count; i++)
-        {
-            var entry = this.retentionHeld[i];
-            if (this.ByValue(type, entry) && entry.Part is { } part)
-            {
-                complete = this.OwnParts(part, entry.Written, entry.Holder, at, into);
-            }
-            else if (entry.Step != HoldStep.Loan || entry.Part is null)
-            {
-                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, this.PastThrough(type, entry, at))));
-            }
-        }
-
-        this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
-        return complete;
-    }
-
     // A run of retentionHeld (HeldRun).
     private record struct HeldRange(int Start, int End);
 
     // The walk's state at a Type (StorageWalk; DECISIONS R4-M154, r2.3). For the output fold: the storage (-1 before the root, NoStorage
     // in an input fold's walk) and whether the call writes there; the Type the stored part's declaration writes there and the instance
     // holding it (a raw layer's step, as Held reads it); the depth; whether it lies in a Closure's environment (Captured, as
-    // RetentionPlace.Captured); the walked signature's declared Type at the position (Signature, DECISIONS BU-113: null inside a Type
-    // parameter's image, in a Closure's environment and below a part whose declared counterpart differs). For the input fold, its own
-    // state (Source).
+    // RetentionPlace.Captured); the walked signature's declared Type at the position (Signature, DECISIONS BU-113: inside the binding of an
+    // abstract Type of the walked function's own declaration that abstract Type, Below; null inside another Type parameter's image, in a
+    // Closure's environment and below a part whose declared counterpart differs). For the input fold, its own state (Source).
     private readonly record struct StorageAt(
         int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source, bool Captured = false, BoundType? Signature = null)
     {
