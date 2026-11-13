@@ -69,7 +69,7 @@ a SPEC basis and owner approval.
 | `AttributeKind` | 4 |
 | `HoldStep` | 10 |
 | `HoldContent` | 7 |
-| `HoldFlags` | 5 |
+| `HoldFlags` | 6 |
 | `HirOp` | 40 |
 | `HirRes` | 9 |
 | `HirAcquire` | 8 |
