@@ -94,6 +94,7 @@ public sealed partial class Binding
                 ChildSlices = childSlices,
                 OperationStride = 1,
                 AllTypes = [],
+                AllSelectors = [],
                 AllLengths = [],
                 AllMaps = [],
                 AllOrigins = [],

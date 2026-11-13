@@ -341,11 +341,7 @@ public sealed partial class Binding
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
                     type = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, type); // As InferAdapted (U1.6g (c)).
-                    if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Frame))
-                    {
-                        binding.MatchInputOrigins(binding.FormedApplication(pattern, this.SlotOwner, this.Frame), type, this.Binder, this.Origins, this.Inputs); // As InferAdapted.
-                    }
-
+                    this.MatchFormedOrigins(pattern, type);
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
                     return binding.Infer(pattern, type, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
                 default:
@@ -499,9 +495,19 @@ public sealed partial class Binding
             }
 
             actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && binding.ReadTypeReferent(actual, source) is { } read ? read : actual;
-            binding.MatchInputOrigins(pattern, actual, this.Binder, this.Origins, this.Inputs);
+            this.MatchFormedOrigins(pattern, actual);
             pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             return binding.Infer(pattern, actual, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
+        }
+
+        // SPEC 8.1.2, 10.8: a part's input Origins are matched at its formed pattern (FormedApplication), as InferAdapted's, and only once
+        // the pattern holds no open application.
+        private readonly void MatchFormedOrigins(BoundType pattern, BoundType actual)
+        {
+            if (!this.Binding.HasOpenApplication(pattern, this.SlotOwner, this.Frame))
+            {
+                this.Binding.MatchInputOrigins(this.Binding.FormedApplication(pattern, this.SlotOwner, this.Frame), actual, this.Binder, this.Origins, this.Inputs);
+            }
         }
 
         // SPEC 4.6.2: in the late pass, a literal-only boundary whose S or E no other evidence fixed takes the other boundary's integer

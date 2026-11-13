@@ -61,7 +61,7 @@ public sealed partial class Binding
 
         internal void ClearLengths(int count) => this.store.ClearLengths(this.id, count);
 
-        internal void CopyTypes(ReadOnlySpan<BoundType?> source) => this.store.CopyTypes(this.id, source);
+        internal void CopyTypes(ReadOnlySpan<BoundType?> source, ReadOnlySpan<BoundType?> selectors) => this.store.CopyTypes(this.id, source, selectors);
 
         internal void CopyLengths(ReadOnlySpan<BoundLength?> source) => this.store.CopyLengths(this.id, source);
     }
@@ -164,15 +164,20 @@ public sealed partial class Binding
 
         internal void ClearLengths(int id, int count) => this.Clear(this.lengths[id], count);
 
-        internal void CopyTypes(int id, ReadOnlySpan<BoundType?> source)
+        // A solution's Type slots are restored with their selector evidence (as ClearTypes clears them): one solution's state.
+        internal void CopyTypes(int id, ReadOnlySpan<BoundType?> source, ReadOnlySpan<BoundType?> selectors)
         {
+            Debug.Assert(source.Length == selectors.Length, "A restore copies both columns of the same slots.");
             var frame = this.types[id];
+            var evidence = this.selectors[id];
             for (var i = 0; i < source.Length; i++)
             {
                 this.Push(frame, i);
+                this.Push(evidence, i);
             }
 
             source.CopyTo(frame);
+            selectors.CopyTo(evidence);
         }
 
         internal void CopyLengths(int id, ReadOnlySpan<BoundLength?> source)

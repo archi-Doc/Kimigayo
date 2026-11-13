@@ -628,10 +628,11 @@ public sealed partial class Binding
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
         {
-            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only once s is inferred and the
-            // application is formed (FormedApplication); an unformed application binds nothing. A formed application of a fixed pair (a
-            // caller's, or the binder's own in a recursive call) meets a layer of that pair, whose outer slot and target it matches.
-            if (TryPairLayer(actual, out var whole, out var target) && ReferenceEquals(pattern.Symbol?.WholeType, whole))
+            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only formed (FormedApplication forms every
+            // application whose s is known, at every depth, and an input still holding an open one is not matched yet). A formed
+            // application, of a caller's or another fixed pair, meets the actual's layer of that pair (SamePairLayer, as InferLayer),
+            // whose outer slot and target it matches; it binds nothing otherwise.
+            if (SamePairLayer(pattern, actual, out var target))
             {
                 if (pattern.Origin is { } slot && actual.Origin is { } supplied)
                 {

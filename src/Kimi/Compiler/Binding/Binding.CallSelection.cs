@@ -166,6 +166,7 @@ public sealed partial class Binding
         if (saved)
         {
             evaluation.Frame.Types[..CallSlotCount(function)].CopyTo(evaluation.AllTypes.AsSpan(index * evaluation.MaxGenerics));
+            evaluation.Frame.Selectors[..CallSlotCount(function)].CopyTo(evaluation.AllSelectors.AsSpan(index * evaluation.MaxGenerics));
             evaluation.Frame.Lengths[..CallSlotCount(function)].CopyTo(evaluation.AllLengths.AsSpan(index * evaluation.MaxGenerics));
             evaluation.Origins.AsSpan(0, evaluation.OriginSlots).CopyTo(evaluation.AllOrigins.AsSpan(index * evaluation.OriginSlots));
             evaluation.Inputs.AsSpan(0, evaluation.InputSlots).CopyTo(evaluation.AllInputs.AsSpan(index * evaluation.InputSlots));
@@ -252,6 +253,7 @@ public sealed partial class Binding
         internal int OperationStride;
         internal int SavedCandidates;
         internal BoundType?[] AllTypes;
+        internal BoundType?[] AllSelectors;
         internal BoundLength?[] AllLengths;
         internal int[] AllMaps;
         internal BoundOrigin[] AllOrigins;

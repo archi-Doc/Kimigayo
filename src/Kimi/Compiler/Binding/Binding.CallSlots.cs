@@ -71,6 +71,14 @@ public sealed partial class Binding
     private static BoundType? Selector(SlotFrame frame, int slot)
         => slot < frame.Types.Length ? frame.Types[slot] ?? frame.Selectors[slot] : null;
 
+    // SPEC 8.1.2: whether a formed pair layer (an application or an original, FormedApplication) is a layer of the same pair as the actual,
+    // whose direct target it gives. InferLayer and MatchInputOrigins read it.
+    private static bool SamePairLayer(BoundType layer, BoundType actual, out BoundType target)
+    {
+        target = null!;
+        return TryPairLayer(layer, out var whole, out _) && TryPairLayer(actual, out var supplied, out target) && ReferenceEquals(whole, supplied);
+    }
+
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
     private BoundType? CallMemberPattern(BoundType type, Koto binder, BoundType? declaringType)
@@ -146,27 +154,43 @@ public sealed partial class Binding
     private bool InfersConstruction(InvocationKoto call)
         => call.Method is MemberAccessKoto member && this.inferredConstructionTargets.Contains(member.Left);
 
-    // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms under the binding, by the one rule substitution
-    // reads (ApplySemantics). s is known from the slot's binding or, while that is unbound, from its selector evidence (SlotFrame.Selectors).
-    // Formation continues only into the target, which is still in the callee's terms (an owner binding); any other result (a layer, an
-    // abstract binding's application, a family) is in the caller's terms at its top and ends it, so a caller's pair is never formed again
-    // under the callee's bindings (a recursive call). An application whose s is still unknown is returned as it is.
+    // SPEC 8.1.2: the pattern with each s/U whose s is already inferred formed as the Type it forms under the binding, by the one rule
+    // substitution reads (ApplySemantics), at every depth. s is known from the slot's binding or, while that is unbound, from its selector
+    // evidence (SlotFrame.Selectors). A formed layer is in the caller's terms at its top (a layer, an abstract binding's application, a
+    // family; an owner binding gives the target) over the callee's target, which is formed first: a caller's pair is never formed again
+    // under the callee's bindings (a recursive call), and Origin matching never meets an unformed application (MatchInputOrigins). An
+    // application whose s is still unknown is kept as it is.
     private BoundType FormedApplication(BoundType pattern, Koto function, SlotFrame frame)
     {
-        while (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
-            ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
+        var count = pattern.Components.Count;
+        if (!pattern.HasAbstractPart || count == 0)
         {
-            this.termWalks++;
-            var formed = this.ApplySemantics(whole, target, pattern.Origin);
-            if (!ReferenceEquals(formed, target))
-            {
-                return formed;
-            }
-
-            pattern = target;
+            return pattern;
         }
 
-        return pattern;
+        this.termWalks++;
+        if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
+            ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
+        {
+            return this.ApplySemantics(whole, this.FormedApplication(target, function, frame), pattern.Origin);
+        }
+
+        var components = this.RentTypes(count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.FormedApplication(pattern.Components[i], function, frame);
+                changed |= !ReferenceEquals(components[i], pattern.Components[i]);
+            }
+
+            return changed ? this.types.Rebuild(pattern, components.AsSpan(0, count), pattern.Origin, (BoundOrigin[])pattern.OriginArguments) : pattern;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
     }
 
     // SPEC 10.8: whether a pattern still holds an application whose pair binder no source has fixed, read as FormedApplication forms
@@ -203,8 +227,7 @@ public sealed partial class Binding
         var below = invariant || IsInvariantLayer(layer, this);
         return layer.Kind switch
         {
-            BoundTypeKind.SemanticsApplication or BoundTypeKind.Parameter => TryPairLayer(layer, out var formed, out _) &&
-                TryPairLayer(actual, out var whole, out var actualTarget) && ReferenceEquals(formed, whole) &&
+            BoundTypeKind.SemanticsApplication or BoundTypeKind.Parameter => SamePairLayer(layer, actual, out var actualTarget) &&
                 this.Infer(target, actualTarget, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below),
             BoundTypeKind.Semantics => actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && actual.Semantics == layer.Semantics &&
                 this.Infer(target, actual.Components[0], function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below),

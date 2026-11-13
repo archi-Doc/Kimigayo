@@ -168,6 +168,7 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(inputSlots);
         var evaluated = this.candidateScratch.Rent(candidateCount);
         var allTypes = this.typeScratch.Rent(savedCandidates * maxGenerics);
+        var allSelectors = this.typeScratch.Rent(savedCandidates * maxGenerics);
         var allLengths = this.lengthScratch.Rent(savedCandidates * maxGenerics);
         var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
         var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
@@ -252,6 +253,7 @@ public sealed partial class Binding
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
+                AllSelectors = allSelectors,
                 AllLengths = allLengths,
                 AllMaps = allMaps,
                 AllOrigins = allOrigins,
@@ -381,7 +383,7 @@ public sealed partial class Binding
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
-                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
+                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)), allSelectors.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
@@ -574,6 +576,7 @@ public sealed partial class Binding
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
+            this.typeScratch.Return(allSelectors, clearArray: true);
             this.typeScratch.Return(allTypes, clearArray: true);
             this.lengthScratch.Return(allLengths, clearArray: true);
             this.lengthScratch.Return(explicitLengths, clearArray: true);

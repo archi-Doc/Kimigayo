@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class PairAnnotationBindingTest
+public partial class PairAnnotationBindingTest
 {
     // Structs whose slot only a conditional pair slot uses (SPEC 15.3.5), by what the binder admits, and nested users of them.
     internal const string HolderUniq = "struct Holder<s/T> {a}\n    s is uniq\n    public let item: s/T during a\n";

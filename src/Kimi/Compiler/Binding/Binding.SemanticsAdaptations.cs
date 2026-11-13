@@ -294,10 +294,11 @@ public sealed partial class Binding
     };
 
     // SPEC 8.1.2: a pair's `s/U` for an abstract binding: the pair's own target gives its original, with the occurrence's slot where it
-    // is not the pair's `o` (AnnotatedOriginal); any other target an application. ApplySemantics and FamilyApplication read it.
+    // is not the pair's `o` (AnnotatedOriginal); any other target an application, a plain type parameter's binding (no whole) included.
+    // ApplySemantics and FamilyApplication read it.
     private BoundType PairApplication(BindingSymbol pair, BoundType target, BoundOrigin? origin)
-        => ReferenceEquals(target, pair.Type)
-            ? this.AnnotatedOriginal(pair.WholeType!, ReferenceEquals(origin, this.PairOuterOrigin(pair)) ? null : origin)
+        => pair.WholeType is { } original && ReferenceEquals(target, pair.Type)
+            ? this.AnnotatedOriginal(original, ReferenceEquals(origin, this.PairOuterOrigin(pair)) ? null : origin)
             : this.types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [target], origin: origin);
 
     // SPEC 8.1.2: an occurrence of a pair's original under its binding, annotated with `origin` (`s/T during b`): the binding with that

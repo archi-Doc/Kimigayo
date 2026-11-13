@@ -162,7 +162,7 @@ public sealed partial class Binding
                 this.Types[..count].CopyTo(restored);
                 if (this.StandIns(mapping, restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
                 {
-                    this.Frame.CopyTypes(restored.AsSpan(0, count));
+                    this.Frame.CopyTypes(restored.AsSpan(0, count), this.Frame.Selectors[..count]);
                     this.CompleteOperationTypes(marks);
                     return true;
                 }
