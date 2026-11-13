@@ -12758,6 +12758,28 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the element as a `Loan` entry (loses the empty view's Loan: R8-M6's row newly accepted); a `place` bool on `Holds`
     (review 1 B1); a length test in a reader; dropping the element (loses 4.3.3's Loans); G806's `RawPlaces` (its element row is the
     grid at every length).
+- **BU-197 A reassignable local's Type has region slots in every declaration form (PLAN G817)** (2026-11-13; Front, Binding; Major
+  with a design review ACCEPT WITH NOTES, implementation review ACCEPT; the Middle's RP17 consent C-294, its A5 oracle 0
+  differences) SPEC 14.8.2, 15.1.6, 15.4.4, 15.6.5.
+  - Cause. `BindingTypeOf` gave a Binding position the bound value's Type as the local's Type, Origins included, while a `var`
+    local's Type is opened into region slots bounded by its initializer (`LocalBorrowType`). A match-bound `var` kept the Subject
+    element's resolved Origin, so another borrow assigned to it was a relation between two resolved body Origins (the located
+    `Unsupported_Kd`) or to a parameter's Origin (`UnsatisfiedOriginRelation_Kd`, `UnprovenOriginRelation_Kd`), and a `for var` slot
+    used the iterable's region.
+  - Rule. `LocalBorrowType` decides the Type of every reassignable local: a `var` local, a `var` Pattern binding and a `var` `for`
+    slot (`IsMutableDeclaration`), each with its own region slots bounded below by its initial value. `IsRegionOwner` is the one set
+    of region-slot binders that `IsLocalRegion`, `OmittedAt` and the record phrase read. A `let` binding keeps the bound value's
+    Type.
+  - Moves: accepted `uns7`, `uns2`, `mv-lit`, `mv-m`, `nest-*`, `case-b`, `case-lit2`, `whole-*`, `sh-b`, `for-tmp`, `for-tup-lit`,
+    `gen-y`; invalid twins now `ComparisonLoanConflict_Kd` (`mv-use`, `mv-capture`, `mv-keep`, `case-use2`, `loc-scope`, `sh-use`),
+    `mv-ret` both records (15.6.5: the local keeps the Loan); a Refuted chain through the slot reports once, at the return, not
+    twice at the assignment (`loc-ret`, `nest-ret`, `cs-nest-ret`, `bind-own-i32`, `bind-loc-i32`: UnsatisfiedOriginRelation_Kd 2 ->
+    1), and `gen-ret`'s UnprovenOriginRelation_Kd moves from `r = y` to `return r`; `inv-bind-bad` and `gen-own-ret` (2 Unsatisfied)
+    become one Unsatisfied plus a dependent `ComparisonLoanConflict_Kd`, as the var-local forms `inv-var-bad` and `var-own-ret` give
+    on base (the Middle's B3-fb, X1-mtv, X1-fvo, X1-fvu and X3-mtt too; PLAN G824's family); the erasure record of S5-mt/mn/mc/fv
+    moves from `UnsatisfiedConstraint_Kd` to `UnprovenConstraint_Kd`, equal to the var-local form (the Middle's F2).
+  - Rejected: A5 judging the finite-to-finite chain (another phase; leaves the parameter forms rejected); region slots for `let`
+    bindings (no observable difference).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
