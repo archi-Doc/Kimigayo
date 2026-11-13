@@ -9613,6 +9613,9 @@ resumed by R4-M86 (2026-10-20).
   - Cost: one closed signature per Closure proven Owned, one Tuple per erased Closure; warm Bind 0 B.
   - Rejected: imaging a container's atoms in the Closure Type now (option (B): K5 grows until R6-check); a second walk for the record's
     location; an open `Func` filter, which reads as a mode.
+  - Amended by BU-198 (PLAN G826, G811-o, 2026-11-13): `CallSignature` gains a Function Item's row (what a function nested in a
+    body, a root function included, inherits from its enclosing body), and `ErasureSubject` judges the environment Tuple of the
+    Item's bound arguments, a requirement Contract's inherited Origins included.
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -10095,6 +10098,14 @@ resumed by R4-M86 (2026-10-20).
     substituted signature, so it assumes that signature's own well-formedness as `ContractFits` does. Its walk keeps
     `OriginPart.Judged`, not examined in this unit (`OriginPart.Contract`'s identity rule for Origin-carrying parts and the Limit
     row would change); merging the two comparisons is a candidate, not decided here.
+  - Amended by G827 (2026-11-13, G811-c): `ItemContractFits` sends every Item at a known required signature, own Origins or none,
+    through `ContractFits` at the use. So every requirement Item comparison moves to `ContractFits` too (`RequirementItems` admits
+    only members without own Origins, which took `CallableSubtype` before). `CallableSubtype` remains for an open evidence region
+    and for the Closure arm of the pre-selection erasure fit (PLAN G379). The move is a class, not ten forms: every Item value whose
+    comparison at a known required signature needs a relation the use's premises prove now reaches `ContractFits(use, ...)` (the
+    Middle's C-300 twins: 32 valid programs newly accepted across argument, Closure capture, `Owned`, Callable and stored uses, no
+    invalid one). b6gen's acceptance rests on the erasure's environment carrying the enclosing function's clauses (the reading
+    G811-o (G826) states in its own DECISIONS line); until G826 lands this line names that reading as G827's assumption.
 
 - **BU-94 The position row is what an argument position is to its call** (2026-11-05; G216 (a) U1, the Position Rows proposal
   `draft/Proposals/2026-11-03 G216 (a) Position Rows.md` §4-§6; the planning session's design `artifacts\verify\g216a-oracle\
@@ -12946,6 +12957,157 @@ resumed by R4-M86 (2026-10-20).
     cases and accepted r10, invalid under (C)); for comparisons, reading A (the literal meet of every case's bounds) and reading B
     (a candidate per case: a per-case solution representation), both by the owner's O-233 (C); a premise-aware `Meet` (moves
     unconditional solutions outside this cause).
+
+- **BU-197 A reassignable local's Type has region slots in every declaration form (PLAN G817)** (2026-11-13; Front, Binding; Major
+  with a design review ACCEPT WITH NOTES, implementation review ACCEPT; the Middle's RP17 consent C-294, its A5 oracle 0
+  differences) SPEC 14.8.2, 15.1.6, 15.4.4, 15.6.5.
+  - Cause. `BindingTypeOf` gave a Binding position the bound value's Type as the local's Type, Origins included, while a `var`
+    local's Type is opened into region slots bounded by its initializer (`LocalBorrowType`). A match-bound `var` kept the Subject
+    element's resolved Origin, so another borrow assigned to it was a relation between two resolved body Origins (the located
+    `Unsupported_Kd`) or to a parameter's Origin (`UnsatisfiedOriginRelation_Kd`, `UnprovenOriginRelation_Kd`), and a `for var` slot
+    used the iterable's region.
+  - Rule. `LocalBorrowType` decides the Type of every reassignable local: a `var` local, a `var` Pattern binding and a `var` `for`
+    slot (`IsMutableDeclaration`), each with its own region slots bounded below by its initial value. `IsRegionOwner` is the one set
+    of region-slot binders that `IsLocalRegion`, `OmittedAt` and the record phrase read. A `let` binding keeps the bound value's
+    Type.
+  - Moves: accepted `uns7`, `uns2`, `mv-lit`, `mv-m`, `nest-*`, `case-b`, `case-lit2`, `whole-*`, `sh-b`, `for-tmp`, `for-tup-lit`,
+    `gen-y`; invalid twins now `ComparisonLoanConflict_Kd` (`mv-use`, `mv-capture`, `mv-keep`, `case-use2`, `loc-scope`, `sh-use`),
+    `mv-ret` both records (15.6.5: the local keeps the Loan); a Refuted chain through the slot reports once, at the return, not
+    twice at the assignment (`loc-ret`, `nest-ret`, `cs-nest-ret`, `bind-own-i32`, `bind-loc-i32`: UnsatisfiedOriginRelation_Kd 2 ->
+    1), and `gen-ret`'s UnprovenOriginRelation_Kd moves from `r = y` to `return r`; `inv-bind-bad` and `gen-own-ret` (2 Unsatisfied)
+    become one Unsatisfied plus a dependent `ComparisonLoanConflict_Kd`, as the var-local forms `inv-var-bad` and `var-own-ret` give
+    on base (the Middle's B3-fb, X1-mtv, X1-fvo, X1-fvu and X3-mtt too; PLAN G824's family); the erasure record of S5-mt/mn/mc/fv
+    moves from `UnsatisfiedConstraint_Kd` to `UnprovenConstraint_Kd`, equal to the var-local form (the Middle's F2).
+  - Rejected: A5 judging the finite-to-finite chain (another phase; leaves the parameter forms rejected); region slots for `let`
+    bindings (no observable difference).
+
+- **BU-198 A callable value's Owned parts are its environment's atoms as it is formed, read from its declaration, under one numbering
+  with Origin parts** (2026-11-13; PLAN G826, G811-o; F's rulings 5-9; the owner's O-245 (a)) SPEC 15.2.3, 15.3.4, 7.7.4, 7.7.2, 6.1.3,
+  6.3.3. Amends BU-73's `CallSignature` rows and its `ErasureSubject`.
+  - Cause: the capability engine kept a nested function's inherited atoms out of its Item's Owned parts. Its Item leaf answered Proven
+    for every Item without Components, and `CallSignature` had no Item row. So `need(pk)` was accepted for `func pk(x: ref/u8 during
+    a)` nested in a block of `h` (t21ownblk), although pk's value depends on `a` (15.3.4).
+  - Environment parts (`CapabilityParts`, one numbering for the erasure and the Owned proof):
+    - a Closure's captures;
+    - an Item's bound arguments: its own Type arguments, a member's declaring Type, a requirement's Self and Contract-reference Type
+      arguments, and that reference's Origin arguments, which are a Contract's inherited Origins (6.1.3), as Origin parts.
+    One Type, the environment Tuple (`EnvironmentTuple`), carries them: Type parts as Components, Origin parts as Origin arguments, or
+    `Unit` when there are none. An Origin part is judged `static` for Owned, and Copy reads none. Invariant (the review's N13): the
+    environment Tuple is the only Tuple whose Origin arguments are Origin parts, and the only producer of a Tuple with Origin arguments
+    (`TyCtxt.Tuple` gives none); it is a capability subject, never a value's Type. `CapabilityParts` reads a Tuple's Origin arguments
+    by this invariant, so a new producer of a Tuple with Origin arguments must not reach it.
+  - Signature part (Owned proof only, member `Components.Count`; `CallSignature`'s row decides it):
+    - a Function Type's and a Closure's: BU-73's closed signature;
+    - a Function Item's, for a function nested in a body, root functions included (the review's N12: a root function lies in the
+      execution scope with the top-level bindings, SPEC 6.1.1, and the execution scope's generated function holds it): what it
+      inherits (`InheritedEnvironment`). These are the Origins and Type parameters that its declared, unsubstituted signature names,
+      whose binder is outside it and is no Container it is a member of below that body. They are carried as an environment Tuple and
+      judged by the same rule.
+    - A bound argument's own atoms, its own Origins and its Constraint-set slots are never fixed atoms, and a function in no body (a
+      Container's member) has no signature part. Every enclosing parameter is an Owned part of a nested function's Item, used or not
+      (6.1.3, 15.2.3; the owner's O-249 Q4 (a)); dev and this unit still accept j09bunused, j14bunused, j18callableowned and
+      j21genmethod: PLAN G846.
+    The Item leaf answers Copy only.
+  - The erasure (7.7.4) judges the environment Tuple (`ErasureSubject`). The required Function Type states the signature part.
+    `FailOwnedConversion` maps a failed member with `CapabilityParts.MemberAt`.
+  - Before the engine judges (an inferred Field's header), an empty environment is decided. A Closure there that captures nothing has
+    the empty environment, since a Field initializer cannot reference parameters or `self` (SPEC 6.3.3; 7.7.2, 6.1.3).
+    - Class 3 moves (valid, newly accepted): every captureless Closure erased in an inferred Field header, such as q3, h1, h2, h3,
+      EnumBindingTest's `E.A(func ...)`, f10use and the reviewer's f11empty to f23use (PropertyBindingTest rows). The test rows
+      changed. f9group (a group's static `let`) loses PLAN G381's false `UnprovenConstraint_Kd` and keeps its storage limit at the `let`.
+    - Record moves on rejected programs (no verdict moves; the Middle's C-301 C1, rows in 18b977e37):
+      - a group's inferred static `let` erasing a captureless Closure (f9group's class): its Case-payload form v45 (EnumBindingTest)
+        drops the located limit at the literal and gets the static storage limit at the `let` plus the located limit at the use,
+        which is what its annotated twin v47 gets;
+      - class 3's invalid counterpart, an invalid erasure in an inferred Field header: the located `Unsupported_Kd` becomes the local
+        twin's Language or A5 record (k1fitbad: `UnprovenOriginContract_Kd`; k2a5bad: A5's `CallActivationConflict_Kd` alone;
+        PropertyBindingTest, beside k1fitlocal and k2a5local).
+  - Not G149/G300's `EnclosingInstance` gap: the proof runs in the enclosing scope and judges the inherited atoms under its premises.
+  - New rejections (class 1; `UnprovenConstraint_Kd` at the use requiring Owned): an Item of a function nested in a body, root
+    functions included, whose declared signature names an enclosing Origin or Type parameter that is not proven `static` or Owned.
+    Rows (FunctionItemTest): o1blk, o1vblk, o1tup, o1res, o2genblk, o1deep, the reviewer's a2copyown, a4idres, a6opt, a7genpass,
+    a8Tcopy, a10Tres and x6meet, x8bstructT and x10bstructS (an enclosing struct's `T` and Origin), and review 3's y1fnsig, y3fnsigT
+    (inside a Function Type parameter), y5local (an enclosing local's Origin) and z1toplocal (a root function naming a top-level
+    local's Origin).
+  - A relation clause naming an enclosing Origin (`origin c outlives a`) is part of SPEC 15.3.4's signature for an Item's Owned
+    parts (the owner's O-249 Q3 (a)); y4rel stays rejected, as on dev.
+  - Rejected alternatives:
+    - an Item Type carrying its inherited arguments (G149's representation);
+    - a nested-Item-only clause;
+    - judging the signature at erasure (it rejects valid o8era);
+    - judging the substituted signature, as revision 1 did (it rejects valid x1fnarg and x4assocfn);
+    - judging the whole signature as a Type (it rejects valid p1projgen, r2reqok, p7selfreq and b8setk);
+    - an erasure Tuple without Origin parts (it accepts invalid w3era, w6unusedera, w9eraneed and w12setform).
+
+- **BU-201 A pair layer is a well-formedness layer at every use, judged in its borrow cases (PLAN G831)** (2026-11-13; Front,
+  Binding; Major with design reviews 1-2 and an implementation review, the Back's reviewer; the Middle's C-312 consent) SPEC 15.6.1,
+  15.3.7, 10.7, 15.6.5.
+  - `WellFormedLayer` (Binding.PairCases.cs) is the one answer to "which Types are borrow layers for well-formedness": a safe borrow
+    or a Slice in every case, a pair layer (`TryPairLayer`, its stored slot by `OuterOrigin`) under the raw `PairSlotCondition` at
+    the use, none when no admitted case is a borrow; each consumer applies its own condition contract to `ulong.MaxValue`. The
+    premise side (`AddTypePremises`), associated formation (`CheckAssociatedFormation`, `ProvesBorrowedTypeLifetime`) and the
+    use-side visitor (`VisitWellFormedPremises`, on the substituted part) read it.
+  - The visitor's stored visit carries the layer's condition (`WellFormedVisit.Condition`) to every relation below it.
+    `InstanceOutlives` takes the same case condition as `ProvesOriginOutlives` and `FitOrigin` and passes it to both (the visitor's
+    `Instance` action its joined condition, the fit walk's `OriginFits` its slot's), as `Prove` and `Require` do; only `Bound` keeps
+    condition 0 (G809's conservative item for a call's `WellFormed` bounds). Open: the named result's premise side
+    (`AddResultPremises`, PLAN G503).
+  - Moves: 12 on 180 probes: 9 invalid programs newly rejected (a14, a14r, g3, g4, r1-r4, rt4) and 3 valid ones newly accepted (rt5,
+    rt6, rt6u: a Function-Type fit whose pair layer or pair slot is proven only in its binder's borrow cases).
+  - Rejected: a pair clause in `ProvesInputPremises` alone (a second copy of the layer rule, while the visitor also serves calls,
+    conversions and results); the relation required in every case (SETTLED "Pair-slot premises in every Semantics case"; under
+    `Instance` it rejected the valid rt3/rt3u, design review 1, B1); a per-case `CaseType` visit (a Type per case and use, for what
+    one condition says).
+
+- **BU-202 A called function's parameter key marks the binding of the function's own abstract Types: `TyCtxt.ParameterKey`,
+  `PlaceKey.Signature`, `OwnLayer.Hidden`** (2026-11-13; PLAN G823; Front, Binding; Major; the Middle's C-297 after the owner's
+  O-232 (a); RP17 consent C-297, completed by W-204's group oracle T-204) SPEC 15.6.4, 5.7 Calls, 8.2.3.
+  - Rule: on a called function's parameter path (`TyCtxt.ParameterKey(function, slot, input)`, the root key of the slot's
+    instantiated Type paired with `Signature(function, null, slot)`), `PlaceKey.Signature` is the Type the declaration writes at the
+    Place. It is paired by the storage walk's rule (BU-113's `StorageAt.Signature`: `Same`, the declared Holdings in order,
+    `DeclaredComponent`, `BorrowReferent`, a pair layer's target), and every key producer (Select, Base, Leading, a Past key) reads each
+    declared part in the function's view first (`View`, 8.2.3: identity is closed under replacement inside any Type). An abstract Type
+    of the function's own declaration (a Type parameter, or a pair target or projection rooted at one; `Scope.Owner` the function)
+    takes the form its identity class fixes there (`Binding.TypeIdentity`, the one judge, R7-C3a): a constructed member, else a member
+    that is no such abstract Type, else itself. Where it stays itself, the Signature keeps that abstract Type, and `OwnLayers` marks
+    every part there `Hidden` (15.6.4: "A raw layer that the abstract Type's binding may hold and the abstract Type does not show adds
+    no reach of its own"). On any key a body forms, Signature is null and nothing is hidden. Rows are listed once per (Type, Written,
+    Holder, Signature).
+  - Shown:
+    - an enclosing Type's parameter, which the receiver's instance completes (BU-50, PLAN G271);
+    - a part an identity premise of the function's view gives a form, inside a Type included (`S.Item is raw/u8` inside `HA<S>`,
+      `U is raw/u8` inside `Wrap<U>`, `U is T`);
+    - a part whose declared and instantiated constructors differ (conservative). Named limit: a pair layer's owner case (`s/U` read
+      as U itself, or as a raw case) ends the pairing and is shown, though SPEC hides it.
+  - What a hidden part reaches is A5's (the Middle's U3c): a raw layer adds no reach of its own, and a safe reference keeps its routes.
+  - One pairing rule and one carrier convention (G823-U1, behaviour unchanged): `SignaturePast` (what an entry reaches),
+    `DeclaredRun` (the declared Type's parts in the run's order) and `Below` (inside such a binding the abstract Type is kept below),
+    with `DeclaredComponent` and `Same` in `Binding.Retention.Declared.cs` (G823-U1b, a move: `Binding.Retention.Storage.cs` was over
+    the 5,000-token file limit; the key walk's `OwnParts` and `OwnLayer` joined `Binding.Retention.PlaceKeys.cs`), read by the storage
+    walk (Reach, RawReach, Parts, Admitted), the atom walk and the key walk (OwnParts, Select, Base). `StorageAt.Signature` and `RetentionAtom.Signature` keep the abstract Type
+    inside such a binding too (amends BU-113's "null inside a Type parameter's image" for the function's own abstract Types; RawStepAt's
+    cap is unchanged: a kept abstract Type is no pointer). `DeclaredRun` reads Holdings only and sets no storage-walk state
+    (`retentionLimit`): a declared entry that is Unsupported has the instantiated Type's constructor, whose own run already counts it.
+  - The view is the key walk's only (review N7): the key walk reads each declared counterpart in the function's view (`View`); the
+    storage and atom walks read them as written. Below a part an identity premise gives a form (`S.Item is raw/u8` inside `HA<S>`),
+    `PlaceKey.Signature` is the form's counterpart while `StorageAt.Signature` keeps `S.Item`. G692-P2, which keys storage-walk records
+    by the key walk's rows, states how a viewed row meets an unviewed storage state; BU-113's cap at such a position (step 4 where the
+    view writes a pointer) is G692-P2's or BU-113's question.
+  - Cost (review N8): `View` reads `ClassesOf` of the function's scope. Binding builds the classes of every scope with its own identity
+    premises at each pass's validation step (`ValidateConstraintEnvironments` → `RecordIdentityPremiseError` → `ClassesOf`), and the
+    Final pass's tables stay until the next pass's reset; a scope whose identity premises are only an enclosing scope's builds once, at
+    its first read, memoized. Warm reads are 0 B (`AWarmParameterKeyReadAllocatesNothing`, an identity view included).
+  - Removes the A5 prototype's stand-in (a parameter Type `S/U` over a bare Type parameter, read by A5 from `TyCtxt.Signature`).
+  - Rejected:
+    - the key with the callee's Type parameters kept abstract beside the instantiated one: A5 would align two walks, a second copy of
+      OwnLayers;
+    - Type marks (BU-46's Unstated style): no MIR local states a mark;
+    - premising the parameter's own Type only (`Premised`, design review 1's B1): the parts below it were read unpremised, so a layer
+      the body sees under `S.Item is raw/u8` was hidden; and `Premised`'s member substitution would be a second premise rule beside
+      the identity classes;
+    - one bool per walk: a key holds hidden and shown parts together (Wrap2's `value` and `q`);
+    - one column with G692's per-layer retention records: another meaning and contract, the storage walk's (DECISIONS text: "one
+      row, two contracts").
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

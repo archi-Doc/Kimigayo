@@ -72,11 +72,16 @@ public sealed partial class Binding
 
         // The stamp of the walk's query: of wellFormedParts, or of storedParts below a borrow layer.
         internal uint Query { get; init; }
+
+        // Below a borrow layer, the Semantics cases in which that layer exists (SPEC 15.6.1, 15.6.5): a pair layer's borrow cases at the
+        // use (WellFormedLayer), 0 for a layer of every case.
+        internal ulong Condition { get; init; }
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
-    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
+    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
+    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
     internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
         failure = default;
@@ -85,10 +90,9 @@ public sealed partial class Binding
             return false;
         }
 
-        signature = this.ContractType(signature, this.ConstraintScope(use));
-        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
+        if (HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(signature, required, SignatureOwner(item), out failure))
+            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;
             }
@@ -423,7 +427,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use, 0))
+                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use))
                 {
                     longer = longer.Operands[i];
                     break;
@@ -577,11 +581,11 @@ public sealed partial class Binding
             }
         }
 
-        if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0)
+        // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has there.
+        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use) is { } layer)
         {
-            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion) };
-            if (!this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, stored))
+            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion), Condition = RequiredCondition(layer.Condition) };
+            if (!this.VisitStoredPremises(pattern.Components[0], layer.Target, actual?.Components[0], outer, layer.Outer, stored))
             {
                 return false;
             }
@@ -674,6 +678,7 @@ public sealed partial class Binding
     // Type is well formed, and the fit, judged on its own, makes its outer Origin outlive the substituted one.
     private bool VisitWellFormedPremise(BoundOrigin longer, BoundOrigin outer, BoundType result, BoundOrigin value, BoundOrigin? kept, BoundOrigin substituted, in WellFormedVisit visit, ulong condition = 0)
     {
+        condition |= visit.Condition;
         if (OriginOutlives(longer, outer) || OriginOutlives(value, substituted) || ReferenceEquals(value, kept))
         {
             return true;
@@ -709,7 +714,7 @@ public sealed partial class Binding
             case WellFormedAction.Detect:
                 return false;
             case WellFormedAction.Instance:
-                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, 0))
+                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, condition))
                 {
                     return true;
                 }
@@ -766,8 +771,8 @@ public sealed partial class Binding
 
         if (visit.Action == WellFormedAction.Instance)
         {
-            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use, 0) &&
-                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use, 0)))
+            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use) &&
+                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use)))
             {
                 return true;
             }
