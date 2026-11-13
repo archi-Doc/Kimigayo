@@ -683,7 +683,8 @@ public sealed partial class MirBuildTest
     // so accepted (22.10.3), an owning interpolation in a let, a generic body's owning instance and a nested one in a direct line; the
     // builder's shape written out (EndShape), the writer's status for its finish: valid with the writer's last use before intoString, and
     // exactly one Loan conflict with intoString moving the buffer while the writer is used after it, by its status or by a write. A guard,
-    // not a fail-before row: no row calls FormatFinish, which took the writer by move and gave no problem, so every row passes before c3a.
+    // not a fail-before row: rows 1-3, the interpolations, call FormatFinish on the base, which took the writer by move and gave no
+    // problem, and only the three EndShape rows call no FormatFinish, so every row passes before c3a.
     [Theory]
     [InlineData("func f(x: i32) -> string\n    let t = \"a\\(x)b\"\n    return t@move\n", null)]
     [InlineData("func g<T>(v: ref/T) -> string\n    T is Utf8Format\n    return \"v=\\(v)\"\nfunc f() -> string => g(\"abc\")\n", null)]
