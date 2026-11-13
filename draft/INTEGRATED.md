@@ -1393,6 +1393,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   changed; the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
 - Revision 63 (2026-11-12, plan §14; the owner's decision in K's session): RP8 for a behaviour-preserving R7 unit: no per-unit timing slot; the deterministic checks and the checkpoints after every fifth landed window (DECISIONS R7-M22). Nothing frozen.
+- Revision 65 (2026-11-13, plan §14; the Back's D-518): after R8-S2d2 (DECISIONS R8-M30) §5.2's S2 row records S2d2 done (the shim's removal), and the L0 and S2 rows name `formatInteger128`'s runtime as `FormatInteger128Runtime.ll.in`'s `__kimi_format_integer128` and `__kimi_decimal_div10` (since R8-S2b2). Nothing frozen.
   and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
   the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;

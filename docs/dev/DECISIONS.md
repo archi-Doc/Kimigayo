@@ -19768,6 +19768,37 @@ R8-M* and R9-M* by the stage of the recording unit.
     `AnInterpolatedWriteReportsItsCallersLocation` fail; `Utf8WriterTest`'s native I128 and U128 Abort rows are pins (they pass at
     base through the shim and at head through the specializations). Open for the next formatting unit (the Middle's M-N3): the
     specialization filter in `KimiLibraryShapeTest.EachWitnessGroupDeclaresItsContractsRequirements` is now redundant.
+  - **Temporaries 1, 2 and 3 removed, S2d2** (45ad6e3eb and 04390d4b5): Binding's `builtinFormat` target and
+    `CompilerRequirementTarget`'s Utf8Format narrowing (1); `ResolveConformance`'s built-in Utf8Format proof arm (2): the witness
+    table's arm alone states and proves a built-in Type's Utf8Format, pinned by `Utf8FormatBindingTest`'s
+    `EveryBuiltinFormattableTypeIsProvenUtf8Format` (passing before and after the deletion) and
+    `EveryBuiltinFormattableTypeHasATableRow` (moved from `FunctionCodegenTest`, assertion unchanged); `FormatKind`'s 16 numbers
+    (3's note discharged).
+  - **Vocabulary, S2d2.** `CompilerFunctionKind` 30 -> 29 (with `None`): `BuiltinFormat` deleted with its Shim disposition, the
+    shim's `Format` and the collector's arm. `FormatKind` -> `LegacyRuntimeHelpers.StringFormatKind = 16`.
+  - **Temporary 5, S2d2.** It now reads: "`StringFormatKind`, `__kimi_format_builtin`'s one arm (16; a plain define in
+    `Utf8FormatRuntime.ll.in` since R8-S2d2, byte-identical to the deleted row's expansion) and `{{writer_write_builtin}}` for
+    SegmentText and FormatLiteral: removed at W2".
+  - **`IsBuiltin`, S2d2.** It no longer states or proves the conformance (the table does); it remains `RequirementMember`'s domain
+    (`Binding.ContractCalls.cs:17, :36`) until G776, whose unit deletes it with those reads (whichever of S2d2 and G776-a lands
+    second deletes it; F records it in G776-a's conditions, C-265 (2)).
+  - **The formatting row family is gone, S2d2** (0a62ff4ce): `FormattingHelperRow`, `FormattingRows`, `FormattingRow`,
+    `CreateFormattingRows`, `LlvmModuleText.ErasedWriterDefinitions`; Text.writer's routine ABI is `RuntimeAbi.TextWriter`, beside
+    `ErasedReserve` (the same kept runtime); `IntrinsicRows`' ErasedWriter row no longer reads a legacy formatting row (it still
+    reads `LegacyRuntimeHelpers.FormatHeap`, `FormatHint` and `FormatFinish`, the interpolation adapter's ABIs, until R8-W2 c;
+    implementation review 1's N1 corrects commit 3's message, which said "IntrinsicRows no longer initializes
+    LegacyRuntimeHelpers").
+  - **Rejected, S2d2.** Re-pointing `RequirementMember` to the witness table (D1): `WitnessGroup` answers a `Wrapping<T>` over an
+    abstract `T`, so a direct `w.format(writer)` there, `UnresolvedBinding_Kd` today and an error under O-194 (a), would resolve;
+    a `HasAbstractPart` guard would be a symptom fix. Form R1 (D2: `{{writer_write_builtin}}` calling `__kimi_format_bytes`): it
+    changes every formatting module's runtime text, the Interpolation kernel's SegmentText code and the natives, for churn W2
+    deletes.
+  - **RP8, S2d2 (T-165; no stop).** R7-M21 (2)'s plan-unit case, K's C-266 (b): compile cost only; the per-commit generated gate
+    against S2d2's parent stands in for the O2/O0 corpus. A 91f71aa54 (R8-S2b2's head, S2d2's parent side), B 0a62ff4ce (S2d2),
+    A' A's byte copy (`artifacts/benchmarks/r8-k1a-20261113-081018`): compile cost (Bind, Analyze, Generate cold and warm) on
+    Hello, Milestone26 and Strings: every B/A' within 0.979-1.041 and inside each row's A'/A spread or at its edge (the only B/A'
+    above 1.012 is Milestone26's warm Generate, 77 µs, 1.041 against A'/A 0.972: noise at that size); cold bytes B 200 B below A
+    on all three (11,816,064 against 11,816,264 on Hello), warm 0 B. The compile cost is unchanged.
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
