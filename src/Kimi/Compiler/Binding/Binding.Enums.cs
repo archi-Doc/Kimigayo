@@ -489,7 +489,7 @@ public sealed partial class Binding
         }
 
         // A selection's solve never fails (SolveOriginInference with `select`); the payload walk and the Type-formation check judge it.
-        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, solution.Call, select: true);
+        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, select: true);
     }
 
     // SPEC 10.5.1: whether the construction holds a slot that no evidence binds (`unsolved`) or an F that its waiting callable does not

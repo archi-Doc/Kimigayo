@@ -7692,6 +7692,7 @@ resumed by R4-M86 (2026-10-20).
     clause subject (a representation C3 deletes with `DerivedFacts`); a move only (PlanB's C2 routing condition unmet); Invalid as both
     polarities (ProveProposition would skip its structural judgment where facts alone give both, changing EndProof's cause); the raw
     proposition at C2 (two normalizations per proof).
+  - Superseded in part by BU-199 (R7-C2a a1, 2026-11-13): the staging "C2a without `Enumerate`" and the routing list it held.
 
 - **BU-30** (2026-10-23, redone 2026-10-24; superseded in part by BU-34, BU-35, BU-36, BU-40, BU-52, BU-66 and R4-M131; PLAN G160's
   G160-2c, unit bu32, under G160-4's owner-approved design B′ §3.2 as its re-review amended it, R-B2 to R-B5 (DECISIONS R4-M116); the
@@ -12823,6 +12824,128 @@ resumed by R4-M86 (2026-10-20).
     case's record of a definition whose own clauses empty its set (r18's TypeMismatch_Kd, a case the premises exclude; it needs a
     second admitted set; F's ruling 5); FollowablePair's None for both 'not followable' and 'no case' (its callers decided no case
     again).
+- **BU-199 `Enumerate` is a leaf of the judgment graph; identity is the request boundary's (R7-C2a1; PLAN G170). Its tables are
+  keyed by the view value (R7-M20)** (2026-11-13; Front, Binding's `ContractSolver`; Major; PLAN G170, R7-C2a a1 on e1 (R7-M20);
+  design reviews 4 and 6 ACCEPT, 5 REVISE answered by the owner's O-148 (b); the owner's O-133 (a), O-206 (a), O-211 (a) and O-246
+  (a); the Middle's C-304; supersedes in part BU-29) SPEC 8.3.2.
+  - Supersedes BU-29's staging "C2a without `Enumerate`" and the routing list it held (`claude/bu30-g170-c2b-held`). BU-29's reason
+    for holding the routings was the +1 % warm Bind cost of applying the subject rule to every fact at every request. It no longer
+    holds where a request reads the view's facts through an index by subject key (`IndexWritten`, `IndexNormalized`: one pass over
+    the facts per outermost request, each fact read through R7-M20's `Reading`, then a lookup per link). RP8's A/B (T-192, pinned,
+    on 3c7bacdb9) measured the cost: PremiseList's Bind B/A' 1.18-1.22 cold and warm, RecursiveContract 1.04-1.07, Hello and
+    Milestone26 inside their spreads, warm bytes 0. The owner accepted that cost (O-246 (a), verbatim 「a」, 2026-11-13) on one
+    recovery condition: R7-C2c3's and R7-C2e2's RP8 re-measure PremiseList and RecursiveContract against this a1 and must bring them
+    down, or R7's core chain stops there for the owner. BU-29's staged prohibitions stay until c3. BU-59 is unchanged (the walk
+    reads published source states through `AvailableContractPremise`). BU-29 OQ2's limits stay provisional (the walk needs none at
+    a1; part f confirms them with G563).
+  - Decision:
+    1. `PremiseRefines(subject, contract, scope)` over `Enumerate(subject, view)` owns SPEC 8.3.2's refinement row. It has two
+       readers: `ProveConformance`'s premise part and `SymbolicCapability`'s Contract-refinement arm; their own scans are deleted.
+       The rows a clause supplies more than one link up the subject's chain are new (the structural supply at depth: a named move,
+       twins p29a, without an identity premise, and tP1, under `T is U` with a judged intrinsic parent (BU-152), each accepted by
+       both named moves; F, after the implementation review's note). `Supply` keeps its exact match; `HasContractFact` stays a
+       second predicate until c1'.
+    2. `Enumerate`'s walk matches clause instances as written (`FactStates`, `AssociatedIdentityMatches`) and calls no judgment: not
+       `ProveConformance`, `ProveConstraint`, `ResolveAssociated`, `NormalizeProof*`, `SubstituteIdentity` or `RequestCapability`.
+       `PremiseRefines` entered while a walk is open is an internal invariant failure, and `ArchitectureRulesTest` lists the walk's
+       callees by name (`EnumeratesWalkCallsNoJudgment`).
+    3. Identity is applied at the request boundary only: the reader's subject and, under a parameter identity, the view's facts as
+       the view reads them (`Reading`, DECISIONS R7-M20: a Complete reading is formed once per view and pass), indexed once per
+       outermost request (`IndexNormalized`; this adds `SymbolicCapability`'s reading of a fact to `ProveConformance`: a named move,
+       twin p30). A demand made during that preparation reads the written facts alone, and its rows are dropped before the outermost
+       walk. Enumerate's request tables (memo, index, pools) are keyed by the view value (the scope `ViewOf` gives and its serial,
+       which `PremiseRefines` takes once per request) and emptied when the outermost request returns (the kept rows of item 7 are
+       the one exception to "per request"), so a scope re-parented within a request is another view; a preparation that moves its
+       own view is an internal invariant failure (the request's premises were changed under it by a builder). The serial a reading
+       is checked under is the caller's (the O-193 (a) cost revision): `Supply`'s and `IndexNormalized`'s loops write the chain only
+       through `Reading`, so each holds one serial that a formation takes again; `SymbolicCapability`'s loop runs judgments, so it
+       takes one per fact. Under that precondition R7-M20's "under the serial taken before its formation" holds unchanged. The
+       walk's rows read the requirement Contract (`ContractSupply`'s rewrites substitute `activeRequirementContract`); it is
+       constant over a request (its writers bind calls, reached from no normalization and no walk), which is why the request tables
+       need no call context in their keys; the kept rows, which outlive a request, key it (item 7). The readings' own context is
+       R7-M20's (item 4).
+    4. c2 replaces the boundary's key map by C3a's class id and nothing else in the walk.
+    5. Completeness is "modulo identity of supplied subjects (facts and clause instances)" until c2: a derivation that must rewrite
+       a supplied subject by an identity premise or a binding yields no row (`U is T` beside `T is CopyTree` supplies nothing to U's
+       projections, p08z; `T is U` does, p30). A missing row only rejects.
+    6. Holders are the proper prefixes of the subject's projection chain until c3's gate (Type-argument holders: the eager expansion
+       supplies them at depth 1 until c3).
+    7. Kept rows (the owner's O-206 (a) and O-211 (a); a temporary structure, removed by C2e2). An outermost request in R7-M20's
+       kept region whose preparation formed no reading keeps the rows of each link it walked per (link, view scope, serial,
+       requirement Contract), and a Contract's head depth per Contract; a later request with the same key answers from them without
+       preparing or walking. Nested demands never read or fill them.
+       - One rule, one lifetime, one clear: `KeptRegion` is R7-M20's kept region (the capability phase, outside an associated
+         normalization and an identity expansion), asked by `Reading` and `PremiseRefines` alike. The kept tables live for one epoch
+         (`KeepsAcrossRequests`, `ClearKeptRows`): in the capability phase the capability epoch, which `ClearCapabilityResults` ends
+         with the capability results and the component summaries; before the phase one outermost request (clauses are still being
+         bound there).
+       - Why a kept row is the walk's answer: with no reading formed, every fact of the request's index was a kept, Complete
+         reading, so the index is a function of (view value, requirement Contract, pass). The other inputs are Contract clause
+         storage (`HeadDepth`, `ContractSupply`: bound before the phase) and the availability reads (`AvailableConstraintFact`,
+         `AvailableContractPremise`): an environment's fact sets and its Invalid (in the serial), published source states and
+         Contract declaration contexts. A source state only leaves Pending and is written as each check of a publication round ends
+         (`PublishSourceStates`); a Contract's declaration context is only failed, by the validations
+         (`ValidateConstraintEnvironments`; `ValidateClosedTypeConstraints` in `InvalidateProjectionCertificates`' loop). A kept row
+         may be read across such a write until the epoch ends, as a capability result may (SourceStates: "no answer computed from a
+         Pending read outlives its round"): a round or loop iteration that wrote one is followed by `ClearCapabilityResults` and
+         another, a declaration left Pending is checked again in a fresh epoch, and the last round and the last iteration write
+         none, so whatever outlives them read final states. A row read across a write is a Pending read's (the row of a Contract
+         proven since is absent) or names a Contract that has failed since, whose own record rejects the program and whose failure
+         makes each environment naming it Invalid, another serial.
+       - What a kept answer does not replay: the walk's per-check effects, which a capability result replays from its payload:
+         `InvalidDeclarationContext`'s `Consulted` (SPEC 23.1.2), `ReadSourceState`'s join of a limit, a U fact or a cause (BU-22)
+         and, outside a proof scope, its frame. They exist only where a source is not valid, whose own record is reported: what can
+         differ is the dependence or the cause of a failing check's record in a rejected program, never an acceptance (Q13).
+  - Rejected: normalizing clause instances in the walk (design revisions 1-2: review findings R2-B1, R3-B1, a re-entry that does not
+    end, p31); a re-entry cut or a depth cap on the walk (a symptom fix); one unit with c2 and C3a (size; bu65's history); C3a first
+    (design-v2 §9); a reading table owned by a1 (a1-f1's per-view normalization: its stamp missed re-parented views and its key the
+    call context, design review 5's F1-B1 and F1-B2; R7-M20 owns the readings); following a moved view (a loop without a bound,
+    design review 6 Q2); for the kept rows: keeping the per-request index per view (e2's `Closure(scope)`, later); rows of nested
+    demands or of requests outside the kept region (their inputs are not final or not the whole index); a kept table keyed without
+    the requirement Contract; a second copy of the kept-region rule in `PremiseRefines` (the lever review's B2); a clear at each
+    source-state or declaration-state write (the capability results are not cleared there either: the round and the validation loop
+    are the one invalidation both share).
+  - Temporary structures and removal: the per-request index (c2 keys Types by identity class; e's `Closure(scope)` may make it per
+    view, keying the requirement Contract); the kept rows and head depths (`enumerateKept`, its pool, `KeepRows`, the kept region's
+    part of `PremiseRefines`: C2e2, whose `Closure(scope)` holds a view's rows with its index and readings; the epoch lifetime
+    follows the capability results', which C3's scheduler replaces); the eager expansion as the source of embedded-holder rows (c3,
+    after its gate); `HasContractFact` (c1'). (The boundary normalization of each fact is R7-M20's `Reading`, whose removal is
+    c2's.)
+  - Implementation note: the prototype's two memos (outermost, nested) are one memo cleared when the outermost request's preparation
+    ends, since nested demands arise only during it (design-v2 §5 step 3).
+  - Measured (counted copies, no timing; design-a1e §5): Hello, Milestone26, RecursiveContract: normalizations equal to dev;
+    PremiseList +33,120 on 54,363, all index reads before the capability phase, where R7-M20 keeps none (the same shape as dev's own
+    pre-phase Supply reads); before e1 a1 added 656,740. After the O-193 (a) cost revision the serial walks fall below dev's
+    (SerialOf steps dev / 41f1c5f2e / 0dd2b71e1: PremiseList 2,638,454 / 4,632,262 / 352,364; Hello 27,330 / 64,574 / 14,940); every
+    other count is unchanged. Hypothesis (not measured by attribution): PremiseList's remaining cost is the per-request index,
+    `IndexWritten` and `IndexFact` at every outermost request (its cold allocation, T-156's PremiseList +1.56 MB), its 623,620 kept
+    lookups through `Reading` and its 33,120 normalizations before the capability phase. RP8 verdict (T-192 on 3c7bacdb9, after the
+    allocation fix that removed 78% of the cold growth): STOP on PremiseList (about +21%) and RecursiveContract (+4-7%); the owner's
+    O-246 (a) lands a1 with that cost accepted. The remainder's parts and their removers: the per-request index (R7-C2e2's
+    `Closure(scope)`), the pre-phase normalizations (R7-M20's exclusion; R7-C2c3 and R7-C2e2), row (2)'s per-link supply (the
+    design's rule; none). Recovery condition: C2c3's and C2e2's RP8 bring both programs down against this a1, or the core chain
+    stops there.
+
+- **BU-196 A solve's bound carries the Semantics cases it is required in (PLAN G809)** (2026-11-13; Front, Binding; Major with
+  design reviews 1-3, implementation review ACCEPT WITH NOTES; the Middle's C-299 consent; the owner's O-233 (C)) SPEC 15.6.5; for
+  comparisons SPEC 15.3.6's sentence and 15.3.7; for calls SPEC 8.15.2, with the limit of PLAN G834.
+  - Each `OriginInference.Bounds` entry has a `Condition`: the pair binders that are borrows in every case of the entry, written by
+    `CollectOriginInference` with the walk's reader (`SlotCondition` at `OriginInference.Use`, the solve's one source of its use), 0
+    for every other bound. A bound required again exists in the union of its case sets: an entry whose binders are among the new
+    ones covers it, one whose binders include them widens to them, and any other pair stays two entries, so a bound exists in every
+    case exactly when one entry has 0.
+  - Both solves read it, a comparison's and a call's: the final check passes each entry's condition to the premise proof, and a
+    covariant variable's candidate is the meet `U0` of its every-case upper limits and of each conditional one not proven, in its
+    cases, to outlive `U0` (every conditional one when `U0` is empty), each judged against `U0` alone, so the candidate does not
+    depend on the order of the bounds. Floors take part in choosing the candidate in every case and are checked in their cases;
+    `WellFormed` and the result premises' bounds are written with condition 0 (conservative). At a call in a generic body this joint
+    solve accepts only what SPEC 8.15.2's per-case analysis accepts (sound) but not all of it (PLAN G834).
+  - Moves: newly accepted, all valid: q04, q06, r02d, r03, r09, r12, r11k and the Middle's 11 twins.
+  - Rejected: the premise made unconditional (SETTLED "Pair-slot premises in every Semantics case": unsound); a running-meet fold
+    (order-dependent: r02a/r02b); intersecting a re-required bound's conditions (it read "every case" for the union of two binders'
+    cases and accepted r10, invalid under (C)); for comparisons, reading A (the literal meet of every case's bounds) and reading B
+    (a candidate per case: a per-case solution representation), both by the owner's O-233 (C); a premise-aware `Meet` (moves
+    unconditional solutions outside this cause).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
