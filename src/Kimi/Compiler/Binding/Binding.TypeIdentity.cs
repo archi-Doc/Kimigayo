@@ -163,55 +163,6 @@ public sealed partial class Binding
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 
-    // R7-C2c2: the key of `type` in a view's classes: its class's Representative, else the Type over its components' keys
-    // (congruence), whose class is asked again. A key names the class to the premise supply only; no reader sees it as a Type. Each
-    // Type is keyed once per table (the table keeps it), so a request's keys cost the distinct Types it compares; a warm pass finds
-    // the rebuilt Types interned and the table's capacity kept, and allocates nothing.
-    private BoundType ClassKey(BoundType type, IdentityClasses classes)
-    {
-        if (classes.KeyOf(type) is not { } key)
-        {
-            this.IdentityKeyWork++;
-            key = classes.Representative(type) ?? this.CongruentKey(type, classes);
-            classes.SetKey(type, key);
-        }
-
-        return key;
-    }
-
-    // The Type over its components' keys, whose class is asked again; the Type itself when no component's key differs.
-    private BoundType CongruentKey(BoundType type, IdentityClasses classes)
-    {
-        var count = type.Components.Count;
-        if (count == 0 || !type.ContainsParameter)
-        {
-            return type;
-        }
-
-        var components = this.RentTypes(count);
-        try
-        {
-            var changed = false;
-            for (var i = 0; i < count; i++)
-            {
-                components[i] = this.ClassKey(type.Components[i], classes);
-                changed |= !ReferenceEquals(components[i], type.Components[i]);
-            }
-
-            if (!changed)
-            {
-                return type;
-            }
-
-            var rebuilt = this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments);
-            return classes.Representative(rebuilt) ?? rebuilt;
-        }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
-    }
-
     // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
     private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)
         => this.ClassesOf(scope, out completion) is { } classes && classes.Failed(projection);
