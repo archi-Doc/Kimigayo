@@ -525,7 +525,7 @@ public sealed partial class Binding
 
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
         {
-            return this.CompletePointerConversion(conversion, source, target);
+            return this.CompletePointerConversion(conversion, scope, source, target);
         }
 
         if (!plain)

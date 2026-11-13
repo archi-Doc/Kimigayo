@@ -56,12 +56,20 @@ public sealed partial class Binding
 
     // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
     // Origin unless the target states one, which is a fit of the source's Origin (none for usize) outside an unsafe context and a
-    // claim, which records no relation, inside one.
-    private BoundType? CompletePointerConversion(ConversionKoto conversion, BoundType source, BoundType target)
+    // claim, which records no relation, inside one. Its one case is judged by the adaptation table's Pointer row (CheckAdaptationCase),
+    // as a pair binder's raw case is.
+    private BoundType? CompletePointerConversion(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target)
     {
         if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
             (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
         {
+            // A Pointer case lends no Borrow, so the judge's null (an unformed Borrow) is a broken contract here, never silent.
+            var verdict = this.CheckAdaptationCase(conversion, scope, source, target, ConversionBinding.Pointer, []);
+            if (verdict != true)
+            {
+                return verdict is null ? this.Fail(conversion, BindingFailure.Internal) : Complete(conversion, null);
+            }
+
             conversion.ConversionBinding = ConversionBinding.Pointer;
             if (target.RawOrigin is null && source.RawOrigin is { } kept && ReferenceTypes.IsPointer(target))
             {
