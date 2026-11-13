@@ -8,8 +8,8 @@ namespace Kimi.Compiler;
 
 /// <summary>The operation of a <see cref="BoundLength"/>, Binding's closed vocabulary (SPEC 4.2): a constant, a length parameter, and
 /// the unary minus and binary operators of a symbolic length, which Binding maps once from the syntax it binds (LengthOperationOf; a unary
-/// plus and grouping form no operation); and the interpolation-bound term, which no syntax forms (TyCtxt.InterpolationBound). Its order is
-/// <c>CompareLength</c>'s, which orders a commutative operation's operands.</summary>
+/// plus and grouping form no operation); and the interpolation terms over value Types, which no syntax forms (TyCtxt.InterpolationBound,
+/// TyCtxt.InterpolationHint). Its order is <c>CompareLength</c>'s, which orders a commutative operation's operands.</summary>
 public enum LengthOperation : byte
 {
     Constant,
@@ -21,12 +21,14 @@ public enum LengthOperation : byte
     Add,
     Sub,
     InterpolationBound,
+    InterpolationHint,
 }
 
 /// <summary>Interned checked length expression. Symbolic arithmetic is validated at instantiation.</summary>
-/// <remarks>An interpolation-bound term (R8-W2; SPEC 22.10.5, rule L) is the stack region of a direct interpolation in a generic body:
-/// <see cref="Value"/> its literal bytes and <see cref="Values"/> the Tuple of its value Types, erased, at least one undecided
-/// (FormattingTypes.StackBound). A substitution folds it again (Binding.SubstituteLength).</remarks>
+/// <remarks>An interpolation term (R8-W2; SPEC 22.10.5) has <see cref="Value"/> its literal bytes and <see cref="Values"/> the Tuple of
+/// its value Types, erased, at least one undecided: the bound term (rule L, FormattingTypes.StackBound) is the stack region of a direct
+/// interpolation in a generic body, the hint term (FormattingTypes.HintBound) the bytes an owning interpolation's later writes may still
+/// reserve. A substitution folds it again by its own operation (TyCtxt.Refold).</remarks>
 public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right, BoundType? values = null)
 {
     public LengthOperation Operation { get; } = operation;
@@ -39,13 +41,13 @@ public sealed class BoundLength(LengthOperation operation, long value, BindingSy
 
     public BoundLength? Right { get; } = right;
 
-    /// <summary>Gets an interpolation-bound term's value Types (a Tuple); null for every other length.</summary>
+    /// <summary>Gets an interpolation term's value Types (a Tuple); null for every other length.</summary>
     public BoundType? Values { get; } = values;
 
     public bool IsConstant => this.Parameter is null && this.Left is null && this.Right is null && this.Values is null;
 
-    /// <summary>Gets a value indicating whether it is a term whose value Types have an abstract part, an abstract part of the fixed array it
-    /// is the length of (BoundType.HasAbstractPart, ContainsParameter): only that array's instance folds it.</summary>
+    /// <summary>Gets a value indicating whether it is a term whose value Types have an abstract part; a bound term is then an abstract part
+    /// of the fixed array it is the length of (BoundType.HasAbstractPart, ContainsParameter): only that array's instance folds it.</summary>
     internal bool HasAbstractPart => this.Values is { HasAbstractPart: true };
 }
 
@@ -56,16 +58,16 @@ public sealed partial class Binding
     private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
 
     // A length under a binder's substitution, its Type arguments `types` and length arguments `arguments`: a length slot's argument, an
-    // interpolation-bound term over its substituted value Types, folded again (TyCtxt.InterpolationBound), arithmetic evaluated once its
-    // operands are constant; null where a slot is unbound or the arithmetic fails (SPEC 4.2, 4.4.2).
+    // interpolation term over its substituted value Types, folded again (TyCtxt.Refold), arithmetic evaluated once its operands are
+    // constant; null where a slot is unbound or the arithmetic fails (SPEC 4.2, 4.4.2).
     internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> arguments)
         => this.SubstituteLength(expression, new CallSubstitution(binder, types, arguments) { SlotOwner = binder });
 
-    // A length in the instance a substitution makes, as StorageInstance makes a Type (TyCtxt.Compose's lengths): an interpolation-bound term
-    // over its value Types' instance (declaring Type, slots, Self and normalization), folded again; any other length by its slots.
+    // A length in the instance a substitution makes, as StorageInstance makes a Type (TyCtxt.Compose's lengths): an interpolation term over
+    // its value Types' instance (declaring Type, slots, Self and normalization), folded again (TyCtxt.Refold); any other length by its slots.
     internal BoundLength? InstanceLength(BoundLength length, Subst subst)
         => length.Values is not { } values ? this.SubstituteLength(length, subst.Binder, subst.Types, subst.Lengths)
-            : this.StorageInstance(values, subst) is { } image ? this.types.InterpolationBound(image, length.Value) : null;
+            : this.StorageInstance(values, subst) is { } image ? this.types.Refold(length, image) : null;
 
     // The one interning of a length: a commutative operation's operands in CompareLength's order, then one instance per key.
     internal BoundLength InternLength(LengthOperation operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null, BoundType? values = null)
@@ -276,7 +278,7 @@ public sealed partial class Binding
         if (expression.Values is { } values)
         {
             var slots = new CallSubstitution(substitution.SlotOwner, substitution.Types, substitution.Lengths) { SlotOwner = substitution.SlotOwner, Declaring = substitution.Declaring };
-            return this.Substitute(values, slots) is { } image ? this.types.InterpolationBound(image, expression.Value) : null;
+            return this.Substitute(values, slots) is { } image ? this.types.Refold(expression, image) : null;
         }
 
         var left = this.SubstituteLength(expression.Left!, substitution);
@@ -349,7 +351,7 @@ public sealed partial class Binding
             return ReferenceEquals(previous, supplied);
         }
 
-        var required = this.SubstituteLength(pattern, binder, default, frame.Lengths); // A declared length holds no interpolation-bound term.
+        var required = this.SubstituteLength(pattern, binder, default, frame.Lengths); // A declared length holds no interpolation term.
         // A later input may establish slots used by a compound expression. The
         // completed signature is checked after all direct-slot evidence is known.
         return required is null || ReferenceEquals(required, supplied);
