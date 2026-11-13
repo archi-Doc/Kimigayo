@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Owns the per-declaration component summaries (SPEC 15.2.3, 15.3.5; DECISIONS BU-22): for each struct or enum, what its storage adds,
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
-// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
+// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter; an instance
+// family, a stored instance whose formation at a use the capability engine's growth guard cut), each a limit (L)
 // a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
 // reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
 // the steps tested are those the hops resolved, so a step resolved through an identity premise is walked, never a re-entry; DECISIONS
@@ -85,8 +86,13 @@ public sealed partial class Binding
 
         for (var i = 0; result == ConstraintProof.Proven && i < summary.Instances.Count; i++)
         {
-            // The engine's second consuming site of InstanceFormation, as InstanceCapability is at a node (SPEC 8.6.1, 8.3.3).
-            result = CombineProof(result, this.StoredType(summary.Instances[i], work.Type) is { } instance ? this.InstanceFormation(instance, work.Scope) : ConstraintProof.Unknown, true);
+            // The engine's second consuming site of InstanceFormation, as InstanceCapability is at a node (SPEC 8.6.1, 8.3.3). An instance
+            // family (each use forms a larger instance of its own declaration, which the engine's growth guard cuts, DECISIONS BU-22) is
+            // a limit, never an unproven Constraint (SPEC 8.3.3 Limits): the located Unsupported_Kd at the stored Type that writes it.
+            var (written, stored) = summary.Instances[i];
+            var cuts = this.growthCuts;
+            var formed = this.StoredType(written, work.Type) is { } instance ? this.InstanceFormation(instance, work.Scope) : ConstraintProof.Unknown;
+            result = CombineProof(result, formed == ConstraintProof.Unknown && this.growthCuts != cuts ? this.ReadVerdict(formed, this.OwnSite(summary, stored), null) : formed, true);
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
@@ -352,9 +358,9 @@ public sealed partial class Binding
                 return;
             }
 
-            if (type.Components.Count != 0 && type.Symbol!.Declaration is DeclarationContainerKoto { ConstraintNodes.Count: > 0 } && !summary.Instances.Contains(type))
+            if (type.Components.Count != 0 && type.Symbol!.Declaration is DeclarationContainerKoto { ConstraintNodes.Count: > 0 })
             {
-                summary.Instances.Add(type);
+                summary.AddInstance(type, stored);
             }
 
             this.WalkComponent(summary, type, stored, query);
@@ -551,10 +557,11 @@ public sealed partial class Binding
 
         internal List<BoundType> Projections { get; } = [];
 
-        // The instances of generic declarations with Constraints that its own storage writes, in its formals: a use proves each one's
-        // formation (InstanceFormation, SPEC 8.6.1). A component's instances are not mapped in: they are formed under that component's
-        // own Constraints (SPEC 8.2.3), which its own instance here already proves, so the list is finite and needs no bound.
-        internal List<BoundType> Instances { get; } = [];
+        // The instances of generic declarations with Constraints that its own storage writes, in its formals, each with the first stored
+        // Type that writes it: a use proves each one's formation (InstanceFormation, SPEC 8.6.1). A component's instances are not mapped
+        // in: they are formed under that component's own Constraints (SPEC 8.2.3), which its own instance here already proves, so the list
+        // is finite and needs no bound; a formation that grows at each use is that stored Type's site (SummaryCapability).
+        internal List<(BoundType Type, int Stored)> Instances { get; } = [];
 
         // Its own sites and those of the summaries it reads, in the order met; a requiring check rests on the first.
         internal List<ComponentSite> Sites { get; } = [];
@@ -583,6 +590,19 @@ public sealed partial class Binding
             }
         }
 
+        internal void AddInstance(BoundType type, int stored)
+        {
+            foreach (var (known, _) in this.Instances)
+            {
+                if (known.Equals(type))
+                {
+                    return;
+                }
+            }
+
+            this.Instances.Add((type, stored));
+        }
+
         internal void AddSite(ComponentSite site)
         {
             if (!this.Sites.Contains(site))
@@ -605,7 +625,8 @@ public sealed partial class Binding
         }
     }
 
-    // A stored Type whose summary is unsupported (a projection family, the bound, the owner's option 2); one Unsupported_Kd at Use.
+    // A stored Type whose summary is unsupported (a projection family, the bound, the owner's option 2, an instance family); one
+    // Unsupported_Kd at Use.
     private sealed class ComponentSite(List<ComponentSite> needed) : ICheckCause
     {
         public Koto Use { get; set; } = null!;

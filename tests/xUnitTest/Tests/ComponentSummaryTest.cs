@@ -211,6 +211,32 @@ public class ComponentSummaryTest
         Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
     }
 
+    // SPEC 8.3.3 Limits, 8.6.1 (R7-C2e2 e2-5a, DECISIONS BU-22): an instance family. R<T> stores S<R<Wrap<T>>> and S needs its argument
+    // Owned, so each use of R forms a larger instance of R without end; the engine's growth guard cuts it, and the cut is the stored
+    // Type's limit: one located Unsupported_Kd there, on which the declaration's own formation and every use rest, never an unproven
+    // Constraint, used or not. Growth through two declarations is each one's limit. Without the Owned premise the stored Types' own
+    // formation is unproven (SPEC 15.2.3) beside the limit a use needs; a recursion that does not grow (S<R<T>>) is no family.
+    [Theory]
+    [InlineData("rf3o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 0)]
+    [InlineData("rf3o-nouse", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", false, "Array<S<R<Wrap<T>>>>", 0)]
+    [InlineData("rf4o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair2<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 0)]
+    [InlineData("rf-mut-o", "struct R<T>\n    T is Owned\n    let next: Array<S<Q<Wrap<T>>>>\nstruct Q<U>\n    U is Owned\n    let back: Array<S<R<U>>>\n", true, "Array<S<Q<Wrap<T>>>> | Array<S<R<U>>>", 0)]
+    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 3)]
+    [InlineData("rf3-nouse", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 3)]
+    [InlineData("regular", "struct R<T>\n    T is Owned\n    let next: Array<S<R<T>>>\n", true, "", 0)]
+    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 3)]
+    public void AnInstanceFamilyIsItsStoredTypesLimit(string id, string declarations, bool use, string limits, int unproven)
+    {
+        var c = CompilationTestHelper.ParseSuccess(Prelude + "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\n" + declarations +
+            "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\n" + (use ? "func use1(r: ref/R<i32>) -> ()\n    needOwned(r)\n" : string.Empty));
+        Assert.True(c.Bind().IsComplete == (limits.Length == 0 && unproven == 0), id);
+        c.Binding.ReportDiagnostics();
+        var records = TestDiagnostics.Of(c).ToArray();
+        Assert.Equal(limits, string.Join(" | ", records.Where(static x => x.Code == "Unsupported_Kd").Select(static x => x.Text).Order(StringComparer.Ordinal)));
+        Assert.Equal(unproven, records.Count(static x => x.Code == "UnprovenConstraint_Kd"));
+        Assert.Equal(records.Length, records.Count(static x => x.Code is "Unsupported_Kd" or "UnprovenConstraint_Kd"));
+    }
+
     // The closure of F5 (a) (DECISIONS BU-22): a projection of more than 64 steps (a conformance binding can lengthen a projection with
     // no projection link) makes its summary a site, which only yields the located Unsupported_Kd at its stored Type, never a verdict; a
     // shorter one is judged (each step is `Deep`, hence Owned, by SPEC 8.3.2's refinement row: R7-C2a1), and many short projections stay

@@ -16,6 +16,10 @@ public sealed partial class Binding
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
 
+    // The growth guard's cuts (RequestCapability). A component summary reads the count around the formation of a stored instance and
+    // answers a cut there with that stored Type's site (SummaryCapability). Removal: with the guard (PLAN G200).
+    private int growthCuts;
+
     /// <summary>Queries compiler-intrinsic Copy for a complete Type under lexical Constraints.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
@@ -303,6 +307,7 @@ public sealed partial class Binding
                     {
                         if (growing)
                         {
+                            this.growthCuts++;
                             return ConstraintProof.Unknown;
                         }
 
