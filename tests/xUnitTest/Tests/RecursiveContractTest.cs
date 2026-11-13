@@ -187,8 +187,8 @@ public sealed class RecursiveContractTest
     [InlineData("C2c2", "kc1-callable", "contract H\n    associate F\n    Self.(H).F is Callable<(i32) -> i32>\nfunc probe<T, U>(f: ref/U.(H).F) -> i32\n    U is T\n    T is H\n    return f(1)\n", "")]
     [InlineData("C2c2", "kc1n-callable", "contract H\n    associate F\nfunc probe<T, U>(f: ref/U.(H).F) -> i32\n    U is T\n    T is H\n    return f(1)\n", "NotCallable_Kd: return f(1)")]
     // R7-C2c2 (RP17 review B1, ruling 15): a constructed member of a class (`i32`, a struct, `Option<U>`) is no key's: its conformance is
-    // ResolveConformance's alone (SPEC 8.3.2's closed world), so `T is Mark` never reaches `i32` or `Leaf`, and a premise that contradicts
-    // the closed world stays its declaration's error; the consistent twins (the conformance holds) stay accepted.
+    // ResolveConformance's, so `T is Mark` never reaches `i32` or `Leaf`, and a premise that contradicts a Refuted one (SPEC 8.3.2's
+    // closed world) stays its declaration's error; the consistent twins (the conformance holds) stay accepted.
     [InlineData("C2c2", "d09p-prim", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark<i32>(x)\n", "NoApplicableOverload_Kd: needMark<i32>(x)")]
     [InlineData("C2c2", "d09q-priminf", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark(x)\n", "NoApplicableOverload_Kd: needMark(x)")]
     [InlineData("C2c2", "d09t-paraminf", Marks + "func f<T>(y: ref/T)\n    T is i32\n    T is Mark\n    needMark(y)\n", "NoApplicableOverload_Kd: needMark(y)")]
@@ -198,7 +198,10 @@ public sealed class RecursiveContractTest
     [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "UnprovenConstraint_Kd: needMark<Option<U>>(x)")]
     [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "UnprovenConstraint_Kd: needMark(y)")]
-    [InlineData("guard", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    // SPEC 8.2.3: `T is Copy` is evidence for the identical `Option<U>`, whose own Copy path is Unknown (not Refuted): valid. The
+    // implementation's limit (Binding.TypeIdentity.Keys' ClassKey): a premise is not yet read as evidence for a constructed member whose
+    // conformance is Unknown, so it is rejected, as on base, until R7-C2c2 c2-4 (the Middle's R2-C1, its N7 with r2-c2 and r2-c7).
+    [InlineData("c2-4", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "", Explicit = true)]
     [InlineData("guard", "d09s-primcopy", "func f<T>(x: i32) -> (i32, i32)\n    T is i32\n    T is Copy\n    return (x, x)\n", "")]
     [InlineData("guard", "d09r-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(x: ref/Leaf2)\n    T is Leaf2\n    T is Mark\n    needMark<Leaf2>(x)\n", "")]
     [InlineData("guard", "d09t-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(y: ref/T)\n    T is Leaf2\n    T is Mark\n    needMark(y)\n", "")]
