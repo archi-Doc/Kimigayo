@@ -116,24 +116,28 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
 
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
-    /// set; the MIR body's binders, whose resolved ones give its Semantics cases.</summary>
+    /// set; the MIR body's binders, which give its Semantics cases.</summary>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
     internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
-    /// <returns>The product of the resolved binders' admitted sets, saturated at the largest representable count.</returns>
+    /// <returns>The product of the binders' admitted sets, saturated at the largest representable count; 0 when one admits none (SPEC
+    /// 8.3.4: no case), read before any division; only Binding reads 0 (<c>CheckCaseBound</c>, a case adaptation's rows): it publishes no
+    /// part of a definition with no case, so a published body's count, which MIR reads, is at least 1.</returns>
     internal static long CaseProduct(IReadOnlyList<PairBinder> binders)
     {
         var product = 1L;
         for (var i = 0; i < binders.Count; i++)
         {
-            if (binders[i].Resolved)
+            var count = BitOperations.PopCount((uint)binders[i].Admitted);
+            if (count == 0)
             {
-                var count = BitOperations.PopCount((uint)binders[i].Admitted);
-                product = product > long.MaxValue / count ? long.MaxValue : product * count;
+                return 0;
             }
+
+            product = product > long.MaxValue / count ? long.MaxValue : product * count;
         }
 
         return product;
@@ -462,7 +466,7 @@ public sealed record BoundType
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
-        var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var closure = kind == BoundTypeKind.Closure;
@@ -642,8 +646,15 @@ public sealed record BoundType
     internal int Height => this.height;
 
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
-    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
+    /// annotated occurrence of it, an application <c>s/U</c> or an adaptation family (<see cref="IsPairLayer"/>); a Semantics case
+    /// substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    /// <summary>Gets a value indicating whether this Type is itself a pair layer (SPEC 13.5.5: its outer Semantics is a pair binder),
+    /// in each of its representations: the original <c>s/T</c> (a Parameter whose symbol is the pair's SemanticsTarget), an
+    /// application <c>s/U</c> and an adaptation family <c>p@s</c> (SemanticsAdaptation).</summary>
+    internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+        (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
     // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
     internal bool ContainsClosure => this.containsClosure;

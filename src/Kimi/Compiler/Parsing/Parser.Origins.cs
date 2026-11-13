@@ -79,10 +79,9 @@ public static partial class Parser
             {
                 reader.AddDiagnostic(DiagnosticCode.OriginRelationOperator_Kd);
                 cause = reader.Diagnostic.LastError;
-                // A misspelled relation operator is the cause; preserve the right operand for recovery.
+                // A misspelled relation operator, a comparison operator or `=`, is the cause; preserve the right operand for recovery.
                 // A missing operator before an Origin atom does not consume that atom.
-                if (reader.CurrentTokenKind is TokenKind.Equals or TokenKind.ExclamationEquals or
-                    TokenKind.LessThan or TokenKind.LessThanEquals or TokenKind.GreaterThan or TokenKind.GreaterThanEquals)
+                if (IsComparisonOperator(reader.CurrentTokenKind) || reader.CurrentTokenKind == TokenKind.Equals)
                 {
                     reader.Advance();
                 }

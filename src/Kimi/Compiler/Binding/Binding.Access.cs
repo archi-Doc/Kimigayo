@@ -116,8 +116,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) holds
-    // when one union of a's or b's chain has every atom included in U; the unions of a chain intersect.
+    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) must
+    // hold: every intersection of a's and b's unions is empty (atoms of two Kotonoha) or has an atom included in U (UnionCovered); the
+    // unions of a chain intersect.
     private bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
         foreach (var (level, union) in new AccessUnions(member, memberAccess))
@@ -131,21 +132,36 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 9.4.2: every intersection of Access(a) ∩ Access(b) is empty or holds an atom included in the union U that `access` gives at
+    // `level`. One union of a chain has every atom in U; or a and b belong to two Kotonoha and each chain has a union whose Derived atom
+    // is in U, so that every intersection with no atom in U takes a Kotonoha or Body atom of each and is empty.
     private bool UnionCovered(ModifierKind access, BindingSymbol level, BindingSymbol a, BindingSymbol b)
     {
+        var chains = 0;
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var (current, own) in new AccessUnions(pass == 0 ? a : b, null))
             {
-                if (this.UnionIncluded(own, current.Scope, access, level))
+                if (this.DerivedIncluded(own, current.Scope.Owner, access, level.Scope.Owner))
                 {
-                    return true;
+                    if (this.UnionIncluded(own, current.Scope, access, level))
+                    {
+                        return true;
+                    }
+
+                    chains |= 1 << pass;
                 }
             }
         }
 
-        return false;
+        return chains == 3 && !ReferenceEquals(a.Declaration.CodeContext.Kotonoha, b.Declaration.CodeContext.Kotonoha);
     }
+
+    // SPEC 9.4.2: the Derived(S) atom of the union `own` gives in `owner`, if it has one, is included in U: U holds Derived(C) and S is or
+    // derives from C. Derived(S) is empty unless S is an open struct.
+    private bool DerivedIncluded(ModifierKind own, Koto owner, ModifierKind access, Koto target)
+        => !(own is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && IsOpenStruct(owner)) ||
+            (access is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && IsOpenStruct(target) && this.DerivesFrom(owner.BoundSymbol, target.BoundSymbol!));
 
     // SPEC 9.4.1, 9.4.2: every atom of the union `own` gives at scope `at` (a declaration's scope, or a use's read as private: a point of
     // Body(its Container)) is included in the union `access` gives at `level`; both are single unions (AccessUnions). A level at the root
@@ -181,9 +197,7 @@ public sealed partial class Binding
             }
         }
 
-        // Derived(S) of an open S: included only in Derived(C) for S that is or derives from C.
-        var ownDerived = owner is not DeclarationContainerKoto { IsRoot: true } && own is ModifierKind.Protected or ModifierKind.ProtectedOrInternal;
-        return !(ownDerived && IsOpenStruct(owner)) || (derived && this.DerivesFrom(owner.BoundSymbol, target.BoundSymbol!));
+        return this.DerivedIncluded(own, owner, access, target);
     }
 
     private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)

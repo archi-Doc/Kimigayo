@@ -76,7 +76,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.UnresolvedPart(declaration) ?? (KeepsSignature(declaration) ? null : declaration);
+        return this.UnresolvedPart(declaration) ?? (KeepsSignature(declaration) || this.KeepsPremiseErrorContext(declaration) ? null : declaration);
     }
 
     // The declaration contexts a Type's parts name: whether one is in a failed context and whether one is not yet resolved, each distinct

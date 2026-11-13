@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // after ResetPass, before any header, Type or expression is bound. One part enters later: a try propagation's arms are deferred
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
-// - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings), its scopes
+// - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings; an effect item's
+//   selector and Name, which are not indexed, have their HIR rows reset by RowReset), its scopes
 //   created and its symbols declared (containers, functions, parameters, locals, generic and length parameters, enum cases,
 //   pattern bindings and guard candidates); a test function the build does not include is resolved without indexing its signature
 //   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes; a valid one is still declared, so its
@@ -76,6 +77,19 @@ public sealed partial class Binding
         for (var i = 0; i < libraryRoot.Members.Count; i++)
         {
             this.indexer.Visit(libraryRoot.Members[i]);
+        }
+    }
+
+    // Resets the rows of a subtree the indexer does not index, so no lookup a pass published on it (NamePath) is read by the next.
+    // Temporary (PLAN G799): removed when R7-D2 c replaces this walk with SyntaxTable's pre-order, which reaches every node.
+    private sealed class RowReset : KotoVisitor
+    {
+        internal static readonly RowReset Instance = new();
+
+        public override void Visit(Koto node)
+        {
+            HirTables.Reset(node);
+            node.VisitChildren(this);
         }
     }
 
@@ -309,7 +323,8 @@ public sealed partial class Binding
             if (node is EffectBoundKoto)
             {
                 // SPEC 8.11.1: the selector and Name of an effect item designate a Contract and its requirement; they are
-                // resolved with the item, never as expressions.
+                // resolved with the item, never as expressions, so they are reset here without being indexed (PLAN G799).
+                node.VisitChildren(RowReset.Instance);
                 binding.nodes.Add(node);
                 return;
             }

@@ -92,12 +92,14 @@ public sealed partial class Binding
     // its conformance declaration bound before the table filled, which is an analysis limit: a located Unsupported_Kd that stays
     // unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps its missing-Type
     // record, which VerifyEarlyReads may read again. A qualified projection searches its Contract, so it finds an existing member before
-    // registration.
+    // registration. A nested Type selected over a declared Type before registration (its 9.7.3 judgment, AlsoAssociated, found no
+    // candidates) is judged again by AlsoAssociated: one that resolves both ways now bound its users on the nested Type, the same limit.
     private void VerifyEarlyProjections()
     {
         foreach (var (use, type, scope, name, qualifier) in this.earlyProjections)
         {
-            if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
+            if (HirTables.LookupOf(use) == PathEnd.Selected ? this.AlsoAssociated(type, name, use, scope) :
+                use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
             {
                 use.BindingFailure = BindingFailure.None;
                 this.prerequisites.Remove(use);

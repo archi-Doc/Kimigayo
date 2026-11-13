@@ -309,8 +309,8 @@ internal group Storage
 
     // SPEC 22.1, 22.2.1 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
-    // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
-    // entry conformances they implement.
+    // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public; the entry
+    // conformances' witnesses are FixedArrayEntries, which no lookup exposes.
     internal group FixedArray
         /// Borrows the complete contiguous storage without copying elements.
         public func slice<E, length N>(self: ref/[N of E] during source) -> Slice<E> during source
@@ -327,20 +327,6 @@ internal group Storage
         public func sliceUniq<E, length N, R>(self: uniq/[N of E] during source, range: R) -> UniqSlice<E> during source
             R is PositionRange
             return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
-
-        /// Starts a shared enumeration of the elements in index order.
-        public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
-            return ArrayIterator<E>.init(borrowStorage(self))
-
-        /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
-        public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
-            return ArrayUniqIterator<E>.init(borrowStorageUniq(self))
-
-        /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
-        /// with the iterator in reverse index order (SPEC 4.9.7).
-        public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
-            return FixedArrayOwningIterator<E, [N of E]>.init(
-                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
 
         /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
         public func tryGet<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<ref/E during source>
@@ -380,6 +366,23 @@ internal group Storage
             P is Position
             Q is Position
             return Storage.tryGetPairUniq(borrowStorageUniq(self), first: first, second: second)
+
+    // SPEC 22.1, 22.2.1, 14.6.2 (PLAN G32, G776): the witnesses of the built-in fixed array's entry conformances (Iterable,
+    // UniqIterable, IntoIterable), which the witness table's FixedArrayEntries row selects; a fixed array gains no members from them.
+    internal group FixedArrayEntries
+        /// Starts a shared enumeration of the elements in index order.
+        public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
+            return ArrayIterator<E>.init(borrowStorage(self))
+
+        /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
+        public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
+            return ArrayUniqIterator<E>.init(borrowStorageUniq(self))
+
+        /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
+        /// with the iterator in reverse index order (SPEC 4.9.7).
+        public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
+            return FixedArrayOwningIterator<E, [N of E]>.init(
+                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
 
     /// The one component of an `Array<T>`, under IMPL 21.1.3's Handles, reached by the raw conversion of SPEC 5.4.
     /// `data` states `self` because the Array owns the storage it addresses (SPEC 5.7).

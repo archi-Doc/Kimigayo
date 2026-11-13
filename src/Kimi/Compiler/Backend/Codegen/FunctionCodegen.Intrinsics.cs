@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Backend;
 // (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
+    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): Text.writer's two.
 
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {

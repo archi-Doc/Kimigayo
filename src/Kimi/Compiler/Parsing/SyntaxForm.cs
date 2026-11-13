@@ -275,4 +275,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>An effect item in a body outside a function's leading region.</summary>
     EffectItem,
+
+    /// <summary>A specialization outside the source root and a group, struct or enum body: in an executable body or a Contract (SPEC 8.13.1, F.6).</summary>
+    SpecializationDeclaration,
 }

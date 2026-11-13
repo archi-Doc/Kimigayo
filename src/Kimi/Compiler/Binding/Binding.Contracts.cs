@@ -9,7 +9,6 @@ public sealed partial class Binding
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
-    private readonly Dictionary<(BoundType Type, BindingScope Scope), Koto> projectionForms = new(); // ProjectionUseOf
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -148,13 +147,13 @@ public sealed partial class Binding
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
-        this.projectionForms.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();
         this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
+        this.memberSides.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
             group.Active = false;
@@ -280,18 +279,14 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.3: a generic parent is never deferred; its arity and its arguments are the former's (BindContractReference).
             var generic = ContractApplication(name);
             var parentPath = this.NamePath(name, this.scopes[contract]);
             var parent = parentPath.Symbol;
-            if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
+            if (parent is null && this.PendingReference(syntax, null, this.scopes[contract]))
             {
-                this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax))
-                {
-                    shape.HasUnresolvedParents = true;
-                    continue;
-                }
+                // A missing parent, generic or not, is pending (BU-151, O-216 (a)): a later source may declare it.
+                shape.HasUnresolvedParents = true;
+                continue;
             }
 
             if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
@@ -318,6 +313,12 @@ public sealed partial class Binding
             // (contract UniqIndexable<Key>: Indexable<Key>).
             var selection = parent;
             parent = this.BindContractReference(name, selection, this.scopes[contract]);
+            if (parent is null && this.PendingReference(syntax, selection, this.scopes[contract]))
+            {
+                shape.HasUnresolvedParents = true; // A Type argument is missing (SPEC 9.7.1): pending as a missing parent is.
+                continue;
+            }
+
             if (parent is null)
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
@@ -365,9 +366,10 @@ public sealed partial class Binding
                 // is one of the Contract's clauses, inherited and checked as they are.
                 shape.ClauseStorage.Add(specification);
             }
-            else if (member is not EffectBoundKoto)
+            else if (member is not EffectBoundKoto && member is not FunctionKoto { Placement: not null })
             {
-                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
+                // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
@@ -432,12 +434,10 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison conformances of
-        // its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat row, for an
-        // abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
-        var premise = contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format
-            or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
+        // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
+        // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
+        // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
+        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
 
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
