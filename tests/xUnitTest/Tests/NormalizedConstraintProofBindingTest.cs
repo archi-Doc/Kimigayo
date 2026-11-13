@@ -10,6 +10,70 @@ public class NormalizedConstraintProofBindingTest
 {
     private const string Head = "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n";
 
+    private const string Trees = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n" +
+        "contract K\n    associate X\n    Self.(K).X is i32\n";
+
+    // R7-C2e2-1's valid twins: `Moved`, a projection's body use, whose fill writes its scope's premises between requests (the view's
+    // entry is rebuilt at the new serial); `Derived`, readings from a derived identity fact, which are not kept (the entry stays the
+    // request's).
+    private const string Moved = "func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n    T is CopyTree\n" +
+        "    let x: T.(Tree).Child = value\n    let y = (x, x)\n    return (x, x)\n";
+
+    private const string Derived = "func both<T, U>(a: U.(Tree).Child, b: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child, U.(Tree).Child, " +
+        "U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n    T is U\n    T is CopyTree\n    T is K\n    return (a, a, b, b)\n";
+
+    // DECISIONS R7-C2e2-1: Closure(view) forms a view's index once per view value, not once per request. n Copy requests in one view of
+    // n written premises read one entry, so each added premise adds a fact to each of a few views' entries; a per-request index walks the
+    // n facts once per request (4,800 more facts from 8 to 16 premises). No projection: a fill moves the view at each use.
+    [Fact]
+    public void AViewsIndexIsFormedOncePerViewNotPerRequest()
+    {
+        var (small, large) = (Work(8), Work(16));
+        Assert.True(large - small <= 16 * 8, $"{small} at 8, {large} at 16");
+
+        static int Work(int n)
+        {
+            var range = Enumerable.Range(0, n);
+            var parameters = string.Join(", ", range.Select(static i => $"T{i}"));
+            var values = string.Join(", ", range.Select(static i => $"v{i}: T{i}"));
+            var results = string.Join(", ", range.Select(static i => $"T{i}, T{i}"));
+            var premises = string.Concat(range.Select(static i => $"    T{i} is CopyTree\n"));
+            var copies = string.Join(", ", range.Select(static i => $"v{i}, v{i}"));
+            var c = MinimalEmissionTest.Analyze(Trees + $"func f<{parameters}>({values}) -> ({results})\n{premises}    return ({copies})\n" +
+                "public func main() -> ()\n    return\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
+    // DECISIONS R7-C2e2-1: an entry is its view's at the serial it was formed at (Moved), and Kept only when every reading it formed was
+    // kept (Derived). Each with its invalid twin: `T is Tree` supplies no Copy.
+    [Theory]
+    [InlineData(Moved, "clean")]
+    [InlineData(Derived, "clean")]
+    [InlineData(Moved, "invalid")]
+    [InlineData(Derived, "invalid")]
+    public void AViewsIndexIsTheViewsAtItsSerialAndCompletion(string function, string records)
+    {
+        var twin = records == "clean" ? function : function.Replace("T is CopyTree", "T is Tree", StringComparison.Ordinal);
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(Trees + twin + "public func main() => ()\n") == "clean" ? "clean" : "invalid");
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindThatRebuildsAViewsIndexAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(Trees + Moved + Derived + "public func main() => ()\n");
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("The rebind failed.");
+            }
+        }));
+    }
+
     [Theory]
     [InlineData("Source.(Origin).Item", "i32", ConstraintProof.Proven)]
     [InlineData("i32", "Source.(Origin).Item", ConstraintProof.Proven)]
