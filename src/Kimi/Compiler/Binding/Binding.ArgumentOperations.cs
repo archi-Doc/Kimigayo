@@ -15,6 +15,11 @@ public enum ArgumentAdaptation : byte
 
     // SPEC 10.2: two erasures are equal; erasure and any other row are incomparable, not numerically ranked.
     Erasure,
+
+    // SPEC 10.2.1, 10.4 step 1 (PLAN G814; O-240 (A)): a position inside a literal that a slot no evidence binds takes whole; its fit is
+    // judged after selection, so step 1 skips it (BetterCandidate). The placeholder keeps an open fit's count a closed fit's (DECISIONS
+    // BU-164). Only a position class (Positions), never an operation's Adaptation.
+    Unjudged,
 }
 
 public enum ArgumentOperationKind : byte

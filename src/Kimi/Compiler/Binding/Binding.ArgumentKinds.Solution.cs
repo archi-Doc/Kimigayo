@@ -110,6 +110,17 @@ public sealed partial class Binding
         internal readonly BoundType? Type(BoundType pattern)
             => this.Binding.CallType(pattern, this.Binder, this.Types, this.Scope, this.Self, this.Origins, this.Inputs, this.DeclaringType, this.Lengths);
 
+        // SPEC 10.8, 10.2.1 (PLAN G814): the pattern under the candidate's open substitution (CallSubstitution.Open): the solution
+        // substituted and each slot no evidence binds kept as itself, so the closed fit reads an open argument at it (Binding.TakenWhole);
+        // null only on a broken contract (FitOpenArgument). CallType's input Origins are not narrowed here: no judgment reads this Type's.
+        internal readonly BoundType? OpenType(BoundType pattern)
+        {
+            var binding = this.Binding;
+            var member = this.Self is not null ? binding.ContractType(pattern, this.Scope, this.Self) : pattern;
+            return binding.Substitute(member, this.Substitution(this.Types) with { Open = true }) is { } open
+                ? binding.ContractType(open, this.Scope, this.Self) : null;
+        }
+
         // Whether every own slot is bound.
         internal readonly bool IsComplete()
         {

@@ -14,6 +14,10 @@ public sealed partial class Binding
     // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
     private readonly List<ArgumentAdaptation> positionClasses = new();
 
+    // SPEC 10.8 (PLAN G814): the owner of the slots of the candidate whose open argument the fit is fitting (FitOpenArgument), and its
+    // slots no evidence binds, which take a part whole (TakenWhole); no owner outside such a fit.
+    private (Koto? Owner, SlotSet Slots) openFit;
+
     // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
     private Dictionary<Koto, PendingJudgment>? pendingJudgments;
 
@@ -201,7 +205,9 @@ public sealed partial class Binding
     // SPEC 10.4: this comparison reads explicit source arguments only; receiver acquisition is common to the group. Step 1 compares each
     // argument's class and each element position's (Positions). Two fits of one argument walk its syntax alike, so they record the same
     // positions, unequal counts being a broken contract (InternalInvariant_Kd at the argument); a candidate that leaves the argument open
-    // (no Type) records none and is compared at the argument only (step 2 then makes the pair incomparable).
+    // records the positions its pattern defines and an Unjudged one for each position under a slot that takes a literal whole
+    // (FitOpenArgument), which step 1 skips (SPEC 10.2.1, O-240 (A)); a part without positions (a failed or waiting one) is compared at
+    // the argument only. An open parameter keeps no Type, so step 2 makes such a pair incomparable.
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
     {
@@ -230,6 +236,11 @@ public sealed partial class Binding
 
             for (var p = 0; p < x.Length; p++)
             {
+                if (x[p] == ArgumentAdaptation.Unjudged || y[p] == ArgumentAdaptation.Unjudged)
+                {
+                    continue; // SPEC 10.2.1 (O-240 (A)): judged after selection, not compared before it.
+                }
+
                 if (!CompareClasses(x[p], y[p], ref better, ref worse))
                 {
                     return false;

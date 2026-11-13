@@ -32,6 +32,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string NestedTwins = "func fv(p: (ref/(i32, i32) during a, i32)) -> i32 => p.1\nfunc fw(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => p.1\nfunc fw2(p: (ref/(ref/i32 during a, i32) during a, i32), w: i32) -> i32 => p.1\nstruct S2\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: ((i32, i32), i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nstruct P3\n    public var k: i32\n    public init(p: ((i32, i32), i32)) => self.k = 0\n    public init(p: (ref/(ref/i32 during a, i32) during a, i32)) => self.k = 1\nfunc fgy<T>(p: (ref/(T, i32) during a, i32)) -> i32 => 0\nfunc fgy(p: ((i32, i32), i32)) -> bool => true\nfunc fa4(x: Array<ref/[2 of ref/i32 during a] during a>) -> i32 => 0\nfunc fa4(x: Array<[2 of i32]>) -> bool => true\nfunc fgx<T>(p: (ref/T during a, i32)) -> i32 => 0\nfunc fgx(p: ((i32, i32), i32)) -> bool => true\nfunc fa3(x: Array<ref/[2 of i32] during a>) -> i32 => 0\nfunc fa3(x: Array<[2 of i32]>) -> bool => true\nfunc fl3(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fl3(p: ([2 of i32], i32)) -> bool => true\nfunc fgu<T>(p: (uniq/T during a, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
 
+    private const string OpenSlots = "func fk<T>(p: (T, i32)) -> bool => true\nfunc fk(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc fo<T>(p: T) -> bool => true\nfunc fo(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fa<T>(p: [2 of T]) -> bool => true\nfunc fa(p: [2 of (ref/i32 during a, i32)]) -> i32 => 0\nfunc fl<T>(p: ref/T) -> bool => true\nfunc fl(p: ref/i32) -> i32 => 0\nfunc fm<T>(p: ref/T) -> bool => true\nfunc fm(p: ref/(ref/i32 during a, i32)) -> i32 => 0\nfunc fg2<T>(p: (T, i32)) -> bool => true\nfunc fg2<U>(p: ((U, i32), i32)) -> i32 => 0\nfunc fs<T>(p: (T, i32)) -> bool => true\nfunc fs(p: ((i32, i32), i32)) -> i32 => 0\nfunc fw<T>(p: (T, i32)) -> bool => true\nfunc fw(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fe<T>(p: ((T, i32), i32)) -> bool => true\nfunc fe(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc fb<T>(p: (T, ref/i32 during a)) -> bool => true\nfunc fb(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc h<T>(p: (T, i32), q: ref/i32) -> bool => true\nfunc h(p: ((ref/i32 during a, i32), i32), q: ref/(ref/i32 during a) during a) -> i32 => 0\nfunc h2<T>(p: T, q: ref/i32) -> bool => true\nfunc h2(p: (i32, i32), q: ref/(ref/i32 during a) during a) -> i32 => 0\nfunc fz<T>(p: T) -> bool => true\nfunc fz(p: ((i32) -> i32, i32)) -> i32 => 0\nfunc fd2<T>(p: (T, i32)) -> bool => true\nfunc fd2(p: ((ref/(i32, i32) during a, i32), i32)) -> i32 => 0\nfunc fsh<T>(p: ((T, i32, i32), i32)) -> bool => true\nfunc fsh(p: ((i32, i32), i32)) -> i32 => 0\nfunc fx3<T>(p: ((T, i32), i32)) -> bool => true\nfunc fx3(p: ([2 of i32], i32)) -> i32 => 0\nfunc fx4<T>(p: ([3 of T], i32)) -> bool => true\nfunc fx4(p: ([2 of i32], i32)) -> i32 => 0\nfunc fx5<T>(p: (Option<T>, i32)) -> bool => true\nfunc fx5(p: ((i32, i32), i32)) -> i32 => 0\nfunc fx7<T>(p: (Option<T>, i32)) -> bool => true\nfunc fx7(p: (ref/(i32, i32) during a, i32)) -> i32 => 0\nfunc fu7<T>(p: (uniq/T during a, i32)) -> bool => true\nfunc fu7(p: ((i32, i32), i32)) -> i32 => 0\nfunc fu<T>(p: T, q: ref/(ref/i32 during a) during a, r: ref/i32) -> bool => true\nfunc fu(p: (ref/i32 during a, i32), q: ref/i32, r: ref/(ref/i32 during a) during a) -> i32 => 0\nfunc fz2<T>(p: T, q: ref/i32) -> bool => true\nfunc fz2(p: ((i32) -> i32, i32), q: ref/(ref/i32 during a) during a) -> i32 => 0\nfunc ff<T>(p: ref/[2 of T]) -> bool => true\nfunc ff(p: ref/[2 of i64]) -> i32 => 0\nfunc fh3<T>(p: ref/[2 of (T, i64)]) -> bool => true\nfunc fh3(p: ref/[2 of (i32, i32)]) -> i32 => 0\nfunc fa6<T>(p: (Array<T>, i32)) -> bool => true\nfunc fa6(p: ([2 of i32], i32)) -> i32 => 0\nfunc fnl<length N, T>(p: [N of T]) -> bool => true\nfunc fnl(p: [2 of i64]) -> i32 => 0\nfunc fj2<T>(p: (Option<T>, i32)) -> bool => true\nfunc fj2(p: ((i32, i32), i32)) -> i32 => 0\nfunc fmx<T>(p: Option<T>) -> bool => true\nfunc fmx(p: Range<i32, i32>) -> i32 => 0\nfunc fq<T>(p: T) -> bool => true\nfunc fq(p: (i32, i32)) -> i32 => 0\nfunc fmr<T>(p: ref/T) -> bool => true\nfunc fmr(p: ref/(i32, i32)) -> i32 => 0\nfunc fd<T>(p: ((T, i32), i32)) -> bool => true\nfunc fd(p: ((i32, i32), i32)) -> i32 => 0\nfunc f3<T>(p: (T, i32)) -> bool => true\nfunc f3(p: (i32, i32)) -> i32 => 0\nfunc f3(p: (i64, i32)) -> i64 => 0\nfunc fj3<T>(p: Option<T>) -> bool => true\nfunc fj3(p: (i32, i32)) -> i32 => 0\nfunc g8<T>(p: (T, i32), q: ref/i32) -> bool => true\nfunc g8(p: ((ref/(i32, i32) during a, i32), i32), q: ref/(ref/i32 during a) during a) -> i32 => 0\nfunc fs8<s/T>(p: (s/i32 during a, bool)) -> bool => true\nfunc fs8(p: (i32, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32, pp: ref/(ref/i32 during a)) -> i32\n";
+
     private const string FixedSlots = "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\nstruct Tool\n    public var id: i32\n    public init(id: i32) => self.id = id\n    public func pick<U>(self: ref/Self, v: U) -> U => v@move\nfunc identity<U>(value: U) -> U => value@move\nfunc hg<U>(v: U) -> U\n    U is PrimitiveInteger\n    return v\nfunc same<U>(a: U, b: U) -> U => a@move\nfunc two<A, B>(a: A, b: B) -> A => a@move\nfunc look<U>(v: ref/U) -> () => ()\n";
 
     private const string FixedSlotForms = FixedSlots + "struct Pair<A>\n    public var a: A\n    public init(a: A) => self.a = a@move\n    public func with<B>(self: ref/Self, x: A, y: B) -> B => y@move\nfunc keep<s/T>(x: s/T) -> () => ()\nfunc lk<length N>(v: ref/[N of i32]) -> i32 => 0\nfunc ln<length N, T>(v: ref/[N of T], w: T) -> T => w@move\nfunc app<U>(v: U, f: (U) -> U) -> U => v@move\nfunc dflt<U>(v: U, w: i32 = 0) -> U => v@move\n";
@@ -438,9 +440,65 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G746", "m2n", NestedTwins + "    let s = P3.init(((n, 1), 2))\n    return s.k\n", "AmbiguousBinding_Kd: let s = P3.init(((n, 1), 2))")]
     [InlineData("G746", "m3n", NestedTwins + "    let q = fgy(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fgy(((n, 1), 2))")]
     [InlineData("G746", "m4n", NestedTwins + "    let q = fa4([[n, m], [n, m]])\n    return 0\n", "AmbiguousBinding_Kd: let q = fa4([[n, m], [n, m]])")]
-    [InlineData("guard", "m5n", NestedTwins + "    let q = fgu(((1, 2), 3))\n    return q\n", "UnboundTypeArgument_Kd: let q = fgu(((1, 2), 3))")]
+    [InlineData("guard", "m5n", NestedTwins + "    let q = fgu(((1, 2), 3))\n    return q\n", "NoApplicableOverload_Kd: let q = fgu(((1, 2), 3))")]
     public void ANestedLiteralFitsItsPositionAsAnArgument(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.4 step 1, 10.5.1, 10.2.1, 10.8 (PLAN G814; O-240 (A)): an argument a candidate leaves open goes through the closed fit at
+    // its open Type (the solution substituted, each slot no evidence binds kept as itself), so every rule of the fit applies there and a
+    // misfit makes the candidate inapplicable; only a part such a slot takes whole is judged after selection, its positions skipped by
+    // step 1. Positions the pattern defines rank: a Literal at T by value beats a borrowed temporary (s1, s2, s5), a closed position
+    // decides (k7, r1, r2, a2, d2). The shape rule holds (sh1, sh2, sh4, sh5, uq2; sh3 by length; fa6, n3 tie), as do the ref/U gate for a
+    // fill (fr3; fr1 where the slot takes the element), a join's shape (jo1, jo2), a mixed range's (rg1) and a position beside an `s/U`
+    // application whose selector is unbound (n1). Where the slot takes the literal and the rest ties, step 2 makes the pair incomparable:
+    // the direct, join, element, root, array, ref/, two-generic and literal-only forms (o1n-o9n; o6n is b4), the reviewer's b2, b3, b5,
+    // b6, b7 and c1 (three candidates), u1, and u2 (k20) under (A); a1's opposing advantages. The generic is still selected where every
+    // element is evidence (o1), the non-generic where the evidence ties (o2).
+    [Theory]
+    [InlineData("sh1", OpenSlots + "    let q = fsh(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("sh2", OpenSlots + "    let q = fx3(([1, 2], 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("sh3", OpenSlots + "    let q = fx4(([1, 2], 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("sh4", OpenSlots + "    let q = fx5(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("sh5", OpenSlots + "    let q = fx7(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("uq2", OpenSlots + "    let q = fu7(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("a1", OpenSlots + "    let q = fu((1, 2), pp, pp)\n    return 0\n", "AmbiguousBinding_Kd: let q = fu((1, 2), pp, pp)")]
+    [InlineData("a2", OpenSlots + "    let q = fz2((func (x) => x, 1), pp)\n    return 0\n", "")]
+    [InlineData("fr1", OpenSlots + "    let q = ff([2 of 1])\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("fr3", OpenSlots + "    let q = fh3([2 of (1, 2)])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("fa6", OpenSlots + "    let q = fa6(([1, 2], 3))\n    return 0\n", "AmbiguousBinding_Kd: let q = fa6(([1, 2], 3))")]
+    [InlineData("n3", OpenSlots + "    let q = fnl([1, 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fnl([1, 2])")]
+    [InlineData("jo1", OpenSlots + "    let q = fj2((if c => (1, 2) else => (3, 4), 5))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("rg1", OpenSlots + "    let q = fmx(1..v)\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("jo2", OpenSlots + "    let q = fj3(if c => (1, 2) else => (3, 4))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("d2", OpenSlots + "    let q = g8((((1, 2), 3), 4), pp)\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("n1", OpenSlots + "    let q = fs8((1, 2))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("b2", OpenSlots + "    let q = fq((1, v))\n    return 0\n", "AmbiguousBinding_Kd: let q = fq((1, v))")]
+    [InlineData("b3", OpenSlots + "    let q = fq(if c => (1, v) else => (2, v))\n    return 0\n", "AmbiguousBinding_Kd: let q = fq(if c => (1, v) else => (2, v))")]
+    [InlineData("b5", OpenSlots + "    let q = fmr((1, v))\n    return 0\n", "AmbiguousBinding_Kd: let q = fmr((1, v))")]
+    [InlineData("b6", OpenSlots + "    let q = fd(((1, v), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fd(((1, v), 2))")]
+    [InlineData("b7", OpenSlots + "    let q = fl(if c => 1 else => 2)\n    return 0\n", "AmbiguousBinding_Kd: let q = fl(if c => 1 else => 2)")]
+    [InlineData("c1", OpenSlots + "    let q = f3((1, v))\n    return 0\n", "AmbiguousBinding_Kd: let q = f3((1, v))")]
+    [InlineData("o1", OpenSlots + "    let q = fk(((n, n), 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("s1", OpenSlots + "    let q = fw((1, v))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("s2", OpenSlots + "    let q = fw((1, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("s5", OpenSlots + "    let q = fe(((1, v), 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("k7", OpenSlots + "    let q = fb(((n, 1), v))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("r1", OpenSlots + "    let q = h(((n, 1), 2), pp)\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("r2", OpenSlots + "    let q = h2((1, v), pp)\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("u1", OpenSlots + "    let q = fz((func (x) => x, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fz((func (x) => x, 1))")]
+    [InlineData("u2", OpenSlots + "    let q = fd2((((1, 2), 3), 4))\n    return 0\n", "AmbiguousBinding_Kd: let q = fd2((((1, 2), 3), 4))")]
+    [InlineData("o2", OpenSlots + "    let q = fk(((n, 1@i32), 2))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("o1n", OpenSlots + "    let q = fk(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk(((n, 1), 2))")]
+    [InlineData("o2n", OpenSlots + "    let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))")]
+    [InlineData("o3n", OpenSlots + "    let q = fk((if c => (n, 1) else => (m, 2), v))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk((if c => (n, 1) else => (m, 2), v))")]
+    [InlineData("o4n", OpenSlots + "    let q = fo((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fo((n, 1))")]
+    [InlineData("o5n", OpenSlots + "    let q = fa([(n, 1), (m, 2)])\n    return 0\n", "AmbiguousBinding_Kd: let q = fa([(n, 1), (m, 2)])")]
+    [InlineData("o6n", OpenSlots + "    let q = fl(1)\n    return 0\n", "AmbiguousBinding_Kd: let q = fl(1)")]
+    [InlineData("o7n", OpenSlots + "    let q = fm((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fm((n, 1))")]
+    [InlineData("o8n", OpenSlots + "    let q = fg2(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fg2(((n, 1), 2))")]
+    [InlineData("o9n", OpenSlots + "    let q = fs(((1, 2), 3))\n    return 0\n", "AmbiguousBinding_Kd: let q = fs(((1, 2), 3))")]
+    public void AnOpenSlotRanksTheArgumentByItsOwnFit(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
 
     // These rows pin a temporary record, not a SPEC verdict (DECISIONS BU-156): each program is valid (SPEC 14.9.2 step 2: a source's fit to the
     // common Type is never a Type mismatch), but the step-2 Type keeps one typed source's own Origins (PLAN G443), so a source that takes it late

@@ -265,7 +265,8 @@ public sealed partial class Binding
     {
         if (expression.Parameter is { } parameter)
         {
-            return ReferenceEquals(parameter.Scope.Owner, substitution.SlotOwner) ? substitution.Lengths[parameter.Slot] : expression;
+            return !ReferenceEquals(parameter.Scope.Owner, substitution.SlotOwner) ? expression
+                : substitution.Lengths[parameter.Slot] ?? (substitution.Open ? expression : null);
         }
 
         if (expression.IsConstant)

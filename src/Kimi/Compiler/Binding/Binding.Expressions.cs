@@ -181,6 +181,11 @@ public sealed partial class Binding
 
     private bool FitsInputLiteral(Koto node, BoundType type, BindingScope scope)
     {
+        if (this.TakenWhole(type))
+        {
+            return true; // SPEC 10.8, 10.2.1 (PLAN G814): an open slot takes the literal; its fit is judged after selection.
+        }
+
         node = KotoHelper.UnwrapParentheses(node);
         if ((IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node)) && node.BoundType is null)
         {

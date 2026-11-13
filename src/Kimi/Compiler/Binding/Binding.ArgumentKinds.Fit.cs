@@ -6,6 +6,25 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.2.2 (Literal fitting), 10.2 row 2: a literal value's class at `type`: fitted by value, or at ref/U an owner temporary
+    // materialized and shared-borrowed, whose borrow's class applies.
+    private static ArgumentAdaptation LiteralFitting(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal;
+
+    // SPEC 4.3, 10.5.1: the one shape rule of a call argument's Tuple or array literal at a value Type or pattern: a Tuple literal fits a
+    // Tuple of its arity; an array literal the fixed array of exactly its length (a fill: of its count), or the owned Array (not a fill).
+    private static bool LiteralShapeAt(Koto literal, BoundType expected) => literal switch
+    {
+        TupleLiteralKoto tuple => TupleShapeAt(tuple, expected),
+        ArrayLiteralKoto array => expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
+            (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
+            (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
+                array.FillCount is { } count && (count.IsConstant
+                    ? expected.LengthExpression is null && expected.Length == count.Value
+                    : ReferenceEquals(expected.LengthExpression, count)))),
+        _ => false,
+    };
+
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
     // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
@@ -27,6 +46,8 @@ public sealed partial class Binding
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
                 operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
+            case var _ when this.TakenWhole(type):
+                return this.FitTakenWhole(part, node, type, out operation);
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
                 {
@@ -55,6 +76,76 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.8, 10.4 step 1 (PLAN G814; O-240 (A)): an argument at a parameter pattern that holds slots no evidence binds goes through
+    // the closed fit itself at its open Type (SlotSolution.OpenType: the solution substituted, those slots kept), so every rule of the fit
+    // applies and only a part such a slot takes whole is judged after selection (TakenWhole). The operation keeps no Type, so step 2
+    // finds the open parameter identical to none (SPEC 10.8). The open Type keeps every unbound own slot, an `s/U` application's
+    // selector included, so only a broken contract leaves it unformed (InternalInvariant_Kd).
+    private CandidateApplicability FitOpenArgument(
+        Koto argument, BoundType pattern, in SlotSolution solution, SlotSet unbound, BindingScope scope, Koto use, out BoundArgumentOperation operation)
+    {
+        var saved = this.openFit;
+        this.openFit = (solution.SlotOwner, unbound);
+        try
+        {
+            var open = solution.OpenType(pattern) ?? throw new InvalidOperationException("An open substitution forms every pattern (InternalInvariant).");
+            var fit = this.FitArgument(argument, open, scope, use, out operation);
+            operation = operation with { SourceType = null, ParameterType = null, AdaptedType = null };
+            return fit;
+        }
+        finally
+        {
+            this.openFit = saved;
+        }
+    }
+
+    // SPEC 10.8, 10.2.1 (PLAN G814; O-240 (A)): while a candidate's open argument is fitted at its open Type (SlotSolution.OpenType), whether
+    // `type`, or the referent of `ref/type`, is one of the candidate's slots that no evidence binds, directly, as an `s/U` selector or a
+    // target projection, or under an associated projection or a Function Type (SPEC 10.8: call-signature matching, not the fit, matches the
+    // parts holding the slot): the slot takes the part there whole, and its fits are judged after selection.
+    private bool TakenWhole(BoundType type)
+    {
+        if (this.openFit.Owner is not { } owner)
+        {
+            return false;
+        }
+
+        var target = LiteralInputType(type);
+        return (OwnSlot(target, owner) is >= 0 and var slot && this.openFit.Slots.Contains(slot)) ||
+            (target.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.Function && MentionsSlots(target, owner, this.openFit.Slots));
+    }
+
+    // SPEC 10.8, 10.2.1, 10.4 step 1 (PLAN G814; O-240 (A)): a part that an open slot takes whole fits it before selection, with no
+    // position compared there: each position a Tuple or array literal holds is Unjudged (AddUnjudged), so its count is a closed fit's
+    // (DECISIONS BU-164). Its own class is its row's at the slot: Literal fitting for a literal kind (by value, or a borrowed temporary at
+    // ref/), an erasure for a waiting function at a Function Type, else Exact.
+    private CandidateApplicability FitTakenWhole(Koto part, Koto node, BoundType type, out BoundArgumentOperation operation)
+    {
+        var first = this.positionClasses.Count;
+        this.AddUnjudged(node);
+        var adaptation = this.KindOf(node) is PartKind.Literal or PartKind.Aggregate or PartKind.Join ? LiteralFitting(type)
+            : type.Kind == BoundTypeKind.Function && this.IsWaitingCallable(node) ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+        operation = new(part, null, type, ArgumentOperationKind.Value, adaptation, Positions: first..this.positionClasses.Count);
+        return CandidateApplicability.Applicable;
+    }
+
+    // SPEC 10.2.1, 10.4 step 1: the positions a Tuple or array literal holds, in a closed fit's order (each element's own positions, then
+    // the element; a fill's elements are none), as Unjudged.
+    private void AddUnjudged(Koto literal)
+    {
+        var elements = literal switch
+        {
+            TupleLiteralKoto tuple => tuple.Elements,
+            ArrayLiteralKoto { FillLength: null } array => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            this.AddUnjudged(KotoHelper.UnwrapParentheses(elements[i]));
+            this.positionClasses.Add(ArgumentAdaptation.Unjudged);
+        }
+    }
+
     // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each
     // element as an argument at its position (FitElement), so a nested literal fits a ref/(...) position as a borrowed temporary.
     private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
@@ -62,13 +153,7 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source is ArrayLiteralKoto array)
         {
-            // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
-                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant
-                        ? expected.LengthExpression is not null || expected.Length != count.Value
-                        : !ReferenceEquals(expected.LengthExpression, count)))))
+            if (!LiteralShapeAt(array, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -93,7 +178,7 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (!TupleShapeAt(tuple, expected))
+            if (!LiteralShapeAt(tuple, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -154,6 +239,11 @@ public sealed partial class Binding
             return ReferenceEquals(expected, omitted) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
+        if (this.TakenWhole(expected))
+        {
+            return CandidateApplicability.Applicable; // SPEC 10.8: an open slot takes the boundary; judged after selection.
+        }
+
         if (IsUnfittedLiteral(boundary))
         {
             return this.FitsInputLiteral(boundary, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
@@ -184,6 +274,11 @@ public sealed partial class Binding
 
     private bool FitsPosition(int start, BoundType type)
     {
+        if (this.TakenWhole(type))
+        {
+            return true; // SPEC 10.8, 10.2.1: an open slot takes the position's parts; judged after selection.
+        }
+
         var end = this.positionParts.Count;
         var kind = this.PositionKind(start, end, out _);
         for (var i = start; i < end; i++)
@@ -245,7 +340,7 @@ public sealed partial class Binding
             valueType,
             type,
             borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
-            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
+            LiteralFitting(type),
             Positions: first..this.positionClasses.Count);
         return result;
     }
@@ -276,6 +371,11 @@ public sealed partial class Binding
     // boundary takes its other boundary's Type, else i32 (OtherBoundaryType); a typed, waiting or failed part is the probe's.
     private bool HasTypeWithoutExpectation(Koto part, BoundType type, BindingScope scope)
     {
+        if (this.TakenWhole(type))
+        {
+            return true; // SPEC 10.8 (PLAN G814): an open slot takes the part; judged after selection.
+        }
+
         var core = KotoHelper.UnwrapParentheses(part);
         if (core is RangeKoto range && IsMixedRange(range))
         {
@@ -310,13 +410,13 @@ public sealed partial class Binding
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
             var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));
-            operation = new(part, target, type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: literalBorrow);
+            operation = new(part, target, type, ArgumentOperationKind.Borrow, LiteralFitting(type), AdaptedType: literalBorrow);
             return CandidateApplicability.Applicable;
         }
 
         if (this.FitsLiteralPart(node, type, scope))
         {
-            operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal);
+            operation = new(part, null, type, ArgumentOperationKind.Value, LiteralFitting(type));
             return CandidateApplicability.Applicable;
         }
 

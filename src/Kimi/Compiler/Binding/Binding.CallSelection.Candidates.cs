@@ -403,11 +403,16 @@ public sealed partial class Binding
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
-                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
-                                // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument)
-                                    ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
+                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected, and its
+                                // fit at its open Type goes through the closed fit (FitOpenArgument). Waiting parts that bind the position's slots
+                                // are completed with the selected candidate instead (SPEC 10.5.4).
+                                var fit = this.FitOpenArgument(call.ArgumentNodes[i], pattern, solution, unboundSlots, scope, call, out var opened);
+                                if (fit is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
+                                {
+                                    return fit;
+                                }
+
+                                operations[i] = opened with { ParameterIndex = mapping[i] };
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
                                     waitingCallables = true;
@@ -440,8 +445,13 @@ public sealed partial class Binding
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
                                 // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
+                                if (this.FitOpenArgument(call.ArgumentNodes[i], pattern, solution, unboundSlots, scope, call, out var literal) != CandidateApplicability.Applicable)
+                                {
+                                    return CandidateApplicability.Inapplicable;
+                                }
+
                                 open.Add(i);
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                operations[i] = literal with { ParameterIndex = mapping[i] };
                                 continue;
                             }
 

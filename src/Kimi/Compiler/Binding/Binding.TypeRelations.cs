@@ -298,7 +298,7 @@ public sealed partial class Binding
             var whole = slotArguments[slot];
             if (whole is null)
             {
-                return null;
+                return substitution.Open ? type : null; // An open substitution keeps an unbound slot as itself (PLAN G814).
             }
 
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
@@ -378,7 +378,9 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(substituted, type.Components[i]);
             }
 
-            if (type.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && slot >= 0)
+            // An open substitution keeps an `s/U` application whose selector is unbound as itself, its parts substituted (PLAN G814).
+            if (type.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && slot >= 0 &&
+                !(substitution.Open && (uint)slot < (uint)slotArguments.Length && slotArguments[slot] is null))
             {
                 if ((uint)slot >= (uint)slotArguments.Length)
                 {

@@ -14,7 +14,10 @@ namespace Kimi.Compiler;
 // - Inputs: a candidate's solution (SlotSolution.Substitution), a selected call's plan, a function reference's arguments, a witness
 //   comparison's solved images; for a binder's own substitution (a container's clauses at an occurrence of its Type, SubstituteType's
 //   slots), the binder's columns alone.
-// - Outputs: the Type or clause in the caller's terms; null where a slot the Type names is unbound.
+// - Outputs: the Type or clause in the caller's terms; null where a slot the Type names is unbound, except under an open substitution
+//   (Open: PLAN G814), which keeps each unbound Type or length slot of the callee as itself, its own image (an `s/U` application whose
+//   selector is unbound keeps itself, its parts substituted). Its one writer is
+//   SlotSolution.OpenType, the open Type a candidate's argument is fitted at before selection (SPEC 10.8, 10.2.1).
 // - Invariants: one application is one pass over both binders: an atom or slot takes its image under the callee, else under the
 //   declaring occurrence, and no image is substituted again, so a caller's Type or Origin that names the callee's own or its declaring
 //   Type's slots (a call in the callee's body, a call from another member of the same Type) is kept. Declaring is an occurrence of a
@@ -92,6 +95,10 @@ public sealed partial class Binding
 
         // The images of the binder's per-call atoms: its inputs and, at a value call of a Closure, its reserved atoms.
         internal PerCallImages Images { get; init; }
+
+        // SPEC 10.8, 10.2.1 (PLAN G814): an unbound Type or length slot of the callee keeps itself as its image instead of failing the
+        // substitution; set only by SlotSolution.OpenType.
+        internal bool Open { get; init; }
 
         // The occurrence of the Type declaring the callee, the second binder; null for a binder's own substitution and for a Type that
         // is no occurrence of a declaration (no Symbol), which has no slots.

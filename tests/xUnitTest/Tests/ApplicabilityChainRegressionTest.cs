@@ -238,8 +238,10 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
     [InlineData("applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))")]
     [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
-    [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
-    [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
+    // PLAN G814 (Q13): an anonymous function's header at the Tuple (F, i64) filters the one candidate (SPEC 10.5.4), as it does at a closed
+    // Tuple, so none applies (SPEC 10.1); the open argument now goes through the closed fit (was UnboundTypeArgument_Kd).
+    [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
+    [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(func [] (v) => v)")]
     [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (r, stop()) else => (true, stop())")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
@@ -251,7 +253,9 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
     [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (5, x) else => (stop(), true)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
-    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5)")]
+    // PLAN G814 (Q13): the join formed part by part is fitted as a literal argument (SPEC 10.5.1); its position 1 holds 2.5 at i64, which no
+    // i64 fits (SPEC 12.3), so the one candidate is inapplicable, as at a closed ((i64) -> i64, i64) (was the join's TypeMismatch_Kd).
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("applyArg(if c => (if c => (func [] (v) => v, x) else => (func [] (w) => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
