@@ -51,11 +51,12 @@ namespace Kimi.Compiler;
 // - Prohibitions: no inference here, and no record but these four: a bound part's own misfit at the part, its mismatch or its failed
 //   erasure (ErasePart), in BindWaitedSources, where its join rests on it, and in TryPropagate's adaptation (AdaptAtPosition); a waited
 //   join's own Conflict record (DecideWaiting); a broken contract's Internal record (BindWaitedSources: an erasure TryPropagate failed
-//   that ErasePart then accepts; BindStepThree: a waiting part at a typed position with no Type); and one interim (DECISIONS BU-156,
-//   removed by G443's unit, R7-I2 d): a waited source whose Type at the join's Target Result Type fits its structural part and misfits
-//   by Origins alone is the located Unsupported_Kd at that source. A waiting part is bound only by BindNode at its decided Type or
-//   default, which reports its own misfit at the literal, as RequireType does at a position (RequireAtPosition); the reader reports a
-//   misfit of the late fit.
+//   that ErasePart then accepts; BindStepThree: a waiting part at a typed position with no Type); and two interims, both removed by
+//   R7-I2 d: a waited source whose Type at the join's Target Result Type fits its structural part and misfits by Origins alone is the
+//   located Unsupported_Kd at that source (DECISIONS BU-156, G443's unit), and a call's control-flow argument a typed position of which
+//   takes a temporary at its candidate's Type is the located Unsupported_Kd at itself (G729's entry, R7-I2 d's position source). A
+//   waiting part is bound only by BindNode at its decided Type or default, which reports its own misfit at the literal, as RequireType
+//   does at a position (RequireAtPosition); the reader reports a misfit of the late fit.
 public sealed partial class Binding
 {
     // The writes of the last late Type computation, which TryPropagate applies: an aggregate's or result target's Type, and a bound
@@ -541,7 +542,9 @@ public sealed partial class Binding
     // resting on it). With no Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source holding a literal
     // takes its defaults, and one holding a join that waited (HoldsWaitedResult) is bound so that the join honours its outcome
     // (DecideWaiting); under a failed join, a source holding neither rests on the join's record or cause (CompleteDependent). The first
-    // misfit is returned.
+    // misfit is returned. A call's control-flow argument (a recorded Join) one of whose typed positions takes a temporary at its
+    // candidate's Type (BindStepThree) is the located Unsupported_Kd at itself, the call resting on it: the interim of G729's DECISIONS
+    // entry, removed when R7-I2 d's position source plans that temporary at the join's position.
     private BoundType? BindWaitedSources(Koto node, ResultContext context, BoundType? type)
     {
         BoundType? failed = null;
@@ -550,8 +553,12 @@ public sealed partial class Binding
         {
             var start = this.positionParts.Count;
             this.AddResults(node);
-            this.BindStepThree(start, this.positionParts.Count, type);
+            var temporary = this.BindStepThree(start, this.positionParts.Count, type);
             this.ClosePosition(start);
+            if (temporary && this.RecordedPart(node).Kind == PartKind.Join)
+            {
+                this.Fail(node, BindingFailure.Unsupported);
+            }
         }
 
         for (var i = 0; i < context.Sources.Count; i++)
@@ -639,8 +646,10 @@ public sealed partial class Binding
     // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
     // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
     // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
-    // element Type (7.7.4, per element).
-    private void BindStepThree(int start, int end, BoundType? target)
+    // element Type (7.7.4, per element). Returns whether a Typed position's one value (its common Type, SPEC 10.5.1 last paragraph) is a
+    // temporary that its `target`, `ref/U` of that Type, borrows (10.2 row 2): made once at the join's position (3.6), not in a source's
+    // Body, which no part's own adaptation is (AdaptAtPosition); one of reference layers ending in U, or at a by-value U, is not.
+    private bool BindStepThree(int start, int end, BoundType? target)
     {
         switch (this.PositionKind(start, end, out var common))
         {
@@ -653,21 +662,23 @@ public sealed partial class Binding
                     }
                 }
 
-                return;
+                return common is not null && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } &&
+                    this.SameStructure(common, referent);
             case PartKind.Aggregate when this.PartsShape(start, end) is not DictionaryLiteralKoto:
+                var temporary = false;
                 for (int i = 0, count = this.ChildPositions(start, end); i < count; i++)
                 {
                     var child = this.positionParts.Count;
                     var element = this.AddChildPosition(start, end, i, target);
-                    this.BindStepThree(child, this.positionParts.Count, element);
+                    temporary |= this.BindStepThree(child, this.positionParts.Count, element);
                     this.ClosePosition(child);
                 }
 
-                return;
+                return temporary;
             case PartKind.Aggregate: // A Dictionary, taken whole (BU-43): its source's binding at `target`, BindWaitedSources' loop.
             case PartKind.Literal: // Its literals take `target` with their sources, BindWaitedSources' loop.
             case PartKind.Call: // Its parts await the call, which binds them at its candidate's Type (CompleteArguments, the loop).
-                return;
+                return false;
             default:
                 throw new InvalidOperationException("A position is Typed, Aggregate, Literal or Call (PositionKind).");
         }
