@@ -117,9 +117,10 @@ public class CallOriginRelationTest(ITestOutputHelper output)
             "func put<t/U>(q: ref/i32, y: t/U during q, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return r\n" +
             $"func call<t/U>(q: ref/i32, p: ref/i32, {premise}y: t/U during p, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return put(q, y@move, r)\n"));
 
-    // SPEC 8.15.2 (PLAN G809's limit, the open issue "a call's joint Origin solve in a generic body"): valid in each Semantics case, as
-    // put's `a` there is the meet of the bounds that case has. The call's one solve for every case leaves `l1` in its candidate where
-    // `s` alone is a borrow, and `w` does not hold there: rejected, sound but incomplete. This row pins today's record (dev's too).
+    // SPEC 8.15.2 (PLAN G809's limit, the open issue "a call in a generic body is solved once for all Semantics cases"): valid in each
+    // Semantics case, as put's `a` there is the meet of the bounds that case has. The call's one solve for every case leaves `l1` in its
+    // candidate where `s` alone is a borrow, and `w` does not hold there: rejected, sound but incomplete. This row pins today's record
+    // (dev's too).
     [Fact]
     public void ACallInAGenericBodyIsSolvedOnceForEveryCase()
         => Assert.Equal("1*UnprovenOriginRelation_Kd", DiagnosticCorpus.RecordProfile(

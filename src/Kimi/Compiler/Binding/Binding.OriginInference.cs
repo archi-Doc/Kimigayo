@@ -168,10 +168,12 @@ public sealed partial class Binding
                     }
                 }
 
-                // SPEC 15.3.6, 15.6.5 (the owner's O-233 (C), PLAN G809): a limit required only in some Semantics cases joins the
-                // meet unless, in those cases, it outlives the meet of the limits every case requires, and every such limit joins when
-                // no limit is required in every case; each is judged against that meet alone, so the candidate does not depend on the
-                // order of the bounds.
+                // SPEC 15.6.5 (PLAN G809): a limit required only in some Semantics cases joins the meet unless, in those cases, it
+                // outlives the meet of the limits every case requires, and every such limit joins when no limit is required in every
+                // case; each is judged against that meet alone, so the candidate does not depend on the order of the bounds. For a
+                // contract comparison (SPEC 15.3.7) this is SPEC 15.3.6's rule, the owner's O-233 (C). For a call in a generic body,
+                // where SPEC 8.15.2 judges each case, this one solve for every case accepts only what that accepts, not all of it: the
+                // open issue "a call in a generic body is solved once for all Semantics cases".
                 var unconditional = upper;
                 for (var i = 0; inference.Conditional && i < inference.Bounds.Count; i++)
                 {
