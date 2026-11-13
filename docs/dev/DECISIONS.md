@@ -13058,6 +13058,56 @@ resumed by R4-M86 (2026-10-20).
     conversions and results); the relation required in every case (SETTLED "Pair-slot premises in every Semantics case"; under
     `Instance` it rejected the valid rt3/rt3u, design review 1, B1); a per-case `CaseType` visit (a Type per case and use, for what
     one condition says).
+
+- **BU-202 A called function's parameter key marks the binding of the function's own abstract Types: `TyCtxt.ParameterKey`,
+  `PlaceKey.Signature`, `OwnLayer.Hidden`** (2026-11-13; PLAN G823; Front, Binding; Major; the Middle's C-297 after the owner's
+  O-232 (a); RP17 consent C-297, completed by W-204's group oracle T-204) SPEC 15.6.4, 5.7 Calls, 8.2.3.
+  - Rule: on a called function's parameter path (`TyCtxt.ParameterKey(function, slot, input)`, the root key of the slot's
+    instantiated Type paired with `Signature(function, null, slot)`), `PlaceKey.Signature` is the Type the declaration writes at the
+    Place. It is paired by the storage walk's rule (BU-113's `StorageAt.Signature`: `Same`, the declared Holdings in order,
+    `DeclaredComponent`, `BorrowReferent`, a pair layer's target), and every key producer (Select, Base, Leading, a Past key) reads each
+    declared part in the function's view first (`View`, 8.2.3: identity is closed under replacement inside any Type). An abstract Type
+    of the function's own declaration (a Type parameter, or a pair target or projection rooted at one; `Scope.Owner` the function)
+    takes the form its identity class fixes there (`Binding.TypeIdentity`, the one judge, R7-C3a): a constructed member, else a member
+    that is no such abstract Type, else itself. Where it stays itself, the Signature keeps that abstract Type, and `OwnLayers` marks
+    every part there `Hidden` (15.6.4: "A raw layer that the abstract Type's binding may hold and the abstract Type does not show adds
+    no reach of its own"). On any key a body forms, Signature is null and nothing is hidden. Rows are listed once per (Type, Written,
+    Holder, Signature).
+  - Shown:
+    - an enclosing Type's parameter, which the receiver's instance completes (BU-50, PLAN G271);
+    - a part an identity premise of the function's view gives a form, inside a Type included (`S.Item is raw/u8` inside `HA<S>`,
+      `U is raw/u8` inside `Wrap<U>`, `U is T`);
+    - a part whose declared and instantiated constructors differ (conservative). Named limit: a pair layer's owner case (`s/U` read
+      as U itself, or as a raw case) ends the pairing and is shown, though SPEC hides it.
+  - What a hidden part reaches is A5's (the Middle's U3c): a raw layer adds no reach of its own, and a safe reference keeps its routes.
+  - One pairing rule and one carrier convention (G823-U1, behaviour unchanged): `SignaturePast` (what an entry reaches),
+    `DeclaredRun` (the declared Type's parts in the run's order) and `Below` (inside such a binding the abstract Type is kept below),
+    with `DeclaredComponent` and `Same` in `Binding.Retention.Declared.cs` (G823-U1b, a move: `Binding.Retention.Storage.cs` was over
+    the 5,000-token file limit; the key walk's `OwnParts` and `OwnLayer` joined `Binding.Retention.PlaceKeys.cs`), read by the storage
+    walk (Reach, RawReach, Parts, Admitted), the atom walk and the key walk (OwnParts, Select, Base). `StorageAt.Signature` and `RetentionAtom.Signature` keep the abstract Type
+    inside such a binding too (amends BU-113's "null inside a Type parameter's image" for the function's own abstract Types; RawStepAt's
+    cap is unchanged: a kept abstract Type is no pointer). `DeclaredRun` reads Holdings only and sets no storage-walk state
+    (`retentionLimit`): a declared entry that is Unsupported has the instantiated Type's constructor, whose own run already counts it.
+  - The view is the key walk's only (review N7): the key walk reads each declared counterpart in the function's view (`View`); the
+    storage and atom walks read them as written. Below a part an identity premise gives a form (`S.Item is raw/u8` inside `HA<S>`),
+    `PlaceKey.Signature` is the form's counterpart while `StorageAt.Signature` keeps `S.Item`. G692-P2, which keys storage-walk records
+    by the key walk's rows, states how a viewed row meets an unviewed storage state; BU-113's cap at such a position (step 4 where the
+    view writes a pointer) is G692-P2's or BU-113's question.
+  - Cost (review N8): `View` reads `ClassesOf` of the function's scope. Binding builds the classes of every scope with its own identity
+    premises at each pass's validation step (`ValidateConstraintEnvironments` → `RecordIdentityPremiseError` → `ClassesOf`), and the
+    Final pass's tables stay until the next pass's reset; a scope whose identity premises are only an enclosing scope's builds once, at
+    its first read, memoized. Warm reads are 0 B (`AWarmParameterKeyReadAllocatesNothing`, an identity view included).
+  - Removes the A5 prototype's stand-in (a parameter Type `S/U` over a bare Type parameter, read by A5 from `TyCtxt.Signature`).
+  - Rejected:
+    - the key with the callee's Type parameters kept abstract beside the instantiated one: A5 would align two walks, a second copy of
+      OwnLayers;
+    - Type marks (BU-46's Unstated style): no MIR local states a mark;
+    - premising the parameter's own Type only (`Premised`, design review 1's B1): the parts below it were read unpremised, so a layer
+      the body sees under `S.Item is raw/u8` was hidden; and `Premised`'s member substitution would be a second premise rule beside
+      the identity classes;
+    - one bool per walk: a key holds hidden and shown parts together (Wrap2's `value` and `q`);
+    - one column with G692's per-layer retention records: another meaning and contract, the storage walk's (DECISIONS text: "one
+      row, two contracts").
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
