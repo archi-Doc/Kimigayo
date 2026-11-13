@@ -35,6 +35,7 @@ public sealed partial class Binding
         private readonly List<int> open = new();
         private readonly List<byte> cycle = new();
         private readonly List<(int Root, int Member, int Component)> stack = new();
+        private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
         private BindingScope? scope;
         private bool provisional;
         private bool meetProvisional;
@@ -82,6 +83,7 @@ public sealed partial class Binding
             this.open.Clear();
             this.cycle.Clear();
             this.stack.Clear();
+            this.keys.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
@@ -192,6 +194,12 @@ public sealed partial class Binding
             this.parts.RemoveRange(start, this.parts.Count - start);
             return same;
         }
+
+        // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
+        // after Close), so each Type is keyed once per table; they go with the table at its next Open.
+        internal BoundType? KeyOf(BoundType type) => this.keys.GetValueOrDefault(type);
+
+        internal void SetKey(BoundType type, BoundType key) => this.keys[type] = key;
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).

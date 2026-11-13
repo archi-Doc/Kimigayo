@@ -164,16 +164,24 @@ public sealed partial class Binding
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 
     // R7-C2c2: the key of `type` in a view's classes: its class's Representative, else the Type over its components' keys
-    // (congruence), whose class is asked again. A key names the class to the premise supply only; no reader sees it as a Type. A warm
-    // pass finds the rebuilt Type interned and allocates nothing.
+    // (congruence), whose class is asked again. A key names the class to the premise supply only; no reader sees it as a Type. Each
+    // Type is keyed once per table (the table keeps it), so a request's keys cost the distinct Types it compares; a warm pass finds
+    // the rebuilt Types interned and the table's capacity kept, and allocates nothing.
     private BoundType ClassKey(BoundType type, IdentityClasses classes)
     {
-        this.IdentityKeyWork++;
-        if (classes.Representative(type) is { } member)
+        if (classes.KeyOf(type) is not { } key)
         {
-            return member;
+            this.IdentityKeyWork++;
+            key = classes.Representative(type) ?? this.CongruentKey(type, classes);
+            classes.SetKey(type, key);
         }
 
+        return key;
+    }
+
+    // The Type over its components' keys, whose class is asked again; the Type itself when no component's key differs.
+    private BoundType CongruentKey(BoundType type, IdentityClasses classes)
+    {
         var count = type.Components.Count;
         if (count == 0 || !type.ContainsParameter)
         {

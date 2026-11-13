@@ -53,30 +53,41 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // R7-C2c2 c2-1 (design review 2, D): the premise supply's class keys cost work linear in a depth-n identity chain, n = 8, 32, 128: a
-    // chain of n parameter identities (one class of n + 1 members, which each key's Representative scans). The program is valid (SPEC
-    // 8.2.3, 8.3.2): T0's CopyTree supplies Copy.
-    [Fact]
-    public void ClassKeyWorkIsLinearInTheIdentityChain()
+    // R7-C2c2 c2-1 (design review 2, D): the premise supply's class keys cost one key per distinct Type a table compares, n = 8, 32, 128:
+    // linear in a chain of n parameter identities (one class of n + 1 members, which each key's Representative scans); for a demand n
+    // projections deep under `U is T`, whose view gains a Contract fact per prefix (another serial, another table) and whose requests each
+    // index every fact (a1's preparation), at most one key per indexed fact, quadratic in n as the index is (cubic while ClassKey kept no
+    // key: 11,285 at 8, 11,849,545 at 128). Both programs are valid (SPEC 8.2.3, 8.3.2): CopyTree supplies Copy.
+    [Theory]
+    [InlineData("parameters", 4)]
+    [InlineData("depth", 16)]
+    public void ClassKeyWorkIsAKeyPerComparedType(string shape, int factor)
     {
-        var (w8, w32, w128) = (Work(8), Work(32), Work(128));
-        Assert.True(w32 <= 4 * w8 && w128 <= 4 * w32, $"{w8} at 8, {w32} at 32, {w128} at 128");
+        var (w8, w32, w128) = (Work(shape, 8), Work(shape, 32), Work(shape, 128));
+        Assert.True(w32 <= factor * w8 && w128 <= factor * w32, $"{shape}: {w8} at 8, {w32} at 32, {w128} at 128");
 
-        static long Work(int n)
+        static long Work(string shape, int n)
         {
-            var c = MinimalEmissionTest.Analyze(KeySource(n));
+            var c = MinimalEmissionTest.Analyze(KeySource(shape, n));
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return c.Binding.IdentityKeyWork;
         }
     }
 
-    private static string KeySource(int n)
+    private static string KeySource(string shape, int n)
     {
         const string Copies = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";
-        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
-        var chain = string.Concat(Enumerable.Range(1, n).Select(static i => $"    T{i} is T{i - 1}\n"));
-        return Copies + $"func twice<{parameters}>(value: T{n}.(Tree).Child) -> (T{n}.(Tree).Child, T{n}.(Tree).Child)\n" + chain +
-            "    T0 is CopyTree\n    return (value, value)\npublic func main() -> ()\n    return\n";
+        if (shape == "parameters")
+        {
+            var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
+            var chain = string.Concat(Enumerable.Range(1, n).Select(static i => $"    T{i} is T{i - 1}\n"));
+            return Copies + $"func twice<{parameters}>(value: T{n}.(Tree).Child) -> (T{n}.(Tree).Child, T{n}.(Tree).Child)\n" + chain +
+                "    T0 is CopyTree\n    return (value, value)\npublic func main() -> ()\n    return\n";
+        }
+
+        var demand = "U" + string.Concat(Enumerable.Repeat(".(Tree).Child", n));
+        return Copies + $"func twice<T, U>(value: {demand}) -> ({demand}, {demand})\n    U is T\n    T is CopyTree\n    return (value, value)\n" +
+            "public func main() -> ()\n    return\n";
     }
 
     private static string IdentitySource(string shape, int n)
