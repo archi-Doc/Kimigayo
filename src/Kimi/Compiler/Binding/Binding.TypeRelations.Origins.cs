@@ -22,7 +22,7 @@ public sealed partial class Binding
         }
 
         if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.InstanceContext, right.InstanceContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
             left.OriginArguments.Count != right.OriginArguments.Count)
         {
             failure = ComparisonFailure.Shape;
@@ -83,7 +83,7 @@ public sealed partial class Binding
                 origin = this.Meet(a, rightSlot!);
             }
 
-            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
+            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.InstanceContext, left.LengthArguments);
             if (IsSubtype(left, result) && IsSubtype(right, result))
             {
                 return result;

@@ -110,7 +110,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
     // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? instanceContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {
@@ -171,7 +171,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var hash = default(HashCode);
         hash.Add(kind);
-        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
+        hash.Add(instanceContext is null ? 0 : RuntimeHelpers.GetHashCode(instanceContext));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
         hash.Add(length);
@@ -198,7 +198,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.InstanceContext, instanceContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -225,7 +225,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), closureContext);
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext);
         bucket.Add(created);
         return created;
     }
@@ -257,7 +257,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             origin ?? type.RawOrigin,
             originArguments,
             type.LengthExpression,
-            type.ClosureContext,
+            type.InstanceContext,
             type.LengthArguments);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);

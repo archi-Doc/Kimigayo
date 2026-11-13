@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
         var use = binding.DefinitionUse(definition);
         (object Callee, Subst? Types, object? Scope, int Regions) key = closure is null
             ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RegionVersion)
-            : (signature, closure.ClosureContext, owner, binding.RegionVersion);
+            : (signature, closure.InstanceContext, owner, binding.RegionVersion);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -152,7 +152,7 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
+        return NestedInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the

@@ -221,7 +221,7 @@ public sealed partial class Binding
             return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
         }
 
-        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -744,7 +744,7 @@ public sealed partial class Binding
     // slot adds no Owned part) of every declaration on the chain TyCtxt.EnclosingDeclaration publishes (a named function, an accessor's
     // function; never a call's callee or an anonymous function), up to the nearest Container, whose identity (SelfType) holds its outer
     // Containers' slots and its Origin slots (a function has no Origin parameter list, SPEC 15.3), each read through the Type's held
-    // instance as its readers see it (TyCtxt.ClosureInstance): the slot itself in that declaration's identity (no context), else its image.
+    // instance as its readers see it (TyCtxt.NestedInstance): the slot itself in that declaration's identity (no context), else its image.
     // Unit for any other Type, whose bound arguments are its whole dependence; null where the instance is withheld (an Origin position,
     // PLAN G300) or an image does not complete, which the reader answers with BU-22's limit.
     private BoundType? InheritedArguments(BoundType type)
@@ -755,8 +755,8 @@ public sealed partial class Binding
             return BoundType.Unit;
         }
 
-        var instance = TyCtxt.ClosureInstance(type);
-        if (instance is null && type.ClosureContext is not null)
+        var instance = TyCtxt.NestedInstance(type);
+        if (instance is null && type.InstanceContext is not null)
         {
             return null;
         }

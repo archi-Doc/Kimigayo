@@ -98,7 +98,7 @@ public sealed partial class Binding
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
         }
 
-        return result is null ? null : this.CloseClosureTypes(result, subst);
+        return result is null ? null : this.CloseNestedTypes(result, subst);
     }
 
     // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
