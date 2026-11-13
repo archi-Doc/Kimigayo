@@ -298,12 +298,7 @@ public static partial class Parser
                 // complete Types; their annotations do not prescribe this operation's borrow.
                 // SPEC 13.5.1, F.5: a bound Container qualifier is unavailable as the head of the target's own path, even through
                 // grouping. A path's grouped head that is no Function Type is one (ContinuesGroupedType; a Tuple or Unit head is its own node).
-                var head = type;
-                while (head is MemberAccessKoto or GenericsKoto { Identifier: not null })
-                {
-                    head = head is MemberAccessKoto member ? member.Left : ((GenericsKoto)head).Identifier!;
-                }
-
+                var head = ContainerPathHead(type);
                 if (!ReferenceEquals(head, type) && head is ParenthesizedTypeKoto { Type: not FunctionTypeKoto })
                 {
                     cause ??= head.Unexpected(SyntaxForm.AdaptationQualifier);

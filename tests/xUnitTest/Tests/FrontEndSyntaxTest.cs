@@ -138,6 +138,64 @@ public class FrontEndSyntaxTest
         }
     }
 
+    // SPEC F.6.1 BaseClause := ":" NamedReference, F.6.2 ContractParentList := ":" ContractReference ("," ContractReference)*, and F.5
+    // NamedReference := ContainerPath OriginBindingSet?: a base or a Contract parent written as any other Type is one grammar record
+    // over it, the same in selected and excluded syntax (SPEC 19.4), and nothing of it is left to the header.
+    [Theory]
+    [InlineData("ref/N")]
+    [InlineData("ref/::N")]
+    [InlineData("owner/N")]
+    [InlineData("(N)")]
+    [InlineData("((N))")]
+    [InlineData("N?")]
+    [InlineData("(N, i32)")]
+    [InlineData("()")]
+    [InlineData("[2 of N]")]
+    [InlineData("N during a")]
+    [InlineData("(N) -> i32")]
+    [InlineData("N(a)")]
+    public void ABaseOrParentOutsideANamedReferenceIsOneRecordInEverySelection(string reference)
+    {
+        foreach (var format in (string[])["struct D : R\n    var d: i32 = 0\n", "contract D : R\n    associate A\n", "contract D : M, R\n    associate A\n"])
+        {
+            foreach (var excluded in (bool[])[false, true])
+            {
+                var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+                var source = "open struct N\ncontract M\n" + (excluded ? "#if false\n    " + declaration.Replace("\n    ", "\n        ", StringComparison.Ordinal) : declaration);
+                var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+                Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+                Assert.Contains("named reference", diagnostic.Message, StringComparison.Ordinal);
+                Assert.Equal(source.LastIndexOf(reference, StringComparison.Ordinal), diagnostic.Span.Start);
+                Assert.Equal(reference.Length, diagnostic.Span.Length);
+            }
+        }
+    }
+
+    // The valid twins: a path, a root name, Type arguments, a binding set, and a PathQualifier with its PathSuffixes (what the
+    // reference names is Binding's).
+    [Theory]
+    [InlineData("N")]
+    [InlineData("::N")]
+    [InlineData("Api.N")]
+    [InlineData("N<i32>")]
+    [InlineData("N{k}")]
+    [InlineData("::Api.N<i32>{k}")]
+    [InlineData("(S{k}).Item")]
+    [InlineData("(S during a).(C).Item")]
+    [InlineData("(i32, u8).(C).Item")]
+    [InlineData("[2 of u8].Element")]
+    [InlineData("N.(C).Item")]
+    [InlineData("Self")]
+    public void ABaseOrParentInsideANamedReferenceHasNoRecordInEverySelection(string reference)
+    {
+        foreach (var format in (string[])["struct D : R\n    var d: i32 = 0\n", "contract D : R\n    associate A\n", "contract D : M, R\n    associate A\n"])
+        {
+            var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+            ParseSuccess(declaration);
+            ParseSuccess("#if false\n    " + declaration.Replace("\n    ", "\n        ", StringComparison.Ordinal));
+        }
+    }
+
     [Theory]
     [InlineData("let require = 1")]
     [InlineData("    let a = 1")]
