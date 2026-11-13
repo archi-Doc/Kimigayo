@@ -21,15 +21,18 @@ namespace Kimi.Compiler.Mir;
 // part they miss would remove a holder or a written Scalar, so they read only the stored Types a Type's own structure fixes
 // (Components, AdtDef's Fields, base and Case payloads) with Sized. For Pointered every other Type answers "may" (Extent.Open), a
 // Closure included (its environment is the body's reading, R4-M148); for Scalar an abstract part is a binding's, a Scalar of any
-// size among them (SPEC 8.15.1), and a Type that is not punnable (SPEC 5.2, TyCtxt.Punnable) holds none. Within and Scalared list
-// the raw Places within a written Type (SPEC 5.2: its Fields and elements): a part they miss would drop a write, so they take Binding's
-// by-value reading (Holdings' Inline entries: kept parts, a Closure's environment, an owner layer's target; an Unsupported row
-// undecided, Unstated), and an array of no element, whose element Holdings keeps (SPEC 4.3.3), is cut by Within's own array arm (Sized).
+// size among them (SPEC 8.15.1), and a Type that is not punnable (SPEC 5.2, TyCtxt.Punnable) holds none. Within and Scalared read
+// the raw Places within a written Type (SPEC 5.2: its Fields and elements; TyCtxt.RawPlaces, the one statement), an array of no
+// element cut by Within's array row (Sized); a part they miss would drop a write, so where RawPlaces answers Empty, or Undecided with
+// no row published, they add the written side (O-220 (a), O-231 (a)): its by-value parts (Holdings' Inline entries: an enum's Case
+// payloads, a Closure's environment, an owner layer's target; an Unsupported row undecided, Unstated), each off; an abstract part's
+// own entry adds nothing (Scalar's abstract row judged the part).
 // Must not: test a Type's Kind or an AdtDef fact for the chain's step (TyCtxt.Leading's); read Binding's holdings for the bytes a Place
 // has (they state the Loans and layers a value carries); decide SPEC 5.2's punnable set (TyCtxt.Punnable's).
 internal sealed partial class MirBorrows
 {
-    private readonly List<Hold> punHolds = []; // Holdings' scratch (Within, Scalared), a stack.
+    private readonly List<Hold> punHolds = []; // Holdings' scratch (WrittenBeside, Scalared), a stack.
+    private readonly List<RawPlace> punRaw = []; // RawPlaces' scratch (Within, Scalared), a stack.
 
     // How much of what is asked a Type holds, in rising order; a pun is decided only over Positive. For the chain's step from a row it is
     // the one reading of a length (Sized; SPEC 4.1: a fixed array's size is N x stride; 5.2: a punned Place is positive-sized), for
@@ -248,33 +251,42 @@ internal sealed partial class MirBorrows
             return result;
         }
 
-        var lead = this.Lead(type, out var element);
-        if (element)
+        // The raw Places within (TyCtxt.RawPlaces), each at its Position: a lead row at the Type's (Step), every other row off. By the
+        // written array's extent: its elements at their Positions; of a length that is no constant, their writes are no decided pun; of
+        // no element, no raw Place within. Listed: the rows. Empty: the written side (WrittenBeside). Undecided (O-231 (a)): today's
+        // written parts, the rows Binding's storage states where any is published (a struct, Tuple or fixed array at a Limit or with an
+        // unbound part), else the written side; never nothing written.
+        var start = this.punRaw.Count;
+        var answer = types.RawPlaces(PlaceKey.Root(type), this.punRaw);
+        if (answer == RawPlacesAnswer.Empty || (answer == RawPlacesAnswer.Undecided && this.punRaw.Count == start))
         {
-            // By the written array's extent: its elements at their Positions; of a length that is no constant, their writes are no
-            // decided pun; of no element, no raw Place within.
-            return Sized(type) switch
+            return this.WrittenBeside(place, type, result);
+        }
+
+        for (var i = start; result != PunWrite.Pun && i < this.punRaw.Count; i++)
+        {
+            if (this.punRaw[i] is not { Key.Type: { } row } raw)
             {
-                Extent.Positive => Worse(result, this.Within(place, lead!, on && this.Step(place, type, -1))),
-                Extent.Open => this.Within(place, lead!, on: false) == PunWrite.Typed ? result : Worse(result, PunWrite.Undecided),
+                continue;
+            }
+
+            var part = cases.Type(row);
+            result = !raw.Element ? Worse(result, this.Within(place, part, on && raw.Lead)) : Sized(type) switch
+            {
+                Extent.Positive => Worse(result, this.Within(place, part, on && this.Step(place, type, -1))),
+                Extent.Open => this.Within(place, part, on: false) == PunWrite.Typed ? result : Worse(result, PunWrite.Undecided),
                 _ => result,
             };
         }
 
-        // A C-layout struct's Fields, each a raw Place (TyCtxt.Select), the first at the struct's Position (Step).
-        for (var i = 0; lead is not null && result != PunWrite.Pun && i < AdtDef.Count(type); i++)
-        {
-            if (types.Select(PlaceKey.Root(type), i).Type is { } field)
-            {
-                result = Worse(result, this.Within(place, cases.Type(field), on && this.Step(place, type, i)));
-            }
-        }
+        this.punRaw.RemoveRange(start, this.punRaw.Count - start);
+        return result;
+    }
 
-        if (lead is not null)
-        {
-            return result;
-        }
-
+    // The written side beyond the raw Places (O-220 (a)): a whole-value write of a Type with no raw Place within (an enum's Case payload,
+    // a Closure's environment, an owner layer's target) writes its by-value parts' bytes (Holdings' Inline entries), each off.
+    private PunWrite WrittenBeside(BoundType place, BoundType type, PunWrite result)
+    {
         var start = this.punHolds.Count;
         _ = types.Holdings(type, null, null, this.punHolds);
         for (var i = start; result != PunWrite.Pun && i < this.punHolds.Count; i++)
@@ -301,15 +313,31 @@ internal sealed partial class MirBorrows
             return true;
         }
 
-        var (start, found) = (this.punHolds.Count, false);
+        // The raw Places within, read by Within's three classes: Listed or Undecided with published rows, the rows; else the written side.
+        var found = false;
+        var start = this.punRaw.Count;
+        var answer = types.RawPlaces(PlaceKey.Root(type), this.punRaw);
+        if (answer == RawPlacesAnswer.Listed || (answer == RawPlacesAnswer.Undecided && this.punRaw.Count > start))
+        {
+            for (var i = start; !found && i < this.punRaw.Count; i++)
+            {
+                found = this.punRaw[i] is { Key.Type: { } row } && this.Scalared(cases.Type(row));
+            }
+
+            this.punRaw.RemoveRange(start, this.punRaw.Count - start);
+            return found;
+        }
+
+        // The written side beyond the raw Places (WrittenBeside's parts).
+        var held = this.punHolds.Count;
         _ = types.Holdings(type, null, null, this.punHolds);
-        for (var i = start; !found && i < this.punHolds.Count; i++)
+        for (var i = held; !found && i < this.punHolds.Count; i++)
         {
             found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } ? this.Scalared(cases.Type(part))
                 : Unstated(this.punHolds[i]) is not null;
         }
 
-        this.punHolds.RemoveRange(start, this.punHolds.Count - start);
+        this.punHolds.RemoveRange(held, this.punHolds.Count - held);
         return found;
     }
 }
