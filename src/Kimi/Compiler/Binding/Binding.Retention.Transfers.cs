@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 // from the identity key alone, the contract's CallRetention.ReferentStores (ReferentStores).
 // Keys, each a published declaring identity, never a name or a file (SPEC 22.1): `exchange` and `swap` by their catalog IDs; an operation
 // of SPEC 4.6 to 4.9: a member of Array or Dictionary (4.9, whose receiver's element storage keeps only its added inputs,
-// KimiLibraryCatalog.Added), of a Type of TransferTypes, or of the fixed array (KimiLibrary.FixedArrayMembers); an Iterator's `next`, a
+// KimiLibraryCatalog.Added), of a Type of TransferTypes, or of the fixed array's two groups (WitnessMembers.FixedArray, its members, and
+// FixedArrayEntries, its entry witnesses, through KimiLibrary.MembersOf); an Iterator's `next`, a
 // callee for which `for`'s witness test selects the Iterator conformance of its receiver's referent (SelectsWitness), that conformance
 // proven under the premises (a conditional one at the instance: OwningIterator<I> when I is Iterator).
 // Invariant: TyCtxt memoizes a contract per callee, Subst and premise scope, so each key is read once per instance, never per call.
@@ -78,7 +79,8 @@ public sealed partial class Binding
             return Transfer.Elements;
         }
 
-        return symbol.LibraryDeclaration == KimiDeclarationId.Swap || ReferenceEquals(callee.Parent, this.Library.FixedArrayMembers) ||
+        return symbol.LibraryDeclaration == KimiDeclarationId.Swap ||
+            (callee.Parent is { } parent && this.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
             (owner is { } type && Array.IndexOf(TransferTypes, type) >= 0) ? Transfer.Values : Transfer.None;
     }
 

@@ -293,11 +293,6 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
         // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
         if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
         {

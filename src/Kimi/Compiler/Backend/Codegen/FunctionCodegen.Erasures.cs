@@ -201,9 +201,9 @@ internal sealed partial class FunctionCodegen
     }
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
-    // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment, a context or a
-    // formatting row's kind) the next given value, then the call of its callee value, which the slot it runs through, if any, makes
-    // (EntryOf); its value (none for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
+    // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment or a context)
+    // the next given value, then the call of its callee value, which the slot it runs through, if any, makes (EntryOf); its value (none
+    // for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
     private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, BindingSymbol? slot, out Value? result)
     {
         result = null;

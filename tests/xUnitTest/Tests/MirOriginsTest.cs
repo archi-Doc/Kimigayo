@@ -389,15 +389,16 @@ public sealed partial class MirOriginsTest
 
     // SPEC 23.1.2 and 15.6.5 (DECISIONS R4-M118): a chain through a Dependent node holds whatever the unresolved Origin is, so it is judged
     // between its ends at its last edge: T1's local Borrow returned `during a` (also with the clause omitted, and with a plain local), a
-    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`), and BU's forms through a slot
-    // no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
+    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`, and at the row its value fit
+    // leaves at `h0@move` now that the fit over the resting slot holds: an added record, DECISIONS Q13, PLAN G739), and BU's forms
+    // through a slot no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
     // stay, the assignment's at `p.q`.
     [Theory]
     [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Escape + "    let h = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Unordered + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unproven", "return h.r")]
-    [InlineData(FailedClause, "Unsatisfied", "let h: C{x} = h0@move")]
+    [InlineData(FailedClause, "Unsatisfied", "h0@move", "let h: C{x} = h0@move")]
     [InlineData(Pair + "    let p: P{x} = P.init(a, l@ref)\n        origin x.s outlives zz\n    return p.q\n", "Unsatisfied", "return p.q")]
     [InlineData(
         HeldLocal + "    let h: (C{x}, C{y}) = (C.init(a), C.init(l@ref))\n        origin x.s == zz\n    return h.1.r\n",
@@ -407,8 +408,8 @@ public sealed partial class MirOriginsTest
         Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
         "Unsatisfied",
         "p.q")]
-    public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, string site)
-        => Assert.Equal([$"{verdict}OriginRelation_Kd {site}"], Origins(MirBuildTest.Compile(source + Main)));
+    public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, params string[] sites)
+        => Assert.Equal([.. sites.Select(x => $"{verdict}OriginRelation_Kd {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
     // SPEC 23.1.2 and MeetNode's rule (2a0-D D15): at the longer end each operand of a meet must outlive the shorter end, so a classed
     // operand's edge beside a Dependent one is an independent judgment: a local's Borrow returned `during a` through `pick`'s meet with the
