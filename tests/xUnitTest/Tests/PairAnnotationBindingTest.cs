@@ -353,6 +353,22 @@ public partial class PairAnnotationBindingTest
         Assert.Equal(Function(plain).SymbolOf()!.Type!.Origin?.Kind, Function(clause).SymbolOf()!.Type!.Origin?.Kind);
     }
 
+    // SPEC 10.8, 8.1.1 (D-590 (1)): a pair target's position meets the target of the pair's binding, a Type in the caller's terms, by
+    // structure and Semantics; in a recursive call or a construction of the enclosing structure its symbols are the callee's own, and
+    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record.
+    [Theory]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, x@move)\n", "clean")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f<s/T>(m@move, x@move)\n", "clean")]
+    [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, y@move, x@move)\n", "clean")]
+    [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: ref/V, y: ref/T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, y, x)\n", "clean")]
+    [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S.init(m@move, x@move)\n        return 0\n", "clean")]
+    [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S<s/T>.init(m@move, x@move)\n        return 0\n", "clean")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, x@move, y@move)\n", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*UnprovenConstraint_Kd")]
+    public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
+        => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
+
     private static Compilation Parse(string source)
         => CompilationTestHelper.ParseSuccess(source, "annotation.kimi");
 
