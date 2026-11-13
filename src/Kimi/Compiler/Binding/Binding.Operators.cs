@@ -4,7 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Owns unary and binary operator binding: syntax, scope and expected Type enter; bound Types, adaptations and failures leave.
+// Owns unary and binary operator binding: syntax, scope and expected Type enter; bound Types, adaptations and failures leave, and a
+// plain write's admitted-misfit verdict (its plan row's Mode, AdmittedMisfit).
 // Operand binding, destination authority, fitting and operator completion retain their order. Arithmetic selection and
 // comparison composition keep their existing owners. This owner neither emits code nor formats diagnostics.
 public sealed partial class Binding
@@ -13,6 +14,22 @@ public sealed partial class Binding
     // Never fitting needs a valid counterpart Type; it is not numeric capability. Pointer displacement follows SPEC 5.3.
     private static bool NonNumericOperand(BoundType type)
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
+
+    // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): whether a plain write Binding rejected after BindBinary's one destination check admitted its
+    // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
+    // failure is then its value's fit (a Type mismatch, an Origin or Owned fit, a fit's limit), and the write still places a value derived
+    // from that failure. A write refused there, or whose target Binding did not type, is not one.
+    private static bool AdmittedMisfit(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
+        HirTables.PlanOf(node).Mode != 0;
+
+    // The one writer of AdmittedMisfit's verdict, a row only for an admitted misfit; any other binary keeps its row.
+    private static void SetAdmittedMisfit(BinaryKoto binary, bool misfit)
+    {
+        if (binary.Akind == KotoKind.Equals)
+        {
+            HirTables.PlanFor(binary, misfit).Mode = misfit ? (byte)1 : (byte)0;
+        }
+    }
 
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { IsProofDecided: true } &&
@@ -124,6 +141,7 @@ public sealed partial class Binding
         binary.ComparisonActive = false;
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        SetAdmittedMisfit(binary, misfit: false);
         if (this.TryArithmetic(binary, scope, out var arithmeticResult))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
@@ -184,17 +202,12 @@ public sealed partial class Binding
             decision = this.OperatorApplicabilityOf(binary, left, right, scope);
         }
 
-        if (decision.Failure != BindingFailure.None)
-        {
-            return this.FailOperator(binary, binary, decision);
-        }
-
-        if (left is null || right is null)
-        {
-            return Complete(binary, null);
-        }
-
-        return this.CompleteBinary(binary, left, right, scope, decision);
+        var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
+            : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
+        // A typed target reaching here was admitted: every refusal above (CheckDestination, the Holder record, a reference binding's mode
+        // record) returns at once, so a failure recorded since is its value's fit (AdmittedMisfit).
+        SetAdmittedMisfit(binary, misfit: left is not null && binary.BindingFailure != BindingFailure.None);
+        return result;
     }
 
     // A literal may receive a Type from the known right operand only after that ordered operation is legal.
