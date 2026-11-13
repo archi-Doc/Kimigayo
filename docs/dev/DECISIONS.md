@@ -14089,6 +14089,10 @@ structure is recorded here by the unit that first implements it.
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it);
     targets per
     operand of every statement (a site would hold several).
+  - Amended by G149-w (PLAN G149, 2026-11-14): a declaring Type carries the enclosing instance only when the enclosing declaration
+    has no length slot (`InstanceCollector.CarriesInstance`, `HasLengthSlot`, read from its schema), since a declaring Type holds
+    `Never` at every length slot and so cannot key `Instantiates`' instances; otherwise the nested function is the located
+    `EnclosingInstance` gap. Removal: R7-P7.
 - **R5-M44 Layout obligations of the checked set** (2026-10-18; plan K10a; under R5-M18 and R5-M37; its record clause amended by
   R5-M171) The collector is the one owner of `Layout.Of`'s outcomes (`Compilation.Layout`, passed at its construction). Each item's
   by-value uses (its body's locals but drop flags, its aggregates, and the Type argument of an intrinsic whose row's new
