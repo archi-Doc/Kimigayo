@@ -5,10 +5,11 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a mutable local's Type (LocalRegionSlot), the contract bounds
-// recorded on them, never a current value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the
-// value that brought a source in (LocalRegionSourceUse), and the relations judged through those sources (RegionContains,
-// JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
+// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a reassignable local's Type, a var local's, a var Pattern binding's
+// or a var for slot's (their declarations are IsRegionOwner's; LocalRegionSlot), the contract bounds recorded on them, never a current
+// value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the value that brought a source in
+// (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). The Types that carry the
+// regions are Binding.LocalRegions.Types.cs's.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
@@ -21,7 +22,10 @@ public sealed partial class Binding
     internal int RegionVersion => this.regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
-        => origin.Open || origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
+        => origin.Open || (origin is { Kind: OriginKind.Inference, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder));
+
+    // SPEC 15.4.4, 15.6.5: the declarations whose Types have region slots: every local, and a reassignable Pattern binding or for slot.
+    internal static bool IsRegionOwner(Koto declaration) => declaration is VariableKoto || IsMutableDeclaration(declaration);
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
@@ -183,7 +187,7 @@ public sealed partial class Binding
         this.regionVisited.Clear();
     }
 
-    private BoundOrigin LocalRegionSlot(VariableKoto owner, int slot)
+    private BoundOrigin LocalRegionSlot(Koto owner, int slot)
     {
         var origin = this.OriginAtom(owner, OriginKind.Inference, slot);
         if (!this.localRegions.ContainsKey(origin))
