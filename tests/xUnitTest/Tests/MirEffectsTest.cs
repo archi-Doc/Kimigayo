@@ -696,7 +696,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // at every instance; R8-S2b2: the summary also holds the i128 and u128 specializations, SPEC 15.6.4, whose Storage.formatInteger128
     // call is classed Inputs; pins, which pass through builtinFormat before them), for bool, char and Unit (R8-S2a), for f32 and f64
     // (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's Allocation and Abort are permitted under confined, SPEC 8.11.2,
-    // so no record) and for string and Wrapping<i32> (R8-S2d1), the view's declared one (R8-S2d1; the view of a local string, since a
+    // so no record) and for string, the view and Wrapping<i32> (R8-S2d1; the view of a local string, since a
     // temporary's ends with its statement, SPEC 3.6), Shown's printing one, also in an interpolation (fail-before: the earlier rows, a
     // limit; R8-S2d1's and R8-S2b1's rows pass before too, through builtinFormat).
     [Theory]
