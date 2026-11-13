@@ -375,7 +375,7 @@ public sealed partial class Binding
         Complete(some, option);
         Complete(plan.Match.Arms[1].Pattern, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
-        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0), OwnedPart: true));
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, this.Library.OptionSome), OwnedPart: true));
         return match;
     }
 
