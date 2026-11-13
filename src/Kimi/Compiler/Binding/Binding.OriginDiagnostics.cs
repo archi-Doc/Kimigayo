@@ -261,8 +261,11 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.ConstraintSet:
                 return new("expression", SetSlotName(origin)); // SPEC 15.3.4: the set's slot as written, `m.at`.
-            case OriginKind.Inference when origin.Binder is VariableKoto local:
-                return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
+            case OriginKind.Inference when origin.Binder is { } local && IsRegionOwner(local):
+                // A local's region (LocalRegionSlot) by the local's name, as a Closure body names it. A VariableKoto's name is its
+                // NameKoto's: its symbol, keyed by the declaration, keeps its first name when an edit replaces the NameKoto (Indexing
+                // redeclares only a renamed Pattern binding, and a for slot's name is its own key).
+                return new("omitted", local is VariableKoto declared ? declared.NameKoto.IdentifierName : local.BoundSymbol!.Name);
             case OriginKind.Holder:
                 return new("expression", "self"); // SPEC 5.7: `during self`.
             case OriginKind.Projection when origin.Binder is FunctionKoto { IsAnonymous: true } &&

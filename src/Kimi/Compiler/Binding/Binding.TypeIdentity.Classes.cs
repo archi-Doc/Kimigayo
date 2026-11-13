@@ -98,6 +98,21 @@ public sealed partial class Binding
         internal bool Failed(BoundType type)
             => this.node.TryGetValue(type, out var n) && this.state[this.Find(n)] != One && !this.incompleteClass[this.Find(n)];
 
+        // The members of a Type's class in index order, appended to `into`, where the class is final and One (Same's condition: an
+        // erroneous or provisional class fixes no form); nothing for a Type outside the classes (PLAN G823's key walk reads them).
+        internal void Members(BoundType type, List<BoundType> into)
+        {
+            if (!this.node.TryGetValue(this.Target(type), out var n) || this.state[this.Find(n)] != One || this.incompleteClass[this.Find(n)])
+            {
+                return;
+            }
+
+            for (var i = this.head[this.Find(n)]; i >= 0; i = this.next[i])
+            {
+                into.Add(this.types[i]);
+            }
+        }
+
         // Whether a Type has a part in a final erroneous class (the producer channel's question).
         internal bool Holds(BoundType? type)
         {

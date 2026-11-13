@@ -164,6 +164,17 @@ public sealed partial class Binding
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 
+    // SPEC 8.2.3 ("an abstract Type ... takes the form its binding, a completed projection or its admitted set fixes"): the members of a
+    // Type's identity class in the view, appended to `into`; none without a premise or where the class is erroneous or provisional. The
+    // key walk's reader (Binding.Retention.PlaceKeys' View, PLAN G823), which chooses no premise: a class's constructed members are one.
+    private void IdentityMembers(BoundType type, BindingScope scope, List<BoundType> into)
+    {
+        if (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes)
+        {
+            classes.Members(type, into);
+        }
+    }
+
     // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
     private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)
         => this.ClassesOf(scope, out completion) is { } classes && classes.Failed(projection);

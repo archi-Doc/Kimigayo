@@ -115,7 +115,7 @@ public sealed partial class Binding
             var selected = decomposition is not null && source.IsTupleBinding && slot is not null && name.IdentifierName != "_"
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
-            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);
+            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach, name);
             symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
             if (iterable is null)
             {
@@ -389,7 +389,7 @@ public sealed partial class Binding
         Complete(some, option);
         Complete(plan.Match.Arms[1].Pattern, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
-        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0), OwnedPart: true));
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, this.Library.OptionSome), OwnedPart: true));
         return match;
     }
 
@@ -405,7 +405,7 @@ public sealed partial class Binding
 
         var plan = source.Iteration!;
         var some = match.PositionStorage[0];
-        var none = AdtDef.Case(some.MatchedType, 1);
+        var none = AdtDef.Case(some.MatchedType, this.Library.OptionNone);
         match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));

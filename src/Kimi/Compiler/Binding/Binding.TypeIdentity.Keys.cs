@@ -63,9 +63,10 @@ public sealed partial class Binding
 
     // R7-C2c2: the key of `type` in a view's classes: a parameter's or projection's class's Representative, else the Type over its
     // components' keys (congruence), whose class is asked again. A constructed member (`i32`, a struct, `Option<U>`) keys to itself over
-    // its components' keys: its conformance is ResolveConformance's alone (SPEC 8.3.2's closed world), so no parameter's premise rows
-    // reach it, and a premise contradicting it stays the premise's error. A key names the class to the premise supply only; no reader
-    // sees it as a Type. Each
+    // its components' keys, so no parameter's premise rows reach it and its conformance is ResolveConformance's: a premise contradicting
+    // a Refuted one stays the premise's error (SPEC 8.3.2). Where it is Unknown, the implementation's limit, not SPEC's rule: a premise
+    // is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on base, until c2-4. A
+    // key names the class to the premise supply only; no reader sees it as a Type. Each
     // Type is keyed once per table (the table keeps it), so a request's keys cost the distinct Types it compares; a warm pass finds
     // the rebuilt Types interned and the table's capacity kept, and allocates nothing.
     private BoundType ClassKey(BoundType type, IdentityClasses classes)
