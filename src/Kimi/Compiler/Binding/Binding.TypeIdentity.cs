@@ -21,7 +21,8 @@ namespace Kimi.Compiler;
 //   Type's key in a table (ClassKey: a parameter's or projection's class's least parameter or projection by a total structural order,
 //   Representative, or the Type over its components' keys; a constructed member keys to itself, its conformance being
 //   ResolveConformance's alone), which relates only what Proven relates (a class in state One with complete meets, whatever the
-//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type.
+//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
+//   constructed member (CompleteMember, the same scan), which only ProveProposition's contradiction check reads (N9).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is

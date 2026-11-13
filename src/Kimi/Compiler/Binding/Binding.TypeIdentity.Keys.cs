@@ -118,8 +118,7 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
-        private readonly Dictionary<int, BoundType?> complete = new(); // CompleteMember's answer per class root (N9)
-        private readonly Dictionary<int, BoundType?> least = new(); // Representative's answer per class root (R7-C2c2)
+        private readonly Dictionary<int, (BoundType? Least, BoundType? Complete)> scanned = new(); // per class root: Representative's and CompleteMember's answers
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.
@@ -130,30 +129,31 @@ public sealed partial class Binding
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
         // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A constructed Type receives no key (ClassKey).
-        internal BoundType? Representative(BoundType type) => this.Scanned(type) is { } root ? this.least[root] : null;
+        internal BoundType? Representative(BoundType type) => this.Scanned(type).Least;
 
         // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
-        // agree, so any one decides a conformance by the closed world); null otherwise. With Representative it is the one fact c2-1's
-        // rule rests on: a constructed member's conformance is ResolveConformance's alone. The answer is the table's, so it carries
-        // the table's Completion (Provisional while the table is not Final).
-        internal BoundType? CompleteMember(BoundType type) => this.Scanned(type) is { } root ? this.complete[root] : null;
+        // agree, so any one decides a proposition by the closed world); null otherwise. With Representative it is the one fact c2-1's
+        // rule rests on: a constructed member's conformance is ResolveConformance's alone. Its one reader is ProveProposition's
+        // contradiction check (MemberVerdict). The table's Completion is not read: until R7-C2e2 threads Completion through the
+        // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
+        internal BoundType? CompleteMember(BoundType type) => this.Scanned(type).Complete;
 
         // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
         // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
-        private int? Scanned(BoundType type)
+        private (BoundType? Least, BoundType? Complete) Scanned(BoundType type)
         {
             if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
             {
-                return null;
+                return default;
             }
 
             var root = this.Find(n);
             if (this.state[root] != One || this.incompleteClass[root])
             {
-                return null;
+                return default;
             }
 
-            if (!this.least.ContainsKey(root))
+            if (!this.scanned.TryGetValue(root, out var answer))
             {
                 BoundType? best = null;
                 BoundType? complete = null;
@@ -171,11 +171,10 @@ public sealed partial class Binding
                     }
                 }
 
-                this.least[root] = best;
-                this.complete[root] = complete;
+                this.scanned[root] = answer = (best, complete);
             }
 
-            return root;
+            return answer;
         }
     }
 }

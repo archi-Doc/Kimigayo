@@ -445,22 +445,6 @@ public sealed partial class Binding
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);
-
-        // N9 (SPEC 8.2.3, 8.3.2): for a subject identical with a complete constructed Type, that Type's resolved conformance only detects
-        // a premise contradicting it, in either polarity: the premises supplying the conformance against its refutation, or supplying its
-        // negation against its proof, are contradictory evidence (Error), the premise's error at the declaration. It never supplies
-        // evidence (a member's Proven reaching a projection's completion accepted an invalid program, r2-e3; that direction is c2-4's).
-        if (proof == ConstraintProof.Unknown && type.IsAbstract && HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.CompleteMember(type) is { } member)
-        {
-            var resolved = this.ResolveConformance(member, contract, scope, out _);
-            if ((premise && resolved == ConstraintProof.Refuted) ||
-                (resolved == ConstraintProof.Proven &&
-                 this.Supply(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), this.ViewOf(scope)).Negative))
-            {
-                return ConstraintProof.Error;
-            }
-        }
-
         return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 

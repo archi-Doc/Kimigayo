@@ -83,8 +83,7 @@ public sealed partial class Binding
             this.cycle.Clear();
             this.stack.Clear();
             this.keys.Clear();
-            this.least.Clear();
-            this.complete.Clear();
+            this.scanned.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
