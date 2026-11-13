@@ -13187,6 +13187,25 @@ resumed by R4-M86 (2026-10-20).
     crash); the common fix removes both.
   - **Correction.** The unit's commit states in its Search line that nothing else shares the cause; F1 shows `InferComposite` does.
     This entry corrects it; the commit is not amended.
+- **BU-205 The grammar owner decides each Parsing form PB1 fixes: F.5's PathQualifier, F.6.3's override header, F.3.3's one modifier
+  (PLAN G489 D1, G569, G557's override part)** (2026-11-14; Front, Parsing; Major, plan revision 69 (B) class 1, the Front's Parsing
+  bundle PB1; design reviews 1-2 and implementation reviews by F's reviewer; the Middle's C-317 consent) SPEC F.5, F.9.4, F.6.3,
+  F.3.3, 19.4.
+  - **F.5.** `ContainerPath := PathQualifier PathSuffix+` is decided by the group, in one whitelist (`Parser.ContinuesGroupedType`):
+    a BoundContainerQualifier, a Unit or Tuple Type or a grouped Function Type takes either PathSuffix; no other group does, and the
+    Type ends at the `.`. In an adaptation target (`TypeContext.Target`, `TargetOperand`) no group or fixed array continues: F.9.4
+    makes either a DelimitedTarget, a ClosedTarget whose `.` is the adapted value's PostfixSuffix, and a target groups a projection
+    (`x@((i32, u8).(C).Item)`, F.5's note); `ParseAnnotatedType`, which every Type head passes through, decides it once by the `(`
+    or `[` head.
+  - **F.6.3.** An override header is a header form of `ParseFuncDeclaration`, beside `ConstructorHeader` and `SpecializationHeader`:
+    its access word is rejected as for every production without Access, and Type parameters, `!`, a parameter default or an
+    Attribute is one `SyntaxForm.OverrideHeader` record per header, the override a recovery.
+  - **F.3.3.** "At most one modifier" is judged by the same owner for every FunctionHeader and OverrideDeclaration: more than one of
+    unsafe, virtual and override is one `SyntaxForm.SecondModifier` record at the second modifier word (the modifier reader
+    publishes `TokenReader.SecondModifierSpan`, beside `AccessModifierSpan`), the function a recovery.
+  - **Moved from Binding:** `VirtualDeclarationCause.Combined`, `Unsafe` and `RedeclaredParameter` are removed; `RedeclaredHeader`
+    becomes `RedeclaredConstraints`. Rejected: the specialization's list flag for the override's `!` (a second record and the
+    recovery anyway); a clause per qualifier form; the header span for SecondModifier (every other F.3.3 record is at its word).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
