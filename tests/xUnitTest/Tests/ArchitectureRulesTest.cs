@@ -402,6 +402,38 @@ public class ArchitectureRulesTest
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
+    // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
+    // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
+    // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
+    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines and the indexes are the
+    // request boundary, not the walk; a walk that reaches PremiseRefines fails at run time (InternalInvariant). R7-C2c2: the walk's class
+    // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
+    // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
+    [Fact]
+    public void EnumeratesWalkCallsNoJudgment()
+    {
+        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey"];
+        string[] allowed =
+        [
+            "Add", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
+            "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "ReadSourceState", "Rebuild",
+            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
+            "UnresolvedTypeDeclarationContext",
+        ];
+        var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }
+            .Select(static x => File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding", x)))
+            .SelectMany(static source => CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
+            .Where(x => (x is MethodDeclarationSyntax method && walk.Contains(method.Identifier.Text)) || (x is StructDeclarationSyntax type && walk.Contains(type.Identifier.Text))).ToArray();
+        Assert.Equal(walk.Length, members.Length);
+        var calls = members.SelectMany(static x => x.DescendantNodes().OfType<InvocationExpressionSyntax>()).ToArray();
+        var actual = calls.Select(static x => CalledName(x.Expression)).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(allowed.SequenceEqual<string?>(actual), $"Enumerate's walk calls: {string.Join(", ", actual)}.");
+        Assert.All(
+            calls.Where(static x => CalledName(x.Expression) is "InstantiatedContract" or "ContractConstraint"),
+            static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
+    }
+
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
     private static string? CalledName(ExpressionSyntax called) => called switch
     {
