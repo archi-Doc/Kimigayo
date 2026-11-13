@@ -200,8 +200,7 @@ public static partial class Parser
         // Directive conditions reject every is test separately; do not report it twice as a chain.
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
-            (left is BinaryKoto { Akind: KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals } ||
-            (runtimeIs && left is IsKoto));
+            ((left is BinaryKoto comparison && IsComparisonKind[(int)comparison.Akind]) || (runtimeIs && left is IsKoto));
     }
 
     /// <summary>
