@@ -296,7 +296,7 @@ public sealed partial class Binding
     {
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
-            return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+            return target.Scope.Owner is ContractKoto { BoundSymbol: { } owner } && IsRefinement(contract, owner);
         }
 
         if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
@@ -324,7 +324,7 @@ public sealed partial class Binding
                 for (var w = 0; w < path.WitnessStorage.Count; w++)
                 {
                     var witness = path.WitnessStorage[w];
-                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto declaration && RefinesDeclaration(contract, declaration))
+                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto { BoundSymbol: { } declaration } && IsRefinement(contract, declaration))
                     {
                         return true;
                     }

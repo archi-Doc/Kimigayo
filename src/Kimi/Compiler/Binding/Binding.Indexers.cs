@@ -37,26 +37,6 @@ public sealed partial class Binding
     internal bool HasExclusiveIndexer(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
 
-    // SPEC 8.4.3: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
-    private static bool RefinesDeclaration(BindingSymbol contract, Koto declaration)
-    {
-        if (ReferenceEquals(contract.Declaration, declaration))
-        {
-            return true;
-        }
-
-        var shape = contract.Contract;
-        for (var i = 0; shape is not null && i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, declaration))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
     // expression designates it, whatever the call node itself is typed.
     private static BoundType? LentElement(InvocationKoto? call)
