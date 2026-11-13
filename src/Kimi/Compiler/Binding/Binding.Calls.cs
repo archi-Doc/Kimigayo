@@ -156,7 +156,7 @@ public sealed partial class Binding
         var originSlots = solveOrigins ? shape.Origins : 0;
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics));
+        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics), call);
         var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));

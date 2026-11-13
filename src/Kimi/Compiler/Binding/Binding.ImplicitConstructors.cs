@@ -67,7 +67,7 @@ public sealed partial class Binding
         var failedCause = this.failedCause;
         var requirementContract = this.activeRequirementContract;
         var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
-        var frame = this.infer.Rent(Math.Max(1, shape.Generics));
+        var frame = this.infer.Rent(Math.Max(1, shape.Generics), constructor);
         var mapping = this.indexScratch.Rent(1);
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         var origins = this.originScratch.Rent(shape.Origins);

@@ -143,13 +143,14 @@ public sealed partial class Binding
         => call.Method is MemberAccessKoto member && this.inferredConstructionTargets.Contains(member.Left);
 
     // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms under the binding, by the one rule substitution
-    // reads (ApplySemantics). Formation continues only into the target, which is still in the callee's terms (an owner binding); any
-    // other result (a layer, an abstract binding's application, a family) is in the caller's terms at its top and ends it, so a caller's
-    // pair is never formed again under the callee's bindings (a recursive call). An application whose s is still open is returned as it is.
-    private BoundType FormedApplication(BoundType pattern, Koto function, ReadOnlySpan<BoundType?> arguments)
+    // reads (ApplySemantics). s is known from the slot's binding or, while that is unbound, from its selector evidence (SlotFrame.Selectors).
+    // Formation continues only into the target, which is still in the callee's terms (an owner binding); any other result (a layer, an
+    // abstract binding's application, a family) is in the caller's terms at its top and ends it, so a caller's pair is never formed again
+    // under the callee's bindings (a recursive call). An application whose s is still unknown is returned as it is.
+    private BoundType FormedApplication(BoundType pattern, Koto function, SlotFrame frame)
     {
         while (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
-            ContainerSlot(function, selector) is >= 0 and var slot && slot < arguments.Length && arguments[slot] is { } whole)
+            ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
         {
             this.termWalks++;
             var formed = this.ApplySemantics(whole, target, pattern.Origin);
@@ -164,9 +165,13 @@ public sealed partial class Binding
         return pattern;
     }
 
-    // SPEC 10.8: whether a pattern still holds an application whose pair binder no source has bound, read as FormedApplication forms
+    // SPEC 8.1.2, 10.8: what fixes pair slot `slot`'s binder: the slot's binding, else its first source's Type (the selector evidence).
+    private static BoundType? Selector(SlotFrame frame, int slot)
+        => slot < frame.Types.Length ? frame.Types[slot] ?? frame.Selectors[slot] : null;
+
+    // SPEC 10.8: whether a pattern still holds an application whose pair binder no source has fixed, read as FormedApplication forms
     // (a bound application's target is still in the callee's terms). Such an input waits until every source of its binder is in.
-    private bool HasOpenApplication(BoundType pattern, Koto function, ReadOnlySpan<BoundType?> arguments)
+    private bool HasOpenApplication(BoundType pattern, Koto function, SlotFrame frame)
     {
         if (!pattern.HasAbstractPart)
         {
@@ -175,14 +180,14 @@ public sealed partial class Binding
 
         this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
-            ContainerSlot(function, selector) is >= 0 and var slot && slot < arguments.Length)
+            ContainerSlot(function, selector) is >= 0 and var slot && slot < frame.Types.Length)
         {
-            return arguments[slot] is null || this.HasOpenApplication(target, function, arguments);
+            return Selector(frame, slot) is null || this.HasOpenApplication(target, function, frame);
         }
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (this.HasOpenApplication(pattern.Components[i], function, arguments))
+            if (this.HasOpenApplication(pattern.Components[i], function, frame))
             {
                 return true;
             }
@@ -236,9 +241,18 @@ public sealed partial class Binding
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
             ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
         {
-            if (arguments[selectorSlot] is not { } whole)
+            // SPEC 10.8 ("An unbound s is inferred from the source's outer Semantics", the owner's reading, O-243: an application is a
+            // source): with s still unknown, this actual fixes it as the selector evidence; every later source must agree, the original's
+            // binding and the expected result included. Never supplies no evidence.
+            if (Selector(frame, selectorSlot) is not { } whole)
             {
-                return true; // SPEC 10.8: an input holding it waits for every source of s (HasOpenApplication); still open, it binds nothing.
+                if (ReferenceEquals(actual, BoundType.Never))
+                {
+                    return true;
+                }
+
+                frame.SetSelector(selectorSlot, actual);
+                whole = actual;
             }
 
             // SPEC 8.1.2: matched as the Type it forms: an owner binding's target in the callee's terms, else a layer matched here.
@@ -268,13 +282,22 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 8.1.2: an annotated occurrence of the original (`s/T during b`) binds only that occurrence's outer-Origin slot, so its
-            // actual's outer Origin is no evidence for the binding's own: it is the solve's open region for the slot, which other
-            // evidence fills, in either order (SPEC 10.8); its other parts are evidence as at any occurrence.
-            if (pattern is { Origin: not null, Symbol.Kind: BindingSymbolKind.SemanticsTarget } && actual.Origin is not null &&
-                this.inferenceSource is { } source && ReferenceEquals(source.Owner, function))
+            if (pattern.Symbol!.Kind == BindingSymbolKind.SemanticsTarget)
             {
-                actual = this.WithOrigins(actual, this.AnnotatedOuterRegion(source.Node, slot), (BoundOrigin[])actual.OriginArguments);
+                // SPEC 10.8: an original agrees with the selector evidence (both form one layer over the pair's target), or the
+                // candidate is inapplicable; an expected result that disagrees fills nothing.
+                if (frame.Selectors[slot] is { } selected && !ReferenceEquals(actual, BoundType.Never) && !ReferenceEquals(this.ApplySemantics(selected, pattern.Symbol.Type!, null), this.ApplySemantics(actual, pattern.Symbol.Type!, null)))
+                {
+                    return false;
+                }
+
+                // SPEC 8.1.2: an annotated occurrence (`s/T during b`) binds only that occurrence's outer-Origin slot, so its actual's outer
+                // Origin is no evidence for the binding's own: it is the solve's open region for the slot (keyed by the frame's node),
+                // which other evidence fills, in either order; its other parts are evidence as at any occurrence.
+                if (pattern.Origin is not null && actual.Origin is not null)
+                {
+                    actual = this.WithOrigins(actual, this.AnnotatedOuterRegion(frame.Node, slot), (BoundOrigin[])actual.OriginArguments);
+                }
             }
 
             if (HasArrayLengthHole(actual))

@@ -15,11 +15,6 @@ public sealed partial class Binding
     private SlotSet invariantSlots;
     private FunctionKoto? activeInferenceFunction;
 
-    // SPEC 8.1.2, 10.8: the node of the solve being evaluated (a call candidate's call, a function reference's use) and the slot owner
-    // it solves; the node's open regions stand for the outer Origins that annotated occurrences leave to other evidence (Infer,
-    // AnnotatedOuterRegion). Null for other solves.
-    private (Koto Node, Koto Owner)? inferenceSource;
-
     // DECISIONS BU-86: per slot of the candidate being evaluated, the judgment that a known call signature's result over its closure's
     // hidden environment receiver supplied no evidence for it, with that argument (Infer): the slot is not unsolved but judged by the
     // Callable proof or the conversion (SPEC 8.10, 7.7.4). TryCandidateCore publishes one only for a slot no evidence binds.
@@ -48,9 +43,7 @@ public sealed partial class Binding
 
         var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
-        var savedSource = this.inferenceSource;
         this.activeInferenceFunction = solution.Function;
-        this.inferenceSource = (solution.Call, CallSlotOwner(solution.Function));
         var savedEnvironment = this.environmentJudgments;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
@@ -93,7 +86,6 @@ public sealed partial class Binding
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;
-            this.inferenceSource = savedSource;
             this.environmentScratch.Return(this.environmentJudgments, clearArray: true);
             this.environmentJudgments = savedEnvironment;
             this.acquisitionFailure = savedAcquisition;
@@ -123,10 +115,11 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 10.8 ("collected together"; traversal order never chooses): an input whose pattern holds an application of an open pair
-    // binder waits until every source of the binder is in: the other inputs, then the expected result. A waiting input that no longer
-    // holds one is inferred; when none can be, every waiting input not yet a source is inferred once as one (its originals bind its own
-    // binders), and those it formed are inferred again. One that stays open keeps its open parts unbound (SPEC 10.8 Unbound slots).
+    // SPEC 10.8 ("collected together"; traversal order never chooses; every source of a binder, an application included, fixes it before
+    // the expected result fills): an input whose pattern holds an application of a binder no source has fixed waits. A waiting input
+    // that no longer holds one is inferred; when none can be, every waiting input not yet a source is inferred once as one (its originals
+    // bind, and its applications give selector evidence for, its own binders), and those it formed are inferred again. Called before the
+    // expected result and after it (for a binder only the expected result fixes); one still open keeps its open parts unbound.
     private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
@@ -137,7 +130,7 @@ public sealed partial class Binding
             var settled = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame.Types))
+                if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame))
                 {
                     if (!InferWaiting(ref solution, function, mapping, i))
                     {
@@ -154,7 +147,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var bound = BoundSlots(solution.Frame.Types);
+            var bound = BoundSlots(solution.Frame);
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 if (waiting.Contains(i) && !sourced.Contains(i))
@@ -167,7 +160,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (BoundSlots(solution.Frame.Types) == bound)
+            if (BoundSlots(solution.Frame) == bound)
             {
                 return true;
             }
@@ -179,12 +172,13 @@ public sealed partial class Binding
             => solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
                 ? solution.InferArgument(evidencePattern, solution.Call.ArgumentNodes[i], late: false) : solution.Call.ArgumentNodes[i].BoundType is null;
 
-        static int BoundSlots(ReadOnlySpan<BoundType?> types)
+        // The slots a source has fixed: bound, or a pair binder known by its selector evidence.
+        static int BoundSlots(SlotFrame frame)
         {
             var count = 0;
-            foreach (var type in types)
+            for (var i = 0; i < frame.Types.Length; i++)
             {
-                count += type is null ? 0 : 1;
+                count += (frame.Types[i] is null ? 0 : 1) + (frame.Selectors[i] is null ? 0 : 1);
             }
 
             return count;
@@ -314,7 +308,7 @@ public sealed partial class Binding
                     continue; // A parameter Type that failed to bind is a wildcard (rule W; TryCandidate reads it at the verdict).
                 }
 
-                if (this.HasOpenApplication(type, CallSlotOwner(function), frame.Types))
+                if (this.HasOpenApplication(type, CallSlotOwner(function), frame))
                 {
                     waiting.Add(i); // SPEC 10.8: an application is formed only after every source of its binder (SettleWaiting).
                     continue;

@@ -287,11 +287,11 @@ public sealed partial class Binding
             actual = binding.SignatureAtFunction(fixedPattern.Type, actual);
             // SPEC 8.1.2, 10.8: Origins are matched at the formed pattern, and only once it holds no open application: an input that
             // still does is inferred again after every source of its binders (SettleWaiting). Infer forms the pattern itself.
-            var formed = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
+            var formed = binding.FormedApplication(pattern, this.SlotOwner, this.Frame);
             var known = formed.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
             var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
-            if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Types))
+            if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Frame))
             {
                 binding.MatchInputOrigins(formed, actual, binder, this.Origins, this.Inputs, quantifier);
                 if (formed.CarriesOrigin && actual.CarriesOrigin)
@@ -341,9 +341,9 @@ public sealed partial class Binding
                     return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
                 case PartKind.Typed when type is not null && !late:
                     type = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, type); // As InferAdapted (U1.6g (c)).
-                    if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Types))
+                    if (!binding.HasOpenApplication(pattern, this.SlotOwner, this.Frame))
                     {
-                        binding.MatchInputOrigins(binding.FormedApplication(pattern, this.SlotOwner, this.Types), type, this.Binder, this.Origins, this.Inputs); // As InferAdapted.
+                        binding.MatchInputOrigins(binding.FormedApplication(pattern, this.SlotOwner, this.Frame), type, this.Binder, this.Origins, this.Inputs); // As InferAdapted.
                     }
 
                     pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());

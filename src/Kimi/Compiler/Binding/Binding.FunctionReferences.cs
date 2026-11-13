@@ -48,7 +48,7 @@ public sealed partial class Binding
 
         // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
         var slots = count == 1 && ReferenceCandidate(symbol)!.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
-        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots);
+        SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, use);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
@@ -188,7 +188,7 @@ public sealed partial class Binding
         if (target.GenericArguments.Count != 0)
         {
             // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
-            var frame = this.infer.Rent(target.GenericArguments.Count);
+            var frame = this.infer.Rent(target.GenericArguments.Count, use);
             try
             {
                 if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundFrame: frame))
@@ -275,14 +275,14 @@ public sealed partial class Binding
     {
         proof = ConstraintProof.Proven;
         var count = function.GenericArguments.Count;
-        if (!this.InferReferenceSlots(use, symbol, function, required, frame, container, false, true, true) ||
+        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, true) ||
             (explicitReference is not null && !this.ExplicitReferenceAgrees(explicitReference, frame, count, false, function, scope)))
         {
             // SPEC 10.8, 15.3.6: bindings of one slot that differ only in their Origins are an Origin failure, not a structural one;
             // when only per-call Origins of S would satisfy the slot, the reference's record names that slot and those parameters.
             // A Constraint that the met binding does not prove is judged first, as for a binding without a conflict, since neither an Origin
             // of the slot nor a wrapper would repair it.
-            if (this.InferReferenceSlots(use, symbol, function, required, frame, container, true, true, true) &&
+            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, true) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, frame, count, true, function, scope)))
             {
                 if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
@@ -351,8 +351,8 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.8: binds a reference's slots from the parameters of S and, with `result`, from its result; `commonOrigins` meets
-    // the Origins that two positions give one slot, as a call's inference would. `use` is the solve's node (inferenceSource).
-    private bool InferReferenceSlots(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
+    // the Origins that two positions give one slot, as a call's inference would.
+    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
     {
         frame.ClearTypes(function.GenericArguments.Count);
         if (lengths)
@@ -360,27 +360,18 @@ public sealed partial class Binding
             frame.ClearLengths(function.GenericArguments.Count);
         }
 
-        var saved = this.inferenceSource;
-        this.inferenceSource = (use, function);
-        try
+        var parameters = required.Components[0];
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            var parameters = required.Components[0];
-            for (var i = 0; i < function.Parameters.Count; i++)
+            if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
+                !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
             {
-                if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                    !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
-                {
-                    return false;
-                }
+                return false;
             }
+        }
 
-            return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-                this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
-        }
-        finally
-        {
-            this.inferenceSource = saved;
-        }
+        return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
+            this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
@@ -477,11 +468,11 @@ public sealed partial class Binding
             return null;
         }
 
-        var frame = this.infer.Rent(count);
-        var fromResult = this.infer.Rent(count);
+        var frame = this.infer.Rent(count, use);
+        var fromResult = this.infer.Rent(count, use);
         try
         {
-            if (!this.InferReferenceSlots(use, symbol, function, required, frame, container, true, false, true))
+            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
             {
                 return null;
             }
@@ -614,7 +605,7 @@ public sealed partial class Binding
 
         var generic = function.GenericArguments.Count;
         var container = this.ReferenceContainer(use, symbol);
-        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic);
+        SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, use);
         var origins = this.originScratch.Rent(function.Origins.Count);
         var inputCount = InputOriginCount(function);
         var inputs = this.originScratch.Rent(inputCount);

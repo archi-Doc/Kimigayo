@@ -233,8 +233,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var application = ReferenceEquals(target, pair.Type) && (origin is null || ReferenceEquals(origin, this.PairOuterOrigin(pair))) ? whole
-            : this.types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [target], origin: origin);
+        var application = this.PairApplication(pair, target, origin);
         count = 0;
         foreach (var mode in SemanticsOrder)
         {
@@ -289,13 +288,22 @@ public sealed partial class Binding
     private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
     {
         { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),
-        // The pair's own target gives its original (one representation, as FamilyApplication forms it), with the occurrence's slot.
-        _ when IsAbstractBinding(whole) && whole.Symbol is { WholeType: { } original } pair && ReferenceEquals(target, pair.Type)
-            => origin is null || ReferenceEquals(origin, this.PairOuterOrigin(pair)) ? original : this.WithOrigins(original, origin, []),
-        _ when IsAbstractBinding(whole) => this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin),
+        _ when IsAbstractBinding(whole) => this.PairApplication(whole.Symbol!, target, origin),
         { Kind: BoundTypeKind.Semantics } => this.types.Rebuild(this.types.PairBinding(whole), [target], IsBorrow(whole.Semantics) ? origin : null, []),
         _ => this.Form(whole.Semantics, target, origin),
     };
+
+    // SPEC 8.1.2: a pair's `s/U` for an abstract binding: the pair's own target gives its original, with the occurrence's slot where it
+    // is not the pair's `o` (AnnotatedOriginal); any other target an application. ApplySemantics and FamilyApplication read it.
+    private BoundType PairApplication(BindingSymbol pair, BoundType target, BoundOrigin? origin)
+        => ReferenceEquals(target, pair.Type)
+            ? this.AnnotatedOriginal(pair.WholeType!, ReferenceEquals(origin, this.PairOuterOrigin(pair)) ? null : origin)
+            : this.types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [target], origin: origin);
+
+    // SPEC 8.1.2: an occurrence of a pair's original under its binding, annotated with `origin` (`s/T during b`): the binding with that
+    // outer-Origin slot where it keeps one (HasOuterSlot); a value binding keeps none. Substitution and PairApplication read it.
+    private BoundType AnnotatedOriginal(BoundType binding, BoundOrigin? origin)
+        => origin is not null && HasOuterSlot(binding) ? this.WithOrigins(binding, origin, (BoundOrigin[])binding.OriginArguments) : binding;
 
     private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
