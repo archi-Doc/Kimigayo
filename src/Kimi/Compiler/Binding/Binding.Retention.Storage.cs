@@ -23,8 +23,9 @@ namespace Kimi.Compiler;
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
 // `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part (whose hidden storage is the
 // Abstract one) and a callable; past an exclusive borrow, pair layer admitting one, UniqSlice or raw layer the call may write lies
-// another storage; past a shared one, what a stored value brings (Content targets) but no position. Each (storage, Type) is walked once,
-// so the walk names every storage past the root; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
+// another storage; past a shared one, what a stored value brings (Content targets) but no position. Each state emits once and is walked
+// from the shallowest depth it is met at (Enters), so the walk names every storage past the root within the bound, whatever route meets
+// a state first; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
 // Must not: judge an Origin relation (the premise closure's), decide which source a position can hold (the fits'), or read the call's
 // arguments or solved Origins.
 // Also the parts the value at a Place's key holds at its own address by the walk's by-value criterion (OwnParts, read by OwnLayers in
@@ -49,11 +50,12 @@ public sealed partial class Binding
     private const int NoStorage = -2; // An input fold's walk (RetentionSources), which names no position.
 
     // The storages of the walk being made (by index: Own, Abstract, the result's, then one per contract Type past an exclusive layer)
-    // with each one's contract Type, its index by that Type, the (storage, Type) pairs walked and targeted, the positions (Value tests: a
-    // position's node and Type, null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
+    // with each one's contract Type, its index by that Type, the states walked (each with the shallowest depth it was met at and the
+    // node its sources go through, Source), the (storage, Type) pairs targeted, the positions (Value tests: a position's node and Type,
+    // null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<(int Storage, bool Writable, bool Captured, SourceAt Source, BoundType Type, BoundType? Signature)> storageSeen = new();
+    private readonly Dictionary<(int Storage, bool Writable, bool Captured, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
@@ -130,17 +132,27 @@ public sealed partial class Binding
 
     // The one walk (DECISIONS R4-M154, r2.3): a Type the walk visits, once per state it is in (StorageAt, the path's reduced prefix
     // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position; an input's
-    // also a hold, storageHolds), the input fold its sources (Source). Then what the Type's entries (Holdings) reach (Reach).
+    // also a hold, storageHolds), the input fold its sources (Source), each once, at the state's first meeting. Then what the Type's
+    // entries (Holdings) reach (Reach). An input fold's walk stops at the depth bound, so it enters a state by the bounded walks' rule
+    // (Enters: again where it is met shallower; PLAN G571), reusing the node the first meeting's sources go through; an output's walk has
+    // no bound, so its state counts depth 0 and is entered once.
     private void StorageWalk(OriginPremiseEnvironment environment, BoundType? type, StorageAt at)
     {
         var source = at.Source.Input >= 0;
-        var visit = (at.Storage, at.Writable, at.Captured, at.Source with { Above = -1 }, type!, at.Signature); // The layer above is no part of the key.
-        if (type is null || (source && at.Depth > StorageBound) || !this.storageSeen.Add(visit))
+        if (type is null || (source && at.Depth > StorageBound))
         {
             return;
         }
 
-        var targets = at.Writable && at.Storage >= 0 ? at.Storage : -1;
+        var visit = (at.Storage, at.Writable, at.Captured, at.Source with { Above = -1 }, type, at.Signature); // The layer above is no part of the key.
+        ref var seen = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageSeen, visit, out var met);
+        if (!Enters(ref seen.Depth, met, source ? at.Depth : 0))
+        {
+            return;
+        }
+
+        var layer = met ? seen.Layer : -1; // `seen` is read no more: the walk below inserts.
+        var targets = at.Writable && at.Storage >= 0 ? at.Storage : -1; // Only in an output's walk, whose state is entered once.
         if (targets >= 0)
         {
             this.Position(environment, type, at.Storage);
@@ -152,7 +164,12 @@ public sealed partial class Binding
 
         var run = this.BodyRun(type, at.Written, at.Holder, out var complete);
         this.retentionLimit |= !complete && at.Storage != NoStorage;
-        var layer = source ? this.Source(environment, type, at, run) : -1;
+        if (source && !met)
+        {
+            layer = this.Source(environment, type, at, run);
+            this.storageSeen[visit] = (at.Depth, layer);
+        }
+
         this.Reach(environment, type, at, run, targets, layer);
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
     }
