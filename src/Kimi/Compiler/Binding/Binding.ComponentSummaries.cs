@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; ContractType's answer and hops, each with the step it resolved, for a mapped projection whose base is
 // not abstract.
-// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
+// Output: Summary; SummaryCapability, Owned of D<A, o>, which also proves the formation of each constrained instance D's storage writes
+// (InstanceFormation); the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
 // PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
@@ -80,6 +81,12 @@ public sealed partial class Binding
             var proof = projection is null ? ConstraintProof.Unknown
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
+        }
+
+        for (var i = 0; result == ConstraintProof.Proven && i < summary.Instances.Count; i++)
+        {
+            // The engine's second consuming site of InstanceFormation, as InstanceCapability is at a node (SPEC 8.6.1, 8.3.3).
+            result = CombineProof(result, this.StoredType(summary.Instances[i], work.Type) is { } instance ? this.InstanceFormation(instance, work.Scope) : ConstraintProof.Unknown, true);
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
@@ -345,6 +352,11 @@ public sealed partial class Binding
                 return;
             }
 
+            if (type.Components.Count != 0 && type.Symbol!.Declaration is DeclarationContainerKoto { ConstraintNodes.Count: > 0 } && !summary.Instances.Contains(type))
+            {
+                summary.Instances.Add(type);
+            }
+
             this.WalkComponent(summary, type, stored, query);
             return;
         }
@@ -536,6 +548,11 @@ public sealed partial class Binding
 
         internal List<BoundType> Projections { get; } = [];
 
+        // The instances of generic declarations with Constraints that its own storage writes, in its formals: a use proves each one's
+        // formation (InstanceFormation, SPEC 8.6.1). A component's instances are not mapped in: they are formed under that component's
+        // own Constraints (SPEC 8.2.3), which its own instance here already proves, so the list is finite and needs no bound.
+        internal List<BoundType> Instances { get; } = [];
+
         // Its own sites and those of the summaries it reads, in the order met; a requiring check rests on the first.
         internal List<ComponentSite> Sites { get; } = [];
 
@@ -579,6 +596,7 @@ public sealed partial class Binding
             this.Unresolved = false;
             this.Family = false;
             this.Projections.Clear();
+            this.Instances.Clear();
             this.Sites.Clear();
             this.Links.Clear();
         }

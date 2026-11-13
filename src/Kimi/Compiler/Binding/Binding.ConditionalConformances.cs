@@ -6,7 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundType Type, BindingSymbol Contract, BindingScope Scope)> conformanceQueries = new();
+    // SPEC 8.3.3 Recursion: a nominal obligation `T is C` is open while ResolveConformance proves it; a request reaching an
+    // open obligation reads no evidence (Unknown), from whichever scope it asks (the obligation, not the requester, is the key).
+    private readonly HashSet<(BoundType Type, BindingSymbol Contract)> openObligations = new();
     private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
     private bool DisjointConformanceFacts(BindingScope a, BindingScope b)
@@ -366,8 +368,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var key = (type, contract, scope);
-        if (!this.conformanceQueries.Add(key))
+        var key = (type, contract);
+        if (!this.openObligations.Add(key))
         {
             return ConstraintProof.Unknown;
         }
@@ -396,9 +398,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto && symbol.Schema is { GenericSlots.Count: > 0 })
+            if (result == ConstraintProof.Proven)
             {
-                result = CombineProof(result, type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown, true);
+                result = CombineProof(result, this.InstanceFormation(type, scope), true);
             }
 
             if (result != ConstraintProof.Proven)
@@ -410,9 +412,16 @@ public sealed partial class Binding
         }
         finally
         {
-            this.conformanceQueries.Remove(key);
+            this.openObligations.Remove(key);
         }
     }
+
+    // SPEC 8.6.1, 8.3.1: evidence about an instance of a generic declaration (a conformance or a capability) holds only for
+    // the bindings the declaration's Constraints allow, so it rests on the instance's formation, which proves each Constraint with
+    // SPEC 8.3.3's re-entry rule: a Constraint whose obligation is open supplies none.
+    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
+        => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
+            : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {

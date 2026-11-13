@@ -388,17 +388,22 @@ public sealed partial class Binding
                     return CombineProof(shape.DestructorKoto is not null ? ConstraintProof.Refuted : ConstraintProof.Proven, this.StoredCapability(work, shape), true);
                 }
 
-                return this.NominalCopy(work, container);
+                return this.InstanceCapability(work, this.NominalCopy(work, container));
             }
         }
         else
         {
             var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
-            return CombineProof(origin, this.StructuralCapability(work), true);
+            return this.InstanceCapability(work, CombineProof(origin, this.StructuralCapability(work), true));
         }
 
-        return this.StructuralCapability(work);
+        return this.InstanceCapability(work, this.StructuralCapability(work));
     }
+
+    // The capability engine stays coinductive over structure (SPEC 15.3.5); the formation of an instance it reads is a
+    // nominal judgment, read inductively through the solver's re-entry rule (InstanceFormation, SPEC 8.6.1, 8.3.3).
+    private ConstraintProof InstanceCapability(CapabilityWork work, ConstraintProof result)
+        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope), true) : result;
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {

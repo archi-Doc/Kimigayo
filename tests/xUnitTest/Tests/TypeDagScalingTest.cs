@@ -32,6 +32,23 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // R7-C2e2 e2-5a: a component summary lists only the constrained instances its own storage writes (never a component's, mapped), so
+    // a family whose storage recurses through ever larger instance arguments, n levels deep and back to itself, is summarized once per
+    // declaration; a list that grew with the mapping stalled here (prototype efda54a52), so the check has a deadline and fails, never hangs.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    [InlineData(64)]
+    public void AnInstanceFamilyIsSummarizedOncePerDeclaration(int depth)
+    {
+        var source = "contract C\nstruct Box<T>\n    T is C\n    Self is C\n" +
+            string.Concat(Enumerable.Range(0, depth).Select(i => $"struct D{i}<T>\n    T is C\n    let next: Array<D{(i + 1) % depth}<Box<T>>>\n")) +
+            "struct S\n    Self is C\nstruct H\n    let d: D0<S>\nfunc inspect(a: H) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n";
+        var run = Task.Run(() => MinimalEmissionTest.Analyze(source));
+        Assert.True(run.Wait(TimeSpan.FromSeconds(60)), "the summary solve did not finish within 60 s");
+        Assert.True(run.Result.Binding.Result.IsComplete, MinimalEmissionTest.Describe(run.Result));
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]

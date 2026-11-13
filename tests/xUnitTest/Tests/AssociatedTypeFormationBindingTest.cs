@@ -65,17 +65,18 @@ public class AssociatedTypeFormationBindingTest
     [InlineData("(Box<string>, i32)")]
     [InlineData("[2 of Box<string>]")]
     [InlineData("(raw/Box<string>, i32)")]
-    public void InvalidAssociatedDefinitionCannotCertifyConformance(string type)
+    // The owner's O-54 (a): the conformance holds (IsVerified) and the binding's malformed Type is rejected where it is written.
+    public void InvalidAssociatedDefinitionFailsWhereWritten(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + type);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(Definition(c).IsVerified);
+        Assert.True(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(Definition(c).IsVerified);
+        Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.False(Definition(restored).IsVerified);
+        Assert.True(Definition(restored).IsVerified);
     }
 
     [Theory]
@@ -136,7 +137,7 @@ public class AssociatedTypeFormationBindingTest
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(definition.IsVerified);
+        Assert.True(definition.IsVerified); // O-54 (a): the conformance holds; Box<string> fails where written.
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.True(c.Bind().IsComplete);
         Assert.Same(definition, Definition(c));

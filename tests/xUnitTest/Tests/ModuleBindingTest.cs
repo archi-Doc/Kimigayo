@@ -506,9 +506,10 @@ public partial class ModuleBindingTest
         void Verify()
         {
             Assert.Equal(valid, c.Bind().IsComplete);
+            Assert.Equal(valid ? string.Empty : "UnsatisfiedConstraint_Kd Box<string>", string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
+            Assert.True(c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified); // O-54 (a)
         }
     }
 

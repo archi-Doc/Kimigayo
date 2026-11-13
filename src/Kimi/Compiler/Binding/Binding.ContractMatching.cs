@@ -135,6 +135,9 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
+        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path): the second guard beside the open set
+        // (ResolveConformance), which keys an instance's obligation by (Type, Contract) and so cannot also key a path being verified
+        // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
         if (conformance.Checking)
         {
             return ConstraintProof.Unknown;
@@ -221,16 +224,6 @@ public sealed partial class Binding
                 if (!this.TypeAccessCovers(associated, conformance.Type, conformance.Contract))
                 {
                     return Invalid(BindingFailure.Access);
-                }
-
-                // Normalized identity/Core shape alone does not prove nested input constraints.
-                var formationScope = this.AssociatedFormationScope(conformance, shape.AssociatedTypes[i], scope);
-                proof = CombineProof(proof, this.CheckTypeConstraints(associated, formationScope), true);
-                var inputs = this.associatedBindings[(conformance.RootPath, shape.AssociatedTypes[i])].Candidates;
-                for (var input = 0; input < inputs.Count; input++)
-                {
-                    // Projection normalization may erase an invalid constructed qualifier.
-                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
                 }
             }
 

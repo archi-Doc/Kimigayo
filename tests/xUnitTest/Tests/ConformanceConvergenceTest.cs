@@ -337,14 +337,26 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(CaseLimitKeepsTheSignature, "1*OwnershipCaseLimit_Kd")]
     public void AFailureThatKeepsTheSignatureFailsNoConformance(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // The owner's O-54 (a) makes these valid. VerifyConformance still forms a binding's Type, so they keep their Proof records until S3's unit (R7-V5b),
-    // which turns these rows clean.
+    // The owner's O-54 (a): a binding's Type is judged where it is written, after the conformance holds, so these are valid (R7-C2e2 e2-5a).
     [Theory]
-    [InlineData(BindingNamesItsConformance, "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InferredBindingNamesItsConformance, "5*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(SignatureSpellsItsBinding, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(BindingsNameEachOthersConformance, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    public void ABindingNamingItsConformanceKeepsItsRecordsUntilS3(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+    [InlineData(BindingNamesItsConformance, "clean")]
+    [InlineData(InferredBindingNamesItsConformance, "clean")]
+    [InlineData(SignatureSpellsItsBinding, "clean")]
+    [InlineData(BindingsNameEachOthersConformance, "clean")]
+    public void ABindingNamingItsConformanceIsValid(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 8.6.1, 8.3.1, 8.3.3 (PLAN G629): a capability of an instance rests on the instance's formation, which the conformance being
+    // verified cannot supply: P's Copy or Owned through its stored Box<S> needs S is C, the conformance whose bound asks for it, in either
+    // declaration order; with no Constraint on Box nothing depends on S is C.
+    [Theory]
+    [InlineData("contract C\n    associate Item is Copy\nstruct Box<T>\n    T is C\n    Self is Copy\nstruct P\n    Self is Copy\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is P\n", false)]
+    [InlineData("contract C\n    associate Item is Copy\nstruct S\n    Self is C\n    associate C.Item is P\nstruct P\n    Self is Copy\n    public var b: Box<S>\nstruct Box<T>\n    T is C\n    Self is Copy\n", false)]
+    [InlineData("contract C\n    associate Item is Copy\nstruct Box<T>\n    Self is Copy\nstruct P\n    Self is Copy\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is P\n", true)]
+    [InlineData("contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is P\n", false)]
+    [InlineData("contract C\n    associate Item is Owned\nstruct S\n    Self is C\n    associate C.Item is P\nstruct P\n    public var b: Box<S>\nstruct Box<T>\n    T is C\n", false)]
+    [InlineData("contract C\n    associate Item is Owned\nstruct Box<T>\n    public var n: i32 = 0\nstruct P\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is P\n", true)]
+    public void ACapabilityOfAnInstanceRestsOnItsFormation(string source, bool valid)
+        => Assert.Equal(valid, CompilationTestHelper.ParseSuccess(source).Bind().IsComplete);
 
     // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))

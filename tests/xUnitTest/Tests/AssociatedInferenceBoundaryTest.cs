@@ -11,14 +11,14 @@ namespace XunitTest;
 public class AssociatedInferenceBoundaryTest
 {
     [Theory]
-    [InlineData("func read<length N>(value: [N of i32]) -> Self.Item", "public func read<length M>(value: [M of i32]) -> [M of i32] => value")]
-    [InlineData("func read() -> [2 of Self.Item]", "public func read() -> [3 of i32] => [1, 2, 3]")]
-    [InlineData("func read() -> Self.Item", "public func read() -> Box<string> => $abort(\"unused\")")]
-    public void EscapingLengthsBodyResultsShapeAndFormationCannotSupplyValidEvidence(string requirement, string implementation)
+    [InlineData("func read<length N>(value: [N of i32]) -> Self.Item", "public func read<length M>(value: [M of i32]) -> [M of i32] => value", false)]
+    [InlineData("func read() -> [2 of Self.Item]", "public func read() -> [3 of i32] => [1, 2, 3]", false)]
+    [InlineData("func read() -> Self.Item", "public func read() -> Box<string> => $abort(\"unused\")", true)]
+    public void EscapingLengthsBodyResultsShapeAndFormationCannotSupplyValidEvidence(string requirement, string implementation, bool verified)
     {
         var c = CompilationTestHelper.ParseSuccess("struct Box<T>\n    T is i32\ncontract C\n    associate Item\n    " + requirement + "\nstruct S\n    Self is C\n    " + implementation);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(Definition(c).IsVerified);
+        Assert.Equal(verified, Definition(c).IsVerified);
     }
 
     [Fact]
