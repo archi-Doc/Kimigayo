@@ -73,21 +73,37 @@ public partial class PropertyBindingTest
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 
-    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381): an inferred Field's initializer is bound with its header, before the capability
-    // engine judges, so an erasure there (a call argument, a Tuple element of a call argument or payload, an array element; a Case payload
-    // in EnumBindingTest) is one located Unsupported_Kd at the converted value until Owned is judged during header binding (R7); it was
-    // InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its typed and local twins are valid.
+    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): an inferred Field's initializer is bound with its header, before the capability
+    // engine judges. An erasure there (a call argument, a Tuple element of a call argument or payload, an array element; a Case payload
+    // in EnumBindingTest) whose environment is empty is decided: a Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its environment
+    // is Unit (q3, h1, h2 and h3, and the class's other forms f10use to f23use: an explicit empty list, a generic Container, a signature
+    // naming its T, a nested Closure, per-call or static Origins, the Field read and called, were the located Unsupported_Kd before
+    // G826). One whose environment has parts, an Item's bound Type arguments (q4), is one located Unsupported_Kd at the converted value
+    // until Owned is judged during header binding (R7); it was InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its
+    // typed and local twins are valid. A group's static `let` keeps only its Closure storage limit at the `let` (f9group; it was beside
+    // PLAN G381's false UnprovenConstraint_Kd).
     [Theory]
-    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("q3t", "struct S\n    public let p: P = P.init(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("q3l", "func g() -> i32\n    let p = P.init(func (x: i32) -> i32 => x)\n    return 1\n", null)]
-    [InlineData("h1", P2 + "struct S\n    public let p = P2.init((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q4", "group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let p = P.init(K.idg<i32>)\n", "Unsupported_Kd: K.idg<i32>")]
+    [InlineData("q4t", "group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let p: P = P.init(K.idg<i32>)\n", null)]
+    [InlineData("h1", P2 + "struct S\n    public let p = P2.init((func (x: i32) -> i32 => x, 1))\n", null)]
     [InlineData("h1t", P2 + "struct S\n    public let p: P2 = P2.init((func (x: i32) -> i32 => x, 1))\n", null)]
-    [InlineData("h2", E2 + "struct S\n    public let e = E2.A((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h2", E2 + "struct S\n    public let e = E2.A((func (x: i32) -> i32 => x, 1))\n", null)]
     [InlineData("h2t", E2 + "struct S\n    public let e: E2 = E2.A((func (x: i32) -> i32 => x, 1))\n", null)]
-    [InlineData("h3", Holder + "struct S\n    public let h = Holder.init([func (x: i32) -> i32 => x])\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h3", Holder + "struct S\n    public let h = Holder.init([func (x: i32) -> i32 => x])\n", null)]
     [InlineData("h3t", Holder + "struct S\n    public let h: Holder = Holder.init([func (x: i32) -> i32 => x])\n", null)]
-    public void AnErasureInAFieldHeaderIsTheLocatedLimit(string id, string declarations, string? record)
+    [InlineData("f10use", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S) -> i32 => s.p.f(1)\n", null)]
+    [InlineData("f11empty", "struct S\n    public let p = P.init(func [] (x: i32) -> i32 => x)\n", null)]
+    [InlineData("f14gen", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", null)]
+    [InlineData("f15genT", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", null)]
+    [InlineData("f16nest", "struct S\n    public let p = P.init(func (x: i32) -> i32 => (func () -> i32 => x)())\n", null)]
+    [InlineData("f18refpar", "struct P3\n    public let f: (ref/u8) -> i32\n    public init(f: (ref/u8) -> i32) => self.f = f@move\nstruct S\n    public let p = P3.init(func (x: ref/u8) -> i32 => 0)\n", null)]
+    [InlineData("f19static", "struct P4\n    public let f: (ref/u8 during static) -> i32\n    public init(f: (ref/u8 during static) -> i32) => self.f = f@move\nstruct S\n    public let p = P4.init(func (x: ref/u8 during static) -> i32 => 0)\n", null)]
+    [InlineData("f23use", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", null)]
+    [InlineData("f9group", "group G\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: let p = P.init(func (x: i32) -> i32 => x)")]
+    public void AnErasureInAFieldHeaderIsDecidedForAnEmptyEnvironment(string id, string declarations, string? record)
         => Assert.Equal(
             [id, .. new[] { record }.OfType<string>()],
             [id, .. RawPointerSyntaxTest.Records("struct P\n    public let f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\n\n" + declarations)]);

@@ -331,18 +331,19 @@ public class EnumBindingTest
         Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
-    // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381): a payload erased in a Field initializer, bound with the Field's header before the
-    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments, the
-    // only record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
-    // It was the construction's TypeMismatch_Kd; typed and local twins are valid.
+    // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): a payload erased in a Field initializer, bound with the Field's header before
+    // the capability engine judges, is one located Unsupported_Kd at a converted Function Item with bound Type arguments, the only
+    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13). It was
+    // the construction's TypeMismatch_Kd; typed and local twins are valid. A Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its
+    // environment is empty and decided (it was the located limit before G826).
     [Theory]
-    [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", "(x: i32) -> i32")]
+    [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e = E.A(K.idg<i32>)\n", "K.idg<i32>")]
-    public void APayloadErasedInAFieldHeaderIsTheLocatedLimit(string declarations, string at)
+    public void APayloadErasedInAFieldHeaderIsTheLocatedLimitWithBoundArguments(string declarations, string? at)
     {
         var source = "enum E\n    A((i32) -> i32)\n    B\n" + declarations + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.Unsupported_Kd), at)];
+        (string Code, string Text)[] expected = at is null ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), at)];
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
