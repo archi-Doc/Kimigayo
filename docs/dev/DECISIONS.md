@@ -12758,6 +12758,26 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the element as a `Loan` entry (loses the empty view's Loan: R8-M6's row newly accepted); a `place` bool on `Holds`
     (review 1 B1); a length test in a reader; dropping the element (loses 4.3.3's Loans); G806's `RawPlaces` (its element row is the
     grid at every length).
+- **BU-196 A solve's bound carries the Semantics cases it is required in (PLAN G809)** (2026-11-13; Front, Binding; Major with
+  design reviews 1-3, implementation review ACCEPT WITH NOTES; the Middle's C-299 consent; the owner's O-233 (C)) SPEC 15.6.5; for
+  comparisons SPEC 15.3.6's sentence and 15.3.7; for calls SPEC 8.15.2, with the limit of PLAN G834.
+  - Each `OriginInference.Bounds` entry has a `Condition`: the pair binders that are borrows in every case of the entry, written by
+    `CollectOriginInference` with the walk's reader (`SlotCondition` at `OriginInference.Use`, the solve's one source of its use), 0
+    for every other bound. A bound required again exists in the union of its case sets: an entry whose binders are among the new
+    ones covers it, one whose binders include them widens to them, and any other pair stays two entries, so a bound exists in every
+    case exactly when one entry has 0.
+  - Both solves read it, a comparison's and a call's: the final check passes each entry's condition to the premise proof, and a
+    covariant variable's candidate is the meet `U0` of its every-case upper limits and of each conditional one not proven, in its
+    cases, to outlive `U0` (every conditional one when `U0` is empty), each judged against `U0` alone, so the candidate does not
+    depend on the order of the bounds. Floors take part in choosing the candidate in every case and are checked in their cases;
+    `WellFormed` and the result premises' bounds are written with condition 0 (conservative). At a call in a generic body this joint
+    solve accepts only what SPEC 8.15.2's per-case analysis accepts (sound) but not all of it (PLAN G834).
+  - Moves: newly accepted, all valid: q04, q06, r02d, r03, r09, r12, r11k and the Middle's 11 twins.
+  - Rejected: the premise made unconditional (SETTLED "Pair-slot premises in every Semantics case": unsound); a running-meet fold
+    (order-dependent: r02a/r02b); intersecting a re-required bound's conditions (it read "every case" for the union of two binders'
+    cases and accepted r10, invalid under (C)); for comparisons, reading A (the literal meet of every case's bounds) and reading B
+    (a candidate per case: a per-case solution representation), both by the owner's O-233 (C); a premise-aware `Meet` (moves
+    unconditional solutions outside this cause).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
