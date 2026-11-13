@@ -393,13 +393,13 @@ public class ArchitectureRulesTest
     [Fact]
     public void EnumeratesWalkCallsNoJudgment()
     {
-        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply"];
+        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass"];
         string[] allowed =
         [
-            "Add", "AppliedAssociatedContract", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClauseHeads", "Clear",
+            "Add", "AppliedAssociatedContract", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads", "Clear",
             "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "Max", "ReadSourceState", "ReferenceEquals",
-            "RemoveAt", "RemoveRange", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "RemoveAt", "RemoveRange", "SameClass", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
         ];
         var source = File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding/Binding.ContractSolver.cs"));
         var members = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken).DescendantNodes()

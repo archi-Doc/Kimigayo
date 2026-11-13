@@ -12,11 +12,15 @@ namespace Kimi.Compiler;
 //   Function Types: quantified Origins paired by position within the pair; pair heads: the admitted set, SPEC 8.3.4, an application
 //   admitting exactly `owner` being its target from its addition); cycles: the class graph's strongly connected components; the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it;
-//   the identity proposition's Proven (IdentityProven); ContractTypeCore's guard (ProjectionClassFailed). Until R7-C2c2 replaces it,
-//   dev's member substitution (SubstituteIdentity: a Type parameter's first premise, in scope order) and BU-72's HIR premise stay here.
+//   the identity proposition's Proven (IdentityProven); ContractTypeCore's guard (ProjectionClassFailed); the class key the premise
+//   supply compares by (ClassKey, R7-C2c2 c2-1). Until R7-C2c2 c2-4 replaces it, dev's member substitution (SubstituteIdentity: a
+//   Type parameter's first premise, in scope order) and BU-72's HIR premise stay here.
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's
 //   Completion); the Origin declarations' relations and completion; the pairs' admitted sets.
-// - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error.
+// - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error; a
+//   Type's key in a table (ClassKey: its class's least parameter or projection by a total structural order, Representative, or the
+//   Type over its components' keys), which relates exactly what Proven relates (a class in state One with complete meets, whatever
+//   the table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type.
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
@@ -33,8 +37,11 @@ public sealed partial class Binding
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
 
-    // The scaling rows' measure: the nodes the identity classes added in this compilation.
+    // The scaling rows' measures: the nodes the identity classes added in this compilation, and ClassKey's steps and the class members
+    // its Representative scanned.
     internal int IdentityClassWork { get; private set; }
+
+    internal long IdentityKeyWork { get; private set; }
 
     private static bool HasParameterIdentity(BindingScope scope)
     {
@@ -155,6 +162,47 @@ public sealed partial class Binding
     // erroneous or provisional class proves nothing.
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+
+    // R7-C2c2: the key of `type` in a view's classes: its class's Representative, else the Type over its components' keys
+    // (congruence), whose class is asked again. A key names the class to the premise supply only; no reader sees it as a Type. A warm
+    // pass finds the rebuilt Type interned and allocates nothing.
+    private BoundType ClassKey(BoundType type, IdentityClasses classes)
+    {
+        this.IdentityKeyWork++;
+        if (classes.Representative(type) is { } member)
+        {
+            return member;
+        }
+
+        var count = type.Components.Count;
+        if (count == 0 || !type.ContainsParameter)
+        {
+            return type;
+        }
+
+        var components = this.RentTypes(count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.ClassKey(type.Components[i], classes);
+                changed |= !ReferenceEquals(components[i], type.Components[i]);
+            }
+
+            if (!changed)
+            {
+                return type;
+            }
+
+            var rebuilt = this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments);
+            return classes.Representative(rebuilt) ?? rebuilt;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
 
     // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
     private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)

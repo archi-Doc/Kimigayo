@@ -193,6 +193,36 @@ public sealed partial class Binding
             return same;
         }
 
+        // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
+        // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
+        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows).
+        internal BoundType? Representative(BoundType type)
+        {
+            if (!this.node.TryGetValue(type, out var n))
+            {
+                return null;
+            }
+
+            var root = this.Find(n);
+            if (this.state[root] != One || this.incompleteClass[root])
+            {
+                return null;
+            }
+
+            BoundType? best = null;
+            for (var m = this.head[root]; m >= 0; m = this.next[m])
+            {
+                var member = this.types[m];
+                binding.IdentityKeyWork++;
+                if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && (best is null || Order(member, best) < 0))
+                {
+                    best = member;
+                }
+            }
+
+            return best;
+        }
+
         // Applies every premise, joins congruent nodes, and meets each class's constructor pairs, whose agreeing parts join, to a fixpoint:
         // the round that joins nothing judged the final classes, so its meets are the states. Each round is linear in the nodes plus the
         // class sizes' squares (constructors of one class only).
@@ -269,6 +299,60 @@ public sealed partial class Binding
             ReferenceEquals(x.ClosureContext, y.ClosureContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) &&
             x.OriginArguments.Count == y.OriginArguments.Count &&
             (x.LengthExpression is not null || y.LengthExpression is not null || x.Length == y.Length);
+
+        // R7-C2c2: a total structural order on Types that never reads premise order (ClassKey's least member): projection depth, kind,
+        // the symbol (its declaration's span, then its place among every source, CompareNodes, then name and kind), Semantics,
+        // components, Origins (CompareOrigins), length, and last the canonical name, which tells apart symbol-less Types (primitives).
+        // Allocation-free: enums compare as integers (Enum.CompareTo(object) boxes).
+        private static int Order(BoundType x, BoundType y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            var c = Depth(x).CompareTo(Depth(y));
+            c = c != 0 ? c : ((int)x.Kind).CompareTo((int)y.Kind);
+            c = c != 0 ? c : SymbolOrder(x.Symbol, y.Symbol);
+            c = c != 0 ? c : ((int)x.Semantics).CompareTo((int)y.Semantics);
+            c = c != 0 ? c : x.Components.Count.CompareTo(y.Components.Count);
+            for (var i = 0; c == 0 && i < x.Components.Count; i++)
+            {
+                c = Order(x.Components[i], y.Components[i]);
+            }
+
+            c = c != 0 ? c : x.OriginArguments.Count.CompareTo(y.OriginArguments.Count);
+            for (var i = 0; c == 0 && i < x.OriginArguments.Count; i++)
+            {
+                c = CompareOrigins(x.OriginArguments[i], y.OriginArguments[i]);
+            }
+
+            c = c != 0 ? c : OriginOrder(x.Origin, y.Origin); // a raw Origin is no class member's: members are parameters and projections
+            c = c != 0 ? c : x.Length.CompareTo(y.Length);
+            return c != 0 ? c : string.CompareOrdinal(x.Name, y.Name);
+
+            static int Depth(BoundType type) => type.Kind == BoundTypeKind.AssociatedProjection ? 1 + Depth(type.Components[0]) : 0;
+            static int OriginOrder(BoundOrigin? a, BoundOrigin? b) => a is null || b is null ? (b is null).CompareTo(a is null) : CompareOrigins(a, b);
+        }
+
+        private static int SymbolOrder(BindingSymbol? a, BindingSymbol? b)
+        {
+            if (ReferenceEquals(a, b))
+            {
+                return 0;
+            }
+
+            if (a is null || b is null)
+            {
+                return a is null ? -1 : 1;
+            }
+
+            var c = a.Declaration.Span.Start.CompareTo(b.Declaration.Span.Start);
+            c = c != 0 ? c : a.Declaration.Span.Length.CompareTo(b.Declaration.Span.Length);
+            c = c != 0 || ReferenceEquals(a.Declaration, b.Declaration) ? c : CompareNodes(a.Declaration, b.Declaration); // another source
+            c = c != 0 ? c : string.CompareOrdinal(a.Name, b.Name);
+            return c != 0 ? c : ((int)a.Kind).CompareTo((int)b.Kind);
+        }
 
         // The class's constructor pairs (an owner-only pair application is no constructor): an agreeing pair's parts join, and the state
         // is the worst meet. A "no" that more premises may turn marks the class incomplete.
