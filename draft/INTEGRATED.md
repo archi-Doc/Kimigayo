@@ -1360,6 +1360,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 64 (2026-11-13, plan §14; the Middle's D-514, the Front's D-503): M1 part 3's row after R9-M1 part 3 landed (no DECISIONS entry; `MarkdownUnicode.IsWhitespace` deferred to PLAN G818); the O3 row's G195 item done. Nothing frozen.
 - Revision 65 (2026-11-13, plan §14; the Back's D-518): after R8-S2d2 (DECISIONS R8-M30) §5.2's S2 row records S2d2 done (the shim's removal), and the L0 and S2 rows name `formatInteger128`'s runtime as `FormatInteger128Runtime.ll.in`'s `__kimi_format_integer128` and `__kimi_decimal_div10` (since R8-S2b2). Nothing frozen; the R8, S2 and W2 rows name `FormatKind` by S2d2's name, `StringFormatKind`.
 - Revision 66 (2026-11-13, plan §14; the owner's approval of K's slot proposals (1) and (2) in K's session, verbatim 「(1) と (2)を適用して下さい」): §3.2 and §3.3's build gap between two quiet slots is 5 minutes (was 15) and none between one session's consecutive slots; a slot still starts only when quiet_guard reports FREE. Nothing frozen.
+- Revision 67 (2026-11-13, plan §14; the Back's D-540): after R8-W2 c1 (DECISIONS R8-M39) §5.2's W2 row records part c's c0 and c1 done, next c3b and c3a. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

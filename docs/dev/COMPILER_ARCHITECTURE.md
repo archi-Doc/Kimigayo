@@ -263,14 +263,15 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - the Koto semantic forwarding properties and `BaseReferenceKoto.BasePath` (R7; R6-check H14
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193);
-  - the temporary intrinsics `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
+  - the temporary intrinsics `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133; the hint only since
+    R8-W2 c1, R8-M39) and
     `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
   - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
     「Cで決定します」; DECISIONS R4-M111, R5-M188, R5-M192);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
   - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row
-    map of the Body-disposition compiler functions, with `StringFormatKind`, `WriterKind` and `FormatEstimate`
+    map of the Body-disposition compiler functions, with `WriterKind` and `FormatEstimate`
     (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131 as amended by R8-M24; `FormatFixed` until R8-W2 c);
   - R5's temporaries (recorded by their first units, DECISIONS R5-M18; reviewed with the owner at R5's exit, R5-M148):
     Binding's i128 division and remainder and its 128-bit float conversion gates

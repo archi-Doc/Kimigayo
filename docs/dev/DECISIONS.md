@@ -16069,6 +16069,15 @@ structure is recorded here by the unit that first implements it.
     legacy `.ll` change, PD2); a Binding or library `writeLiteral` (PD21; R8's form); rule (a), deferring only before an unbounded value
     (its native counts and bytes differ from the old generator's); the old rule exactly (six operands per step); one step per value
     carrying the preceding text (B': it changes FormatFinish and shifts every token).
+  - Superseded in part by R8-M39 (R8-W2 c1): FormatSegment no longer takes or writes the position's literal text
+    (`FormatSegment(&uniq adapter, later bytes, later values' Types)`, the hint only); the text is a library call on its constant
+    record, deferred by `Utf8Writer.deferLiteral`, not by `__kimi_format_literal`. Its statements that a literal segment is no
+    `write` and that an embedded string literal is as if written stand. Three of its statements are reversed in MIR (the Middle's
+    hunk review, N3): (1) 'an interpolation of text alone has none' (no failed block): every literal call is tested, so text alone
+    has a reachable `KIMI_E_FORMAT` block; (2) its A1-A5 bullet (a literal segment carries no Loan): each literal position now has
+    the adapter's two-phase `uniq` borrow and a tested Result, while its record still has no Place, Loan or Drop; (3) its Descriptor
+    bullet `Row(None, Allocation | Abort, 4)`: the row is arity 3, effect None, and the Allocation and Abort effects are the two
+    library bodies', which A4 reads.
 - **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, on the choice between C9d's two designs; verbatim 「C9d の逸脱 2
   件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a) により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」) Departure (i) is
   confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's per-segment step carries
@@ -18738,6 +18747,13 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` was admitted by the validator until R8-S1e-b, which removed the route (R8-M15).
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
   - Amended by R8-M9 (the owner's O-84 (a)): the staged removal moves to R8-S1e-b, after the Front's one-owner unit (C-151); R8-S1e-a closes the pair-layered left operand's route.
+  - Amended by R8-M39 (R8-W2 c1): an owning interpolation's literal positions are the second producer of constant records.
+    `MirBuilder.Text` passes a literal segment's (or an embedded string literal's) record at `ref/string` to
+    `Utf8Writer.deferLiteral` or to string's built-in `format` (`StringWitness.format`). The sentence 'Every other consumer keeps
+    its temporary and Drop' reads 'every consumer but a comparison's literal and an owning interpolation's literal position'. The
+    rule (`ConstantRecords`, `Clears`) is unchanged: both parameters are not `during static` and both calls keep nothing by
+    `TyCtxt.Retains`. A literal segment is no embedded expression (SPEC 22.10.3), so it has no Temporary; an embedded string literal
+    is as if written (R5-M133).
 - **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
   - **Owner.** `borrowStorage`, `borrowStorageUniq` and `ownStorage` over a Dictionary are Kimigayo bodies in `Storage.kimi` over `DictionaryStorage.Handle` (IMPL 21.1.3): the shared views read `buffer`, `head` and `length` through the path they are given (R8-A1d's rule) and take `Loan<...>.init()` (R8-M6); the owning remainder holds the consumed Dictionary's Handle whole (R8-A1d's (a′), SPEC 5.2.1's third limit).
   - **The views' move.** No remainder stores the stride, so a view formed with no entry read lays out nothing of K or V: views over a K or V whose layout fails become accepted (SPEC 8.15.3; the class and its members are named in the commit). An invalid program loses only its formation record (R8-M2 as extended by R8-A1d's B2), and a resource-rejected one's record moves from the formation to the first read.
@@ -19224,7 +19240,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Temporary** (W1b-4), each removed by an event:
     - `LegacyRuntimeHelpers.WriteBuiltin` (`__kimi_writer_write_builtin`'s ABI without a row; its template expanded from it):
       removed when the conversions become bodies (W1c) and `SegmentText`/`FormatLiteral` leave the runtime (W2); R8-M22 (W1c-2)
-      removed its conversion callers, so it goes at W2;
+      removed its conversion callers, so it goes at W2; removed by R8-M39 (R8-W2 c1);
     - the write wrapper over a Body formatter (`ModuleCodegen.Formatting`'s `Wrapped[0]`), now called only by the conversions: W1c;
       done, R8-M22 (W1c-2).
   - **`Wrapped`** (W1b-4) states the conversion's fixed-buffer flag as a column (design review Q5) instead of comparing ABIs by
@@ -19932,7 +19948,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     shim's `Format` and the collector's arm. `FormatKind` -> `LegacyRuntimeHelpers.StringFormatKind = 16`.
   - **Temporary 5, S2d2.** It now reads: "`StringFormatKind`, `__kimi_format_builtin`'s one arm (16; a plain define in
     `Utf8FormatRuntime.ll.in` since R8-S2d2, byte-identical to the deleted row's expansion) and `{{writer_write_builtin}}` for
-    SegmentText and FormatLiteral: removed at W2".
+    SegmentText and FormatLiteral: removed at W2". Removed by R8-M39 (R8-W2 c1).
   - **`IsBuiltin`, S2d2.** It no longer states or proves the conformance (the table does). `FormattingTypes.IsBuiltin` is deleted by
     R8-S2d2 (14a76d141), landing after G776-a removed `RequirementMember`'s two reads; its last readers, `Utf8FormatBindingTest`'s
     two rows, take SPEC 22.10.2's explicit set of built-in conformances (`BoundType.Primitives` and the wrapping scalars).
@@ -20214,6 +20230,28 @@ R8-M* and R9-M* by the stage of the recording unit.
     have effects, SPEC 22.10.1). In Binding: (A) a third copy of the list inside `AvailableEffectBounds`; (B1) member lookup reading
     the list (it would make `a.compare(b)` resolve, G776's open question).
   - Not verified: the static-Loan reach of the bound (static `@ref` is `Unsupported_Kd`).
+- **R8-M39 An owning interpolation's literal positions are library calls on constant records** (Back, 2026-11-12; R8-W2 c1; Major,
+  prototype first by the owner's O-214 (a); the Middle's C-267: consent with conditions 15:21 and 16:12, hunk review ACCEPT WITH
+  NOTES 19:14, re-check ACCEPT 21:12, merge hunk ACCEPT 11-13 09:15; B's implementation review 1 ACCEPT WITH NOTES, review 2 ACCEPT;
+  on R8-M7, R8-M24, R5-M133)
+  - Owner: `Utf8Writer.deferLiteral` (the deferral's store, in Kimigayo; its caller obligation, a literal's record, is checked at
+    every call by `MirValidator`'s `Defers`) and `StringWitness.format` (the write). The builder chooses by the template's fact (a
+    later value). FormatSegment keeps only the hint (arity 3, effect None) until c2b.
+  - Counts: `KimiDeclarationId` +1 (`WriterDeferLiteral`), catalog 192 -> 193; no closed vocabulary moves.
+  - The immediate size check of the old routine has no successor because its destination term is unreachable (a heap buffer's length
+    is an existing allocation's; a region is exactly L), so no failure is delayed (SPEC 22.10.5).
+  - The validator's rule (the Middle's hunk review, N1): `Defers` reads only a `deferLiteral` call of two operands; another count is
+    the signature's Arity finding alone, and a constant id out of range the walk's Const finding (each fault is reported once).
+  - Temporaries removed: R8-M18's `WriteBuiltin` (`__kimi_writer_write_builtin`), R8-M30's temporary 5 (`StringFormatKind`), and
+    R5-M133's routines (`__kimi_format_literal`, `__kimi_format_bytes`, `__kimi_format_builtin`).
+  - Staged (PLAN G828): `__kimi_format_check` (c3a); `Utf8Writer.logicalLength`'s writer (part b); one unreferenced String constant
+    per literal position in a body's constant table (`Literal` makes it for `Bytes`, `Viewed` interns the record beside it; no IR is
+    written from it), removed when a later unit of part c touches `Bytes` (c2b, which replaces the estimate).
+  - Rejected: the name `defer` (a keyword); a Unit result for the deferral (its flush arm can fail; SPEC 22.10.5 forbids a delayed
+    failure); a skip of an empty literal text (a clause for one form); Revision 2's rejected options.
+  - RP8 (R7-M21 (2)): T-169 (11-13 10:49-11:14): the O2 and O0 corpus A/B shows no slowdown and the warm compile cost is within;
+    cold Bind shifts per program, which deterministic GC counts per phase attribute to the collector's cadence; T-186 reads the
+    timing GC-free (`artifacts/benchmarks/r8-k1a-20261113-111107`).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
