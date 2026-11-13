@@ -69,6 +69,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 23.1: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
+    // SPEC 23.1: a length as diagnostics spell it, which the MIR dump writes.
+    internal static string Name(BoundLength length) => Binding.DiagnosticLengthName(length);
+
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
     // not instantiate it. The MIR validator checks calls and bodies by it.
@@ -257,6 +260,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundLength InterpolationBound(BoundType values, long literal)
         => FormattingTypes.StackBound(values, literal) is var bound and >= 0 ? binding.InternLength(LengthOperation.Constant, bound)
             : binding.InternLength(LengthOperation.InterpolationBound, literal, values: this.Erase(values));
+
+    // SPEC 4.4.1: a length slot's term, the value its Name reads (MirConstKind.Length), as Binding binds the slot in a length.
+    internal BoundLength SlotLength(BindingSymbol slot) => binding.InternLength(LengthOperation.Parameter, parameter: slot);
 
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
     // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).

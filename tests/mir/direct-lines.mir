@@ -257,7 +257,7 @@ fn line @25
       StorageLive(_6) @37 s1
       StorageLive(_7) @37 s1
       StorageLive(_8) @37 s1
-      _8 = len(_3) @37 s1
+      _8 = const length (2 + bound(T)) @37 s1
       StorageLive(_9) @37 s1
       _9 = Gt(copy _8, const 0_isize) proven @37 s1
       StorageLive(_10) @37 s1
@@ -517,7 +517,7 @@ fn attempt @62
       StorageLive(_8) @81 s1
       StorageLive(_9) @81 s1
       StorageLive(_10) @81 s1
-      _10 = len(_5) @81 s1
+      _10 = const length (8 + bound(T, i32, i32)) @81 s1
       StorageLive(_11) @81 s1
       _11 = Gt(copy _10, const 0_isize) proven @81 s1
       StorageLive(_12) @81 s1

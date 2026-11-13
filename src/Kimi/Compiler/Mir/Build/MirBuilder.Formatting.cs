@@ -85,8 +85,8 @@ internal sealed partial class MirBuilder
     // built once over one erased writer, whose destination the interpolation-bound term L (TyCtxt.InterpolationBound) of the literal bytes
     // and the values' Types decides: a zero-filled region of exactly L bytes and its FixedBuffer where L > 0, else the owning buffer. A
     // constant term builds its one form. A term an instance decides makes both buffers on every path, the FixedBuffer over the region
-    // (Text.fixed<0>'s, of no bytes, at an owning instance) and the owning buffer (Heap, no allocation), then branches on the region's Len,
-    // read before Text.fixed's exclusive Loan of the region, each arm making only the writer (Binding's plan writer Type) over its buffer,
+    // (Text.fixed<0>'s, of no bytes, at an owning instance) and the owning buffer (Heap, no allocation), then branches on L's value (its
+    // Length constant, SPEC 4.4.1), each arm making only the writer (Binding's plan writer Type) over its buffer,
     // and branches again after the last write: the fixed arm's writer is dead there, so its Loan on the buffer ends before text() views the
     // bytes for writeLine(Utf8Slice) (a literal is deferred only before a value, so none is pending), and the owning arm's end (Finish)
     // moves the owning buffer, its string to writeLine(ref/string). text()'s Err, which no run reaches (every byte is a literal or a
@@ -107,7 +107,7 @@ internal sealed partial class MirBuilder
         var buffer = owningArm ? this.Hold(CallPlan.Of(text)!.ReturnType, text) : default;
         var writer = this.Hold(CallPlan.Of(text, 1)!.ReturnType, text);
         var unit = this.Hold(BoundType.Unit, text);
-        var test = fixedArm && owningArm ? this.Positive(region, text) : default(MirPlace?);
+        var test = fixedArm && owningArm ? this.Positive(length, text) : default(MirPlace?);
         if (fixedArm)
         {
             this.Fixed(region, fixedBuffer, length, text);
@@ -178,11 +178,11 @@ internal sealed partial class MirBuilder
         return region;
     }
 
-    // Whether a direct line's region has bytes (Line): Len(region) > 0, the test an instance decides.
-    private MirPlace Positive(MirPlace region, Koto node)
+    // Whether a direct line's region has bytes (Line): the term's value (a Length constant) > 0, the test an instance decides.
+    private MirPlace Positive(BoundLength length, Koto node)
     {
         var size = this.Temp(BoundType.ISize, node);
-        this.Set(size, MirRvalue.Len(region), node);
+        this.Set(size, MirRvalue.Use(this.body.AddOperand(this.LengthOperand(length))), node);
         var operands = this.body.AddOperand(MirOperand.Copy(size));
         this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
         var test = this.Temp(BoundType.Boolean, node);
