@@ -187,7 +187,7 @@ public sealed partial class HirFormsTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         HirTables.Publish(c);
-        var write = (BinaryKoto)Reachable(c.Kotonoha).First(x => x.ToString() == text);
+        var write = Reachable(c.Kotonoha).OfType<BinaryKoto>().First(x => x.ToString() == text);
         Assert.NotEqual(BindingFailure.None, write.FailureOf());
         var value = HirTables.AdjustOf(write.Right);
         Assert.Equal(rows, $"{HirTables.Op(write)} {HirTables.Op(write.Left)} {HirTables.Op(write.Right)} {value.Acquire}/{value.Adaptation}");
