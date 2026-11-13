@@ -11628,6 +11628,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a fifth name with its own flag (one more case; Transferable repeats it); indexing the intrinsic declarations as source
     Contracts (larger, and it removes only the shape code); storing one form of the pair as the other (ancestors are built before
     clauses bind; a parent is no clause).
+  - Amended in part by R7-M26 (2026-11-14): a judged shape has no members; PrimitiveInteger's carries its row's `Parents` (Copy,
+    Owned) as ancestors.
 - **BU-154 An Origin declaration's state is private: its read members are the one read path, and its formation alone names
   `Forming`** (2026-11-10; Front, Binding; Major, behavior-preserving; H11b-0 B0; design review ACCEPT with conditions 1-5) SPEC
   15.3.1-15.3.6, 23.1.2.
@@ -19168,6 +19170,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a Final-table gate (R7-M20's W6 makes views with derived identity facts never Final), a gate on the view's own
     premises (drops enclosing scopes'), a memo beside the table, normalizing by `NormalizeProofType`, a second index per spelling, a
     source per kind.
+- **R7-M26 PrimitiveInteger's Copy and Owned are its refinement parents** (Front, 2026-11-14; R7-C2b b1, PLAN G170; Major, design
+  review ACCEPT WITH NOTES and implementation review ACCEPT by C2's group reviewer; the Middle's C-310 consent; amends BU-152 in
+  part) SPEC 8.3.2, 8.7.1, 8.7.4.
+  - The intrinsic Contract table gains the column `Parents`, the judged intrinsics a premise `T is K` supplies by refinement
+    (PrimitiveInteger: Copy, Owned; none for the other rows). KimiLibrary's registration makes them the judged shape's ancestors,
+    the one representation of refinement, so `Enumerate`'s ancestor rows supply both wherever PrimitiveInteger is supplied, at every
+    projection and through a Contract refining it, `PremiseRefines` answers them and the eager expansion derives `T is Copy` and
+    `T is Owned`; `SymbolicCapability`'s PrimitiveInteger arm, the last Contract-kind arm of its scan, goes; a missing intrinsic
+    parent is `InternalInvariant_Kd`.
+  - BU-152's "KimiLibrary makes its empty shape" now holds for members only: PrimitiveInteger's judged shape carries its row's
+    ancestors. Core.kimi's `public contract PrimitiveInteger` lists no parents: intrinsic library declarations are never bound
+    (BU-152), so the table is the owner. The nominal supplies (Equatable, Comparable, Utf8Format, Position) stay
+    `PrimitiveIntegerSupplies`: built-in conformances add no members (O-194 (a)).
+  - Also fixed (the Middle's C-310 F1): the base's `InternalInvariant_Kd` at a value read or arithmetic on a PrimitiveInteger
+    supplied at depth (11 programs: the valid ones accepted, the invalid ones get the direct twin's record), and a class 1 on the
+    base: `T.(Tree).Child.(Tree).Value is not Copy` (or `not Owned`) under `T is IntTree` is contradictory evidence, rejected with
+    `InvalidConstraint_Kd`.
+  - Rejected: a parent list in Core.kimi (never bound: dead text, and with the arm gone no PrimitiveInteger was Copy), a column read
+    by `Enumerate` alone (a second representation of refinement), a `PremiseRefines` read per kind in the capability engine, the
+    nominal supplies as parents.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
