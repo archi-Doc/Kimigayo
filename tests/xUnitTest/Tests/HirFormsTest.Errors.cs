@@ -177,11 +177,15 @@ public sealed partial class HirFormsTest
 
     // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): a plain write Binding rejected for its value's fit after admitting its destination keeps
     // Assign, its target its own Op and its value, which Binding resolved, the Error taken as its derived value (Temporary, None); a write
-    // refused at its destination (through a shared reference) and a compound update Binding rejected stay Error, their children replaced
-    // (fail-before: the first was Error too).
+    // its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound update Binding rejected stay Error,
+    // their children replaced (fail-before: the first was Error too).
     [Theory]
     [InlineData("func f()\n    var x: i32 = 0\n    x = \"a\"\n", "x = \"a\"", "Assign Name Error Temporary/None")]
-    [InlineData("struct S\n    public var v: i32 = 0\n    public init() => ()\nfunc f(r: ref/S)\n    r.v = \"a\"\n", "r.v = \"a\"", "Error Syntax Syntax Unset/None")]
+    [InlineData(
+        "struct In\n    public var v: i32 = 0\n    public init() => ()\nstruct B\n    public computed inner: In\n        get() -> In => In.init()\n" +
+        "    public init() => ()\nfunc h(b: uniq/B)\n    b.inner.v = \"a\"\n",
+        "b.inner.v = \"a\"",
+        "Error Syntax Syntax Unset/None")]
     [InlineData("func f()\n    var x: i32 = 0\n    x += \"a\"\n", "x += \"a\"", "Error Syntax Syntax Unset/None")]
     public void ARejectedWriteKeepsItsWriteWithADerivedValue(string source, string text, string rows)
     {
