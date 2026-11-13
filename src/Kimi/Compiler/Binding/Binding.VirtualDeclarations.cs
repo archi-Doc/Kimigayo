@@ -13,7 +13,6 @@ public sealed partial class Binding
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
     private enum VirtualDeclarationCause : byte
     {
-        Combined,
         NotStructFunction,
         Unsafe,
         OwnGenericParameters,
@@ -21,17 +20,11 @@ public sealed partial class Binding
         NoBody,
         NotOpen,
         Private,
-        RedeclaredHeader,
-        RedeclaredParameter,
+        RedeclaredConstraints,
     }
 
     private static VirtualDeclarationCause? VirtualDeclarationFailure(FunctionKoto function, BindingSymbol symbol)
     {
-        if (function.IsVirtual && function.IsOverride)
-        {
-            return VirtualDeclarationCause.Combined;
-        }
-
         if (symbol.Scope.Owner is not StructKoto structure || function.IsConstructor || function.IsDestructor || function.IsRequirement || function.IsAnonymous || function.IsSpecialization)
         {
             return VirtualDeclarationCause.NotStructFunction;
@@ -69,22 +62,10 @@ public sealed partial class Binding
                 return VirtualDeclarationCause.Private;
             }
         }
-        else
+        else if (function.TypeConstraints.Count != 0)
         {
-            if (function.Modifier != ModifierKind.Override || function.NameBoundaryIndex >= 0 ||
-                function.TypeConstraints.Count != 0)
-            {
-                return VirtualDeclarationCause.RedeclaredHeader;
-            }
-
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                var parameter = function.Parameters[i];
-                if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
-                {
-                    return VirtualDeclarationCause.RedeclaredParameter;
-                }
-            }
+            // The parser judged the rest of the override's header (Syntax.OverrideHeader, F.6.3).
+            return VirtualDeclarationCause.RedeclaredConstraints;
         }
 
         return null;
@@ -112,7 +93,12 @@ public sealed partial class Binding
             }
 
             this.virtualDeclarations.Add(function);
-            if (VirtualDeclarationFailure(function, symbol) is { } cause)
+            if (IsRecovery(function, out _))
+            {
+                // A rejected override header (Syntax.OverrideHeader) rests the declaration and its slot matching, which read it.
+                this.Fail(function, BindingFailure.VirtualDeclaration);
+            }
+            else if (VirtualDeclarationFailure(function, symbol) is { } cause)
             {
                 (this.virtualDeclarationFailures ??= new(ReferenceEqualityComparer.Instance))[function] = cause;
                 this.Fail(function, BindingFailure.VirtualDeclaration);

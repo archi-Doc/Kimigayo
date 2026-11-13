@@ -134,6 +134,10 @@
     Description="the specialization names Type arguments and takes no modifier"
     Phrase="specialization header"
 
+  + Name="Syntax.OverrideHeader"
+    Description="the override names its parameters, result Type and body only"
+    Phrase="override header"
+
   + Name="Syntax.BaseList"
     Description="the struct names one base"
     Phrase="base list with other than one base"
