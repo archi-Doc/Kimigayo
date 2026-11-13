@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -57,6 +58,23 @@ public class EffectBoundDeclarationTest
             "contract Grouped: Source\n    effect (Source).take confined\ncontract Rooted: Source\n    effect (::Source).take confined\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.11.1, 8.11.3, 4.6.1, 4.6.3: Position and PositionRange bound the inherited Utf8Format.format with confined, so a premise
+    // proving either makes that bound available to a requirement call on T, as does `T is PrimitiveInteger`, which supplies Position
+    // (SPEC 8.7.4); Utf8Format itself declares no bound.
+    [Theory]
+    [InlineData("PrimitiveInteger", true)]
+    [InlineData("Position", true)]
+    [InlineData("PositionRange", true)]
+    [InlineData("Utf8Format", false)]
+    public void APositionPremiseBoundsFormat(string premise, bool confined)
+    {
+        var c = MinimalEmissionTest.Analyze($"func use<T>(value: T) -> i32\n    T is {premise}\n    return 1\n" + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.Name == "use");
+        var format = (FunctionKoto)c.Library.GetSymbol(KimiDeclarationId.Utf8Format)!.Contract!.OwnRequirement()!.Declaration;
+        Assert.Equal(confined, c.Binding.AvailableEffectBounds(format, use.Parameters[0].Type.TypeOf(), use));
     }
 
     [Theory]

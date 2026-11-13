@@ -461,6 +461,19 @@ public partial class Project
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
 
+        // SPEC 23.2.2: a preparation that established no source module (Compilation.AnalyzesNoModule) leaves no source to establish or
+        // parse and no phase to run; in Test mode the root's TestSources are skipped too (IMPL 21.3.2: its sources are not checked).
+        // The check is Completed, rejected by the Error that preparation recorded.
+        if (compilation.AnalyzesNoModule)
+        {
+            if (context is not null)
+            {
+                context.Compilation = compilation;
+            }
+
+            return false;
+        }
+
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
 
         // SPEC 23.2.2: every file input is read before parsing, and the reads are consumed in
@@ -533,7 +546,9 @@ public partial class Project
 
         if (context is not null)
         {
-            context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
+            // SPEC 23.2.2, step 3: every input is established; the front end runs from here on. The check's other Completed end is
+            // AnalyzesNoModule's, above.
+            context.Compilation = compilation;
         }
 
         var accepted = compilation.Check(); // The compilation's phase sequence, from Binding to acceptance and a test build's discovery.

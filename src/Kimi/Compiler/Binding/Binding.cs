@@ -78,6 +78,7 @@ public sealed partial class Binding
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
             this.memberSelections.Count,
+            this.memberSides.Count,
             this.capabilityNodes.Count,
             this.substitutedParts.Count);
 
@@ -91,6 +92,7 @@ public sealed partial class Binding
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
             this.memberSelections.Capacity - this.memberSelections.Count,
+            this.memberSides.Capacity - this.memberSides.Count,
             this.capabilityNodes.Capacity - this.capabilityNodes.Count,
             this.substitutedParts.Free);
 
