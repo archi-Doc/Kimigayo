@@ -186,7 +186,8 @@ public sealed class RecursiveContractTest
     // (b1-r5), while IntTree waits for its closed clause's round (b1-r1), and PrimitiveInteger as a parent two links up (b1v6). The
     // invalid twins keep their records: a Value of a parentless Contract, Sealed (never supplied, 8.7.2), both polarities of Copy,
     // PTree without the parent, IntTree failed by a refuted closed clause (b1-r2), a struct conforming to a child of PrimitiveInteger
-    // (b1-r12). A formation under a PrimitiveInteger premise reads its Copy (b1-r22).
+    // (b1-r12). A formation under a PrimitiveInteger premise reads its Copy (b1-r22). The supply also gives a value read at depth its
+    // copy (b1-valueread, InternalInvariant_Kd before) and makes `not Copy` there contradictory evidence (b1-notcopy, accepted before).
     [InlineData("guard", "b1v0-depth1", IntTrees + "group H\n    public func twice<T>(value: T.(Tree).Value) -> (T.(Tree).Value, T.(Tree).Value)\n        T is IntTree\n        return (value, value)\n", "")]
     [InlineData("C2b", "b1v1-depth2", IntTrees + IntTwice, "")]
     [InlineData("C2b", "b1v2-depth3", IntTrees + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Child.(Tree).Value)\n        T is IntTree\n        return (value, value)\n", "")]
@@ -196,6 +197,8 @@ public sealed class RecursiveContractTest
     [InlineData("C2b", "b1v6-intparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree, PrimitiveInteger\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "")]
     [InlineData("C2b", "b1-r1-pending", IntTrees + "    i32 is PrimitiveInteger\n" + IntTwice, "")]
     [InlineData("C2b", "b1-r5-enclosing", IntTrees + "struct Holder<T>\n    T is IntTree\n    public var tag: i32 = 0\n    public func twice(self: ref/Self, value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1-valueread-d2", IntTrees + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Value) -> T.(Tree).Child.(Tree).Value\n    T is IntTree\n    return r\n", "")]
+    [InlineData("C2b", "b1-notcopy-d2", IntTrees + "func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32\n    T is IntTree\n    T.(Tree).Child.(Tree).Value is not Copy\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32 | InvalidConstraint_Kd: T.(Tree).Child.(Tree).Value is not Copy")]
     [InlineData("guard", "b1-r22-formation", "struct Pair<X>\n    X is Copy\n    public var first: X\nfunc g<T, U>(u: ref/U)\n    T is PrimitiveInteger\n    U is Pair<T>\n    ()\n", "")]
     [InlineData("guard", "b1n1-marker", "contract Tree\n    associate Child is Tree\n    associate Value\ncontract Marker\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\n    Self.(Tree).Value is Marker\n" + IntTwice, "TransferRequired_Kd: return (value, value)")]
     [InlineData("guard", "b1n2-sealed", IntTrees + "func needsSealed<V>(v: ref/V)\n    V is Sealed\n    ()\nfunc probe<T>(value: ref/T.(Tree).Child.(Tree).Value)\n    T is IntTree\n    needsSealed<T.(Tree).Child.(Tree).Value>(value)\n", "UnprovenConstraint_Kd: needsSealed<T.(Tree).Child.(Tree).Value>(value)")]
