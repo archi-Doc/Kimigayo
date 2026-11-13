@@ -89,7 +89,8 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 8.7: every implementation of a closed Contract reads only its boundaries and the length and has no other effect.
+        // SPEC 8.7.5: every `tryResolve` implementation, the one requirement a closed Contract declares, reads only its boundaries and
+        // the length and has no other effect. The `format` they inherit is Utf8Format's and takes its bound from their effect item.
         return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
             ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), reference: contract);
     }

@@ -191,6 +191,10 @@ public sealed partial class KimiLibrary
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; private set; }
 
+    /// <summary>Gets the internal Kimi group whose receiver functions are the fixed array's entry witnesses (SPEC 22.1, 14.6.2), which the
+    /// witness table's FixedArrayEntries row selects; a fixed array gains no members from it.</summary>
+    internal DeclarationContainerKoto? FixedArrayEntryMembers { get; private set; }
+
     /// <summary>Gets the internal Kimi group whose receiver function implements the built-in integer conformance to
     /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
     internal DeclarationContainerKoto? IntegerPositionMembers { get; private set; }
@@ -228,17 +232,18 @@ public sealed partial class KimiLibrary
     internal DeclarationContainerKoto? IntegerFormatMembers { get; private set; }
 
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
-    /// built-in Type, a group of the witness table.</summary>
+    /// built-in Type: a group of the witness table or the fixed array's member group.</summary>
     /// <param name="owner">A declaration container.</param>
     /// <returns>Whether its functions receive a built-in Type through <c>self</c>.</returns>
     internal bool IsBuiltinMemberGroup(Koto owner) => this.MembersOf(owner) is not null;
 
-    /// <summary>Gets the declared group of the witness table, the one lookup.</summary>
+    /// <summary>Gets the declared group of the built-in receiver groups, the one lookup.</summary>
     /// <param name="members">The group.</param>
     /// <returns>The declared group, or null when the library lacks it.</returns>
     internal DeclarationContainerKoto? Members(WitnessMembers members) => members switch
     {
         WitnessMembers.FixedArray => this.FixedArrayMembers,
+        WitnessMembers.FixedArrayEntries => this.FixedArrayEntryMembers,
         WitnessMembers.IntegerPosition => this.IntegerPositionMembers,
         WitnessMembers.String => this.StringWitnessMembers,
         WitnessMembers.BoolFormat => this.BoolFormatMembers,
@@ -251,7 +256,7 @@ public sealed partial class KimiLibrary
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
-    /// <summary>Gets the group of the witness table a declaration is, the inverse of <see cref="Members"/>.</summary>
+    /// <summary>Gets the built-in receiver group a declaration is, the inverse of <see cref="Members"/>.</summary>
     /// <param name="owner">A declaration container.</param>
     /// <returns>Its group, or null.</returns>
     internal WitnessMembers? MembersOf(Koto owner)
@@ -452,6 +457,7 @@ public sealed partial class KimiLibrary
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
+        this.FixedArrayEntryMembers = (storageScope.Owner as DeclarationContainerKoto) is { } entryContainer ? FindDeclaration(entryContainer, "FixedArrayEntries", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
         this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
         this.BoolFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "BoolFormat", false) as DeclarationContainerKoto;

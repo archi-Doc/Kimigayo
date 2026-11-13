@@ -22,6 +22,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
 
+    // A generic's put and, in a put's body, a writer over a fixed buffer of 64 bytes.
+    private const string Put = "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
+
+    private const string Writer = "        var bytes = [64 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n        var writer = Text.writer(buffer@uniq)\n";
+
     // A generic Type's method with an i32 specialization that destroys an Option<T>, and a pair-binder Container's (O-109 (a)).
     private const string Box = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self) => ()\n" +
         "    specialize func clear<i32>(self: uniq/Self) => self.item = .None\n";
@@ -338,19 +343,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
 
     // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
-    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not. A fixed array's owning
+    // iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
-    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("i32", "Array<i32> = []", "")]
-    [InlineData("i32", "[1 of i32] = [1]", "")]
-    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "let it = a@move.intoIterator()", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "for _ in a@move => exit", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string entry, string expected)
     {
         _ = element;
         Assert.Equal(
             Expected(expected),
             Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
-                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        {entry}\n        return 0\n"));
     }
 
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
@@ -721,17 +727,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.11.3, 8.11.2, 3.1.1 (R8-S2d1, C-252): a generic's confined put that formats an abstract Wrapping<T> runs the witness table's
-    // WrappingFormat body at T, whose call of T's format has no known callee and Utf8Format bounds no effect, so its environment effect is
-    // unknown, a conflict at the conformance, the record a bare T gives (fail-before for the first three: Unsupported_Kd Self is Sink 1, a
-    // limit); without formatting, or at a concrete Wrapping<u8>, nothing; a printing formatter still reports.
+    // SPEC 8.11.3, 8.7.5, 4.6.1, 3.1.1 (PLAN G771): Position bounds format with confined and a proven PrimitiveInteger supplies Position
+    // (SPEC 8.7.4), so a generic's confined put may format its abstract T: through a formatting function's row or called directly, and
+    // as an abstract Wrapping<T>, whose WrappingFormat body runs T's format under the bounds guaranteed for T; without formatting, or at
+    // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2). The rows through write, an
+    // interpolation and toString compose format at the caller by SPEC 22.10.1's published effects; the direct call on T resolves through
+    // member lookup's Position clause (PLAN G776).
     [Theory]
-    [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", Failed)]
-    [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", Failed)]
-    [InlineData("        let w: Wrapping<T> = 7\n        _ = Text.toString(w)\n        return .Ok(())\n", Failed)]
-    [InlineData("        let v: T = 7\n        return writer.write(v)\n", Failed)]
-    [InlineData("        let v: T = 7\n        _ = \"\\(v)\"\n        return .Ok(())\n", Failed)]
-    [InlineData("        let v: T = 7\n        _ = Text.toString(v)\n        return .Ok(())\n", Failed)]
+    [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", "")]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", "")]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = Text.toString(w)\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        return writer.write(v)\n", "")]
+    [InlineData("        let v: T = 7\n        _ = \"\\(v)\"\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        _ = Text.toString(v)\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        return v.format(writer@uniq)\n", "")]
     [InlineData("        let v: T = 7\n        let x = v + v\n        return .Ok(())\n", "")]
     [InlineData("        let w: Wrapping<u8> = 7\n        _ = Text.toString(w)\n        _ = \"\\(w)\"\n        return writer.write(w)\n", "")]
     [InlineData("        let w: Wrapping<T> = 7\n        _ = writer.write(w)\n        return writer.write(Loudly.init())\n", Failed)]
@@ -740,9 +749,58 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + "struct Loudly\n    Self is Utf8Format\n    public init() => ()\n" +
                 "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        Console.writeLine(\"format\")\n" +
-                "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" +
-                "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        var bytes = [64 of 0@u8]\n" +
-                "        var buffer = Text.fixed(bytes@uniq)\n        var writer = Text.writer(buffer@uniq)\n" + body));
+                "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer + body));
+
+    // SPEC 8.11.3, 8.11.1, 4.6.1, 4.6.3 (PLAN G771): a requirement call of format on an abstract P takes the bound of the Contract its
+    // premise proves: confined under Position or PositionRange, and none under Utf8Format, which declares no bound (any formatter may
+    // bind P); each called directly and through a formatting function's row (write, an interpolation, toString), which composes format
+    // at the caller by SPEC 22.10.1's published effects. The bound covers format alone: a call of Plain's put, which bounds nothing,
+    // beside a bounded format keeps its unknown environment effect.
+    [Theory]
+    [InlineData("Position", "        return writer.write(self.p)\n", "")]
+    [InlineData("Position", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", "")]
+    [InlineData("Position", "        _ = Text.toString(self.p)\n        return .Ok(())\n", "")]
+    [InlineData("Position", "        return self.p.format(writer@uniq)\n", "")]
+    [InlineData("PositionRange", "        return writer.write(self.p)\n", "")]
+    [InlineData("PositionRange", "        return self.p.format(writer@uniq)\n", "")]
+    [InlineData("Utf8Format", "        return writer.write(self.p)\n", Failed)]
+    [InlineData("Utf8Format", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", Failed)]
+    [InlineData("Utf8Format", "        _ = Text.toString(self.p)\n        return .Ok(())\n", Failed)]
+    [InlineData("Utf8Format", "        return self.p.format(writer@uniq)\n", Failed)]
+    [InlineData("Position", "        _ = self.p.format(writer@uniq)\n        return self.inner.put(value)\n", Failed)]
+    public void AnAbstractPositionFormatsUnderItsContractsBound(string premise, string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + "contract Plain\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
+                $"struct H<P, U>\n    P is {premise}\n    U is Plain\n    Self is Sink\n    var p: P\n    var inner: U\n" + Put + Writer + body));
+
+    // SPEC 15.6.4, 8.11.3 (PLAN G771): a generic function's summary is computed once under its own premises, so its call at u8 from a
+    // confined put is valid where the premise bounds format (PrimitiveInteger, through Position; the member call on T resolves through
+    // member lookup's Position clause, PLAN G776) and a conflict where it is Utf8Format.
+    [Theory]
+    [InlineData("PrimitiveInteger", "")]
+    [InlineData("Utf8Format", Failed)]
+    public void AGenericFormatterIsJudgedUnderItsOwnPremise(string premise, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "group Show\n    public func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
+                $"        T is {premise}\n        return value.format(writer)\n" + Witness + Writer +
+                "        let n = 7@u8\n        return Show.show(n@ref, writer@uniq)\n"));
+
+    // SPEC 15.6, 8.11.3 (PLAN G771): the bound makes the format call confined, not its borrow valid: borrowing the writer `uniq` while a
+    // shared Loan of it lives stays a Loan conflict at the call, the program's only problem (the member call on T resolves through
+    // member lookup's Position clause, PLAN G776).
+    [Fact]
+    public void AConfinedFormatCallKeepsItsLoanConflict()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            Sink + "group Look\n    public func at(writer: ref/Utf8Writer) => ()\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer +
+            "        let v: T = 7\n        let held = writer@ref\n        let result = v.format(writer@uniq)\n        Look.at(held)\n        return result\n" +
+            "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal("CallActivationConflict_Kd v.format(writer@uniq)", MinimalEmissionTest.Problems(c));
+    }
 
     // SPEC 8.11.3 (R8-S2d1, C-252): a generic with no effect bound that formats an abstract Wrapping<T> keeps no record.
     [Fact]
