@@ -10758,6 +10758,18 @@ resumed by R4-M86 (2026-10-20).
     `ErasePart`; the premise-free `ErasureSignatureFits` stays applicability's. This removes an InternalInvariant_Kd at a join of
     Closure values admitted only by the caller's clause, at value and named calls (y02c, y02cn). A5's input moves: such calls are
     accepted and publish their relations. Open: a Typed callable is still no evidence at the root or a leaf (PLAN G537, §2).
+  - Amended (G584, 2026-11-13; Major; PLAN G584; requires G585, BU-187, on its base): a Literal waits for the solve too, so the
+    first pass completes only the solve's Type evidence (a Typed part at its own Type) and every other part is completed at its
+    instantiated parameter, the named call's order (`WaitsForValueCallSolve` has no Literal arm). Reason the G504 amendment's "only
+    a Literal is completed before the solve" no longer holds: its premise, a Literal's input Type names no Origin, is false for
+    `null`, which takes its expected raw Type verbatim (SPEC 5.7 Fits: "`null` takes any Origin"), so at a raw layer stating the
+    callee's Origin it named the callee's own atom and the argument's Fit row a universal atom no caller body classes (a located
+    Unsupported_Kd; v1, vu8, vh1, c1v, vlitn, vr2, vjn, vgen and, with G585, vref accepted). The early completion also gave the
+    solve a borrowed literal temporary's Place Origin as a bound (SPEC 10.2 row 2); after G585 that bound is `AddTemporaryBound`'s
+    for every waiting part, so this amendment holds only on a base containing G585 (without it a literal beside an argument at the
+    caller's fixed Origin is newly rejected, rfx). Moved: the located `Unsupported_Kd` at a Value call's literal is removed and the
+    rest of its records kept (acceptance when none is left), a recovered `null` included. Rejected: a gate on `null` or on a literal
+    input Type naming an Origin (one clause for one form, and it keeps two completion paths).
 
 - **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
   r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
