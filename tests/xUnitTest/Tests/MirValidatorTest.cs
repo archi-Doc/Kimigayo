@@ -887,17 +887,19 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its
-    // instance decides; the body is valid, its Len a sequence's.
+    // instance decides; its branch reads the term's value, the body's one Length constant, not the region's Len (R8-W2 c2a replaced a2's
+    // Len(region) by it, plan Revision 1 B1); the body is valid.
     [Fact]
-    public void ALenOverAnInterpolationBoundRegionIsASequences()
+    public void AGenericDirectLineBranchesOnItsRegionTermsValue()
     {
         var c = MirBuildTest.Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var len = Assert.Single(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
-        var region = body.TypeOf(len.Rvalue.Place)!;
-        Assert.Equal((BoundTypeKind.FixedArray, LengthOperation.InterpolationBound), (region.Kind, region.LengthExpression!.Operation));
+        var length = Assert.Single(body.Consts.ToArray(), static x => x.Kind == MirConstKind.Length);
+        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type;
+        Assert.Equal((LengthOperation.InterpolationBound, (object)region.LengthExpression!), (region.LengthExpression!.Operation, length.Value!));
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Empty(findings);
@@ -1494,6 +1496,35 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var (c, types) = GenericIntegers();
         AssertIntegerConstant(types[parameter], bits, holds, c.Types);
+    }
+
+    // SPEC 4.4.1 (R8-W2 c2a conditions (a), (b)): a Length constant is an isize term its body leaves open, of the body definition's slots:
+    // its own body's slot holds; a closed term (an Integer's form), an i64 one, another function's slot and a slot in a module's statements
+    // are each one Const finding.
+    [Theory]
+    [InlineData("size", "N", "isize", true)]
+    [InlineData("size", null, "isize", false)]
+    [InlineData("size", "N", "i64", false)]
+    [InlineData("size", "M", "isize", false)]
+    [InlineData(null, "N", "isize", false)]
+    public void ALengthConstantIsAnOpenIsizeTermOfItsBodysSlots(string? body, string? slot, string type, bool holds)
+    {
+        var c = MirBuildTest.Compile("func size<length N>(values: [N of i32]) -> isize => N\nfunc other<length M>(values: [M of i32]) -> isize => M\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var lengths = program.Bodies.ToArray().SelectMany(static x => x.Consts.ToArray()).Where(static x => x.Kind == MirConstKind.Length)
+            .Select(static x => (BoundLength)x.Value!).ToDictionary(static x => x.Parameter!.Name);
+        var decl = body is null ? null : program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == body).Key.Decl;
+        var term = slot is null ? c.Binding.InternLength(LengthOperation.Constant, 3) : lengths[slot];
+        var built = new MirBody();
+        built.Reset(new(decl, MirBodyKind.Fn), default);
+        built.AddLocal(new(decl is null ? BoundType.Unit : BoundType.ISize, MirLocalKind.Return, At)); // The definition's result Type.
+        var (held, block) = (MirModelTest.Local(built, BoundType.Primitives[type]), built.AddBlock());
+        var constant = MirOperand.Const(built.Const(new(MirConstKind.Length, BoundType.Primitives[type], Value: term)));
+        built.Push(block, MirStatement.Assign(held, MirRvalue.Use(AddOperands(built, [constant])), Broken));
+        built.Terminate(block, MirTerminator.Return(At));
+        MirViolation[] expected = holds ? [] : [MirViolation.Const];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(built, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // G644: the builder's generic literals are Binding's fitted ones, 0 through 127 (SPEC 8.7.4, 12.3.3): a literal that fits no instance,

@@ -165,6 +165,8 @@ internal enum MirConstKind : byte
     FnItem, // The function item its Type names.
     Location, // Bits: a SourceRef, as Module << 32 | Id.
     TypeToken, // Value: the Type.
+    Length, // SPEC 4.4.1: Value: a BoundLength with a slot or Type the body leaves open, its value the instance's (TyCtxt.InstanceLength); a
+    // closed one is an Integer (MirBuilder.LengthOperand). Type: isize.
 }
 
 internal enum MirLocalKind : byte

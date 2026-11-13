@@ -157,6 +157,7 @@ internal static partial class MirDump
                         "\n",
                         "\\n")).Append('"'),
                     MirConstKind.Location => Source(text.Append("location"), constant.Site),
+                    MirConstKind.Length => text.Append("length ").Append(TyCtxt.Name((BoundLength)constant.Value!)),
                     _ => text.Append(constant.Kind == MirConstKind.FnItem ? "fn " : "type ").Append(Type(constant.Type)),
                 };
             case MirOperandKind.PairAcquire:

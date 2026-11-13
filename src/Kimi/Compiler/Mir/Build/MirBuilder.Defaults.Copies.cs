@@ -17,7 +17,8 @@ internal sealed partial class MirBuilder
     private readonly Dictionary<Subst, Subst> compositions = []; // Each callee substitution a copy holds, composed (Instantiates).
 
     // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
-    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's) and each
+    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each Length
+    // constant's term (TyCtxt.InstanceLength) and each
     // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
     // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
     // folds by them.
@@ -35,7 +36,8 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var constant in template.Consts)
         {
-            if (!this.Instance(constant.Type, subst))
+            if (!this.Instance(constant.Type, subst) ||
+                (constant is { Kind: MirConstKind.Length, Value: BoundLength length } && compilation.Types.InstanceLength(length, subst) is null))
             {
                 return false;
             }
@@ -154,7 +156,8 @@ internal sealed partial class MirBuilder
     // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution, which instantiates it (Instantiates),
     // in its frame (Frame), its returns going on after it; each Type applied and each callee's substitution composed (TyCtxt.Compose),
     // each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent acquisition its
-    // case's (ByCase), each static and constant added again, and a Drop the instance's Type does not need left out. No MustNotComplete
+    // case's (ByCase), each static and constant added again (a Length's term in the instance, of LengthOperand's form: a constant's value,
+    // as its Type, is the instance's), and a Drop the instance's Type does not need left out. No MustNotComplete
     // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3). Two forms are decided again in the copy, each
     // by its owner: a PairAcquire's rvalue by its case (Reacquired; ByCase) and a keyed view by its folded key (Refirst; First). A third
     // would be an open family, to close in one representation.
@@ -266,9 +269,11 @@ internal sealed partial class MirBuilder
             };
         }
 
-        MirOperand FoldOperand(in MirOperand operand) => operand.Kind == MirOperandKind.Const
-            ? MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = this.FoldType(template.Consts[operand.Arg].Type, subst) }))
-            : operand with { Place = FoldPlace(operand.Place) };
+        // A constant in the call's instance: its Type, and a Length's term, of LengthOperand's form there (SPEC 4.4.1).
+        MirOperand FoldOperand(in MirOperand operand) => operand.Kind != MirOperandKind.Const ? operand with { Place = FoldPlace(operand.Place) }
+            : template.Consts[operand.Arg] is { Kind: MirConstKind.Length, Value: BoundLength length } && subst is not null
+            ? this.LengthOperand(compilation.Types.InstanceLength(length, subst)!)
+            : MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = this.FoldType(template.Consts[operand.Arg].Type, subst) }));
 
         // A template that did not fail has no Opaque value.
         MirRvalue FoldRvalue(in MirRvalue rvalue)
