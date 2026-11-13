@@ -159,7 +159,7 @@ public sealed partial class Binding
         }
 
         var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner) is { } substituted ? this.CompleteProjections(substituted, declaration) : null;
-        return stored is { ContainsClosure: true } && this.types.Instantiates(owner.Symbol) ? this.CloseHeldClosures(stored, owner) : stored;
+        return stored is { ContainsNested: true } && this.types.Instantiates(owner.Symbol) ? this.CloseHeldClosures(stored, owner) : stored;
     }
 
     // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
