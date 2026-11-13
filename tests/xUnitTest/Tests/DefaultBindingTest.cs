@@ -268,7 +268,7 @@ public class DefaultBindingTest
     public void RebindingAndReloadPreserveDefaultParameterIdentity()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()");
-        var function = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<FunctionKoto>());
+        var function = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Children().OfType<FunctionKoto>());
         Assert.True(c.Bind().IsComplete);
         Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.SymbolOf());
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
@@ -279,7 +279,7 @@ public class DefaultBindingTest
         Assert.NotNull(kotonoha);
         kotonoha.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        var restoredFunction = Assert.Single(kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<FunctionKoto>());
+        var restoredFunction = Assert.Single(kotonoha.GeneratedFunction!.Body!.Children().OfType<FunctionKoto>());
         Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 0), restoredFunction.Parameters[1].DefaultValue!.SymbolOf());
     }
 

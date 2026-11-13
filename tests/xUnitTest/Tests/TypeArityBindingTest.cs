@@ -185,6 +185,19 @@ public class TypeArityBindingTest
         }));
     }
 
+    // A warm rebind of a wrong arity or a missing Name keeps failure Binding allocation-free (DECISIONS G89-2; PLAN G609: 384 B, the
+    // unapplied arguments' boxed enumerator).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("let o: Option<i32, i32> = .None")]
+    [InlineData("let o: Missing<i32> = 1")]
+    public void WarmUnappliedArgumentsAllocateNothing(string source)
+    {
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
     private static Compilation Parse(string source)
         => CompilationTestHelper.Parse(source, "arity.kimi");
 

@@ -127,7 +127,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         while (stack.TryPop(out var top))
         {
             deepest = Math.Max(deepest, top.Depth);
-            foreach (var child in top.Node.ChildNodes)
+            foreach (var child in top.Node.Children())
             {
                 stack.Push((child, top.Depth + 1));
             }

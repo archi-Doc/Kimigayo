@@ -18,11 +18,12 @@ internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 // than its receiver that its element storage retains at a raw layer without an Origin (the transfer rule, Binding.Retention.Transfers.cs).
 internal readonly record struct AddedRow(KimiDeclarationId Id, byte Mask);
 
-// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i).
+// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i);
+// read by call retention (no output there, TyCtxt.Retention.cs) and the pun rule (no store there), one meaning.
 internal readonly record struct NoStoreRow(KimiDeclarationId Id, byte Mask);
 
 // The rows a library operation publishes beyond its signature, by its catalog ID (the recognition entries,
-// KimiLibraryCatalog.Definitions.cs, name the operations and carry their PublishedRow).
+// KimiLibraryCatalog.Definitions.cs, name the operations and carry their PublishedRow), and the one code-generation row, OutOfLineRows.
 internal static partial class KimiLibraryCatalog
 {
     // The operations' Origin relations beyond their signatures (WithinRow), apart from their recognition entries.
@@ -45,6 +46,12 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.RawSlice, 0b1), new(KimiDeclarationId.RawInitialize, 0b10), new(KimiDeclarationId.RawRelease, 0b1),
         new(KimiDeclarationId.StorageTransferBytes, 0b10),
     ];
+
+    // The library functions code generation keeps out of line (`noinline`: it steers O2 inlining only and is inert at O0), a closed set, each
+    // admitted by a measured O2 reason named in its commit with its kernel. `Utf8Writer.reserve`: the writer's whole reservation, whose one
+    // caller, the leaf `writeUtf8`, would otherwise absorb it and grow past its callers' inlining (O-195 (a); the Interpolation kernel's
+    // literal writes). Revisit at a second library caller, R8-W2's adapter, or a fast-path split.
+    private static readonly KimiDeclarationId[] OutOfLineRows = [KimiDeclarationId.WriterReserve];
 
     // SPEC 4.9.6, 12.4.3: the user-code effects an operation publishes, a bodiless constructor its linked implementation's; null for none.
     // The row, dependency rules, allocation, Abort and input accesses form its published summary; callers and bound verification use
@@ -80,6 +87,10 @@ internal static partial class KimiLibraryCatalog
 
         return false;
     }
+
+    // Whether code generation keeps a library function's definition out of line (OutOfLineRows); false for every other function.
+    internal static bool KeepsOutOfLine(BindingSymbol? symbol)
+        => symbol?.LibraryDeclaration is { } id && Array.IndexOf(OutOfLineRows, id) >= 0;
 
     // SPEC 5.2 Placement, 5.6: whether an operation contract stores no value through parameter slot `input` (NoStoreRows); false otherwise.
     internal static bool NoStore(BindingSymbol? symbol, int input)

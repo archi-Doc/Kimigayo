@@ -104,6 +104,11 @@ public class DictionaryIndexTest
     // refuses it; the old analysis accepted it, and the native allocation audit ran it (fixture DictionaryIndexGeneric, 1, 1, 192). A
     // refused program has no run to audit, so the audit and the Allocation purpose wait with it. H5's (e) list, row "S2's self-row family"
     // (the owner's O-9, 「(a) 加えて着地」, and O-14, 「加える」): PLAN G416 restores the acceptance and re-points this test back to its audit.
+    // The self-row fails two checks at that subject, `owned`'s destruction and its storage's end. Since PLAN G792 the store
+    // `owned[key] = value@move` writes an abstract V, a Scalar for some binding (SPEC 8.15.1), through the `uniq/V` that `indexUniq`
+    // returned, an undecided write at `owned` (R4-M198, as its concrete control with `V = i32` is), so the storage end's check finds the
+    // Loan only in sets carrying Φ_U and is the located Unsupported_Kd (R4-M198's set-level named limit through R4-M199's closure, PLAN
+    // G599 (b)); the destruction's conflict stays decided. DECISIONS Q13: a record added on a program the base already rejects.
     [Fact]
     public void GenericIndexUsesTheConcreteEqualityWitness()
     {
@@ -119,7 +124,10 @@ public class DictionaryIndexTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Accepts);
-        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("var owned = entries@move")));
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var owned = entries@move")),
+            (DiagnosticCode.Unsupported_Kd, new("var owned = entries@move")));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

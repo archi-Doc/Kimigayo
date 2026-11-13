@@ -10,7 +10,7 @@ This chapter defines the windows-x64 target profile: the layout and foreign-func
 
 For a storable Type `T`, `size(T)` is the number of inline bytes it reserves, including padding; `alignment(T)` is a positive power of two; and `stride(T)` is the size rounded up to the alignment. These are notation, not source operators. On windows-x64 sizes, strides and Field offsets must not exceed 2^63 − 1; a larger layout is a Language error at the use that needs it ([§8.15.3](../spec/08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation)).
 
-- Every component meets its natural alignment, and an aggregate's alignment is at least the maximum of its components'. Positive-sized components never overlap, and padding of a nested component is never reused.
+- Every component meets its natural alignment, and an aggregate's alignment is at least the maximum of its components'. An aggregate's size is a multiple of its alignment, so its stride equals its size. Positive-sized components never overlap, and padding of a nested component is never reused.
 - Padding has no defined content. Byte transfers may copy it; typed reads and comparisons never treat it as a value.
 - Zero-sized values keep their evaluation, initialization, ownership, Loans and destruction. Distinct zero-sized Places may share an address; a raw Place designates a Place, not an address ([§5.2](../spec/05-raw-pointers-and-unsafe-memory.md#52-raw-places)).
 - Physical layout never changes Field identity, initialization order, Partial Move, Loans or destruction order.
@@ -60,12 +60,13 @@ windows-x64 is little endian with 64-bit pointers; the built-in Condition `point
 | `Array<T>`, `string` | 24 / 8 / 24 |
 | `Slice<T>` | 16 / 8 / 16 |
 | `Dictionary<K, V>` | 56 / 8 / 56 |
-| Unit, `Loan<T>`, Never | 0 / 1 / 0 |
+| Unit, `Loan<T>`, Never, Function Items | 0 / 1 / 0 |
 
 - A `char` stores a Unicode scalar value as an unsigned 32-bit integer. Neither `char` nor `bool` corresponds to C `char`, `WCHAR` or Windows `BOOL`.
 - A Type that stores Never inline is laid out as if Never were zero-sized, so the C-mode restriction on zero-sized Fields applies to it.
 - `ref/V` and `uniq/V` are one nonnull pointer to the immediate storage of `V`, with no length, count or Loan data. A borrow of a zero-sized `V` holds a nonnull address aligned for `V`.
 - **Nonnull Option representation.** `Option<R>`, where `R` is `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T`, is one pointer-sized word: null is `None`, and every valid value of `R` is `Some`. It does not extend to `Option<Option<R>>`, to structs or Tuples containing references, or to other enums.
+- A Function Item stores none of its bound arguments; they are part of its Type ([§3.2.1](../spec/03-types-and-values.md#321-callable-value-types)).
 - A common function value is 16 bytes with alignment 8. An environment of at most 8 bytes and alignment at most 8 is stored inline; a larger one is allocated when the value is formed ([§7.7.4](../spec/07-functions-and-callable-values.md#774-function-references-and-erasure)).
 - **Handles.** The one component of an `Array<T>`, a `Slice<T>` or a `string` is a Place of an internal `#Layout("C")` struct of the Kimi Kotonoha at the value's address, and a `Dictionary<K, V>`'s is a `DictionaryStorage.Handle`:
 
@@ -129,7 +130,7 @@ let b = identity("x")     // Generates a separate body, identity<string>.
 
 ### 21.3.2. Limits
 
-Analysis and generation limits (syntax depth, a syntax node's distance from its module root, a Type's height ([§A.4](appendices/A-compiler-requirements.md#a4-implementation-limits)), instantiation growth, context depth, a function body's size under default and `defer` expansion, analysis storage, string-interpolation nesting) are implementation-defined. Exceeding one is a Resource diagnostic ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) at the affected declaration, call, statement or token (a Type's height: at the expression, written Type or conformance clause that forms the Type); it never makes the program semantically invalid and does not stop independent checks. The body-size limit is checked where an expansion's copy would begin: no copy begins past it, and a copy of known size never ends past it; a refused copy is not built, and the omitting call or the `defer` statement reports it. Other layout failures are classified by [§8.15](../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking) and [§23.1.1](../spec/23-compiler-services.md#2311-categories); inline storage cycles are not generation limits ([§21.1.1](#2111-common-rules)).
+Analysis and generation limits (a Compilation's module count, syntax depth, a syntax node's distance from its module root, a Type's height ([§A.4](appendices/A-compiler-requirements.md#a4-implementation-limits)), instantiation growth, context depth, a function body's size under default and `defer` expansion, analysis storage, string-interpolation nesting) are implementation-defined. Exceeding one is a Resource diagnostic ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) at the affected declaration, call, statement or token (a Type's height: at the expression, written Type or conformance clause that forms the Type; the module count: at the root Project's project file); it never makes the program semantically invalid and does not stop independent checks. A Compilation over the module count analyzes none of its modules: its configuration is still checked, its sources are not, and its result is Completed ([§23.2.2](../spec/23-compiler-services.md#2322-results-and-acceptance)). The body-size limit is checked where an expansion's copy would begin: no copy begins past it, and a copy of known size never ends past it; a refused copy is not built, and the omitting call or the `defer` statement reports it. Other layout failures are classified by [§8.15](../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking) and [§23.1.1](../spec/23-compiler-services.md#2311-categories); inline storage cycles are not generation limits ([§21.1.1](#2111-common-rules)).
 
 ### 21.3.3. Checked operations
 

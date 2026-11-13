@@ -174,7 +174,7 @@ public class RequireRecoveryDiagnosticTest
 
     private static IEnumerable<Koto> Descendants(Koto node)
     {
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             yield return child;
             foreach (var descendant in Descendants(child))

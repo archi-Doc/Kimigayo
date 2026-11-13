@@ -1,7 +1,7 @@
 // O2 timing corpus (O2Corpus.md): string comparison over heap and Static strings with long common prefixes, string
 // destruction through both release kinds, built-in integer formatting, char, Unit and bool formatting, float
-// formatting, and string, view and wrapping integer formatting. Each part is a function of its own: `main` calls each
-// from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per part.
+// formatting, string, view and wrapping integer formatting, and 128-bit integer formatting. Each part is a function of
+// its own: `main` calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per part.
 
 // The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
 // from 16 up, whose periods are long.
@@ -209,6 +209,28 @@ func texts(buffer: uniq/Text.FixedBuffer, strings: ref/Array<string>, literals: 
     sum += written(buffer, (0 - wide)@Wrapping<i64>) * 5
     return sum
 
+// One round: u128 values of 1 to 39 digits, grown one digit at a time from the state from a leading digit of 1 or 2 (so
+// 39 digits stay below u128's maximum and no multiply Aborts), each also as an i128 with a sign from the state where it
+// fits, then the extremes, each by `$tryWrite` into the cleared 40-byte buffer. It uses no 128-bit division or
+// remainder, which the backend does not generate (IMPL 21.3.3).
+func wide(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
+    state@follow = next(state)
+    var value = (1 + ((state >> 16) & 1))@u128
+    var sum: i64 = 0
+    for digits in 1..40
+        if digits > 1
+            state@follow = next(state)
+            value = value * 10 + ((state >> 16) % 10)@u128
+        sum += written(buffer, value) * digits@i64
+        if value <= 170141183460469231731687303715884105727@u128
+            let sign = (1 - 2 * ((state >> 20) & 1))@i128
+            sum += written(buffer, value@i128 * sign)
+    sum += written(buffer, 0@u128)
+    sum += written(buffer, 340282366920938463463374607431768211455@u128)
+    sum += written(buffer, 170141183460469231731687303715884105727@i128)
+    sum += written(buffer, -170141183460469231731687303715884105728@i128)
+    return sum
+
 public func main()
     var checksum: i64 = 0
     var state: i64 = 1
@@ -251,4 +273,9 @@ public func main()
     checksum = fold(checksum, texts(buffer@uniq, strings, literals, state@uniq))
     for round in 1..65536
         checksum = fold(checksum, texts(buffer@uniq, strings, literals, state@uniq) + round@i64)
+    var wideBytes = [40 of 0@u8]
+    var wideBuffer = Text.fixed(wideBytes@uniq)
+    checksum = fold(checksum, wide(wideBuffer@uniq, state@uniq))
+    for round in 1..8192
+        checksum = fold(checksum, wide(wideBuffer@uniq, state@uniq) + round@i64)
     Console.writeLine("checksum \(checksum)")

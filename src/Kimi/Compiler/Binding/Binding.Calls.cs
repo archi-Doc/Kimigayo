@@ -473,7 +473,7 @@ public sealed partial class Binding
             if (receiverOperation.Source is not null)
             {
                 if (receiverOperation.BasePath is { } objectBase && receiverOperation.ParameterType is { IsObjectBorrow: true } &&
-                    !this.RequireObjectErasure(call, receiverOperation.Source, ReferenceTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
+                    !this.RequireObjectErasure(call, receiverOperation.Source, this.ViewTarget(receiverOperation.SourceType, receiverOperation.Source)!, objectBase.Type))
                 {
                     return null;
                 }
@@ -496,19 +496,6 @@ public sealed partial class Binding
                     // SPEC 15.3.6, 10.8: judged after selection; it never made the candidate inapplicable.
                     return this.FailPerCallOrigin(call, selected, solveFrame.Types, call.ArgumentNodes[i]);
                 }
-            }
-
-            Koto? borrowedElement = null;
-            for (var i = 0; i < argumentCount; i++)
-            {
-                var element = this.FailBorrowedElements(call.ArgumentNodes[i], selectedOperations[i].SourceType);
-                borrowedElement ??= element;
-            }
-
-            if (borrowedElement is not null)
-            {
-                this.AddPrerequisite(call, borrowedElement); // Interim until PLAN G585: the call rests on its borrowed element.
-                return this.Fail(call, BindingFailure.Unsupported);
             }
 
             var completed = this.CompleteArguments(call, scope, selectedOperations);
@@ -681,6 +668,7 @@ public sealed partial class Binding
         }
     }
 
+    // A call's receiver: a synthetic callee's own, or a member access's qualifier when its published side is Value (PLAN G724, B4).
     private Koto? CallReceiver(Koto callee)
-        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
+        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && this.MemberSideOf(member) == MemberSide.Value ? member.Left : null;
 }

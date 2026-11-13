@@ -394,9 +394,10 @@ public sealed partial class KimiLibrary
 
         return found;
 
+        // SPEC 8.13.3: an explicit specialization has no name, so it is never the declaration a catalog row names.
         bool Visit(Koto node)
         {
-            if (node is FunctionKoto member && member.Name == name)
+            if (node is FunctionKoto { IsSpecialization: false } member && member.Name == name)
             {
                 if (overload >= 0)
                 {
