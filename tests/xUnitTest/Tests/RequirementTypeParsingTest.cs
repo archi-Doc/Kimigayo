@@ -163,7 +163,7 @@ public class RequirementTypeParsingTest
         }
 
         foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item", "(S).Item", "(S during y).Item()",
-            "(i32).(C).Item", "(S?).(C).Item", "(ref/S).(C).Item", "((i32, u8)).(C).Item", "([2 of i32]).(C).Item", "(S{k}?).(C).Item"])
+            "(S).(C).Item", "(i32).(C).Item", "(S?).(C).Item", "(ref/S).(C).Item", "((i32, u8)).(C).Item", "([2 of i32]).(C).Item", "(S{k}?).(C).Item"])
         {
             Assert.True(ParseTestHelper.Parse(format.Replace("TYPE", type, StringComparison.Ordinal)).Compilation.Diagnostics.HasErrors, type);
         }
