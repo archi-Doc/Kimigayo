@@ -12797,6 +12797,32 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
     located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
     facts).
+
+- **BU-192 An emptied admitted set admits no case (PLAN G750)** (2026-11-13; Front, Binding; Major with a design review, F's ruling
+  1; the Middle's consent to `CaseProduct`'s contract, C-285; amends no entry) SPEC 8.3.4, 8.15.2, 23.1.2.
+  - The admitted set at a point is the intersection of every Semantics premise on the scope chain, an Invalid environment's
+    included; a failed clause's fact is an Error, never a premise. An empty set is the 8.3.4 Error, whose one record is the
+    environment's (`ValidateConstraintEnvironments` at its owner).
+  - One fact, `PairBinder.CaseProduct` 0 ('the binders here admit no case'), read before any division. `CheckCaseBound` (the owner
+    of a definition's cases) gives such a definition no case: it rests on the environment's failed node (prerequisite,
+    InvalidConstraint, derived), its parts are bound (their independent records stay) and none is published, as beyond the case
+    bound; it keeps no signature. A Semantics requirement read from the empty set (a case adaptation's rows, a follow, a selection
+    through the layer) rests on the emptying environment (`RestOnEmptiedSet`) and has no record of its own; a formation obligation
+    (`TypeRoleCauses`) gives no cause of its own. `FollowablePair` answers no case as its own outcome (None; null = not followable),
+    and each caller reads it; a caller with no node to rest (LayersTerminal, receivers, Subjects, patterns) reads it as not
+    followable until its consumers rest (PLAN G822).
+  - MIR reads a count from 1 to `CaseBound`: Binding publishes no body of a definition with no case (MirValidator's check of it is
+    the Middle's, G723).
+  - Proofs keep BU-161's rule (an Invalid environment supplies no premises; a proof reading it answers Error resting on it).
+  - C3's held routing of AdmittedSemantics through Enumerate (the C2a entry; `claude/bu30-g170-c2b-held`) must keep this reading;
+    G750's rows check it.
+  - Reason: skipping Invalid environments in the admitted set turned 'admits no case' into D's set or all nine (G723's probes), and
+    the cases the premises exclude gave records with no SPEC basis and, in some forms, `InternalInvariant_Kd`.
+  - Rejected: Binding stops publishing every part in scope of an Invalid environment (loses the independent records of parts whose
+    set is not empty, o3); MIR skipping bodies with an empty binder (a consumer deciding what Binding publishes, G723); keeping a
+    case's record of a definition whose own clauses empty its set (r18's TypeMismatch_Kd, a case the premises exclude; it needs a
+    second admitted set; F's ruling 5); FollowablePair's None for both 'not followable' and 'no case' (its callers decided no case
+    again).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
