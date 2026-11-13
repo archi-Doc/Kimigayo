@@ -581,12 +581,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var (ancestor, declaration, premise) in new ContractSupply(this, shape, subject, view.Premises))
+            // Row (4) reads only the supply's ancestors: instantiating its clauses here built Types that no row reads.
+            var supply = new ContractSupply(this, shape, subject, view.Premises);
+            for (var a = 0; a < supply.AncestorCount; a++)
             {
-                if (premise is null && ancestor >= 0)
-                {
-                    Add(rows, new(declaration.Symbol, rows[i].Available));
-                }
+                Add(rows, new(supply.InstantiatedAncestor(a).Symbol, rows[i].Available));
             }
         }
 
@@ -823,19 +822,25 @@ public sealed partial class Binding
 
         public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise) Current { get; private set; }
 
+        // The number of the declaration's ancestors (Enumerate's ancestor row reads them alone).
+        public readonly int AncestorCount => this.Origin.Ancestors.Count;
+
         // The shape's declaration, whose ancestors are written in its own terms.
         private readonly BoundContract Origin => shape.Symbol.Declaration.BoundSymbol?.Contract ?? shape;
 
         public readonly ContractSupply GetEnumerator() => this;
 
+        // Ancestor `index` of the declaration as `self` and the shape make it, the supply's one instantiation of an ancestor.
+        public readonly BoundContract InstantiatedAncestor(int index)
+            => binding.InstantiatedContract(this.Origin.Ancestors[index], scope, self, normalize: false, shape.Symbol).Contract!;
+
         public bool MoveNext()
         {
-            for (; this.ancestor < this.Origin.Ancestors.Count; (this.ancestor, this.next) = (this.ancestor + 1, 0))
+            for (; this.ancestor < this.AncestorCount; (this.ancestor, this.next) = (this.ancestor + 1, 0))
             {
                 if (this.next == 0)
                 {
-                    var instantiated = this.ancestor < 0 ? shape
-                        : binding.InstantiatedContract(this.Origin.Ancestors[this.ancestor], scope, self, normalize: false, shape.Symbol).Contract!;
+                    var instantiated = this.ancestor < 0 ? shape : this.InstantiatedAncestor(this.ancestor);
                     (this.next, this.Current) = (1, (this.ancestor, instantiated, null));
                     return true;
                 }
