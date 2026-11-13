@@ -277,6 +277,9 @@ public sealed partial class Binding
 
         if (expression.Values is { } values)
         {
+            // The rebuilt slots drop an open substitution's Open (PLAN G814), since Refold never meets one: Open's one
+            // writer, SlotSolution.OpenType, substitutes declared parameter patterns only, and a term forms only in
+            // MIR build; G814's rule (an unbound slot keeps itself) would not hold here if a term ever met one.
             var slots = new CallSubstitution(substitution.SlotOwner, substitution.Types, substitution.Lengths) { SlotOwner = substitution.SlotOwner, Declaring = substitution.Declaring };
             return this.Substitute(values, slots) is { } image ? this.types.Refold(expression, image) : null;
         }
