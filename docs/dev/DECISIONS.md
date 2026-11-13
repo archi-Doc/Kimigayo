@@ -8048,7 +8048,8 @@ resumed by R4-M86 (2026-10-20).
     scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to
     `TransferOf` (null for an instance without an abstract part, for C8's closure path and from `RetainsErased`, which has no callee),
     else the library root's; `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
-    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, `FixedArrayMembers`). Under them a borrowed input keeps its
+    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, the fixed array's two groups (`WitnessMembers.FixedArray` and
+    `FixedArrayEntries`, read through `KimiLibrary.MembersOf`)). Under them a borrowed input keeps its
     Chain only; `exchange`'s result only its target's Chain; for §4.9 only (Array, Dictionary) the receiver's storage keeps of the
     other inputs only the added ones: `KimiLibraryCatalog.Added` over `AddedRow(Id, Mask)` beside `WithinRows` (append, insertAt,
     insert, appendAll, appendCopies, tryInsert, insertOrReplace), with two new IDs `ArrayInsertPosition` (`insert<P>`) and
@@ -18603,6 +18604,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     `EffectsLimit`, Refused and None give false".
   - Its `EffectsLimit` bullet and its R5-M22 sentence are superseded by BU-142 (G589): `EffectsLimit` is gone, and R5-M22's sentence reads
     "Property, Refused and None give false".
+  - **Amended by G776-b** (Front, 2026-11-13; the owner's O-194 (a): a built-in conformance adds no member; SPEC 22.1, 14.6.2):
+    - `WitnessMembers` is the local set (R8-M4) of built-in receiver groups. It holds the witness table's groups, which
+      `WitnessGroup`'s rows name, and the fixed array's member group `FixedArray` (SPEC 22.1's members, the member scope
+      `LookupTypeMember` reads), which no row names. The entry witnesses moved to the new row group `FixedArrayEntries` (+1 value).
+      `KimiLibrary.Members`/`MembersOf` stay the one lookup for both kinds, so `IsBuiltinMemberGroup`, `IsReceiverType` and the transfer
+      key read them. A receiver-only group costs a value, a `WitnessReceiver` arm, a `Members` arm and its property, and no
+      `WitnessGroup` arm.
+    - The loop's entry has two forms. A Subject whose entry conformance is a table row binds the row's requirement as a selected
+      requirement call (`BindSelectedRequirement`, as operators do): the witness at a closed Self, the requirement at an abstract one. A
+      declared or abstract entry keeps the member call by name and its shadowing check (`ValidateIterationWitnesses`). The fork is keyed
+      on the table, not on syntax; a new entry row adds no case. This changed behaviour: a shared fixed-array Subject behind two
+      safe-reference layers (`ref/(ref/...)`, `ref/(uniq/...)`) is now accepted, as an Array's is (named in G776-b commit 1); the
+      exclusive `uniq/(uniq/...)` form stays rejected for both Types (PLAN G179).
+    - Rejected: every entry through the requirement, which changes the declared shadowing record and every loop's HIR; a name filter in
+      `LookupTypeMember` (an allowlist); dropping `WitnessMembers.FixedArray` for `FixedArrayMembers` arms in the readers (a second
+      statement of the lookup and the receiver); renaming the enum (churn).
+    - `KimiLibraryShapeTest`'s invariant: the row groups are every value except the receiver-only groups (`ReceiverOnlyGroups`), and no
+      row names a receiver-only group.
 - **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
   SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
   - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one

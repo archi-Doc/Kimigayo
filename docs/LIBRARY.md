@@ -319,16 +319,19 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]`, `init(! capa
 
 `ArrayIterator<T> {source}`, `ArrayUniqIterator<T> {source}` and `ArrayOwningIterator<T>` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source`, `uniq/T during source` or `T`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.2) in private Fields. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
-A fixed array `[N of T]` has no source declaration. Its members are receiver functions of the internal group `Kimi.Storage.FixedArray`, public on any `[N of T]` receiver, and the compiler records the entry conformances they implement (SPEC §22.1).
+A fixed array `[N of T]` has no source declaration. Its members are the receiver functions of the internal group `Kimi.Storage.FixedArray`, public on any `[N of T]` receiver (SPEC §22.1). Its iteration entries are built-in conformances, used by `for` and through a Constraint such as `C is Iterable`; their witnesses, the internal group `Kimi.Storage.FixedArrayEntries`, are no members.
 
 | Member | Guarantee |
+| --- | --- |
+| `slice`, `slice<R>`, `sliceUniq`, `sliceUniq<R>` | The Array view signatures and guarantees above, with `Self = [N of T]` and functions generic over T and `length N`. |
+| `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
+| `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
+
+| Entry witness | Guarantee |
 | --- | --- |
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
 | `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order. Iterator operations allocate no heap storage; element movement and destruction costs are separate ([§4.8.6](spec/04-arrays-indexing-and-slices.md#486-costs)). |
-| `slice`, `slice<R>`, `sliceUniq`, `sliceUniq<R>` | The Array view signatures and guarantees above, with `Self = [N of T]` and functions generic over T and `length N`. |
-| `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
-| `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
 
 `FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline. For `A = [N of T]`, its `N * stride(T)` bytes of element storage are separate from O(1) bookkeeping. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 
