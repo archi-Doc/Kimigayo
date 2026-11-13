@@ -34,26 +34,18 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, int> retentionParts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
 
-    // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
-    // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
-    // are the premise catalog's well-formedness rule (R2, AddTypePremises: an Origin stored below a borrow or Slice layer outlives that
-    // layer's) and the relations retention writes under that rule (an erased callable's, AddErasedRelations; a carrier's layers). The
-    // edges decide, never a layer's kind: a raw layer's own Origin is stored nowhere (BoundType.Origin), so it stays unless another stored
-    // occurrence relates it.
-    private static bool Related(OriginPremiseEnvironment environment, int node, int above)
-        => above >= 0 && (node == above || environment.Closure.States(node, above, OriginPremiseRule.Input));
-
-    // The one visit rule of the walks that stop at the depth bound (StorageBound; G416, PLAN G571): a walk enters a state at the shallowest
-    // depth it is met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the
-    // route that met it first: within the bound it is the routes' answer, in at most StorageBound + 1 entries per state (G416: a branching
-    // recursion has 2^(depth/2) routes). `shallowest` is the state's entry in its walk's own table (`met`: it had one), a reference the
-    // caller reads no more once its walk may insert (a resize moves the entry). Each walk keys its own state: the borrow fit's (Type,
-    // Written, Holder) (Borrows, retentionWalked) and the hold fit's storage Type, its asked entry fixed per query and its run read with
-    // neither (Holds, retentionParts), each all that decides what lies below it; the storage walk's StorageAt less the layer above, the
-    // Written Type and the holder (StorageWalk): meetings that differ only in those count as one state (the layer above changes no fit,
-    // Revision 10; the other two steer raw steps, and a shallower meeting walks below with its own: PLAN G571's design, N1). Holds runs
-    // inside Borrows' walk, so their tables stay apart.
-    private static bool Enters(ref int shallowest, bool met, int depth)
+    // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571). A search of every depth bound in
+    // Binding and TyCtxt finds four: three at StorageBound and TyCtxt.Handed at HandedBound. A walk enters a state at the shallowest depth
+    // it is met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the route
+    // that met it first: within the bound it is the routes' answer, in at most bound + 1 entries per state (G416: a branching recursion
+    // has 2^(depth/2) routes). `shallowest` is the state's entry in its walk's own table (`met`: it had one), a reference the caller reads
+    // no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that decides what lies below it: the
+    // borrow fit's (Type, Written, Holder) (Borrows, retentionWalked), the hold fit's storage Type, its asked entry fixed per query and its
+    // run read with neither (Holds, retentionParts), and the handed-callable walk's Type (TyCtxt.Handed, handedSeen). The storage walk's
+    // StorageAt leaves out the layer above, the Written Type and the holder (StorageWalk): meetings that differ only in those count as one
+    // state (the layer above changes no fit, Revision 10; the other two steer raw steps, and a shallower meeting walks below with its own:
+    // PLAN G571's design, N1). Holds runs inside Borrows' walk, so their tables stay apart.
+    internal static bool Enters(ref int shallowest, bool met, int depth)
     {
         if (met && shallowest <= depth)
         {
@@ -63,6 +55,15 @@ public sealed partial class Binding
         shallowest = depth;
         return true;
     }
+
+    // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
+    // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
+    // are the premise catalog's well-formedness rule (R2, AddTypePremises: an Origin stored below a borrow or Slice layer outlives that
+    // layer's) and the relations retention writes under that rule (an erased callable's, AddErasedRelations; a carrier's layers). The
+    // edges decide, never a layer's kind: a raw layer's own Origin is stored nowhere (BoundType.Origin), so it stays unless another stored
+    // occurrence relates it.
+    private static bool Related(OriginPremiseEnvironment environment, int node, int above)
+        => above >= 0 && (node == above || environment.Closure.States(node, above, OriginPremiseRule.Input));
 
     // The Value sources of the contract's inputs (SPEC 15.6.4 read as (iii), 15.6.3; DECISIONS R4-M154), by node: a value of an input's
     // Type and of each part it holds by value (a borrowed input's part is its layer; a by-value input's, its parts by value), named by the

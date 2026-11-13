@@ -25,7 +25,9 @@ namespace Kimi.Compiler;
 // Abstract one) and a callable; past an exclusive borrow, pair layer admitting one, UniqSlice or raw layer the call may write lies
 // another storage; past a shared one, what a stored value brings (Content targets) but no position. Each state emits once and is walked
 // from the shallowest depth it is met at (Enters), so the walk names every storage past the root within the bound, whatever route meets
-// a state first; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
+// a state first; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit. A state is StorageAt less the
+// layer above (BU-108): that layer decides only whether the next one joins a path (Related), and a layer left out is one the premise
+// catalog relates to the layer above, which no fit needs (Revision 10), so meetings that differ only there give the same fits.
 // Must not: judge an Origin relation (the premise closure's), decide which source a position can hold (the fits'), or read the call's
 // arguments or solved Origins.
 // Also the parts the value at a Place's key holds at its own address by the walk's by-value criterion (OwnParts, read by OwnLayers in
