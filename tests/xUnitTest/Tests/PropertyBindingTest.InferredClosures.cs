@@ -69,9 +69,15 @@ public partial class PropertyBindingTest
     [InlineData("O5", "struct Outer {source}\n    public let data: ref/i32 during source\n    public init(data: ref/i32 during source) => self.data = data\n    struct Inner\n        public let cb = func (y: ref/i32 during source) => ()\n", AtLiteral)]
     [InlineData("O1a", ViewHead + "t = (func () => 1, Option<ref/i32 during source>.None)" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
-    [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", null)]
-    [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", null)]
+    [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
+    [InlineData("O3static", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Static + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
+    [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
+    [InlineData("O4static", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Static + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
     [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
+    // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300): O3, O4 and their static twins need a Field Closure of
+    // `View {source}` Owned. Its instantiation holds the instance's `source` (SPEC 3.2.1, 15.2.3), but a held instance is formed modulo
+    // Origins (DECISIONS BU-60), so the Closure's Type cannot say which instance it came from: BU-22's located Unsupported_Kd at the
+    // definition, for the invalid programs (a local view, accepted on dev) and the valid ones (a static view) alike.
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 
@@ -99,17 +105,24 @@ public partial class PropertyBindingTest
     [InlineData("h3t", Holder + "struct S\n    public let h: Holder = Holder.init([func (x: i32) -> i32 => x])\n", null)]
     [InlineData("f10use", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S) -> i32 => s.p.f(1)\n", null)]
     [InlineData("f11empty", "struct S\n    public let p = P.init(func [] (x: i32) -> i32 => x)\n", null)]
-    [InlineData("f14gen", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", null)]
-    [InlineData("f15genT", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", null)]
+    [InlineData("f14gen", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f14genOwned", "struct S<T>\n    T is Owned\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f15genT", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", "Unsupported_Kd: (x: T) -> i32")]
+    [InlineData("f15genTOwned", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    T is Owned\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", "Unsupported_Kd: (x: T) -> i32")]
     [InlineData("f16nest", "struct S\n    public let p = P.init(func (x: i32) -> i32 => (func () -> i32 => x)())\n", null)]
     [InlineData("f18refpar", "struct P3\n    public let f: (ref/u8) -> i32\n    public init(f: (ref/u8) -> i32) => self.f = f@move\nstruct S\n    public let p = P3.init(func (x: ref/u8) -> i32 => 0)\n", null)]
     [InlineData("f19static", "struct P4\n    public let f: (ref/u8 during static) -> i32\n    public init(f: (ref/u8 during static) -> i32) => self.f = f@move\nstruct S\n    public let p = P4.init(func (x: ref/u8 during static) -> i32 => 0)\n", null)]
-    [InlineData("f23use", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", null)]
+    [InlineData("f23use", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f23useOwned", "struct S<T>\n    T is Owned\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", "Unsupported_Kd: (x: i32) -> i32")]
     [InlineData("f9group", "group G\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: let p = P.init(func (x: i32) -> i32 => x)")]
     [InlineData("k1fitbad", P7 + "struct S\n    public let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
     [InlineData("k1fitlocal", P7 + "func h() -> i32\n    let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n    return 0\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
     [InlineData("k2a5bad", P6 + "struct S\n    public let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
     [InlineData("k2a5local", P6 + "func h() -> i32\n    let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n    return 0\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
+    // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300 and R7-D2 d): in a generic struct the Closure holds the
+    // struct's T (SPEC 3.2.1, 6.1.3), so its environment is not empty before the engine judges and the erasure is BU-107's located
+    // Unsupported_Kd: f14gen, f15genT and f23use, invalid without `T is Owned` (accepted on dev), and their valid twins with it
+    // (accepted on dev: the support boundary STATUS records).
     public void AnErasureInAFieldHeaderIsDecidedForAnEmptyEnvironment(string id, string declarations, string? record)
         => Assert.Equal(
             [id, .. new[] { record }.OfType<string>()],

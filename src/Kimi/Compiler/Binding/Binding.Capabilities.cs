@@ -745,8 +745,9 @@ public sealed partial class Binding
     // function; never a call's callee or an anonymous function), up to the nearest Container, whose identity (SelfType) holds its outer
     // Containers' slots and its Origin slots (a function has no Origin parameter list, SPEC 15.3), each read through the Type's held
     // instance as its readers see it (TyCtxt.NestedInstance): the slot itself in that declaration's identity (no context), else its image.
-    // Unit for any other Type, whose bound arguments are its whole dependence; null where the instance is withheld (an Origin position,
-    // PLAN G300) or an image does not complete, which the reader answers with BU-22's limit.
+    // Unit for any other Type, whose bound arguments are its whole dependence; null where the instance is withheld (an Origin position
+    // of the held instance or of the holding Container's identity, PLAN G300) or an image does not complete, which the reader answers
+    // with BU-22's limit.
     private BoundType? InheritedArguments(BoundType type)
     {
         if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || type.Symbol is not { } definition ||
@@ -755,8 +756,13 @@ public sealed partial class Binding
             return BoundType.Unit;
         }
 
+        // Withheld (DECISIONS BU-60; PLAN G300): a held instance with an Origin position (NestedInstance), and every read of a
+        // definition a Container's instance holds when that Container has an Origin slot, so that its identity has an Origin position:
+        // a held instance is formed modulo Origins, so no context tells that Container's instances apart, `self`'s from another's
+        // (the owner's O-262 (a)). A definition a function's instance holds is read in that function's frame and is exact.
         var instance = TyCtxt.NestedInstance(type);
-        if (instance is null && type.InstanceContext is not null)
+        if ((instance is null && type.InstanceContext is not null) ||
+            enclosing is { Declaration: DeclarationContainerKoto, Schema.Origins.Count: > 0 })
         {
             return null;
         }
