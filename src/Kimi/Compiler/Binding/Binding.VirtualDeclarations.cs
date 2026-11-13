@@ -14,7 +14,6 @@ public sealed partial class Binding
     private enum VirtualDeclarationCause : byte
     {
         NotStructFunction,
-        Unsafe,
         OwnGenericParameters,
         Receiver,
         NoBody,
@@ -28,11 +27,6 @@ public sealed partial class Binding
         if (symbol.Scope.Owner is not StructKoto structure || function.IsConstructor || function.IsDestructor || function.IsRequirement || function.IsAnonymous || function.IsSpecialization)
         {
             return VirtualDeclarationCause.NotStructFunction;
-        }
-
-        if ((function.Modifier & ModifierKind.Unsafe) != 0)
-        {
-            return VirtualDeclarationCause.Unsafe;
         }
 
         if (function.GenericArguments.Count != 0)
@@ -95,7 +89,8 @@ public sealed partial class Binding
             this.virtualDeclarations.Add(function);
             if (IsRecovery(function, out _))
             {
-                // A rejected override header (Syntax.OverrideHeader) rests the declaration and its slot matching, which read it.
+                // A rejected header (Syntax.SecondModifier, Syntax.OverrideHeader) rests the declaration and its slot matching, which
+                // read it.
                 this.Fail(function, BindingFailure.VirtualDeclaration);
             }
             else if (VirtualDeclarationFailure(function, symbol) is { } cause)

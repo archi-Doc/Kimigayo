@@ -106,6 +106,10 @@
     Description="the declaration takes no modifier"
     Phrase="modifier"
 
+  + Name="Syntax.SecondModifier"
+    Description="a function header writes at most one of unsafe, virtual and override"
+    Phrase="second function modifier"
+
   + Name="Syntax.ReceiverParameter"
     Description="the receiver parameter is declared once, as self, without rename or default, in a struct or Contract"
     Phrase="receiver parameter"

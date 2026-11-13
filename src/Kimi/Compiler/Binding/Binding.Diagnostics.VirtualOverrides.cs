@@ -55,7 +55,6 @@ public sealed partial class Binding
         var note = cause switch
         {
             VirtualDeclarationCause.NotStructFunction => "virtual and override require a direct struct instance function",
-            VirtualDeclarationCause.Unsafe => "virtual and override functions must be safe",
             VirtualDeclarationCause.OwnGenericParameters => "a virtual slot has no function-owned generic parameters; enclosing Type parameters remain allowed",
             VirtualDeclarationCause.Receiver => "the receiver must be objref/Self or objuniq/Self; bare self means ref/Self",
             VirtualDeclarationCause.NoBody => "a virtual or override function requires a body",

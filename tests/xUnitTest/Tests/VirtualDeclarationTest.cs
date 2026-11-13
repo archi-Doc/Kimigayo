@@ -60,8 +60,6 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     [InlineData("open struct Base\n    private virtual func read(self: objref/Self) => ()", "Private", "private")]
     [InlineData("open struct Base\n    public virtual func read(self) => ()", "Receiver", "objref/Self")]
     [InlineData("open struct Base\n    public virtual func read() => ()", "Receiver", "objref/Self")]
-    [InlineData("open struct Base\n    public virtual unsafe func read(self: objref/Self) => ()", "Unsafe", "safe")]
-    [InlineData("open struct Base\n    public unsafe virtual func read(self: objref/Self) => ()", "Unsafe", "safe")]
     [InlineData("open struct Base\n    public virtual func read<T>(self: objref/Self) => ()", "OwnGenericParameters", "enclosing Type parameters remain allowed")]
     [InlineData("open struct Base\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func read(self: objref/Self) -> i32", "NoBody", "requires a body")]
     [InlineData("struct Derived<T>\n    override func read(self: objref/Self)\n        T is Copy\n        ()", "RedeclaredConstraints", "inherits constraints")]
@@ -90,8 +88,8 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     // parameter attribute; each is a grammar error with the same record in selected and excluded syntax, and Binding judges none again.
     [Theory]
     [InlineData("public override func read(self: objref/Self, n: i32) -> i32 => n", "public")]
-    [InlineData("unsafe override func read(self: objref/Self, n: i32) -> i32 => n", "read(")]
-    [InlineData("virtual override func read(self: objref/Self, n: i32) -> i32 => n", "read(")]
+    [InlineData("unsafe override func read(self: objref/Self, n: i32) -> i32 => n", "override")]
+    [InlineData("virtual override func read(self: objref/Self, n: i32) -> i32 => n", "override")]
     [InlineData("override func read<T>(self: objref/Self, n: i32) -> i32 => n", "read<")]
     [InlineData("override func read(self: objref/Self ! n: i32) -> i32 => n", "read(")]
     [InlineData("override func read(self: objref/Self, n: i32 = 1) -> i32 => n", "read(")]
@@ -109,6 +107,28 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
             var record = Assert.Single(records, x => x.Code == "MisplacedSyntax_Kd");
             Assert.Equal(source.IndexOf(header, StringComparison.Ordinal) + header.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
             Assert.DoesNotContain(records, x => x.Code == "InvalidVirtualDeclaration_Kd");
+        }
+    }
+
+    // SPEC F.3.3 and 19.4: a function header writes at most one of unsafe, virtual and override; a second is a grammar error at the
+    // second word with the same record in selected and excluded syntax, and Binding judges the virtual declaration no further.
+    [Theory]
+    [InlineData("public virtual unsafe func read(self: objref/Self) => ()", "unsafe")]
+    [InlineData("public unsafe virtual func read(self: objref/Self) => ()", "virtual")]
+    [InlineData("unsafe override func read(self: objref/Self) => ()", "override")]
+    [InlineData("unsafe virtual override func read(self: objref/Self) => ()", "virtual")]
+    public void ASecondFunctionModifierIsGrammarInEverySelection(string header, string at)
+    {
+        foreach (var excluded in new[] { false, true })
+        {
+            var source = "open struct Base\n" + (excluded ? "    #if false\n        " : "    ") + header + "\npublic func main() => ()\n";
+            var c = MinimalEmissionTest.Analyze(source);
+            c.Binding.ReportDiagnostics();
+            var records = c.Diagnostics.Finalize().Diagnostics;
+            var record = Assert.Single(records);
+            Assert.Equal("MisplacedSyntax_Kd", record.Code);
+            Assert.Equal(source.IndexOf(header, StringComparison.Ordinal) + header.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
+            Assert.Equal(at.Length, record.Span!.Value.Length);
         }
     }
 

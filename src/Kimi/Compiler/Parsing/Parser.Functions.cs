@@ -123,16 +123,21 @@ public static partial class Parser
             }
         }
 
-        if (overrides && (context.ModifierKind.Judged() != ModifierKind.Override || genericArguments is not null || nameBoundary >= 0 ||
-            parameters?.Exists(static x => x.DefaultValue is not null || x.AttributeChain is not null) == true))
+        // F.3.3: a FunctionHeader and an OverrideDeclaration write at most one of unsafe, virtual and override (a constructor's and a
+        // specialization's header rows judge each modifier they take none of). The record is at the second word, as the prefix's other
+        // modifier records are; the function's declaration checks rest on it.
+        if (!(anonymous || constructor || specialization) && context.SecondModifierSpan != default)
         {
-            // F.6.3's OverrideDeclaration takes no other modifier, no Type parameters, no "!" boundary and no parameter default or
-            // attribute: the override inherits them (SPEC 6.4.1). Its slot matching and declaration checks rest on this Error.
-            var cause = functionKoto.Unexpected(SyntaxForm.OverrideHeader);
-            if (cause is { } recovery)
-            {
-                reader.CodeContext.RecordRecovery(functionKoto, recovery);
-            }
+            reader.CodeContext.RecordRecovery(functionKoto, reader.Unexpected(SyntaxForm.SecondModifier, context.SecondModifierSpan));
+        }
+
+        if (overrides && (genericArguments is not null || nameBoundary >= 0 ||
+            parameters?.Exists(static x => x.DefaultValue is not null || x.AttributeChain is not null) == true) &&
+            functionKoto.Unexpected(SyntaxForm.OverrideHeader) is { } overrideCause)
+        {
+            // F.6.3's OverrideDeclaration takes no Type parameters, no "!" boundary and no parameter default or attribute: the override
+            // inherits them (SPEC 6.4.1). Its slot matching and declaration checks rest on this Error.
+            reader.CodeContext.RecordRecovery(functionKoto, overrideCause);
         }
 
         // A declaration's header ends its line, since the declaration may be bodyless. A function expression's required body judges its

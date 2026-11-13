@@ -84,6 +84,10 @@ public enum SyntaxForm : ushort
     /// <summary>A modifier on a declaration that takes none; an attribute there is reported as an Attribute.</summary>
     Decoration,
 
+    /// <summary>A function header with more than one of <c>unsafe</c>, <c>virtual</c> and <c>override</c>: a header writes at most one
+    /// modifier (SPEC F.3.3).</summary>
+    SecondModifier,
+
     /// <summary>A receiver parameter that is repeated, renamed, defaulted or declared outside a struct or Contract.</summary>
     ReceiverParameter,
 
@@ -105,8 +109,8 @@ public enum SyntaxForm : ushort
     /// <summary>A header element a specialization does not take, or the Type arguments it lacks.</summary>
     SpecializationHeader,
 
-    /// <summary>A header element an override does not take (SPEC F.6.3 OverrideDeclaration): another modifier, Type parameters, the
-    /// <c>!</c> boundary, or a parameter's default or attribute.</summary>
+    /// <summary>A header element an override does not take (SPEC F.6.3 OverrideDeclaration): Type parameters, the <c>!</c> boundary,
+    /// or a parameter's default or attribute.</summary>
     OverrideHeader,
 
     /// <summary>The base list of a struct with other than one base.</summary>
