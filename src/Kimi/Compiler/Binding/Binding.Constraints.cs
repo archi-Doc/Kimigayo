@@ -88,21 +88,26 @@ public sealed partial class Binding
         return node;
     }
 
-    // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): whether a subject's path writes Type arguments (`W<Z>.Inner`, `W<i32>.Inner`,
-    // `W<Z>.Mid.Inner2`), read from its syntax below wrappers along the path SubjectBase walks; no fact is published for it.
-    private static bool WritesTypeArguments(Koto? node)
+    // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): whether the path of a subject that bound to no projection writes Type arguments
+    // (`W<Z>.Inner`, `A.B<i32>.C`, `::W<Z>.Inner`, `(Outer<Z>{o}).Cell`), read from its syntax; no fact is published for it. Such a path
+    // is F.5's ContainerPath in either tree: Names, Type arguments, `::`, `. Name` and `.(C). Name` suffixes and a BoundContainerQualifier's
+    // group, each below its transparent wrappers (UnwrapTransparentType, that rule's owner, as SubjectBase reads them). A Core head (F.5)
+    // is the base of a projection only, so it or any other node here is a broken contract, never "writes none".
+    private static bool WritesTypeArguments(Koto? syntax)
     {
         while (true)
         {
-            switch (node)
+            switch (UnwrapTransparentType(syntax))
             {
                 case GenericsKoto:
                     return true;
-                case TypeSemanticsKoto { Type: { } inner }:
-                    node = inner;
-                    break;
+                case IdentifierNameKoto or TypeSemanticsKoto { Type: null }:
+                    return false;
                 case SyntaxFormKoto { Akind: KotoKind.RootName } rooted:
-                    node = rooted.Operands[0];
+                    syntax = rooted.Operands[0];
+                    break;
+                case ParenthesizedTypeKoto group:
+                    syntax = group.Type;
                     break;
                 case MemberAccessKoto path:
                     if (WritesTypeArguments(path.Right))
@@ -110,10 +115,10 @@ public sealed partial class Binding
                         return true;
                     }
 
-                    node = path.Left;
+                    syntax = path.Left;
                     break;
-                default:
-                    return false;
+                case var node:
+                    throw new InvalidOperationException($"`{node}` is no part of a nested Type's path (InternalInvariant; G567-a).");
             }
         }
     }
