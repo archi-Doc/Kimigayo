@@ -71,7 +71,7 @@ public sealed partial class Binding
         var inherited = captures is null && index == implementation.Components.Count;
         var member = inherited ? part ?? implementation : implementation.Components[index];
         var name = captures is not null ? captures[i].Environment.Name
-            : inherited ? (part is null ? $"inherited Origin `{partOrigin!.Name}`" : $"inherited Type parameter `{part}`") : $"{Ordinal(index + 1)} Type argument";
+            : inherited ? (part is null ? $"inherited Origin `{partOrigin!.Name}`" : $"inherited Type parameter `{DiagnosticTypeName(part)}`") : $"{Ordinal(index + 1)} Type argument";
 
         // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
         var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
