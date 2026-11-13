@@ -53,13 +53,15 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // R7-C2c2 c2-1 (design review 2, D): the premise supply's class keys cost one key per distinct Type a table compares, n = 8, 32, 128:
-    // linear in a chain of n parameter identities (one class of n + 1 members, which each key's Representative scans); for a demand n
-    // projections deep under `U is T`, whose view gains a Contract fact per prefix (another serial, another table) and whose requests each
-    // index every fact (a1's preparation), at most one key per indexed fact, quadratic in n as the index is (cubic while ClassKey kept no
-    // key: 11,285 at 8, 11,849,545 at 128). Both programs are valid (SPEC 8.2.3, 8.3.2): CopyTree supplies Copy.
+    // R7-C2c2 c2-1 (design review 2, D): the premise supply's class keys cost one key per distinct Type a table compares and one scan per
+    // class, n = 8, 32, 128. Linear in a chain of n parameter identities (one class of n + 1 members) and in the same class with a
+    // Contract fact on each member (each member keyed, the class scanned once: 214, 286, 574; 342, 1,398, 17,142 while Representative
+    // scanned per Type). A demand n projections deep under `U is T` is quadratic, the bound asserted (276, 912, 9,216): each prefix's fill moves the view's
+    // serial, and the rebuilt table re-keys every fact the request indexes; R7-C2c3's fills and R7-C2e2 e2-1's index remove that term
+    // (cubic while ClassKey kept no key: 11,285 at 8, 11,849,545 at 128). The programs are valid (SPEC 8.2.3, 8.3.2): CopyTree supplies Copy.
     [Theory]
     [InlineData("parameters", 4)]
+    [InlineData("members", 4)]
     [InlineData("depth", 16)]
     public void ClassKeyWorkIsAKeyPerComparedType(string shape, int factor)
     {
@@ -77,11 +79,12 @@ public partial class TypeDagScalingTest
     private static string KeySource(string shape, int n)
     {
         const string Copies = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";
-        if (shape == "parameters")
+        if (shape is "parameters" or "members")
         {
             var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
             var chain = string.Concat(Enumerable.Range(1, n).Select(static i => $"    T{i} is T{i - 1}\n"));
-            return Copies + $"func twice<{parameters}>(value: T{n}.(Tree).Child) -> (T{n}.(Tree).Child, T{n}.(Tree).Child)\n" + chain +
+            var facts = shape == "members" ? string.Concat(Enumerable.Range(1, n).Select(static i => $"    T{i} is Tree\n")) : string.Empty;
+            return Copies + $"func twice<{parameters}>(value: T{n}.(Tree).Child) -> (T{n}.(Tree).Child, T{n}.(Tree).Child)\n" + chain + facts +
                 "    T0 is CopyTree\n    return (value, value)\npublic func main() -> ()\n    return\n";
         }
 

@@ -110,10 +110,11 @@ public sealed partial class Binding
         }
     }
 
-    // The table's part of the key: its least member (Representative) and the keys it keeps (cleared at Open with the rest).
+    // The table's part of the key: its least member per class (Representative) and the keys it keeps (cleared at Open with the rest).
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
+        private readonly Dictionary<int, BoundType?> least = new(); // Representative's answer per class root (R7-C2c2)
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.
@@ -123,7 +124,8 @@ public sealed partial class Binding
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
-        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows).
+        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A class's members are fixed after Close,
+        // so each class is scanned once per table, whatever the number of its members keyed.
         internal BoundType? Representative(BoundType type)
         {
             if (!this.node.TryGetValue(type, out var n))
@@ -137,6 +139,11 @@ public sealed partial class Binding
                 return null;
             }
 
+            if (this.least.TryGetValue(root, out var known))
+            {
+                return known;
+            }
+
             BoundType? best = null;
             for (var m = this.head[root]; m >= 0; m = this.next[m])
             {
@@ -148,6 +155,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.least[root] = best;
             return best;
         }
     }
