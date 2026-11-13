@@ -9613,6 +9613,9 @@ resumed by R4-M86 (2026-10-20).
   - Cost: one closed signature per Closure proven Owned, one Tuple per erased Closure; warm Bind 0 B.
   - Rejected: imaging a container's atoms in the Closure Type now (option (B): K5 grows until R6-check); a second walk for the record's
     location; an open `Func` filter, which reads as a mode.
+  - Amended by BU-198 (PLAN G826, G811-o, 2026-11-13): `CallSignature` gains a Function Item's row (what a function nested in a
+    body, a root function included, inherits from its enclosing body), and `ErasureSubject` judges the environment Tuple of the
+    Item's bound arguments, a requirement Contract's inherited Origins included.
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -12977,6 +12980,64 @@ resumed by R4-M86 (2026-10-20).
     moves from `UnsatisfiedConstraint_Kd` to `UnprovenConstraint_Kd`, equal to the var-local form (the Middle's F2).
   - Rejected: A5 judging the finite-to-finite chain (another phase; leaves the parameter forms rejected); region slots for `let`
     bindings (no observable difference).
+
+- **BU-198 A callable value's Owned parts are its environment's atoms as it is formed, read from its declaration, under one numbering
+  with Origin parts** (2026-11-13; PLAN G826, G811-o; F's rulings 5-9; the owner's O-245 (a)) SPEC 15.2.3, 15.3.4, 7.7.4, 7.7.2, 6.1.3,
+  6.3.3. Amends BU-73's `CallSignature` rows and its `ErasureSubject`.
+  - Cause: the capability engine kept a nested function's inherited atoms out of its Item's Owned parts. Its Item leaf answered Proven
+    for every Item without Components, and `CallSignature` had no Item row. So `need(pk)` was accepted for `func pk(x: ref/u8 during
+    a)` nested in a block of `h` (t21ownblk), although pk's value depends on `a` (15.3.4).
+  - Environment parts (`CapabilityParts`, one numbering for the erasure and the Owned proof):
+    - a Closure's captures;
+    - an Item's bound arguments: its own Type arguments, a member's declaring Type, a requirement's Self and Contract-reference Type
+      arguments, and that reference's Origin arguments, which are a Contract's inherited Origins (6.1.3), as Origin parts.
+    One Type, the environment Tuple (`EnvironmentTuple`), carries them: Type parts as Components, Origin parts as Origin arguments, or
+    `Unit` when there are none. An Origin part is judged `static` for Owned, and Copy reads none. Invariant (the review's N13): the
+    environment Tuple is the only Tuple whose Origin arguments are Origin parts, and the only producer of a Tuple with Origin arguments
+    (`TyCtxt.Tuple` gives none); it is a capability subject, never a value's Type. `CapabilityParts` reads a Tuple's Origin arguments
+    by this invariant, so a new producer of a Tuple with Origin arguments must not reach it.
+  - Signature part (Owned proof only, member `Components.Count`; `CallSignature`'s row decides it):
+    - a Function Type's and a Closure's: BU-73's closed signature;
+    - a Function Item's, for a function nested in a body, root functions included (the review's N12: a root function lies in the
+      execution scope with the top-level bindings, SPEC 6.1.1, and the execution scope's generated function holds it): what it
+      inherits (`InheritedEnvironment`). These are the Origins and Type parameters that its declared, unsubstituted signature names,
+      whose binder is outside it and is no Container it is a member of below that body. They are carried as an environment Tuple and
+      judged by the same rule.
+    - A bound argument's own atoms, its own Origins and its Constraint-set slots are never fixed atoms, and a function in no body (a
+      Container's member) has no signature part. Every enclosing parameter is an Owned part of a nested function's Item, used or not
+      (6.1.3, 15.2.3; the owner's O-249 Q4 (a)); dev and this unit still accept j09bunused, j14bunused, j18callableowned and
+      j21genmethod: PLAN G846.
+    The Item leaf answers Copy only.
+  - The erasure (7.7.4) judges the environment Tuple (`ErasureSubject`). The required Function Type states the signature part.
+    `FailOwnedConversion` maps a failed member with `CapabilityParts.MemberAt`.
+  - Before the engine judges (an inferred Field's header), an empty environment is decided. A Closure there that captures nothing has
+    the empty environment, since a Field initializer cannot reference parameters or `self` (SPEC 6.3.3; 7.7.2, 6.1.3).
+    - Class 3 moves (valid, newly accepted): every captureless Closure erased in an inferred Field header, such as q3, h1, h2, h3,
+      EnumBindingTest's `E.A(func ...)`, f10use and the reviewer's f11empty to f23use (PropertyBindingTest rows). The test rows
+      changed. f9group (a group's static `let`) loses PLAN G381's false `UnprovenConstraint_Kd` and keeps its storage limit at the `let`.
+    - Record moves on rejected programs (no verdict moves; the Middle's C-301 C1, rows in 18b977e37):
+      - a group's inferred static `let` erasing a captureless Closure (f9group's class): its Case-payload form v45 (EnumBindingTest)
+        drops the located limit at the literal and gets the static storage limit at the `let` plus the located limit at the use,
+        which is what its annotated twin v47 gets;
+      - class 3's invalid counterpart, an invalid erasure in an inferred Field header: the located `Unsupported_Kd` becomes the local
+        twin's Language or A5 record (k1fitbad: `UnprovenOriginContract_Kd`; k2a5bad: A5's `CallActivationConflict_Kd` alone;
+        PropertyBindingTest, beside k1fitlocal and k2a5local).
+  - Not G149/G300's `EnclosingInstance` gap: the proof runs in the enclosing scope and judges the inherited atoms under its premises.
+  - New rejections (class 1; `UnprovenConstraint_Kd` at the use requiring Owned): an Item of a function nested in a body, root
+    functions included, whose declared signature names an enclosing Origin or Type parameter that is not proven `static` or Owned.
+    Rows (FunctionItemTest): o1blk, o1vblk, o1tup, o1res, o2genblk, o1deep, the reviewer's a2copyown, a4idres, a6opt, a7genpass,
+    a8Tcopy, a10Tres and x6meet, x8bstructT and x10bstructS (an enclosing struct's `T` and Origin), and review 3's y1fnsig, y3fnsigT
+    (inside a Function Type parameter), y5local (an enclosing local's Origin) and z1toplocal (a root function naming a top-level
+    local's Origin).
+  - A relation clause naming an enclosing Origin (`origin c outlives a`) is part of SPEC 15.3.4's signature for an Item's Owned
+    parts (the owner's O-249 Q3 (a)); y4rel stays rejected, as on dev.
+  - Rejected alternatives:
+    - an Item Type carrying its inherited arguments (G149's representation);
+    - a nested-Item-only clause;
+    - judging the signature at erasure (it rejects valid o8era);
+    - judging the substituted signature, as revision 1 did (it rejects valid x1fnarg and x4assocfn);
+    - judging the whole signature as a Type (it rejects valid p1projgen, r2reqok, p7selfreq and b8setk);
+    - an erasure Tuple without Origin parts (it accepts invalid w3era, w6unusedera, w9eraneed and w12setform).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
