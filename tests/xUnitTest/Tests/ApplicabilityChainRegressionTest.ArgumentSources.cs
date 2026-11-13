@@ -46,6 +46,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string JoinPositions = "func pt(p: (i32, i32)) -> i32 => p.0\nfunc pn(p: ((i32, i32), i32)) -> i32 => p.1\nfunc pr(p: (ref/i32 during a, i32)) -> i32 => p.1\nfunc pu(p: (uniq/i32 during a, i32)) -> i32 => p.1\nfunc gr<T>(p: (ref/T during a, i32)) -> i32 => p.1\nfunc gu<T>(p: (uniq/T during a, i32)) -> i32 => p.1\nfunc p2<T>(x: (T, T)) -> i32 => 0\nfunc fdt(p: (Dictionary<i32, i32>, i32)) -> i32 => p.1\nfunc pick(p: (ref/i32 during a, i32)) -> ref/i32 during a => p.0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32, r: ref/i64, s: ref/i64, u: uniq/i32, w: uniq/i32, o: Option<i32>) -> i32\n";
 
+    private const string HandleJoins = "struct Box\n    public var v: i32\n    public init(v: i32) => self.v = v\n    public func read(self: objref/Self) -> i32 => self.v\nfunc firstO(p: (objref/Box during a, i32)) -> objref/Box during a => p.0\nfunc lookO(p: (objref/Box during a, i32)) -> i32 => p.1\nfunc f(c: bool) -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -271,9 +273,12 @@ public partial class ApplicabilityChainRegressionTest
     // a part that adapts to no common Type, an exclusive/shared mismatch. j14 (layers value-read into a common i32) passes on dev and
     // must not regress; j15 needs the position's value adapted once (R7-I2 d's position source). A position whose one value, of a value
     // Type, is borrowed at a `ref/U` element is an owner temporary at the join's position (SPEC 10.2 row 2, 3.6), which nothing plans yet:
-    // the call's located Unsupported_Kd at the argument until R7-I2 d's position source (G729's interim; F's ruling 11): Places (j04,
-    // j07, j09 retained, j09n, j18), layers value-read (j17, j26), a value beside a uniq slot (j27), beside an exclusive borrow of a part
-    // (j28). A reference value at `ref/U` (j05, j29), a by-value element (j01) and uniq at uniq (j30) keep their verdicts.
+    // the call's located Unsupported_Kd at the argument until R7-I2 d's position source (G729's interim; F's rulings 11 and 13): Places
+    // (j04, j07, j09 retained, j09n, j18), layers value-read (j17, j26), a value beside a uniq slot (j27), beside an exclusive borrow of a
+    // part (j28), at a join inside a Tuple literal argument (j39), and every other borrowed row off the whitelist, an owning `rc`, `obj`
+    // or `arc` handle's object borrow at `objref/U` among them (j31-j38: bare handle Places, retaining or not, and moved handles used in
+    // the statement). Only a by-value element (j01) and a borrowed element whose common Type is itself a reference (j05, j29; uniq at
+    // uniq, j30) keep their verdicts.
     [InlineData("G729", "j01", JoinPositions + "    return pt(if c => (n, 1) else => (m, 2))\n", "")]
     [InlineData("G729", "j02", JoinPositions + "    return pn(if c => ((n, 1), 2) else => ((m, 3), 4))\n", "")]
     [InlineData("G729", "j03", JoinPositions + "    return pt(match o\n        .Some(_) => (n, 1)\n        .None => (m, 2)\n    )\n", "")]
@@ -299,6 +304,15 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G729", "j28", "func both(p: (ref/i32 during a, i32), q: uniq/i32) -> i32 => p.1\n" + JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return both(if c => (x, 1) else => (y, 2), x@uniq)\n", "Unsupported_Kd: return both(if c => (x, 1) else => (y, 2), x@uniq)")]
     [InlineData("guard", "j29", JoinPositions + "    let q = pick(if c => (n, 1) else => (m, 2))\n    return q\n", "")]
     [InlineData("guard", "j30", JoinPositions + "    return pu(if c => (u, 1) else => (w, 2))\n", "")]
+    [InlineData("G729", "j31", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j32", HandleJoins + "    let h1 = Box.init(v: 10)@obj\n    let h2 = Box.init(v: 20)@obj\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j33", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j34", HandleJoins + "    let h1 = Box.init(v: 10)@obj\n    let h2 = Box.init(v: 20)@obj\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j35", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j36", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    return lookO(if c => (h1, 1) else => (h2, 2))\n", "Unsupported_Kd: return lookO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j37", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    return lookO(if c => (h1, 1) else => (h2, 2))\n", "Unsupported_Kd: return lookO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j38", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j39", "func fe(p: ((ref/i32 during a, i32), i32)) -> i32 => p.1\n" + JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return fe((if c => (x, 1) else => (y, 2), 3))\n", "Unsupported_Kd: return fe((if c => (x, 1) else => (y, 2), 3))")]
     // PLAN G729: the adaptation decides an overload (j16: no numeric conversion to i64); a shared reference beside a uniq slot, value-read
     // into one i32 (j17, the interim above); an explicit T at a ref/T slot (j18, the interim) and its twin (j18n: an i32 Place has no
     // ref/i64 row). A typed Tuple or array literal
