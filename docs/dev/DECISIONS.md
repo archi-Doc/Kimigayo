@@ -12977,6 +12977,25 @@ resumed by R4-M86 (2026-10-20).
     moves from `UnsatisfiedConstraint_Kd` to `UnprovenConstraint_Kd`, equal to the var-local form (the Middle's F2).
   - Rejected: A5 judging the finite-to-finite chain (another phase; leaves the parameter forms rejected); region slots for `let`
     bindings (no observable difference).
+- **BU-201 A pair layer is a well-formedness layer at every use, judged in its borrow cases (PLAN G831)** (2026-11-13; Front,
+  Binding; Major with design reviews 1-2 and an implementation review, the Back's reviewer; the Middle's C-312 consent) SPEC 15.6.1,
+  15.3.7, 10.7, 15.6.5.
+  - `WellFormedLayer` (Binding.PairCases.cs) is the one answer to "which Types are borrow layers for well-formedness": a safe borrow
+    or a Slice in every case, a pair layer (`TryPairLayer`, its stored slot by `OuterOrigin`) under the raw `PairSlotCondition` at
+    the use, none when no admitted case is a borrow; each consumer applies its own condition contract to `ulong.MaxValue`. The
+    premise side (`AddTypePremises`), associated formation (`CheckAssociatedFormation`, `ProvesBorrowedTypeLifetime`) and the
+    use-side visitor (`VisitWellFormedPremises`, on the substituted part) read it.
+  - The visitor's stored visit carries the layer's condition (`WellFormedVisit.Condition`) to every relation below it.
+    `InstanceOutlives` takes the same case condition as `ProvesOriginOutlives` and `FitOrigin` and passes it to both (the visitor's
+    `Instance` action its joined condition, the fit walk's `OriginFits` its slot's), as `Prove` and `Require` do; only `Bound` keeps
+    condition 0 (G809's conservative item for a call's `WellFormed` bounds). Open: the named result's premise side
+    (`AddResultPremises`, PLAN G503).
+  - Moves: 12 on 180 probes: 9 invalid programs newly rejected (a14, a14r, g3, g4, r1-r4, rt4) and 3 valid ones newly accepted (rt5,
+    rt6, rt6u: a Function-Type fit whose pair layer or pair slot is proven only in its binder's borrow cases).
+  - Rejected: a pair clause in `ProvesInputPremises` alone (a second copy of the layer rule, while the visitor also serves calls,
+    conversions and results); the relation required in every case (SETTLED "Pair-slot premises in every Semantics case"; under
+    `Instance` it rejected the valid rt3/rt3u, design review 1, B1); a per-case `CaseType` visit (a Type per case and use, for what
+    one condition says).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
