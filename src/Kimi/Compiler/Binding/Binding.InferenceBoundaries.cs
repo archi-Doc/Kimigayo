@@ -18,8 +18,12 @@ public sealed partial class Binding
     // The callee's own Type slot a part of a Type names itself, -1 for none: directly, as the selector of an `s/U` application or
     // adaptation, or as the target projection of a pair slot (the one owner of the own-slot kinds).
     private static int OwnSlot(BoundType type, Koto function)
-        => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
-            type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
+        => NamesSlot(type) && type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
+
+    // The forms that name a Type slot (OwnSlot's kinds): the slot itself, an `s/U` application or adaptation by its selector, a target
+    // projection of a pair slot.
+    private static bool NamesSlot(BoundType type)
+        => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection;
 
     // Whether `type` names one of the callee's slots in `slots`: a Type slot directly, as the selector of an `s/U` application or as the
     // target projection of a pair slot, or a length slot in a fixed array's length.

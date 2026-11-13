@@ -79,17 +79,23 @@ public sealed partial class Binding
     // SPEC 10.8, 10.4 step 1 (PLAN G814; O-240 (A)): an argument at a parameter pattern that holds slots no evidence binds goes through
     // the closed fit itself at its open Type (SlotSolution.OpenType: the solution substituted, those slots kept), so every rule of the fit
     // applies and only a part such a slot takes whole is judged after selection (TakenWhole). The operation keeps no Type, so step 2
-    // finds the open parameter identical to none (SPEC 10.8). The open Type keeps every unbound own slot, an `s/U` application's
-    // selector included, so only a broken contract leaves it unformed (InternalInvariant_Kd).
+    // finds the open parameter identical to none (SPEC 10.8). Where the bound slots give the pattern no image (SPEC 4.4.2: a false
+    // dependent length obligation eliminates the candidate) or the height limit refuses it (IMPL A.4, recorded at its site), the
+    // candidate is inapplicable, as on the closed path.
     private CandidateApplicability FitOpenArgument(
         Koto argument, BoundType pattern, in SlotSolution solution, SlotSet unbound, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
+        if (solution.OpenType(pattern, out var open) != SubstitutionOutcome.Formed)
+        {
+            operation = default;
+            return CandidateApplicability.Inapplicable;
+        }
+
         var saved = this.openFit;
         this.openFit = (solution.SlotOwner, unbound);
         try
         {
-            var open = solution.OpenType(pattern) ?? throw new InvalidOperationException("An open substitution forms every pattern (InternalInvariant).");
-            var fit = this.FitArgument(argument, open, scope, use, out operation);
+            var fit = this.FitArgument(argument, open!, scope, use, out operation);
             operation = operation with { SourceType = null, ParameterType = null, AdaptedType = null };
             return fit;
         }
@@ -100,9 +106,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8, 10.2.1 (PLAN G814; O-240 (A)): while a candidate's open argument is fitted at its open Type (SlotSolution.OpenType), whether
-    // `type`, or the referent of `ref/type`, is one of the candidate's slots that no evidence binds, directly, as an `s/U` selector or a
-    // target projection, or under an associated projection or a Function Type (SPEC 10.8: call-signature matching, not the fit, matches the
-    // parts holding the slot): the slot takes the part there whole, and its fits are judged after selection.
+    // `type`, or the referent of `ref/type`, is a subterm whose form a slot no evidence binds decides: the slot itself, an `s/U` selector or
+    // a target projection, an associated projection or a Function Type over one (SPEC 10.8: call-signature matching, not the fit, matches
+    // the parts holding the slot), or a fixed array whose length expression names one: the slot takes the part there whole, and its fits
+    // are judged after selection. Read where a closed rule meets a Type: the fit's entry, a literal's leaf, a range boundary, a join
+    // position, the ref/U gate and the Type relation's walk (a typed part's components).
     private bool TakenWhole(BoundType type)
     {
         if (this.openFit.Owner is not { } owner)
@@ -112,7 +120,8 @@ public sealed partial class Binding
 
         var target = LiteralInputType(type);
         return (OwnSlot(target, owner) is >= 0 and var slot && this.openFit.Slots.Contains(slot)) ||
-            (target.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.Function && MentionsSlots(target, owner, this.openFit.Slots));
+            (target.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.Function && MentionsSlots(target, owner, this.openFit.Slots)) ||
+            (target.LengthExpression is { } length && MentionsLength(length, owner, this.openFit.Slots));
     }
 
     // SPEC 10.8, 10.2.1, 10.4 step 1 (PLAN G814; O-240 (A)): a part that an open slot takes whole fits it before selection, with no

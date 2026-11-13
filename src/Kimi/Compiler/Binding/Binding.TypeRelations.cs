@@ -275,6 +275,11 @@ public sealed partial class Binding
     private BoundType? SubstituteTypeCore(BoundType type, in CallSubstitution substitution, uint query)
     {
         var slot = substitution.Slot(type.Symbol, out var slotArguments);
+        if (substitution.Open && NamesSlot(type) && (uint)slot < (uint)slotArguments.Length && slotArguments[slot] is null)
+        {
+            return type; // SPEC 10.8 (PLAN G814): an open substitution keeps a slot no evidence binds as itself, in each form naming it.
+        }
+
         if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < slotArguments.Length && slotArguments[slot] is { } selection)
         {
             if (selection.Kind == BoundTypeKind.SemanticsAdaptation)
@@ -298,7 +303,7 @@ public sealed partial class Binding
             var whole = slotArguments[slot];
             if (whole is null)
             {
-                return substitution.Open ? type : null; // An open substitution keeps an unbound slot as itself (PLAN G814).
+                return null;
             }
 
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
@@ -378,9 +383,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(substituted, type.Components[i]);
             }
 
-            // An open substitution keeps an `s/U` application whose selector is unbound as itself, its parts substituted (PLAN G814).
-            if (type.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && slot >= 0 &&
-                !(substitution.Open && (uint)slot < (uint)slotArguments.Length && slotArguments[slot] is null))
+            if (type.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && slot >= 0)
             {
                 if ((uint)slot >= (uint)slotArguments.Length)
                 {

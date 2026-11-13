@@ -15,9 +15,9 @@ namespace Kimi.Compiler;
 //   comparison's solved images; for a binder's own substitution (a container's clauses at an occurrence of its Type, SubstituteType's
 //   slots), the binder's columns alone.
 // - Outputs: the Type or clause in the caller's terms; null where a slot the Type names is unbound, except under an open substitution
-//   (Open: PLAN G814), which keeps each unbound Type or length slot of the callee as itself, its own image (an `s/U` application whose
-//   selector is unbound keeps itself, its parts substituted). Its one writer is
-//   SlotSolution.OpenType, the open Type a candidate's argument is fitted at before selection (SPEC 10.8, 10.2.1).
+//   (Open: PLAN G814), which keeps each unbound Type or length slot as itself in every form naming it (the slot, an `s/U` selector, a
+//   target projection), so a Type around it is re-formed around it. Open's one writer is SlotSolution.OpenType, the open Type a
+//   candidate's argument is fitted at before selection (SPEC 10.8, 10.2.1), which reads the typed outcome (SubstitutionOutcome).
 // - Invariants: one application is one pass over both binders: an atom or slot takes its image under the callee, else under the
 //   declaring occurrence, and no image is substituted again, so a caller's Type or Origin that names the callee's own or its declaring
 //   Type's slots (a call in the callee's body, a call from another member of the same Type) is kept. Declaring is an occurrence of a
@@ -41,6 +41,16 @@ namespace Kimi.Compiler;
 //   - an associated Type's formation under its projection (AssociatedOrigins): the projection's substitution, not a call's.
 public sealed partial class Binding
 {
+    // A substitution's outcome: its image; Unformed where a slot it names is unbound (never under Open) or no image exists for the
+    // bound slots (SPEC 4.4.2: a false dependent length obligation, an invalid length); Refused where IMPL A.4's height limit refuses
+    // the image, recorded at its site (RefuseHeight).
+    private enum SubstitutionOutcome : byte
+    {
+        Formed,
+        Unformed,
+        Refused,
+    }
+
     // A callee's substitution, the one builder: its slots' owner is CallSlotOwner's and its declaring Type the occurrence it is found in.
     private static CallSubstitution SubstitutionOf(
         Koto binder,
@@ -58,9 +68,23 @@ public sealed partial class Binding
     // One outermost application is one query of the substitution table, the value fixed, so a part shared within the Type is substituted
     // once (DECISIONS BU-19).
     private BoundType? Substitute(BoundType type, in CallSubstitution substitution)
+        => this.Substitute(type, substitution, out var image) == SubstitutionOutcome.Formed ? image : null;
+
+    private SubstitutionOutcome Substitute(BoundType type, in CallSubstitution substitution, out BoundType? image)
     {
-        var result = this.SubstitutePart(type, substitution, this.substitutedParts.Begin(this.storageVersion));
-        return OverHeight(result) ? this.RefuseHeight() : result; // IMPL A.4: no Type higher than the limit is formed.
+        image = this.SubstitutePart(type, substitution, this.substitutedParts.Begin(this.storageVersion));
+        if (image is null)
+        {
+            return SubstitutionOutcome.Unformed;
+        }
+
+        if (OverHeight(image))
+        {
+            image = this.RefuseHeight(); // IMPL A.4: no Type higher than the limit is formed; the refusal is recorded at its site.
+            return SubstitutionOutcome.Refused;
+        }
+
+        return SubstitutionOutcome.Formed;
     }
 
     // An Origin of the callee's declared relations (SPEC 15.6.4 step 3) under the substitution, in the same one pass.
@@ -96,8 +120,8 @@ public sealed partial class Binding
         // The images of the binder's per-call atoms: its inputs and, at a value call of a Closure, its reserved atoms.
         internal PerCallImages Images { get; init; }
 
-        // SPEC 10.8, 10.2.1 (PLAN G814): an unbound Type or length slot of the callee keeps itself as its image instead of failing the
-        // substitution; set only by SlotSolution.OpenType.
+        // SPEC 10.8, 10.2.1 (PLAN G814): an unbound Type or length slot keeps itself as its image in every form naming it, instead of
+        // failing the substitution; set only by SlotSolution.OpenType.
         internal bool Open { get; init; }
 
         // The occurrence of the Type declaring the callee, the second binder; null for a binder's own substitution and for a Type that

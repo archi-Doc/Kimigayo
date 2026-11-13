@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // - Responsibility: whether `actual` is a subtype of `expected`, part by part, and a Function Type by one Callable comparison
 //   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
-//   Origin bindings count (OriginPart).
+//   Origin bindings count (OriginPart); within the Binding's open fit of a candidate's argument, its open slots (TakenWhole, PLAN G814).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2).
@@ -251,8 +251,11 @@ public sealed partial class Binding
         // Whether identity decides the relation of two parts: always, except in a whole-contract comparison (Contract), where a part that
         // carries an Origin may hold a Function Type whose Callable comparison has its own condition, the implementation's own
         // well-formedness at the use (the owner's (a); DECISIONS BU-93), which no identity discharges.
+        // Within an open fit (Binding.openFit, FitOpenArgument) a part of `expected` that a slot no evidence binds takes whole holds too:
+        // not a mismatch, judged after selection (SPEC 10.8, PLAN G814; TakenWhole).
         private readonly bool Discharged(BoundType actual, BoundType expected)
-            => ReferenceEquals(actual, expected) && (this.part != OriginPart.Contract || !actual.CarriesOrigin);
+            => (ReferenceEquals(actual, expected) && (this.part != OriginPart.Contract || !actual.CarriesOrigin)) ||
+                (this.binding is { } open && open.TakenWhole(expected));
 
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
