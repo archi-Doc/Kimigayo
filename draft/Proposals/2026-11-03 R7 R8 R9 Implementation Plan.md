@@ -204,8 +204,10 @@ WORKFLOW "Sessions" owns this table where the two differ.
 - Each loaded unit's owner session reviews the window's merge of its hunks when a conflict was resolved by hand; a conflict-free merge
   needs no second look.
 - Between windows the sessions build and test on their branches (unit verification on their own bases); timing runs book quiet time
-  on the board (§9) and pause the others' builds. Consecutive quiet slots leave a build gap: a slot starts no earlier than 15
-  minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it; revision 44).
+  on the board (§9) and pause the others' builds. Consecutive quiet slots leave a build gap: a slot starts no earlier than 5 minutes
+  after the previous slot's CLOSED line, or at once when both slots are one session's, and the sessions build and test in that gap
+  (a window may run in it; revisions 44, 66). A slot still starts only when quiet_guard reports FREE, so a build begun in the gap
+  finishes first.
 
 ### 3.3 Caps and rules
 
@@ -797,8 +799,8 @@ than 24 hours without a state change is stale and the coordinator flags it; a me
 Entry rules per table: a window row is announced at least 30 minutes before it opens, names its base and heavy set, and ends CLOSED
 with the dev sha and the shared base, or FAILED with the dropped unit; a queue row is added when the unit's review is ACCEPT and its
 state becomes `loaded W-nn` when a window takes it (`dropped W-nn` when the window drops it); a hold row is taken before the first edit of a shared file and released in the window that lands the unit; a
-heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours, and starts no earlier than 15 minutes after
-the previous slot's CLOSED line (a build gap; revision 44); a consent
+heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours, and starts no earlier than 5 minutes after
+the previous slot's CLOSED line, at once after the same session's slot, and only when quiet_guard reports FREE (a build gap; revisions 44, 66); a consent
 row names the hunk and the rule it needs consent under, and its answer is quoted into the unit's commit; an owner-outbox row is added when
 a session asks the owner and closed with the verbatim answer and where it is recorded.
 
@@ -997,3 +999,4 @@ frozen.
 | 63 | 2026-11-12 | The owner's option C (K's session), verbatim 「C. 動作を変えない R7 単位は、単位ごとの RP8 計時をやめる。のみ適用お願いします。」 | RP8's row and §7.4: a behaviour-preserving unit of the R7 plan books no per-unit timing slot (DECISIONS R7-M22); the deterministic checks gate it and the checkpoint after every fifth landed window watches it; a hot-path complexity or per-use change keeps its slot; R7's behaviour-changing units and R8's and R9's keep RP8 as before. No booked slot released. |
 | 64 | 2026-11-13 | R9-M1 part 3's landing with Q-366 (the Middle's D-514) and G195's closing (the Front's D-503) | §5.3's M1 part 3 row: landed, +1,324/−1,103 lines (moves counted twice), no DECISIONS entry, `MarkdownUnicode.IsWhitespace` deferred to PLAN G818; the O3 row's G195 item done (fixed by G216 (a) U3a-r). |
 | 65 | 2026-11-13 | R8-S2d2's landing (the Back's D-518; DECISIONS R8-M30) | §5.2's S2 row: S2d2 done (the shim's removal); §5.2's L0 and S2 rows: `formatInteger128`'s runtime is `__kimi_format_integer128` (the reduced `__kimi_format_integer`) and `__kimi_decimal_div10` in `FormatInteger128Runtime.ll.in` since R8-S2b2, so both rows name them; the R8, S2 and W2 rows name `FormatKind` by S2d2's name, `StringFormatKind`. |
+| 66 | 2026-11-13 | The owner's approval of K's slot proposals (1) and (2) (K's session), verbatim 「(1) と (2)を適用して下さい」 | §3.2 and §3.3: the build gap between two quiet slots is 5 minutes (was 15), and none when both slots are one session's; a slot still starts only when quiet_guard reports FREE, so a build begun in the gap finishes first. Reason: 15 booked slots (T-172 to T-186) carried about 3.5 hours of 15-minute gaps, and on 11-13 about one slot closed per hour. |

@@ -1081,6 +1081,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
   table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
+  - Amended by the owner's O-238 (a) (2026-11-13): the formatting rows (`Formats`, `FormatsValue`, BU-90) rest on SPEC 22.10.1's
+    published effects beside 4.9.6's, and SPEC 4.9.6 now states this entry's reading of a row's requirement on a Type still abstract
+    in bound verification and in a generic body's own Loan checks (a requirement call with the premises' bounds).
 - **R4-M31** (owner, 2026-10-13) R4 caps by completion budget option C: withdrawn by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M32** (2026-10-13; C1a) Binding.OriginProof owns `OriginFit`: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M33** (owner, 2026-10-16; supersedes R4-M9b, R4-M24, R4-M31 and R4-M32) R4 keeps A1–A4 (U0–U6 with U1b, U3n, U4b,
@@ -10764,6 +10767,18 @@ resumed by R4-M86 (2026-10-20).
     `ErasePart`; the premise-free `ErasureSignatureFits` stays applicability's. This removes an InternalInvariant_Kd at a join of
     Closure values admitted only by the caller's clause, at value and named calls (y02c, y02cn). A5's input moves: such calls are
     accepted and publish their relations. Open: a Typed callable is still no evidence at the root or a leaf (PLAN G537, §2).
+  - Amended (G584, 2026-11-13; Major; PLAN G584; requires G585, BU-187, on its base): a Literal waits for the solve too, so the
+    first pass completes only the solve's Type evidence (a Typed part at its own Type) and every other part is completed at its
+    instantiated parameter, the named call's order (`WaitsForValueCallSolve` has no Literal arm). Reason the G504 amendment's "only
+    a Literal is completed before the solve" no longer holds: its premise, a Literal's input Type names no Origin, is false for
+    `null`, which takes its expected raw Type verbatim (SPEC 5.7 Fits: "`null` takes any Origin"), so at a raw layer stating the
+    callee's Origin it named the callee's own atom and the argument's Fit row a universal atom no caller body classes (a located
+    Unsupported_Kd; v1, vu8, vh1, c1v, vlitn, vr2, vjn, vgen and, with G585, vref accepted). The early completion also gave the
+    solve a borrowed literal temporary's Place Origin as a bound (SPEC 10.2 row 2); after G585 that bound is `AddTemporaryBound`'s
+    for every waiting part, so this amendment holds only on a base containing G585 (without it a literal beside an argument at the
+    caller's fixed Origin is newly rejected, rfx). Moved: the located `Unsupported_Kd` at a Value call's literal is removed and the
+    rest of its records kept (acceptance when none is left), a recovered `null` included. Rejected: a gate on `null` or on a literal
+    input Type naming an Origin (one clause for one form, and it keeps two completion paths).
 
 - **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
   r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
@@ -12689,6 +12704,60 @@ resumed by R4-M86 (2026-10-20).
     `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
     of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
     itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
+- **BU-193 The raw Places of a raw Place (SPEC 5.2; PLAN G806)** (2026-11-13; Front, Binding / `TyCtxt`; Major; design reviews 1-4,
+  implementation review ACCEPT WITH NOTES; the Middle's C-279; the owner's O-220 (a), O-228 (a), O-231 (a)).
+  - **Rule.** `TyCtxt.RawPlaces(at, into)` publishes, one level, the raw Places directly within a raw Place of key `at`; the raw
+    Place itself, the Type O-220 (a) names first, is the root its reader holds. Its answer is a closed `RawPlacesAnswer` of three
+    classes, read from Holdings' one form table at the key (no second copy): **Listed** (rows) for `RawPart`'s forms: an `owner`
+    struct's base rows then its stored Fields, a Tuple's elements, a fixed array's one element row; **Empty** (no row) for an enum
+    (a Case payload is reached by matching the enum, which reads it) and a Closure (its environment), and for every form whose
+    Holdings rows hold nothing inline (a referent, a collection's elements, Type arguments, an erased environment, a Scalar);
+    **Undecided** for an `Abstract` row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places), an `Unsupported` row, an unbound
+    part, an `Inline` row of any other form (an `owner` layer, a pair layer's owner case) and Binding's Limit, where the reader
+    takes its own reading, never "empty". Rows are published for `RawPart`'s forms whatever the answer (as Holdings publishes its
+    entries at a Limit; an unbound part gives none); a struct whose base is not Listed is Undecided.
+  - **`RawPart` and `Lead`.** `TyCtxt.RawPart` is the listed forms' test, read per step by `ElementAccess.IsRawPlace` and
+    `MirMoveData.Resolve`; its G672 enum arm is removed (SPEC 5.2 lists Fields and elements; no move read it). A row's `Lead` marks
+    the raw Place's own address where IMPL 21.1 fixes it (`TyCtxt.Leading`'s step: a C-layout first Field; an element row, whose
+    element 0 is there, the grid being the reader's step rule); every other row is off, and a verdict resting on where it lies is
+    the reader's rested located `Unsupported_Kd`. The fact reads no size, offset or length and decides no pun.
+  - **Readers.** A5's pun rule (`Within`, `Scalared`) for the raw Places of a written Type: the rows where the answer is Listed, or
+    Undecided with rows published; the written side's by-value parts (`WrittenBeside`: Holdings' Inline entries, G792's `Unstated`
+    rows), which a whole-value write writes, where it is Empty, or Undecided with no row published (O-231 (a): undecided keeps
+    today's written parts); A5's value-representation revision 3 for a reading Type (the first reader of Undecided: its abstract
+    rule or its located `Unsupported_Kd`); G562-c's remainder for the written Place's path.
+  - **One acceptance move:** a written `UniqSlice<T>` (a library struct that Holdings reads as a view) now writes its stored Fields,
+    so a whole UniqSlice written over raw-pointer bytes writes a Scalar there (uSliceBad4, invalid, newly rejected; uSliceOk4
+    accepted).
+  - **Reason.** No component published the fact, so A5's revisions 1 and 2 counted too few (B3) and then too many (B4) raw Places,
+    and revision 1's fact still mixed "nothing within" with "unknown" (design reviews 1-2, B1 and G2).
+  - **Rejected.** A transitive memoized list per Type (the readers memoize per key); an offset vocabulary with fixed and open values
+    (no reader reads a size); "no rows" for an abstract or unsupported form (a reader would count too few); a second copy of
+    Holdings' form table; a reader that reads "undecided" as "nothing written" (review 3's D1: a silent default that lost two
+    records); narrowing the pun rule's written side to the rows (a whole-value write writes its payload's bytes); a reader's own
+    enumeration.
+  - **Supersedes** G672's sentence "So does an `owner` enum's" in `TyCtxt.RawPart`'s contract (no DECISIONS entry states it; the
+    code comment changes with this unit). The byte-extent query `TyCtxt.Remainder` (O-224 (a)) is not this entry's: it lands with
+    its first reader, G562-c's `Beside`, whose entry records it.
+
+- **BU-191 A zero-length array holds no Place; its run and its Loans stay** (2026-11-13; Front, Binding; PLAN G810; Major; the
+  owner's O-234 (a), verbatim 「O-231〜O-234 は推奨どおり、(a)、(a)、(C)、(a) でよいです」, for the vocabulary entry) SPEC 4.1, 4.3.3, 4.8.1, 4.8.4,
+  15.6.4. Amends BU-121 (its Holdings rows).
+  - Cause: Binding's fit "a borrow formed through it" (`Borrows` -> `Holds`) read a fixed array's element as a Place at every
+    length, so storage of the element's borrow Type retained the argument's own Loan through a `[0 of T]`: valid forms rejected
+    (Tuple, Field, generic element, generic Type argument, nested both ways, Constant length, length parameter, a shared view beside
+    `[0 of [2 of S]]`).
+  - Representation: Holdings' FixedArray row marks a constant length 0 `Repeated | Empty` (`HoldFlags.Empty`, new; a length that is
+    no constant stays `Repeated`, SPEC 4.4.2).
+  - Reader: `Holds(storage, asked, depth)` takes the asked entry as its question: an Inline entry a stored value (`CanHold`), a
+    dereference (`Referent`'s entry) a Place, with `Repeated` a view's run. `PartHolds`, the one reader of `Empty`: a stored value
+    is entered (4.3.3), a Place is not held, a view's run is held at the Empty part's own level only (4.1, 4.8.1). `carried` goes.
+  - Residual (PLAN G810): the input fold forms borrows through exclusive layers below an Empty part (rvLayerOk), and an abstract
+    element keeps the retention (rvGenPlaceOk). A fix must give `PartHolds`' run answer the abstract-part rule ("an abstract part
+    holds any"), or rvGenRunBad (I) becomes accepted.
+  - Rejected: the element as a `Loan` entry (loses the empty view's Loan: R8-M6's row newly accepted); a `place` bool on `Holds`
+    (review 1 B1); a length test in a reader; dropping the element (loses 4.3.3's Loans); G806's `RawPlaces` (its element row is the
+    grid at every length).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -20209,6 +20278,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     `write`, an interpolation or `toString` they are valid by IMPL 21.3.4's rows only (PLAN G795); a direct `.format` on a
     `T is PrimitiveInteger` resolves through the temporary clause (PLAN G776). The library's own conformances to both Contracts now
     owe the bound and meet it.
+  - Superseded in part by the owner's O-238 (a) (2026-11-13; PLAN G795): through `write`, an interpolation or `toString` these
+    programs are valid by SPEC 22.10.1's published effects (the operations' one user-code row is one `format` call on `T`, composed
+    at the caller as 4.9.6's rows), no longer "by IMPL 21.3.4's rows only".
   - Rejected: (a) 8.7.4 states the bound for PrimitiveInteger (an exception to 8.11.1's "exactly the bounds of C and its ancestors"
     and a special case in Binding); (b) keep SPEC and close G771; (d) a bound on `Utf8Format.format` itself (user formatters may
     have effects, SPEC 22.10.1). In Binding: (A) a third copy of the list inside `AvailableEffectBounds`; (B1) member lookup reading
