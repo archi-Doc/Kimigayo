@@ -242,7 +242,27 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        var actual = this.WaitedResult(node) is { } waited ? this.DecideWaiting(node, waited, expected) : this.BindNodeCore(node, scope, expected);
+        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
+        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
+        // takes the borrow its position needs.
+        BoundType? actual;
+        if (this.WaitedResult(node) is { } waited)
+        {
+            actual = this.DecideWaiting(node, waited, expected);
+        }
+        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        {
+            actual = this.BindNodeCore(node, scope, temporary);
+            if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
+            {
+                actual = node.BoundType = temporary;
+            }
+        }
+        else
+        {
+            actual = this.BindNodeCore(node, scope, expected);
+        }
+
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);

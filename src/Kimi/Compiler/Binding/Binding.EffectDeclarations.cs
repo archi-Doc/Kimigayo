@@ -144,6 +144,18 @@ public sealed partial class Binding
                     this.AvailableConstraintFact(environment, fact, out _))
                 {
                     Add(shape, current.Owner, fact);
+
+                    // SPEC 8.7.4: a PrimitiveInteger premise also proves the Contracts it supplies, so their bounds are available.
+                    if (IsRefinement(fact.Contract!, this.Library.PrimitiveInteger))
+                    {
+                        foreach (var id in PrimitiveIntegerSupplies)
+                        {
+                            if (this.Library.GetSymbol(id)?.Contract is { } supplied)
+                            {
+                                Add(supplied, current.Owner, fact);
+                            }
+                        }
+                    }
                 }
             }
         }

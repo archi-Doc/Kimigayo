@@ -453,6 +453,20 @@ public sealed partial class Binding
         return meet;
     }
 
+    // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a part that waits at `ref/U during a` for a value call's solve is a borrowed owner temporary,
+    // of U (TemporaryTarget) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
+    // `a`, by the key of a named call's evidence walk (InferComposite's Aggregate part, InferLiteral: InferTemporary). A part of Join
+    // kind at `ref/(...)`, which InferComposite borrows too, is PLAN G729's exception and no key here: whether a value call takes it
+    // is the question of a temporary carried out of its arm.
+    private void AddTemporaryBound(Koto part, BoundType pattern, OriginInference inference, BindingScope scope)
+    {
+        if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } origin } &&
+            (this.KindOf(part) == PartKind.Aggregate || this.TemporaryTarget(part, pattern, scope) is not null))
+        {
+            AddInputBound(inference, origin, this.PlaceOrigin(part));
+        }
+    }
+
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. A waiting part,
     // which has no actual yet, and a failed one (rule W, DECISIONS BU-79) are no evidence (SPEC 10.5.1). An argument is read by its rows
@@ -478,6 +492,10 @@ public sealed partial class Binding
             {
                 this.CollectOriginInference(parameters.Components[i], actual, inference);
             }
+            else if (solution.Rows[i].Part is { } root)
+            {
+                this.AddTemporaryBound(root, parameters.Components[i], inference, scope);
+            }
 
             for (var j = start; j < end; j++)
             {
@@ -487,6 +505,10 @@ public sealed partial class Binding
                     this.AdaptInput(part, FixedPattern.Of(this, pattern, solution.Fixed), this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.CollectOriginInference(pattern, adapted, inference);
+                }
+                else if (this.childRows[j] is { Pattern: { } borrowed, Part: var temporary })
+                {
+                    this.AddTemporaryBound(temporary, borrowed, inference, scope);
                 }
             }
 
