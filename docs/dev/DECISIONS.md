@@ -13171,6 +13171,22 @@ resumed by R4-M86 (2026-10-20).
   - **Remainder (R7-I2 d's position source):** adapting the formed value once where no part supplies it, at a `ref/T` pattern (j15);
     a bare slot's evidence beside a literal (q7: `T` bound from the typed part alone; bl10), j15's cause, since the evidence's
     adapted common Type (`InferAdaptedParts`) does not read `BesideLiterals` (F's ruling 9); the interim above.
+- **BU-204 `Infer`'s pattern is always the callee's: at a pair-target position a slot's binding is compared with evidence, never
+  matched as a pattern (PLAN G854; a crash patch)** (2026-11-14; Front, Binding inference; Minor, a crash fixed at once under plan
+  revision 69 (B); one review by F's reviewer, ACCEPT WITH NOTES; the Middle's C-316 consent; F's D-590 rulings 1-4) SPEC 10.8
+  (Solving), 8.1.1.
+  - **Rule.** At a pair-target position (`Infer`'s TargetProjection arm, `Binding.CallSlots`) a slot's binding is a caller Type: it
+    is compared with the evidence by a Type relation (`ReferenceEquals` or `FitsStructuralPart`, both ways), never passed back into
+    `Infer` as a callee pattern. Before, the arm passed the binding's target (`DirectTarget(whole)`, in the caller's terms) back
+    into `Infer`, so where the caller owns the callee's slots (a recursive call; a structure's member constructing that structure)
+    the same pattern returned for ever: valid programs (S1, G4, G4i, G4p, G4q) overflowed the stack.
+  - **A temporary structure** (a local patch for a crash that cannot wait). Removal: the common fix, callee slots with their own
+    identity, so that no caller Type is ever read as a callee pattern (the design's rejected option 2); PLAN G854 keeps it open.
+    `InferComposite` (`Binding.ArgumentKinds.Evidence.cs`) reads a bound slot's substituted binding as its children's pattern the
+    same way (the review's F1): IC1, a valid recursive `f(n, p, (t, 2))`, is rejected on dev and after the patch (Q17 class 3, no
+    crash); the common fix removes both.
+  - **Correction.** The unit's commit states in its Search line that nothing else shares the cause; F1 shows `InferComposite` does.
+    This entry corrects it; the commit is not amended.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
