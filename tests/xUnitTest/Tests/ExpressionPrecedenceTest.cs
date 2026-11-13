@@ -244,6 +244,13 @@ public class ExpressionPrecedenceTest
     [InlineData("p@P@follow", "@follow", "postfix suffix after an open adaptation target")]
     [InlineData("f(p@(P)@P(1))", "(1)", "postfix suffix after an open adaptation target")]
 
+    // SPEC F.3.2, F.9.4: wrap and bits are keywords directly before "<", and the OpenTarget ends at its Type arguments.
+    [InlineData("x@wrap<u8>.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@bits<u32>.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@wrap<u8>.(C).Item", ".(C)", "postfix suffix after an open adaptation target")]
+    [InlineData("x@wrap<u8>(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("x@bits<u32>[0]", "[0]", "postfix suffix after an open adaptation target")]
+
     // SPEC 13.5.1, F.5: a bound Container qualifier never heads the target's own path, through any grouping or Semantics prefix.
     [InlineData("x@((S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
     [InlineData("x@((S during z).Item)", "(S during z)", "bound Container qualifier in an adaptation target")]
@@ -260,6 +267,25 @@ public class ExpressionPrecedenceTest
             var diagnostic = Assert.Single(Parse(source).Diagnostics);
             Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
             Assert.Contains(phrase, diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // SPEC F.9.4: "wrap" TypeArguments and "bits" TypeArguments end the target, so a "?" or a binding set after it is no part of it and
+    // the statement ends there: one record at that token in selected and excluded syntax.
+    [Theory]
+    [InlineData("x@wrap<u8>?", "?")]
+    [InlineData("x@bits<u32>?", "?")]
+    [InlineData("x@wrap<u8>?.foo", "?")]
+    [InlineData("x@wrap<u8>{k}", "{k}")]
+    [InlineData("x@bits<u32>{k}", "{k}")]
+    public void AConversionOperationTargetEndsAtItsTypeArguments(string expression, string at)
+    {
+        foreach (var source in (string[])["let result = " + expression + "\nlet next = 42", "#if false\n    let result = " + expression + "\nlet next = 42"])
+        {
+            var diagnostic = Assert.Single(Parse(source).Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), diagnostic.Code);
+            Assert.Contains("the end of the line", diagnostic.Message, StringComparison.Ordinal);
             Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
         }
     }
@@ -287,6 +313,13 @@ public class ExpressionPrecedenceTest
     [InlineData("f(p@P)(1)")]
     [InlineData("a[x@isize]")]
     [InlineData("[x@i64, 1]")]
+    [InlineData("x@wrap<u8>")]
+    [InlineData("x@wrap<Wrapping<u8>> + 1")]
+    [InlineData("x@bits<u32> == y")]
+    [InlineData("(x@wrap<u8>).foo")]
+    [InlineData("x@bits<u32>@ref.foo")]
+    [InlineData("x@ref/wrap<u8>.foo")]
+    [InlineData("x@(wrap<u8>).foo")]
 
     // SPEC 13.5.1, F.5: another PathQualifier is grouped as a target, a plain path and a binding set are no qualifier, and a Type nested
     // in the target's Core (a Type argument, an Optional's payload, a Tuple or fixed array element, a Function Type's part) keeps the form.

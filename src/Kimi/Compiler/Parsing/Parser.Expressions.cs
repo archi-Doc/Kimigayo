@@ -95,16 +95,22 @@ public static partial class Parser
                 }
                 else
                 {
-                    // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
-                    typeKoto = ParseType(ref reader, TypeContext.Target);
-                    if (CheckAdaptationTarget(typeKoto) is { } annotated)
+                    if (IsConversionOperationTarget(ref reader))
                     {
-                        typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
+                        // SPEC F.9.4: OpenTarget := "wrap" TypeArguments | "bits" TypeArguments; the keyword is read before any Type.
+                        typeKoto = ParseConversionOperationTarget(ref reader);
+                    }
+                    else
+                    {
+                        // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
+                        typeKoto = ParseType(ref reader, TypeContext.Target);
+                        if (CheckAdaptationTarget(typeKoto) is { } annotated)
+                        {
+                            typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
+                        }
                     }
 
-                    typeKoto = ConversionOperationTarget(ref reader, typeKoto);
-
-                    // SPEC F.9.4: a target read as a Type is a ClosedTarget exactly when a DelimitedTarget's closer ends it; every
+                    // SPEC F.9.4: a target read here is a ClosedTarget exactly when a DelimitedTarget's closer ends it; every
                     // OpenTarget ends at a Name, a '>', a binding set's '}' or a '?'. A failed target judges nothing.
                     open = typeKoto is not ErrorKoto && reader.PeekKind(-1) is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket);
                 }
@@ -332,32 +338,37 @@ ProcessPrefix:
     }
 
     /// <summary>
-    /// Recognizes the conversion operations <c>@wrap&lt;U&gt;</c> and <c>@bits&lt;U&gt;</c> (SPEC §F.3, §13.5.4): <c>wrap</c> or
-    /// <c>bits</c> with adjacent Type arguments, parsed as a generic Type application and re-formed as an operation target.
+    /// Determines whether the token after <c>@</c> is the keyword <c>wrap</c> or <c>bits</c> (SPEC F.3.2): the word directly followed by
+    /// the <c>&lt;</c> of its Type arguments (SPEC 12.5.2). Any other <c>wrap</c> or <c>bits</c> is an ordinary Name.
     /// </summary>
-    private static Koto ConversionOperationTarget(ref TokenReader reader, Koto target)
+    private static bool IsConversionOperationTarget(ref TokenReader reader)
     {
-        var inner = target is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : target;
-        var generic = inner as GenericsKoto;
-        var operation = generic is { TypeArguments.Count: > 0 } ? OperationName(generic.Identifier) : null;
-        if (operation is not (Constants.WrapOperation or Constants.BitsOperation))
+        var token = reader.CurrentToken;
+        var next = reader.PeekToken(1);
+        if (!token.Kind.IsIdentifierOrContextualKeyword() || next.Kind != TokenKind.LessThan || !next.OpensTypeArguments || next.Span.Start != token.Span.End)
         {
-            return target;
+            return false;
         }
 
-        if (generic!.TypeArguments.Count != 1)
+        var text = reader.GetSpan(token);
+        return text.SequenceEqual(Constants.WrapOperation) || text.SequenceEqual(Constants.BitsOperation);
+    }
+
+    /// <summary>
+    /// Parses the conversion operation target <c>wrap&lt;U&gt;</c> or <c>bits&lt;U&gt;</c> (SPEC F.9.4, 13.5.4): the keyword and its Type
+    /// arguments, where the target ends, so a PathSuffix, a binding set or a <c>?</c> after it is never read as the target's.
+    /// </summary>
+    private static Koto ParseConversionOperationTarget(ref TokenReader reader)
+    {
+        var word = reader.Read();
+        var generic = ParseGenericsPostfix(ref reader, new TypeSemanticsKoto(ref reader, word));
+        if (generic.TypeArguments.Count != 1)
         {
             generic.Expected(SyntaxForm.ConversionTypeArgument);
         }
 
-        return new TypeSemanticsKoto(ref reader, target.Span, operation == Constants.WrapOperation ? Constants.WrapOperation : Constants.BitsOperation, generic.TypeArguments[0]);
-
-        static string? OperationName(Koto? identifier) => identifier switch
-        {
-            IdentifierNameKoto name => name.IdentifierName,
-            TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } simple => simple.Identifier,
-            _ => null,
-        };
+        var operation = reader.GetSpan(word).SequenceEqual(Constants.WrapOperation) ? Constants.WrapOperation : Constants.BitsOperation;
+        return new TypeSemanticsKoto(ref reader, generic.Span, operation, generic.TypeArguments[0]);
     }
 
     /// <summary>
