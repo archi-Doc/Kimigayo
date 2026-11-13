@@ -6271,6 +6271,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       (dFnStoreOk, dFnPutOk are valid); a pun decided by a binding's assumed size (review 2's B4, O-205 (a)); encoding the abstract
       part as `Extent.Open`, which means a length that is no constant (limit (c)), while an abstract part is a Scalar for some
       binding.
+    - Amended by BU-189 (PLAN G562-a): `Punnable`'s rows are split: the punnable set is `TyCtxt.Punnable`'s, the extent A5's
+      `MirBorrows.Scalar`; behaviour unchanged.
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
@@ -12622,6 +12624,25 @@ resumed by R4-M86 (2026-10-20).
       record to suppress);
     - `SyntaxForm.Declaration` misplaced (it names no kind, and bodies take declarations);
     - omitting the declaration (design revision 0): it lost the header's records, the startup record and a Repair's verification.
+- **BU-189 SPEC 5.2's punnable set has one owner, `TyCtxt.Punnable`** (2026-11-12; PLAN G562-a, the first of G562-a, G806, G808 and
+  G562-b/c; Front; behaviour-preserving; the Middle's consent C-271 (1)-(3)). A responsibility moved from MIR to Binding.
+  - Rule: `TyCtxt.Punnable(type)` (`TyCtxt.Raw.cs`) answers whether a Type is punnable (SPEC 5.2): the `owner` Scalars of 3.1
+    (`ScalarTypes.Supports`), raw pointer Types, an abstract part (SPEC 8.15.1; R4-M198's G792 amendment), and Tuples and fixed
+    arrays of punnable Types, an `owner` layer as its component; any other Type is not. A function of the interned Type: the leaf
+    rows answer at once, and each composite Type is walked once and then read from `TyCtxt`'s memo, which is kept like the interning
+    (an interned Type's answer never changes). No bound of its own; total; allocates nothing for a Type already decided. Every
+    reader of the set reads it: A5's pun rule now, G806's raw-Places fact and G562-b/c's retention next.
+  - A5 keeps only its own fact, `MirBorrows.Scalar` (`MirBorrows.PunTypes.cs`): how much of a Scalar a punnable Type holds inline
+    (`Extent`: a Scalar or abstract part Positive; an array its element's, by `Sized`; a Tuple its components' most where
+    `TyCtxt.Punnable` holds; None for a raw pointer and for any Type that is not punnable). It equals the former
+    `MirBorrows.Punnable(t).Scalar` for every Type; the former `(bool, Extent)` pair is deleted.
+  - Reason: the set lived inside A5's private walk, fused with A5's extent, so the Binding readers G562-b/c and G806 need had no
+    owner to read; a second copy would be a second statement of SPEC 5.2.
+  - Rejected: a gate at A5's entry (one more predicate per Scalar write); a walk in `TyCtxt` publishing A5's `Extent` (A5's fact
+    would move to Binding, against C-271 (1)); an unmemoized `TyCtxt.Punnable` (a second walk per Tuple write, the Middle's C-271
+    (2)); `Scalar` deciding punnability from its own per-component answers (a second copy of SPEC 5.2's composite rows).
+  - Work per use: a Scalar, raw pointer, array or struct write does the former work; a Tuple write whose parts hold a Scalar adds
+    one memo lookup per Tuple level after that Type's first write.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
