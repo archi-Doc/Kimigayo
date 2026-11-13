@@ -266,7 +266,7 @@ Ordinary members are nonvirtual. A virtual slot is selected statically; the obje
 
 ### 6.4.1. Declarations
 
-`virtual func` declares a virtual slot and its original implementation; `override func` supplies an implementation of an inherited slot. Modifier recognition and order follow [§F.3](appendices/F-syntax-summary.md#f3-keywords); the two cannot be combined. Both must be safe instance functions with a body and an `objref/Self` or `objuniq/Self` receiver (bare `self` is `ref/Self` and ineligible), without own Type, Semantics or length parameters. An original is a non-private member of an `open struct`; an override is a member of a derived struct. Type and group functions, requirements, Properties, accessors, `init` and `drop` are never virtual.
+`virtual func` declares a virtual slot and its original implementation; `override func` supplies an implementation of an inherited slot (grammar: `OverrideDeclaration`, [§F.6.3](appendices/F-syntax-summary.md#f63-functions-parameters-and-bindings)). Modifier recognition and order follow [§F.3](appendices/F-syntax-summary.md#f3-keywords); the two cannot be combined. Both must be safe instance functions with a body and an `objref/Self` or `objuniq/Self` receiver (bare `self` is `ref/Self` and ineligible), without own Type, Semantics or length parameters. An original is a non-private member of an `open struct`; an override is a member of a derived struct. Type and group functions, requirements, Properties, accessors, `init` and `drop` are never virtual.
 
 The original alone owns the public contract; an override inherits it as an explicit specialization does ([§8.13.2](08-generics-constraints-and-contracts.md#8132-inherited-contract)), mapping only the receiver Self to the derived Self:
 
@@ -276,7 +276,7 @@ The original alone owns the public contract; an override inherits it as an expli
 | Task slot | As the original ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)) |
 | Result | Same kind and normalized Type; no covariance |
 | Parameter names | Same external names; internal names may change |
-| Origins | Inherited; written annotations must state the same contract |
+| Origins | Inherited; written annotations and relations must state the same contract ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)) |
 | Access, `!`, defaults, Constraints, effects | Inherited with the original's access domain (`protected internal` is not reinterpreted relative to the derived Kotonoha); never redeclared |
 | Attributes, other modifiers | None |
 
@@ -432,7 +432,7 @@ later = limit
 
 An Attribute is `#Name` with optional arguments ([§F.6.1](appendices/F-syntax-summary.md#f61-source-units-containers-and-attributes)). Attributes attach to the next declaration at the same indentation; comments and blank lines may intervene. One before an `#if` whose target is a single declaration shares its selection. An Attribute before a directive Block or a `#switch`, or one followed by an unrelated item or a dedent, is dangling; a dangling Attribute is an error.
 
-Attributes are accepted on Container, function, Field and computed declarations and on parameters; not on explicit specializations or Contract requirements. In the Kimi Kotonoha's own sources the implementation's Attributes are also accepted on constructors ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). In excluded syntax they are checked syntactically only ([§19.4](19-compile-time-directives.md#194-excluded-syntax)). The recognized Attributes are `#Layout`, `#LibraryImport` ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) and `#Test`, and in the Kimi Kotonoha's own sources also the implementation's Attributes; any other selected Attribute is an error.
+Attributes are accepted on Container, function, Field and computed declarations and on parameters; not on explicit specializations, overrides or Contract requirements. In the Kimi Kotonoha's own sources the implementation's Attributes are also accepted on constructors ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). In excluded syntax they are checked syntactically only ([§19.4](19-compile-time-directives.md#194-excluded-syntax)). The recognized Attributes are `#Layout`, `#LibraryImport` ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) and `#Test`, and in the Kimi Kotonoha's own sources also the implementation's Attributes; any other selected Attribute is an error.
 
 ```kimi
 #Test

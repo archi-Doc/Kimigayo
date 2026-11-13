@@ -160,6 +160,7 @@ public enum DiagnosticCode
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
+    ModuleCountLimit_Kd,
 
     InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
