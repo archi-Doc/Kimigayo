@@ -600,15 +600,15 @@ public sealed partial class Binding
 
     // What a run's layer refers to, through which a borrow of it is formed (SPEC 15.6.3; a raw layer stating an Origin retains as the borrow
     // that Origin belongs to would, SPEC 5.7), and whether it is exclusive (invariant in its referent, SPEC 15.3.5: a pair layer by any
-    // admitted case); null for any other.
-    private BoundType? Referent(HeldRange run, out bool exclusive)
+    // admitted case); null for any other. The entry, which Holds reads as its question.
+    private Hold? Referent(HeldRange run, out bool exclusive)
     {
-        BoundType? referent = null;
+        Hold? referent = null;
         var invariant = false;
         for (var i = run.Start; i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
-            referent ??= Dereference(entry) ? entry.Part : null;
+            referent ??= Dereference(entry) && entry.Part is not null ? entry : null;
             invariant |= entry.Step == HoldStep.Exclusive || (entry.Flags & HoldFlags.Raw) != 0 || entry is { Step: HoldStep.Own, Flags: HoldFlags.None };
         }
 
