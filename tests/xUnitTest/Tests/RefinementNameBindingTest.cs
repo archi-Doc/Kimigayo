@@ -54,12 +54,15 @@ public class RefinementNameBindingTest
     [InlineData("Future<i32>")]
     [InlineData("::Future<i32>")]
     [InlineData("Api.Future<i32>")]
-    public void MissingNamesDoNotMakeGenericParentsDeferrable(string parent)
+    // A missing generic parent is pending as a non-generic one is (BU-151: a missing name decides nothing; SPEC 6.1.2: a later fragment
+    // of Api may declare it), and rejected at the final pass.
+    public void MissingNamesLeaveGenericParentsPending(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public group Api\npublic contract Child: " + parent);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        Assert.Equal(BindingState.Unresolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
+        Assert.False(c.Bind().IsComplete);
     }
 
     [Trait("Purpose", "Allocation")]

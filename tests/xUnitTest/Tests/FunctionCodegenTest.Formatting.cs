@@ -12,10 +12,11 @@ namespace XunitTest;
 // Text operations, the buffers, the windows, the adapter's write, the conversions and writeLine of a view are bodies, called with their
 // operands, result slot and, for a CallerLocation row, the caller's location, at a direct call, an Item's Value call and an adapter's
 // entry; the formatting runtime is written once on request; a user formatter runs through the bodies; every built-in Type's witness is a
-// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering.
+// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word;
+// natively. The kinds are the formatting runtime's own numbering.
 public sealed partial class FunctionCodegenTest
 {
-    // A Library without a formatting row: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
+    // A Library without the formatting runtime: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
     // validateUtf8), writeLine of a view (a body), a writer's status, Text.fixed's Item called and erased.
     private const string Buffers =
         "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
@@ -138,10 +139,10 @@ public sealed partial class FunctionCodegenTest
     public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
 
-    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program calls no formatting row: writeLine of a view and the buffer, window and Text
-    // operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
+    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program requests no formatting runtime: writeLine of a view and the buffer, window and
+    // Text operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
     [Fact]
-    public void FormattingRowsCallTheirRoutine()
+    public void BufferWindowTextAndViewOperationsAreBodies()
     {
         var c = Analyze(Buffers, OutputKind.Library);
         var text = Generate(c);
@@ -451,8 +452,9 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(ir.Functions, x => CalleesOf(x).Contains(ir.Function(reserve)));
     }
 
-    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module that calls a formatting row, and is the text the
-    // old generator wrote; a module without formatting defines none of its routines (FormatFinish's definition the marker).
+    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module whose Text.writer or owning interpolation's
+    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote; a module without formatting defines
+    // none of its routines (FormatFinish's definition the marker).
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {
@@ -543,6 +545,21 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_erased_reserve\("));
         Assert.Contains(LlvmModuleText.ErasedWriterRuntime, text, StringComparison.Ordinal);
         Assert.DoesNotContain(formatting.ToString(), text, StringComparison.Ordinal);
+    }
+
+    // PLAN G779 (O-195 (a)): the writer's reservation, Utf8Writer.reserve, the leaf's one library caller's callee, is the module's one
+    // definition kept out of line (KimiLibraryCatalog.KeepsOutOfLine, `noinline`), so O2 cannot fold it into the leaf and the leaf stays
+    // small enough to inline at its callers; the leaf, the format bodies and every other definition carry no `noinline` (fail-before:
+    // no definition carries it).
+    [Fact]
+    public void OnlyTheWritersReservationIsKeptOutOfLine()
+    {
+        const string Source = "func wlTwo(writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    try writer.write(\"a\")\n    return writer.write(true)\n";
+        var c = Analyze(Source, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
+        var reserve = Assert.Single(FunctionsOf(ir, c, "reserve"), x => CallsOf(leaf).Any(y => y.Callee == x));
+        Assert.Same(reserve, Assert.Single(ir.Functions, static x => x.Attributes.Contains("noinline")));
     }
 
     // R8-S2c, R8-S2b2: each formatting intrinsic's module part is requested by its own call only: a module whose writes are an f32's and an

@@ -77,10 +77,10 @@ internal sealed partial class ModuleCodegen
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the formatting runtime with the memory declarations and, until R8-W2, the erased writer's kept
+    /// <summary>Requests the module parts for the legacy runtime text a caller requests (X4; DECISIONS R5-M46, R5-M128), the one map from
+    /// HelperNeeds to the frame's parts: the formatting runtime with the memory declarations and, until R8-W2, the erased writer's kept
     /// runtime, which the formatting runtime calls.</summary>
-    /// <param name="needs">The row's needs.</param>
+    /// <param name="needs">The legacy runtime text the caller requests.</param>
     internal void Request(HelperNeeds needs)
     {
         if ((needs & HelperNeeds.FormattingRuntime) != 0)

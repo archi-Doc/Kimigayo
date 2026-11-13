@@ -134,7 +134,8 @@ public sealed partial class Binding
             // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
             // environment from the path (ConstructionTargetType).
             var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
-            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+            type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
+                (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
         }
 
@@ -175,7 +176,7 @@ public sealed partial class Binding
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;
         if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid ||
-            (reference is MemberAccessKoto member && member.Left.BoundSymbol?.Kind != BindingSymbolKind.Type))
+            (reference is MemberAccessKoto member && this.MemberSideOf(member) != MemberSide.Type))
         {
             return this.Fail(use, BindingFailure.TypeMismatch);
         }
@@ -340,7 +341,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, frame.Types[..slots], scope);
+            var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope);
             if (proof != ConstraintProof.Proven)
             {
                 return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true)

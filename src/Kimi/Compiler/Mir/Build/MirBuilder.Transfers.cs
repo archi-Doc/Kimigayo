@@ -271,5 +271,5 @@ internal sealed partial class MirBuilder
 
     // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth),
     // the MIR scope it opened in, which its delivered result temp takes (SPEC 16.2.2), and its first non-value end (Ends).
-    private readonly record struct Opening(int Mark, int Depth, ushort Scope, int Ends);
+    private readonly record struct Opening(int Mark, int Depth, int Scope, int Ends);
 }
