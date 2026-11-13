@@ -80,7 +80,8 @@ public sealed partial class Binding
     {
         var pending = this.pendingRelations.Count;
         failure = default;
-        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant, ref failure);
+        var fits = NeverFits(actual) ||
+            this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant, ref failure, this.usedParts.Begin(this.storageVersion));
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
@@ -92,8 +93,17 @@ public sealed partial class Binding
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,
     // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure)
+    // One CheckTypeUse is one query of usedParts (DECISIONS BU-19; PLAN G492): a pair of composite parts whose positions were left as
+    // obligations under a polarity leaves the same ones on every path that shares it, so it is visited once.
+    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure, uint query)
     {
+        var bit = (byte)(1 << (int)polarity);
+        var met = (byte)0;
+        if (actual.Components.Count != 0 && this.usedParts.TryGet((actual, expected), query, out met) && (met & bit) != 0)
+        {
+            return true;
+        }
+
         // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
         this.comparisonFacts.Clear();
         this.fitRested = false;
@@ -145,7 +155,7 @@ public sealed partial class Binding
         {
             if (IsInvariantLayer(actual, this))
             {
-                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure))
+                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure, query))
                 {
                     return false;
                 }
@@ -155,10 +165,15 @@ public sealed partial class Binding
 
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref failure))
+            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref failure, query))
             {
                 return false;
             }
+        }
+
+        if (actual.Components.Count != 0)
+        {
+            this.usedParts.Set((actual, expected), query, (byte)(met | bit));
         }
 
         return true;

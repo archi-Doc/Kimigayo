@@ -24,6 +24,13 @@ public sealed partial class Binding
     // when it starts (warm 0 B); RecordMismatch reads them when their first is the failure it records.
     private readonly List<ComparisonFailure> comparisonFacts = new();
 
+    // The pairs of composite parts one judged walk found to hold, one bit per variance (DECISIONS BU-19; PLAN G492): two Types are DAGs,
+    // so a walk meets a pair along many paths and decides it once; a failing pair is walked again, each position being its own fact.
+    private readonly TypeMemo<(BoundType Actual, BoundType Expected), byte> fittedParts = new();
+
+    // The pairs one CheckTypeUse left as obligations, one bit per polarity (CheckTypeUseCore).
+    private readonly TypeMemo<(BoundType Actual, BoundType Expected), byte> usedParts = new();
+
     // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
     internal enum ComparisonFailureKind : byte
     {
@@ -106,6 +113,7 @@ public sealed partial class Binding
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
         private readonly int start;
+        private readonly uint query;
         private OriginPart part;
         private ComparisonFailure failure;
         private bool ended;
@@ -115,6 +123,7 @@ public sealed partial class Binding
             this.binding = binding;
             this.use = use;
             this.part = part;
+            this.query = binding is null ? 0 : binding.fittedParts.Begin(binding.storageVersion);
         }
 
         // A recording root's walk: its facts follow `facts`' current end, which the root truncates back once it has read them.
@@ -142,6 +151,16 @@ public sealed partial class Binding
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
             {
                 return this.End(instance);
+            }
+
+            // A pair outside every Callable comparison that held in this walk holds again (fittedParts).
+            var met = this.binding is not null && this.part == OriginPart.Judged && !skipOrigin && own is null && instance.Expected is null &&
+                instance.Outer is null && actual.Components.Count != 0 && actual.Kind != BoundTypeKind.Function;
+            var bit = (byte)(invariant ? 2 : 1);
+            var held = (byte)0;
+            if (met && this.binding!.fittedParts.TryGet((actual, expected), this.query, out held) && (held & bit) != 0)
+            {
+                return true;
             }
 
             var structural = this.part is OriginPart.Structural or OriginPart.Everywhere;
@@ -232,6 +251,11 @@ public sealed partial class Binding
                         return false;
                     }
                 }
+            }
+
+            if (holds && met)
+            {
+                this.binding!.fittedParts.Set((actual, expected), this.query, (byte)(held | bit));
             }
 
             return holds;
