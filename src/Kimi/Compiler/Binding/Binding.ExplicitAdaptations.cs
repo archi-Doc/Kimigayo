@@ -264,6 +264,11 @@ public sealed partial class Binding
             return false;
         }
 
+        if (operation == ConversionBinding.Pointer)
+        {
+            this.CheckNonnullView(conversion, source, target); // PLAN G821, until U8: a limit beside the bound case.
+        }
+
         if (operation == ConversionBinding.ObjectCreation)
         {
             if (source.Symbol?.ObjectPayloadOptOut is { } renounced)

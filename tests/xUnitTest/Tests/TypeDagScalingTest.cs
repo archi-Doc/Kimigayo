@@ -54,6 +54,25 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // PLAN G821 (F's rulings 5, 10): the nonnull view gate's walk (Binding.MayHoldNonnull) decides each distinct part once, inline and
+    // through raw layers, so a view of a Type whose two parts share one below (2^n paths) is walked whole and accepted at every depth
+    // within the storage height limit (64), which counts raw pointees; past it (raw at depth 70) Binding's Limit is the walk's undecided
+    // row, the gate's located Unsupported_Kd, though no Option is held (the over-gate at Binding's storage limits).
+    [Theory]
+    [InlineData("two", 8, "")]
+    [InlineData("two", 60, "")]
+    [InlineData("raw", 8, "")]
+    [InlineData("raw", 30, "")]
+    [InlineData("raw", 70, "Unsupported_Kd")]
+    public void TheNonnullViewWalkIsLinearInDistinctParts(string shape, int depth, string gate)
+    {
+        var field = shape == "two" ? "T" : "raw/T";
+        var type = string.Concat(Enumerable.Repeat("P<", depth)) + "u8" + new string('>', depth);
+        var c = Checked($"struct P<T>\n    public var a: {field}\n    public var b: {field}\npublic func main()\n    let m = Raw.allocate<u64>(1)\n" +
+            $"    let q = m@raw/({type})\n    unsafe => Raw.release(m)\n");
+        Assert.Equal(gate, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Distinct()));
+    }
+
     // SPEC 9.6 (R7-N2c): member lookup's walk is linear in the layers it reads, on a chain and on a cycle, where its test may go three times round.
     [Theory]
     [InlineData(false)]

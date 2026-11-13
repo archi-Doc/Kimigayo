@@ -1461,11 +1461,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("cLayoutNoWrite", "cLayoutNoWrite: kk = 2")]
     [InlineData("cLayoutFirstFieldTyped", "cLayoutFirstFieldTyped: kk = 2")]
     [InlineData("cLayoutFirstFieldCallTyped", "cLayoutFirstFieldCallTyped: kk = 2")]
-    [InlineData("optCastObjTyped", "optCastObjTyped: kk = 2")]
     [InlineData("optMatchObjTyped", "optMatchObjTyped: kk = 2")]
-    [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
     [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2 Unsupported_Kd")]
-    [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleLoanOk", "")]
     [InlineData("wholeTupleNoLoanOk", "")]
     [InlineData("wholeTupleCallLoanOk", "")]
@@ -1525,18 +1522,34 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
+    // PLAN G821 (the owner's O-237 (a), until U8): a view of a struct holding a nonnull Option as its Some payload's Type is Binding's
+    // located Unsupported_Kd at the written pointee Type, beside A5's own records over the bound view, which are G808's (SPEC 23.1.2).
+    // U8 returns these rows to the theory above.
+    [Theory]
+    [InlineData("optCastObjTyped", "optCastObjTyped: kk = 2")]
+    [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
+    [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
+    public void AViewOfANonnullOptionIsBindingsGateUntilU8(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
+        var problems = Problems(c, AnalyzeUnsupported(c, ["raw/(obj/OBoxP)"]), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
     // SPEC 5.2 (PLAN G806; the owner's O-220 (a), O-231 (a)): a whole-value write writes the written Type's raw Places (TyCtxt.RawPlaces).
     // A UniqSlice<T>'s stored Fields are raw Places, so a UniqSlice written over the raw pointer `q` holds writes `length`, a Scalar, there
     // (uSliceBad4, rejected since G806; uSliceBad3 beside its own Origin record). A struct whose storage Binding cannot state whole, at
     // Binding's Limit (Nest<u64>) or with an unbound Field (US), is undecided and keeps its published rows, so its Scalar Field still puns
-    // beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer.
+    // beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer. Until U8, a view to a Type at Binding's
+    // Limit is the gate's undecided row, Binding's located Unsupported_Kd at the written pointee Type (PLAN G821, F's ruling 6), beside
+    // A5's records over the bound view (nNest*); U8 removes the Binding record.
     [Theory]
     [InlineData("uSliceBad4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "uSliceBad4: kk = 2")]
     [InlineData("uSliceOk4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "")]
     [InlineData("uSliceBad3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "uSliceBad3: kk = 2")]
     [InlineData("uSliceOk3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "")]
-    [InlineData("nNestBad", "", "Nest<u64>", "", "nNestBad: kk = 2; nNestBad: viaW(q@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
-    [InlineData("nNestOk", "", "Nest<u64>", "", "nNestOk: viaW(w@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("nNestBad", "", "Nest<u64>", "Unsupported_Kd", "nNestBad: kk = 2; nNestBad: viaW(q@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("nNestOk", "", "Nest<u64>", "Unsupported_Kd", "nNestOk: viaW(w@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
     [InlineData("bUnboundFieldBad", "", "US", "UnresolvedBinding_Kd", "bUnboundFieldBad: kk = 2")]
     [InlineData("bUnboundFieldOk", "", "US", "UnresolvedBinding_Kd", "")]
     public void AWholeWriteWritesTheWrittenTypesRawPlaces(string form, string parameters, string written, string bound, string expected)
