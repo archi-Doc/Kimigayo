@@ -17,6 +17,12 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
 
     private const string CyclicBaseA = "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
     private const string CyclicBaseG = "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n";
+    private const string Candidates = "contract C<E>\n    associate Item is E\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\n" +
+        "contract Box<K>\n    associate Item\ncontract UBox<K>: Box<K>\nstruct Map<K>\n    Self is UBox<K>\n    associate Item is u8\n" +
+        "struct Two\n    Self is Box<i64>\n    Self is Box<i32>\n    associate Box<i64>.Item is u8\n    associate Box<i32>.Item is u8\n" +
+        "struct G<A>\n    Self is Box<A>\n    Self is Box<Option<A>>\n    associate Box<A>.Item is u8\n    associate Box<Option<A>>.Item is u8\n" +
+        "struct Bag<K>\n    Self is Box<K>\n    associate Item is u8\n    public struct Item\n        public init() => ()\n";
+
     private const string ConditionalInit = "struct HC<S>\n    S is Addable<S>\n    public var x: S.Output\n    public var y: S\n    public init(a: S)\n        S is PrimitiveInteger\n";
 
     [Theory]
@@ -115,6 +121,33 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C<i32>.Item(a) is Copy\n" +
             "func copy<T>(value: T.(C<" + projected + ">).Item(a), marker: ref/T during a)\n    T is Q\n    let duplicate = value\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    [Theory]
+    // SPEC 9.7.3, 8.4.3 (PLAN G798): a conformance is one associated candidate at the receiver's arguments, whether a premise added by
+    // an earlier projection or the conformance table reaches it (the PLAN row, a generic Key, a user Contract); `Gx<i32>`'s two paths
+    // reach one `C<i32>.Item`. The twins stay ambiguous: `Gx<i64>`'s two paths, two distinct conformances (`Two`, `G<i64>`) and a
+    // nested Type named like the associated one (`Bag<i64>`, 9.7.3 both ways).
+    [InlineData("()\n    let a: Dictionary<i64, u8>.(Indexable<i64>).Element = 7\n    let b: Dictionary<i64, u8>.Element = 7", "")]
+    [InlineData("()\n    let a: Dictionary<i64, u8>.(Indexable<i64>).Element = 7\n    let b: Dictionary<i64, u8>.(UniqIndexable<i64>).Element = 7\n    let c: Dictionary<i64, u8>.Element = 7", "")]
+    [InlineData("()\n    let a: Dictionary<i64, u8>.Element = 7\n    let b: Dictionary<i64, u8>.(UniqIndexable<i64>).Element = 7", "")]
+    [InlineData(
+        "<P>(d: ref/Dictionary<P, u8>, v: Dictionary<P, u8>.(Indexable<P>).Element) -> Dictionary<P, u8>.Element\n    P is Equatable\n" +
+            "    let a: Dictionary<P, u8>.(UniqIndexable<P>).Element = 7\n    let b: Dictionary<P, u8>.Element = 7\n    return v@move",
+        "")]
+    [InlineData("()\n    let a: Map<i64>.(Box<i64>).Item = 7\n    let b: Map<i64>.(UBox<i64>).Item = 7\n    let c: Map<i64>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i32>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i32>.(C<i32>).Item = 7\n    let b: Gx<i32>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i64>.Item = 7", "AmbiguousBinding_Kd Gx<i64>.Item")]
+    [InlineData("()\n    let a: Gx<i64>.(C<i64>).Item = 7\n    let b: Gx<i64>.Item = 7", "AmbiguousBinding_Kd Gx<i64>.Item")]
+    [InlineData("()\n    let a: Two.(Box<i64>).Item = 7\n    let b: Two.Item = 7", "AmbiguousBinding_Kd Two.Item")]
+    [InlineData("()\n    let a: G<i64>.(Box<i64>).Item = 7\n    let b: G<i64>.Item = 7", "AmbiguousBinding_Kd G<i64>.Item")]
+    [InlineData("()\n    let a: Bag<i64>.(Box<i64>).Item = 7\n    let b: Bag<i64>.Item = 7", "AmbiguousBinding_Kd Bag<i64>.Item")]
+    public void AConformanceIsOneCandidateAtTheReceiversArguments(string probe, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(Candidates + "func probe" + probe + "\nlet present = 1");
         Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }

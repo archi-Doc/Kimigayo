@@ -178,7 +178,7 @@ internal sealed partial class InstanceCollector
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
                 this.Parts(program, item, site, key, self);
                 return;
-            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
+            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic: // BuiltinFormat: dead until R8-S2d2.
                 return;
             default:
                 throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");

@@ -35,15 +35,29 @@ public class Utf8FormatBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
+    // SPEC 22.10.2, 9.6 (G776-a, the owner's O-194 (a)): a built-in Utf8Format conformance adds no member, so `format` called as a member
+    // of a built-in value, a wrapping integer's included, names none (fail-before: each bound), as it names none of an abstract
+    // Wrapping<T> (R8-S2d1's I-N1, the same record); the requirement is reached through `T is Utf8Format` or the adapter `write`.
     [Theory]
-    [InlineData("(42).format(writer@uniq)")]
-    [InlineData("\"text\".format(writer@uniq)")]
-    [InlineData("true.format(writer@uniq)")]
-    [InlineData("1.5.format(writer@uniq)")]
-    [InlineData("Text.utf8(\"text\").format(writer@uniq)")]
-    [InlineData("((200@u8)@Wrapping<u8>).format(writer@uniq)")]
-    [InlineData("(7@u8).format(writer@uniq)")]
-    public void DirectBuiltinRequirementSelection(string expression)
+    [InlineData("_ = (42).format(writer@uniq)", "(42).format")]
+    [InlineData("_ = \"text\".format(writer@uniq)", "\"text\".format")]
+    [InlineData("_ = true.format(writer@uniq)", "true.format")]
+    [InlineData("_ = 1.5.format(writer@uniq)", "1.5.format")]
+    [InlineData("_ = ((200@u8)@Wrapping<u8>).format(writer@uniq)", "((200@u8)@Wrapping<u8>).format")]
+    [InlineData("_ = (7@u8).format(writer@uniq)", "(7@u8).format")]
+    [InlineData("_ = (7@i128).format(writer@uniq)", "(7@i128).format")]
+    [InlineData("func put<T>(w: ref/Wrapping<T>, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is PrimitiveInteger\n    return w.format(writer)", "w.format")]
+    public void ABuiltinFormattingConformanceAddsNoMember(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(Prefix + source);
+        Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+    }
+
+    // The valid twin: FromEnd's `format`, a public member the library declares (LIBRARY), stays a member. A view's `format` has no row
+    // here: SPEC 22.10.2 and 22.9 give a view none, while the library declares one (DECISIONS R8-S2d1); C-286 (PLAN G776) decides it.
+    [Theory]
+    [InlineData("(^1).format(writer@uniq)")]
+    public void ADeclaredFormatStaysAMember(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = " + expression);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
@@ -59,9 +73,9 @@ public class Utf8FormatBindingTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    // SPEC 22.10.2, 8.6.1, 3.1.1 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1): Utf8Format's requirement on bool, char, Unit, f32, f64, string, a
-    // wrapping integer and an integer of at most 64 bits selects the witness table's group function, a body, where i128 and u128 still take
-    // the built-in target (DECISIONS R8-M30, temporary 7, until R8-S2b2; fail-before: Builtin for each).
+    // SPEC 22.10.2, 8.6.1, 3.1.1 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): Utf8Format's requirement on bool, char, Unit, f32, f64,
+    // string, a wrapping integer and every integer selects the witness table's group function, a body, i128's and u128's the generic one,
+    // whose specialization runs (SPEC 8.13.3) (fail-before: Builtin for each; i128 and u128 until R8-S2b2, DECISIONS R8-M30's temporary 7).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
@@ -75,6 +89,8 @@ public class Utf8FormatBindingTest
     [InlineData("i64", "IntegerFormat")]
     [InlineData("isize", "IntegerFormat")]
     [InlineData("usize", "IntegerFormat")]
+    [InlineData("i128", "IntegerFormat")]
+    [InlineData("u128", "IntegerFormat")]
     public void ATableTypesFormatRequirementSelectsItsGroupsFunction(string type, string group)
     {
         var c = MinimalEmissionTest.Analyze("let x = 1\n");
@@ -94,11 +110,6 @@ public class Utf8FormatBindingTest
         var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!));
         Assert.Equal(RequirementTargetKind.Body, target.Kind);
         Assert.Same(c.Library.Members(Enum.Parse<WitnessMembers>(group)), target.Target!.Scope.Owner);
-        foreach (var wide in new[] { "i128", "u128" })
-        {
-            var builtin = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, BoundType.Primitives[wide], contract.Type!));
-            Assert.Equal(RequirementTargetKind.Builtin, builtin.Kind);
-        }
     }
 
     // SPEC 3.1.1, 22.10.2 (R8-S2d1): an abstract Wrapping<T> over a proven PrimitiveInteger is Utf8Format by the witness table's

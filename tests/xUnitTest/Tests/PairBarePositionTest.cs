@@ -111,10 +111,11 @@ public sealed class PairBarePositionTest
         AssertCheck(source, code);
     }
 
-    // SPEC 13.5.5, 8.14, 8.15.2 (PLAN G755): `p@s` under `s is objref or objuniq` forms an adaptation family, a pair layer whose bare
-    // acquisition is planned per case (objref Copies, objuniq Reborrows), its PairAcquire naming the family's binder in MIR. Labels from
+    // SPEC 13.5.5, 8.14, 8.15.2 (PLAN G755): `p@s` under `s is objref or objuniq` is a pair layer (the application `s/Node`, PLAN G759)
+    // whose bare acquisition is planned per case (objref Copies, objuniq Reborrows), its PairAcquire naming the binder in MIR. Labels from
     // SPEC: the first four are valid (a `let`, sequential Reborrows, a call argument, a discard); the others are invalid in the objuniq
-    // case, a Reborrow of `y` while an earlier one lives (8.15.2), with that case's Loan conflict.
+    // case, a Reborrow of `y` while an earlier one lives (8.15.2), with that case's Loan conflict. The last two rows keep an adaptation
+    // family, `s is uniq or objuniq` (the uniq case borrows `p`'s slot), with the same labels.
     [Theory]
     [InlineData("    let z = y\n    return 0\n", "")]
     [InlineData("    let z = y\n    _ = z\n    let w = y\n    _ = w\n    return 0\n", "")]
@@ -123,24 +124,28 @@ public sealed class PairBarePositionTest
     [InlineData("    let z = y\n    let w = y\n    _ = z\n    _ = w\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     [InlineData("    let z = y\n    _ = y\n    _ = z\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     [InlineData("    let z = y\n    _ = h(y)\n    _ = z\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    public void AnAdaptationFamilyIsAcquiredPerCase(string body, string code)
+    [InlineData("    let z = y\n    _ = z\n    let w = y\n    _ = w\n    return 0\n", "", "s is uniq or objuniq")]
+    [InlineData("    let z = y\n    let w = y\n    _ = z\n    _ = w\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "s is uniq or objuniq")]
+    public void AnAdaptationFamilyIsAcquiredPerCase(string body, string code, string premise = "s is objref or objuniq")
         => AssertCheck(
             "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h<U>(u: U) -> i32 => 0\n" +
-            "func f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n    let y = p@s\n" + body +
+            $"func f<s/T>(m: s/T, o: obj/Node) -> i32\n    {premise}\n    var p = o@move\n    let y = p@s\n" + body +
             "public func main()\n    Console.writeLine(\"p\")\n",
             code);
 
-    // SPEC 15.6.7, 8.14 (A3 E13 (4); PLAN G755): a family `p@s` passed as a call's input is exclusive only by case and reserves where
-    // it is acquired, so the call's later operand may read `p` (f5); a family a call result keeps is that result's Loan (f6, f7). Labels
-    // from SPEC: the first two are valid; the third moves `p` while `r`, which keeps the objuniq case's Reborrow, lives.
+    // SPEC 15.6.7, 8.14 (A3 E13 (4); PLAN G755): a pair layer `p@s` passed as a call's input is exclusive only by case and reserves where
+    // it is acquired, so the call's later operand may read `p` (f5); a pair layer a call result keeps is that result's Loan (f6, f7).
+    // Labels from SPEC: the first two are valid; the third moves `p` while `r`, which keeps the objuniq case's Reborrow, lives. The last
+    // row keeps an adaptation family (`s is uniq or objuniq`, PLAN G759), invalid as the third.
     [Theory]
     [InlineData("    return h2(p@s, p.n)\n", "")]
     [InlineData("    let r = id(p@s)\n    _ = r\n    let q = p@move\n    return 0\n", "")]
     [InlineData("    let r = id(p@s)\n    let q = p@move\n    _ = r\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    public void AFamilyCallInputReservesWhereItIsAcquired(string body, string code)
+    [InlineData("    let r = id(p@s)\n    let q = p@move\n    _ = r\n    return 0\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "s is uniq or objuniq")]
+    public void AFamilyCallInputReservesWhereItIsAcquired(string body, string code, string premise = "s is objref or objuniq")
         => AssertCheck(
             "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc h2<U>(u: U, k: i32) -> i32 => 0\n" +
-            "func id<V>(x: V) -> V => x@move\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n" + body +
+            $"func id<V>(x: V) -> V => x@move\nfunc f<s/T>(m: s/T, o: obj/Node) -> i32\n    {premise}\n    var p = o@move\n" + body +
             "public func main()\n    Console.writeLine(\"p\")\n",
             code);
 
@@ -148,7 +153,8 @@ public sealed class PairBarePositionTest
     // too, as for the concrete `p@objref` and `p@objuniq`. Labels from SPEC: the first three are valid (a shared borrow of a `let` slot,
     // used later; an exclusive one of a `var` slot); the others are invalid with the concrete layer's records: `@uniq` of a `let` slot
     // (13.5.5's example), and, while the shared borrow `r` of `y` lives, an exclusive borrow of `y`, a Move of its source `p`, a
-    // replacement of `y` and a Move of `y` (15.6).
+    // replacement of `y` and a Move of `y` (15.6). Under `s is objref or objuniq` `p@s` is the application `s/Node` (PLAN G759); the
+    // last four rows keep a family, `s is uniq or objuniq`, whose uniq case borrows `p`'s slot (`uniq/(obj/Node)`), with the same labels.
     [Theory]
     [InlineData("    let y = p@s\n    let r = y@ref\n", "")]
     [InlineData("    let y = p@s\n    let r = y@ref\n    let k = r\n    _ = k\n    _ = r\n", "")]
@@ -158,10 +164,14 @@ public sealed class PairBarePositionTest
     [InlineData("    let y = p@s\n    let r = y@ref\n    let q = p@move\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     [InlineData("    var y = p@s\n    let r = y@ref\n    y = p@s\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     [InlineData("    let y = p@s\n    let r = y@ref\n    let w = y@move\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    public void AnAdaptationFamilySlotIsBorrowed(string body, string code)
+    [InlineData("    let y = p@s\n    let r = y@ref\n", "", "s is uniq or objuniq")]
+    [InlineData("    var y = p@s\n    let u = y@uniq\n", "", "s is uniq or objuniq")]
+    [InlineData("    let y = p@s\n    let u = y@uniq\n", nameof(DiagnosticCode.InvalidAssignment_Kd), "s is uniq or objuniq")]
+    [InlineData("    var y = p@s\n    let r = y@ref\n    let u = y@uniq\n    let k = r\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "s is uniq or objuniq")]
+    public void AnAdaptationFamilySlotIsBorrowed(string body, string code, string premise = "s is objref or objuniq")
         => AssertCheck(
             "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
-            "func f<s/T>(m: s/T, o: obj/Node) -> i32\n    s is objref or objuniq\n    var p = o@move\n" + body + "    return 0\n" +
+            $"func f<s/T>(m: s/T, o: obj/Node) -> i32\n    {premise}\n    var p = o@move\n" + body + "    return 0\n" +
             "public func main()\n    Console.writeLine(\"p\")\n",
             code);
 

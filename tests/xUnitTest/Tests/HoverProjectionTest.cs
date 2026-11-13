@@ -249,6 +249,21 @@ public sealed class HoverProjectionTest
         Assert.Contains("Premise: T is Right effect confined", info.Effects);
     }
 
+    // SPEC 8.11.3, 8.7.4, 4.6.1: under `T is PrimitiveInteger` the bound of a format call is the item Position declares, and its evidence
+    // is the PrimitiveInteger premise that supplies Position; `T is Utf8Format` proves no Contract that bounds format, so no evidence.
+    [Theory]
+    [InlineData("PrimitiveInteger", true)]
+    [InlineData("Utf8Format", false)]
+    public void ASuppliedContractsBoundNamesItsPremise(string premise, bool confined)
+    {
+        var text = $"func show<T>(x: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is {premise}\n    return x.format(writer)\n";
+        var info = At(Project(text), text.LastIndexOf("format(writer)", StringComparison.Ordinal));
+        Assert.Contains("Requirement: Kimi.Utf8Format.format", info.Effects);
+        Assert.Contains(confined ? "Available bound: confined" : "Available bound: none", info.Effects);
+        string[] evidence = confined ? ["Declared by: Kimi.Position", "Premise: T is Kimi.PrimitiveInteger effect confined (in show)"] : [];
+        Assert.Equal(evidence, info.Effects!.Split('\n').Select(static x => x.Trim()).Where(static x => x.StartsWith("Declared by:", StringComparison.Ordinal) || x.StartsWith("Premise:", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void PropertyOperationsAndImplicitResultsAreExplicit()
     {

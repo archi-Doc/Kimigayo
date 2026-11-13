@@ -5,8 +5,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The effect facts Binding decided, in MIR terms (DECISIONS R4-M22, R4-M23): who owes `confined`, the bounds a call may use under a
-// definition's premises, what a function without a MIR body does, the bodies a call may run, and the Copy and Sealed facts its summaries
-// read, all under one premise scope per definition (Binding.EffectPremises).
+// definition's premises, what a function without a MIR body does, the bodies a call may run and the original a specialization implements,
+// whose call contract and ABI its body keeps (SPEC 8.13.2), and the Copy and Sealed facts its summaries read, all under one premise scope
+// per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
     private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
@@ -89,6 +90,9 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
+
+    // SPEC 8.13.2: the function whose call contract and ABI a body keeps: a specialization's original, else the function itself.
+    internal BindingSymbol? Original(BindingSymbol? function) => binding.SpecializationOriginal(function) ?? function;
 
     // The catalog's contract (DECISIONS BU-70), checked for every row once, before the first Calls row is formed: a row's Callable input is
     // called through a shared borrow, which its premise declares; a violation is a defect of the compiler build.
