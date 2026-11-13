@@ -9,11 +9,12 @@ namespace Kimi.Compiler;
 //   KeyedCapacity; a library-only table starts at its stated count). A per-compilation table is sized when, grown by doubling from
 //   empty, the doubling that follows the library's fill would allocate more than 64 KB (its new slots times its bytes per slot):
 //   three such doublings together stay inside the smallest margin of the cold scaling rows.
-// - Limit, the library-only kind (member selections, capability nodes): chosen because no cold scaling row's program adds an entry to
-//   either table, which is its reason and no guarantee. Programs fill both: a member access adds one member selection, a Copy
-//   struct declaration two capability nodes. So each table's next doubling (139,980 B and 102,652 B) sits where the library's fill
-//   puts it, and a row over such a form can take it in one window: a member-read row of the tests' shape (cold Bind bytes at 128,
-//   256 and 512 reads, factor 3) measures 1.100 on the capacities before this statement and 3.118 on these. The RP8 exception
+// - Limit, the library-only kind (member selections and sides, capability nodes): chosen because no cold scaling row's program adds an
+//   entry to any of them, which is its reason and no guarantee. Programs fill them: a member access adds one member selection and one
+//   side, a Copy struct declaration two capability nodes. So each table's next doubling (139,980 B, about 76 KB and 102,652 B) sits
+//   where the library's fill puts it, and a row over such a form can take it in one window: a member-read row of the tests' shape
+//   (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on the capacities before this statement and 3.118 on these
+//   (before the member sides). The RP8 exception
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
 // - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what a Bind of the empty program fills
 //   (Binding.TableCounts), so a library change that moves a count past its Granule fails there and restates it.
@@ -47,6 +48,7 @@ internal static class KimiLibrarySize
         Constraints: 2048,
         AssociatedTypes: 2048,
         MemberSelections: 1024,
+        MemberSides: 1024,
         CapabilityNodes: 1024,
         SubstitutedParts: 1024);
 
@@ -69,10 +71,11 @@ internal static class KimiLibrarySize
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
         int MemberSelections, // Binding's member selections: library-only.
+        int MemberSides, // Binding's member sides: library-only.
         int CapabilityNodes, // Binding's capability nodes: library-only.
         int SubstitutedParts) // Binding's substituted parts.
     {
-        /// <summary>Gets the least number among the keyed tables with a room: every keyed table but the library-only two.</summary>
+        /// <summary>Gets the least number among the keyed tables with a room: every keyed table but the library-only three.</summary>
         internal int LeastKeyed
             => Math.Min(
                 Math.Min(Math.Min(this.Declarations, this.Scopes), Math.Min(this.TypeKeys, this.Constraints)),
@@ -89,6 +92,7 @@ internal static class KimiLibrarySize
                 Round(this.Constraints),
                 Round(this.AssociatedTypes),
                 Round(this.MemberSelections),
+                Round(this.MemberSides),
                 Round(this.CapabilityNodes),
                 Round(this.SubstitutedParts));
 

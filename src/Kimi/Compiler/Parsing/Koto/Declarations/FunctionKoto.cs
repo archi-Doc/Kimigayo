@@ -183,6 +183,11 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
     internal bool HasOmittedBaseInitializer => this.BaseInitializer is not null && ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer);
 
+    /// <summary>Gets or sets the placement Error of a specialization written where its item list takes none (SPEC 8.13.1, F.6): a
+    /// recovery carrying the misplaced syntax's record, on which every check that needs the declaration scope rests (its target search
+    /// and the verdicts over it); the checks of the written declaration stay direct. Null for any other function.</summary>
+    internal ErrorKoto? Placement { get; set; }
+
     internal void PrepareBaseInitializer()
     {
         if (this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))
