@@ -38,7 +38,8 @@ public sealed partial class Binding
         while (true)
         {
             type = ComparisonReferent(type);
-            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope, out var target) == SemanticsMask.None)
+            // A layer admitting no case ends the walk (stopped: it has no node to rest; its operand's consumer would; PLAN G750).
+            if (!TryPairLayer(type, out _, out _) || this.FollowablePair(type, scope, out var target) is not { } admitted || admitted == SemanticsMask.None)
             {
                 return type;
             }

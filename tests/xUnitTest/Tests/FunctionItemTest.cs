@@ -168,6 +168,36 @@ public class FunctionItemTest
         }
     }
 
+    // SPEC 15.3.4, 15.6.5, 10.7, 7.7.4: the value of a function nested in a block, whose signature names the enclosing function's fixed
+    // Origin, is compared with a required Function Type under the enclosing function's clauses: at a local, a result, an assignment and
+    // an argument, after an open evidence region too (PLAN G827).
+    [Theory]
+    [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
+    [InlineData("func fallback(x: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> (ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return pk\n    return fallback")]
+    [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives c\n    origin c outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
+    [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives a\n    origin a outlives c\n    if true\n        func pk(x: ref/u8 during a) -> ref/u8 during a => x\n        let f: (ref/u8 during b) -> ref/u8 during c = pk\n        let r = f(other)\n        return 0\n    return 0")]
+    [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0")]
+    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0")]
+    [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk<U>(y: ref/U during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
+    [InlineData("func fb(x: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    var f: (ref/u8 during b) -> i32 = fb\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        f = pk\n    return f(other)")]
+    [InlineData("func both<T>(g: (T) -> i32, k: (T) -> i32, v: T) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return both(func (x: ref/u8) => 0, pk, other)\n    return 0")]
+    [InlineData("func both<T>(v: T, g: (T) -> i32, k: (T) -> i32) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return both(other, func (x: ref/u8) => 0, pk)\n    return 0")]
+    public void NestedItemsAreErasedUnderTheEnclosingFunctionsClauses(string body)
+        => Assert.Equal(string.Empty, Records("public func main() => ()\n" + body));
+
+    // The invalid twins: without the clause the parameter or the result needs, the record names that relation.
+    [Theory]
+    [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin a outlives b\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0", "UnprovenOriginContract_Kd pk: the 1st parameter requires b outlives a, which is not proven")]
+    [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> ref/u8 during a => x\n        let f: (ref/u8 during b) -> ref/u8 during c = pk\n        let r = f(other)\n        return 0\n    return 0", "UnprovenOriginContract_Kd pk: the result requires a outlives c, which is not proven")]
+    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0", "UnprovenOriginContract_Kd pk: the 1st parameter requires b outlives a, which is not proven")]
+    [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0", "NoApplicableOverload_Kd apply(pk, other): none of 1 candidates applies")]
+    public void NestedItemsAreNotErasedWithoutTheEnclosingFunctionsClauses(string body, string record)
+    {
+        var source = "public func main() => ()\n" + body;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(record, $"{error.Code} {source.Substring(error.Span!.Value.Start, error.Span.Value.Length)}: {error.Label}");
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmItemBindingAnalysisAndEmissionAllocateNothing()
@@ -189,4 +219,7 @@ public class FunctionItemTest
         (string, string, int)[] expected = at is null ? [] : [(id, nameof(DiagnosticCode.UnprovenConstraint_Kd), source.IndexOf(at, StringComparison.Ordinal))];
         Assert.Equal(expected, errors.Select(x => (id, x.Code, x.Span!.Value.Start)));
     }
+
+    private static string Records(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }

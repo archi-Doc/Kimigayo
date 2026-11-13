@@ -252,6 +252,7 @@ public sealed partial class Binding
     private void ClearCapabilityResults()
     {
         this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
+        this.ClearKeptRows(); // So do Enumerate's kept rows (ContractSolver).
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.capabilityConsumer = null;
@@ -687,10 +688,10 @@ public sealed partial class Binding
 
     private ConstraintProof SymbolicCapability(CapabilityWork work)
     {
-        var positive = false;
         var negative = false;
         var parameterIdentity = HasParameterIdentity(work.Scope);
         var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
+        var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { } environment)
@@ -710,7 +711,8 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var fact = parameterIdentity ? this.Reading(available, work.Scope) : available;
+                int? serial = null; // The loop's judgments may write the chain: a serial per fact.
+                var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
                 if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
                 {
@@ -721,10 +723,6 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Contract && IsRefinement(fact.Contract!, work.Intrinsic) && this.AvailableContractPremise(fact.Contract!))
-                {
-                    evidence = ConstraintProof.Proven;
                 }
                 else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {

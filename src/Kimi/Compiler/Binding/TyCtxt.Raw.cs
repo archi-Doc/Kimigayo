@@ -222,23 +222,40 @@ internal sealed partial class TyCtxt
         return at with { Type = parent, Written = null, Holder = null, Case = -1 };
     }
 
-    // SPEC 4.1, 6.7.1, IMPL 21.1.2 (C-211, PLAN G667c): the key of the part the specification places at a Place's own address, the one
-    // step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset i * stride; `element`
-    // true), or a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), each as Select steps it, the path's
-    // dereference kept. The first written Field is MIR's Field 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and
-    // AdtDef keeps stored Fields in declaration order. Type null for every other Type (a Kimigayo-layout struct, a Tuple, an enum or its
-    // Case, a Closure: IMPL 21.1.2 promises no offset there), for an unbound key and for a first Field Binding did not bind. `element` true
-    // always comes with a part (a fixed array's Type states its element at any length), so a reader takes the part of an element step
-    // without a null test; a null Type has `element` false. Reads no length: whether an array has an element is its reader's (A5's
-    // Sized). The answer's Type is a function of the key's Type, so a reader steps a Type that has no path (a written or stride Type, a
-    // chain row) as PlaceKey.Root of it. Total, a function of the key; allocates nothing warm. Must not decide a pun, a covering or a
-    // designation (A5's).
+    // SPEC 4.1, 6.7.1, IMPL 21.1.2, 21.1.3 (C-211, PLAN G667c, G808): the key of the part the specification places at a Place's own
+    // address, the one step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset
+    // i * stride; `element` true), a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), or a nonnull
+    // Option's Some payload (NonnullSome: the payload is the Option's whole word; `element` false), each as Select steps it (the payload:
+    // the Some Case, then its component 0, MIR's Downcast and Field), the path's dereference kept. The first written Field is MIR's Field
+    // 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and AdtDef keeps stored Fields in declaration order. Type
+    // null for every other Type (a Kimigayo-layout struct, a Tuple, any other enum or a Case key, a Closure: IMPL 21.1.2-21.1.3 promise no
+    // offset there), for an unbound key and for a first Field Binding did not bind. `element` true always comes with a part (a fixed
+    // array's Type states its element at any length), so a reader takes the part of an element step without a null test; a null Type has
+    // `element` false. Reads no length: whether an array has an element is its reader's (A5's Sized). The answer's Type is a function of
+    // the key's Type, so a reader steps a Type that has no path (a written or stride Type, a chain row) as PlaceKey.Root of it. Total, a
+    // function of the key; allocates nothing warm. Must not decide a pun, a covering or a designation (A5's).
     internal PlaceKey Leading(PlaceKey at, out bool element)
     {
         element = at is { Case: < 0, Type.Kind: BoundTypeKind.FixedArray };
-        return element || (at is { Case: < 0, Type: { } type } && AdtDef.IsStruct(type) && type.Symbol!.Adt is { IsCLayout: true })
-            ? binding.Select(at, 0) : at with { Type = null, Written = null, Holder = null, Case = -1 };
+        if (element || (at is { Case: < 0, Type: { } type } && AdtDef.IsStruct(type) && type.Symbol!.Adt is { IsCLayout: true }))
+        {
+            return binding.Select(at, 0);
+        }
+
+        return at.Case < 0 && this.NonnullSome(at.Type) is var some and >= 0
+            ? binding.Select(binding.Select(at, some), 0) : at with { Type = null, Written = null, Holder = null, Case = -1 };
     }
+
+    // IMPL 21.1.3 (G808): the nonnull Option: `Option<R>`, R a `ref`, `uniq`, `obj`, `rc`, `arc`, `objref` or `objuniq` layer, is one
+    // pointer-sized word, null None and every valid R Some. The Some Case's ordinal (KimiLibrary.OptionSome) for such a Type; -1 for every
+    // other (`Option<raw/T>`, `Option<Weak<S>>`, `Option<Option<R>>`, an Option of a Tuple, a Scalar, an abstract or a pair part, any
+    // other enum). The one statement of IMPL's R list: Leading reads it, and the Backend's Layout reads it with PLAN U8. Total; allocates
+    // nothing.
+    internal int NonnullSome(BoundType? type)
+        => type is { Semantics: Parsing.SemanticsKind.Owner, Components: [{ Kind: BoundTypeKind.Semantics } payload] } &&
+            ReferenceEquals(type.Symbol, library.Option) && payload.Semantics is Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq or
+            Parsing.SemanticsKind.Obj or Parsing.SemanticsKind.Rc or Parsing.SemanticsKind.Arc or Parsing.SemanticsKind.ObjRef or
+            Parsing.SemanticsKind.ObjUniq ? library.OptionSome : -1;
 
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal, raw Origins included: the structural part of a
     // fit (Binding's relation walk, every Origin binding equal, no Never root rule), symmetric; reads no premise. Total, O(size of the
