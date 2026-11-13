@@ -295,7 +295,6 @@ public class EnumBindingTest
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin c outlives a\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a) -> Option<ref/i32 during static>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "y")]
-    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i64 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<ref/i64 during a>.None")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.Some(x)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.None")]
@@ -305,6 +304,20 @@ public class EnumBindingTest
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 15.6.1, 10.2 row 2 (PLAN G585, G430; DECISIONS Q13, R4-M108, R4-M111): a payload borrowed from a body Place, a literal's
+    // temporary or a local, that does not outlive the Case's Origin is UnsatisfiedOriginRelation_Kd at the payload, twice: Binding's
+    // record and A5's row of the same body chain, the twin pair of PLAN G430. R7's twin removal makes each row one record.
+    [Theory]
+    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1")]
+    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n")]
+    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at)
+    {
+        var source = "func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n" + body + "public func main() -> () => ()\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
+        Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field

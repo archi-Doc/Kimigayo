@@ -240,6 +240,14 @@ public partial class CallableOriginForwardingTest
 
     private const string PremiseHost = "func host(s: ref/i32, t: ref/i32) -> i32\n";
 
+    private const string RawPut = "func usep<T>(p: raw/T) => ()\nfunc put(target: uniq/(raw/u8) during a, q: raw/u8 during a) => ()\n\n";
+
+    private const string RawPutK = "func usep<T>(p: raw/T) => ()\nfunc put(target: uniq/(raw/u8) during a, k: ref/u8, q: raw/u8 during a) => ()\n\n";
+
+    private const string Spare = "func g(c: bool)\n    var spare: raw/u8 = null\n    var kk: u8 = 0\n";
+
+    private const string TwoR = "func twor(x: ref/i32 during a, y: ref/i32 during a) -> ref/i32 during a => x\n\nfunc g(s: ref/i32 during b)\n";
+
     private const string TwoAcquisitions = "func kc2(f: () -> i32, v: Array<i32>) -> i32 => 0\n\nfunc host() -> i32\n    let t = \"a\"\n" +
         "    let c = func [t@move] () -> i32 => 1\n    let values: Array<i32> = []\n    let g = kc2\n    return g(c, values)\n";
 
@@ -677,7 +685,14 @@ public partial class CallableOriginForwardingTest
     // retains through such a Tuple is the MIR's Loan conflict (a03). A waiting Case (x01) and an independently typed join whose
     // anonymous source mismatches its Item Type (x04, SPEC 14.9.2 step 2) are guards. A join source's erasure is decided once, under
     // the use's premises (ErasureFits): Closure values admitted only by the caller's clause are valid at a value and a named call (y02c,
-    // y02cn; fcd84d01e and the base crashed), and with the clause reversed the record is at `cb` (z01).
+    // y02cn; fcd84d01e and the base crashed), and with the clause reversed the record is at `cb` (z01). PLAN G584 (SPEC 5.7 Fits,
+    // 10.5.1, 15.6.4 steps 1-2): a Literal waits too, so a `null` at a raw layer stating the callee's Origin takes the instantiated
+    // Origin, not the callee's own atom: valid alone, in a join, through a parameter, at a `uniq/u8` target, at a generic Item, beside a
+    // borrowed literal and beside a borrow kk is written after (the base: a located Unsupported_Kd at the `null`). The invalid twins
+    // keep their direct twins' records (written: kk's Loan, SPEC 15.6.4; read: PLAN G339's row), and a numeric literal its mismatch.
+    // A borrowed literal beside an argument at the caller's fixed Origin keeps its temporary's bound (SPEC 10.2 row 2, PLAN G585's
+    // AddTemporaryBound): valid with its result read inside the statement, the direct twin's Loan conflict when kept past it, the
+    // literal second (fixed) or first (fixed_first).
     [Theory]
     [InlineData("v_ok", ClauseK + StaticHost + "    let g = k\n    return g(s, func [] (x) => 5)\n", "", null)]
     [InlineData("v_fi_ok", ClauseK + Hf + StaticHost + "    let g = k\n    return g(s, hf)\n", "", null)]
@@ -735,8 +750,40 @@ public partial class CallableOriginForwardingTest
     [InlineData("y02c_join_conf_cl_ok", PlainK + ClosureJoinHost + "    origin a outlives b\n" + ClosurePair + "    let g = k3\n    return g(s, if c => ca else => cb)\n", "", null)]
     [InlineData("y02cn_join_conf_cl_ok", PlainK + ClosureJoinHost + "    origin a outlives b\n" + ClosurePair + "    return k3(s, if c => ca else => cb)\n", "", null)]
     [InlineData("z01_join_cl_rev_bad", PlainK + ClosureJoinHost + "    origin b outlives a\n" + ClosurePair + "    let g = k3\n    return g(s, if c => ca else => cb)\n", "UnprovenOriginContract_Kd cb", "the 1st parameter requires a outlives b, which is not proven")]
+    [InlineData("g584_null_ok", RawPut + Spare + "    let f = put\n    f(spare@uniq, null)\n", "", null)]
+    [InlineData("g584_join_ok", RawPut + Spare + "    let f = put\n    f(spare@uniq, if c => null else => null)\n", "", null)]
+    [InlineData("g584_param_ok", RawPut + "func h(x: uniq/(raw/u8) during b)\n    let f = put\n    f(x, null)\n", "", null)]
+    [InlineData("g584_u8_ok", "func put(target: uniq/u8 during a, q: raw/u8 during a) => ()\n\nfunc g()\n    var v: u8 = 0\n    let f = put\n    f(v@uniq, null)\n", "", null)]
+    [InlineData("g584_generic_ok", "func put<T>(target: uniq/(raw/T) during a, q: raw/T during a) => ()\n\n" + Spare + "    let f = put<u8>\n    f(spare@uniq, null)\n", "", null)]
+    [InlineData("g584_literals_ok", "func r2(x: ref/i32 during a, q: raw/u8 during a) => ()\n\nfunc g()\n    let f = r2\n    f(5, null)\n", "", null)]
+    [InlineData("g584_written_ok", RawPutK + Spare + "    let f = put\n    f(spare@uniq, kk@ref, null)\n    kk = 1\n", "", null)]
+    [InlineData("g584_written_bad", RawPutK + Spare + "    let f = put\n    f(spare@uniq, kk@ref, null)\n    kk = 1\n    usep(spare)\n", "ComparisonLoanConflict_Kd kk = 1; ComparisonLoanConflict_Kd usep(spare)", null)]
+    [InlineData("g584_written_direct_bad", RawPutK + Spare + "    put(spare@uniq, kk@ref, null)\n    kk = 1\n    usep(spare)\n", "ComparisonLoanConflict_Kd kk = 1; ComparisonLoanConflict_Kd usep(spare)", null)]
+    [InlineData("g584_read_bad", RawPut + Spare + "    let f = put\n    f(spare@uniq, null)\n    usep(spare)\n", "ComparisonLoanConflict_Kd usep(spare)", null)]
+    [InlineData("g584_read_direct_bad", RawPut + Spare + "    put(spare@uniq, null)\n    usep(spare)\n", "ComparisonLoanConflict_Kd usep(spare)", null)]
+    [InlineData("g584_number_bad", RawPut + Spare + "    let f = put\n    f(spare@uniq, 5)\n", "TypeMismatch_Kd 5", null)]
+    [InlineData("g584_fixed_ok", TwoR + "    let f = twor\n    let k = f(s, 7)@follow\n", "", null)]
+    [InlineData("g584_fixed_direct_ok", TwoR + "    let k = twor(s, 7)@follow\n", "", null)]
+    [InlineData("g584_fixed_bad", TwoR + "    let f = twor\n    let r = f(s, 7)\n    let k = r@follow\n", "ComparisonLoanConflict_Kd 7", null)]
+    [InlineData("g584_fixed_direct_bad", TwoR + "    let r = twor(s, 7)\n    let k = r@follow\n", "ComparisonLoanConflict_Kd 7", null)]
+    [InlineData("g584_fixed_first_ok", TwoR + "    let f = twor\n    let k = f(7, s)@follow\n", "", null)]
+    [InlineData("g584_fixed_first_direct_ok", TwoR + "    let k = twor(7, s)@follow\n", "", null)]
+    [InlineData("g584_fixed_first_bad", TwoR + "    let f = twor\n    let r = f(7, s)\n    let k = r@follow\n", "ComparisonLoanConflict_Kd 7", null)]
+    [InlineData("g584_fixed_first_direct_bad", TwoR + "    let r = twor(7, s)\n    let k = r@follow\n", "ComparisonLoanConflict_Kd 7", null)]
     public void AValueCallCompletesItsWaitingPartsAtTheInstantiatedParameter(string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
+
+    // PLAN G584 (DIAGNOSTICS 4.4, SPEC 23.1.2): a recovered literal argument, an unclosed call's last argument, waits for the solve as
+    // any Literal, so a Value call keeps its direct twin's records, the parse Error only (the base: a located Unsupported_Kd at the
+    // `null` beside it), and a literal beside an argument at the caller's fixed Origin keeps its temporary's bound (rec_fixed, PLAN
+    // G585). The unclosed call ends the source (`sites`, line:column).
+    [Theory]
+    [InlineData("rec_null", RawPut + Spare + "    let f = put\n    f(spare@uniq, null\n", "MissingSyntax_Kd 9:23")]
+    [InlineData("rec_null_direct", RawPut + Spare + "    put(spare@uniq, null\n", "MissingSyntax_Kd 8:25")]
+    [InlineData("rec_fixed", TwoR + "    let f = twor\n    let k = f(s, 7\n", "MissingSyntax_Kd 6:19")]
+    [InlineData("rec_fixed_direct", TwoR + "    let k = twor(s, 7\n", "MissingSyntax_Kd 5:22")]
+    public void ARecoveredLiteralArgumentWaitsForTheValueCallSolve(string form, string body, string sites)
+        => Assert.Equal($"{form}: {sites}", $"{form}: {Sites(Main + body)}");
 
     // The published Error records of a source: each code and its span's start as line:column (1-based), in ordinal order.
     private static string Sites(string source)

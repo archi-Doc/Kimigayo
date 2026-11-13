@@ -1356,6 +1356,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 60 (2026-11-11, plan §14; the owner's decision in K's session): RP8 scoped: an open-issue fix books no timing slot; timing stays for a hot-path change, a back unit's generated code and the plan's units; a checkpoint after every fifth landed window (DECISIONS R7-M21). Nothing frozen.
 - Revision 61 (2026-11-11, plan §14; the owner's decision in K's session): §3.3's seat caps: the Front 4 implementers and 4 designers and reviewers, the Middle and the Back 2 and 2 each; one Front implementer and one designer seat kept on R7's core chain. Nothing frozen.
 - Revision 62 (2026-11-12, plan §14; the Back's D-462): after R8-S2b2 (DECISIONS R8-M30) `formatInteger128`'s two defines are `FormatInteger128Runtime.ll.in`'s, so W2 deletes `Utf8FormatRuntime.ll.in` whole (§5.2's W2 and X1 rows, §10.2's item 3). Nothing frozen.
+- Revision 63 (2026-11-12, plan §14; the owner's decision in K's session): RP8 for a behaviour-preserving R7 unit: no per-unit timing slot; the deterministic checks and the checkpoints after every fifth landed window (DECISIONS R7-M22). Nothing frozen.
+- Revision 64 (2026-11-13, plan §14; the Middle's D-514, the Front's D-503): M1 part 3's row after R9-M1 part 3 landed (no DECISIONS entry; `MarkdownUnicode.IsWhitespace` deferred to PLAN G818); the O3 row's G195 item done. Nothing frozen.
+- Revision 65 (2026-11-13, plan §14; the Back's D-518): after R8-S2d2 (DECISIONS R8-M30) §5.2's S2 row records S2d2 done (the shim's removal), and the L0 and S2 rows name `formatInteger128`'s runtime as `FormatInteger128Runtime.ll.in`'s `__kimi_format_integer128` and `__kimi_decimal_div10` (since R8-S2b2). Nothing frozen; the R8, S2 and W2 rows name `FormatKind` by S2d2's name, `StringFormatKind`.
+- Revision 66 (2026-11-13, plan §14; the owner's approval of K's slot proposals (1) and (2) in K's session, verbatim 「(1) と (2)を適用して下さい」): §3.2 and §3.3's build gap between two quiet slots is 5 minutes (was 15) and none between one session's consecutive slots; a slot still starts only when quiet_guard reports FREE. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
@@ -1392,7 +1396,6 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
   changed; the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
-- Revision 63 (2026-11-12, plan §14; the owner's decision in K's session): RP8 for a behaviour-preserving R7 unit: no per-unit timing slot; the deterministic checks and the checkpoints after every fifth landed window (DECISIONS R7-M22). Nothing frozen.
   and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
   the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;
