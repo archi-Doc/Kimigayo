@@ -11,26 +11,26 @@ internal sealed partial class MirBuilder
 {
     private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
 
-    // The literal bytes of a write position (SPEC 22.10.5): its text's, the string constant Literal makes (Text), where it writes text
-    // (Binding.WritesText); -1 at a value's, whose bound its instance decides.
-    private int Bytes(CallPlan write, in MirOperand text)
-        => Binding.WritesText(write) ? Encoding.UTF8.GetByteCount((string)this.body.Consts[text.Arg].Value!) : -1;
+    // The literal bytes of a write position (SPEC 22.10.5): its text's, the string constant the one literal rule makes (Literal), where it
+    // writes text (Binding.WritesText: a literal segment, or an embedded string literal); -1 at a value's, whose bound its instance decides.
+    private int Bytes(CallPlan write)
+    {
+        if (!Binding.WritesText(write))
+        {
+            return -1;
+        }
 
-    // The literal text of a write position of an owning interpolation (SPEC 3.1, 22.10.3), its FormatSegment's operand: where it writes text
-    // (a literal segment, or an embedded string literal), that literal's constant through the one literal rule (Literal); the empty text at
-    // a value's position, whose write follows.
-    private MirOperand Text(CallPlan write) => Binding.WritesText(write) ? this.Literal(write.ArgumentOperations[1].Source!)
-        : MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: string.Empty)));
+        var text = this.Literal(write.ArgumentOperations[1].Source!); // Made before the constants are read.
+        return Encoding.UTF8.GetByteCount((string)this.body.Consts[text.Arg].Value!);
+    }
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, its status tested before a first segment
     // that is an embedded expression, and a failure goes to its result, the writer's status; a writer of Type Never is the Never value, which
     // the status and each write take as it is (Acquire), so they and the embedded expressions are built in their order where only the checks
     // continue (SPEC 14.10.3; DECISIONS R4-M62). An owning interpolation's is the internal adapter (its second call, Adapt) over an exclusive
-    // borrow of the private buffer FormatBuffer gives of the capacity its instance estimates from the literal bytes and the values' Types
-    // (5.1), its writes Writes' steps, and FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer
-    // empty for its cleanup. The three intrinsics are temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo. The
-    // block a failed write (and a $tryWrite's end) goes to is made by the first branch to it, so an interpolation of text alone has none.
+    // borrow of the private buffer (its first call, Heap), its writes Writes' steps, and its end Finish: the adapter's finish, then the
+    // moved buffer's string.
     private void Format(MirPlace destination, Koto node)
     {
         var mark = this.located.Count;
@@ -39,16 +39,17 @@ internal sealed partial class MirBuilder
         if (HirTables.PlanOf(node).Formatting!.Acquisition is null)
         {
             var bytes = this.Values(node);
-            var buffer = this.Temp(CallPlan.Of(node)!.ReturnType, node);
-            this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, node);
+            var buffer = this.Hold(CallPlan.Of(node)!.ReturnType, node);
+            this.Heap(node, buffer);
+            this.Made(buffer);
             var writer = this.Hold(CallPlan.Of(node, 1)!.ReturnType, node);
             var unit = this.Hold(BoundType.Unit, node);
             this.Adapt(node, buffer, writer);
             this.Made(writer);
             this.Writes(node, writer, unit, bytes, start, ref done);
             this.Made(unit); // The steps' Unit, written by each.
+            this.Finish(destination, writer, buffer, this.Done(ref done), node);
             this.Fail(done, node);
-            this.Finish(destination, writer, node);
         }
         else
         {
@@ -83,13 +84,15 @@ internal sealed partial class MirBuilder
     // SPEC 22.7, 22.10.3, 22.10.5 and rule L (R8-W2 design §4): Console.writeLine of a direct interpolation (ExpansionPlan.Direct), its writes
     // built once over one erased writer, whose destination the interpolation-bound term L (TyCtxt.InterpolationBound) of the literal bytes
     // and the values' Types decides: a zero-filled region of exactly L bytes and its FixedBuffer where L > 0, else the owning buffer. A
-    // constant term builds its one form; a term an instance decides branches on the region's Len before the first write, each arm making
-    // the writer (Binding's plan writer Type), and again after the last: the fixed arm's writer is dead there, so its Loan on the buffer
-    // ends before text() views the bytes for writeLine(Utf8Slice) (a literal is deferred only before a value, so none is pending), and the
-    // owning arm's FormatFinish moves it, its string to writeLine(ref/string). text()'s Err, which no run reaches (every byte is a literal or
-    // a built-in formatter's committed encoding, so text() validates nothing), goes to the failed writes' KIMI_E_FORMAT block. Each arm's
-    // temporaries end in it; the buffers and the writer live across both branches, held first, so an owning buffer made on one path has a
-    // flagged drop (MirDrops) and an owning instance's region is Text.fixed<0>'s, of no bytes.
+    // constant term builds its one form. A term an instance decides makes both buffers on every path, the FixedBuffer over the region
+    // (Text.fixed<0>'s, of no bytes, at an owning instance) and the owning buffer (Heap, no allocation), then branches on the region's Len,
+    // read before Text.fixed's exclusive Loan of the region, each arm making only the writer (Binding's plan writer Type) over its buffer,
+    // and branches again after the last write: the fixed arm's writer is dead there, so its Loan on the buffer ends before text() views the
+    // bytes for writeLine(Utf8Slice) (a literal is deferred only before a value, so none is pending), and the owning arm's end (Finish)
+    // moves the owning buffer, its string to writeLine(ref/string). text()'s Err, which no run reaches (every byte is a literal or a
+    // built-in formatter's committed encoding, so text() validates nothing), goes to the failed writes' KIMI_E_FORMAT block. Each arm's
+    // temporaries end in it; the buffers and the writer live across both branches, so each end reads a buffer initialized on every path
+    // (DECISIONS R8-M24 as amended at R8-W2 c3b), and the owning buffer's drop on the fixed path, a flagged one, releases nothing.
     private void Line(MirPlace destination, CallPlan call, Koto node, Koto text)
     {
         var mark = this.located.Count;
@@ -105,32 +108,33 @@ internal sealed partial class MirBuilder
         var writer = this.Hold(CallPlan.Of(text, 1)!.ReturnType, text);
         var unit = this.Hold(BoundType.Unit, text);
         var test = fixedArm && owningArm ? this.Positive(region, text) : default(MirPlace?);
+        if (fixedArm)
+        {
+            this.Fixed(region, fixedBuffer, length, text);
+            this.Made(fixedBuffer);
+        }
+
+        if (owningArm)
+        {
+            this.Heap(text, buffer);
+            this.Made(buffer);
+        }
+
         var (owning, join) = this.Fork(test, text);
         if (fixedArm)
         {
-            this.Fixed(region, fixedBuffer, writer, length, text);
+            this.Erase(fixedBuffer, writer, text);
         }
 
         this.Join(owning, join, text);
         if (owningArm)
         {
             var scope = this.OpenScope(block: false);
-            this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, text);
             this.Adapt(text, buffer, writer);
             this.CloseScope(scope);
         }
 
         this.Join(-1, join, text);
-        if (fixedArm)
-        {
-            this.Made(fixedBuffer); // Held before the first branch, made after the join.
-        }
-
-        if (owningArm)
-        {
-            this.Made(buffer);
-        }
-
         this.Made(writer);
 
         this.Writes(text, writer, unit, bytes, start, ref done);
@@ -146,7 +150,7 @@ internal sealed partial class MirBuilder
         {
             var scope = this.OpenScope(block: false);
             var line = this.Temp(BoundType.String, text);
-            this.Finish(line, writer, text);
+            this.Finish(line, writer, buffer, this.Done(ref done), text);
             this.Call(destination, call, node, first: null, text, this.Borrow(SemanticsKind.Ref, line, text));
             this.CloseScope(scope);
         }
@@ -186,16 +190,23 @@ internal sealed partial class MirBuilder
         return test;
     }
 
-    // A direct line's fixed arm (Line): Text.fixed over an exclusive borrow of the region, of the term's length, and the writer over an
-    // exclusive borrow of that FixedBuffer, its temporaries ending in the arm.
-    private void Fixed(MirPlace region, MirPlace fixedBuffer, MirPlace writer, BoundLength length, Koto node)
+    // A direct line's FixedBuffer (Line): Text.fixed over an exclusive borrow of the region, of the term's length, its temporaries ending
+    // here.
+    private void Fixed(MirPlace region, MirPlace fixedBuffer, BoundLength length, Koto node)
     {
         var scope = this.OpenScope(block: false);
         var (make, subst, _) = this.FixedCall(length);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Uniq, region, node));
         this.Invoke(fixedBuffer, new(MirCalleeKind.Fn, make, subst), at, node);
-        at = this.arguments.Count;
+        this.CloseScope(scope);
+    }
+
+    // A direct line's fixed arm (Line): the writer over an exclusive borrow of the FixedBuffer, its temporaries ending in the arm.
+    private void Erase(MirPlace fixedBuffer, MirPlace writer, Koto node)
+    {
+        var scope = this.OpenScope(block: false);
+        var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Uniq, fixedBuffer, node));
         this.Serve(writer, CompilerFunctionKind.TextWriter, null, [this.body.TypeOf(fixedBuffer)], at, node);
         this.CloseScope(scope);
@@ -262,7 +273,7 @@ internal sealed partial class MirBuilder
         var bytes = 0L;
         for (var i = 2; CallPlan.Of(node, i) is { } write; i++)
         {
-            if (this.Bytes(write, this.Text(write)) is var count and >= 0)
+            if (this.Bytes(write) is var count and >= 0)
             {
                 bytes += count;
             }
@@ -275,6 +286,15 @@ internal sealed partial class MirBuilder
         return bytes;
     }
 
+    // An owning interpolation's private buffer (its first call, Text.heap) of capacity 0, the constant at the plan's Capacity argument: it
+    // allocates nothing, and the adapter's first reservation grows it once by its bytes, a deferred literal and its hint (SPEC 22.10.5).
+    private void Heap(Koto node, MirPlace buffer)
+    {
+        var heap = CallPlan.Of(node)!;
+        var empty = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
+        this.Call(buffer, heap, node, null, heap.ArgumentOperations[0].Source, empty);
+    }
+
     // An owning interpolation's internal adapter (its second call) into the writer over an exclusive borrow of its buffer.
     private void Adapt(Koto node, MirPlace buffer, MirPlace writer)
     {
@@ -283,28 +303,50 @@ internal sealed partial class MirBuilder
     }
 
     // An owning interpolation's write positions (SPEC 22.10.3), each a FormatSegment step, the hint of the later literal bytes and values'
-    // Types, then the position's literal text: a literal segment is its step's text and no write (SPEC 22.10.3 passes only embedded
-    // expressions to write; R5-M133), and so is an embedded string literal, as if written (a constant has no effect, and string's built-in
-    // formatting writes its bytes with the same failure); a value's position has the empty text, whose write follows, a failure going to
-    // done.
+    // Types, then the position's write, a failure going to done: a value's is its plan's write; a literal segment's is no write (SPEC
+    // 22.10.3 passes only embedded expressions to write; R5-M133) but its text through the library (Text), and so is an embedded string
+    // literal's, as if written (a constant has no effect, and string's built-in formatting writes its bytes with the same failure).
     private void Writes(Koto node, MirPlace writer, MirPlace unit, long bytes, int start, ref int done)
     {
         var storage = CallPlan.Of(node, 2)!.ArgumentOperations[0].Source!;
         var (later, values) = (bytes, start);
         for (var k = 2; CallPlan.Of(node, k) is { } write; k++)
         {
-            var text = this.Text(write);
-            var count = this.Bytes(write, text);
+            var count = this.Bytes(write);
             var at = this.arguments.Count;
             (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
             this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
-            this.arguments.Add(text);
-            this.Estimate(unit, IntrinsicId.FormatSegment, later, values, at, node);
+            this.Estimate(unit, later, values, at, node);
             if (count < 0)
             {
-                this.Tested(write, this.Done(ref done), node, storage, writer); // A value's write; a text is its step's.
+                this.Tested(write, this.Done(ref done), node, storage, writer);
+            }
+            else
+            {
+                this.Text(write, writer, values < this.formatTypes.Count, this.Done(ref done), node);
             }
         }
+    }
+
+    // A literal position's text through the library (SPEC 22.10.3, 22.10.5; DECISIONS R8-M7): before a later value of the template (the
+    // plan's fact: a value Type left in formatTypes), Utf8Writer.deferLiteral, which keeps the static bytes for the adapter's next reservation
+    // (one allocation for a first unbounded value); else string's built-in format (StringWitness.format), which writes them. The text is
+    // the literal's constant record (MirConst.IsRecord), which no Place holds, at a ref/string parameter that keeps nothing of it
+    // (MirValidator.ConstantRecords): no temporary, Loan or destruction. The call's Result is tested as a write's.
+    private void Text(CallPlan write, MirPlace writer, bool deferred, int done, Koto node)
+    {
+        var target = compilation.Library.GetSymbol(deferred ? KimiDeclarationId.WriterDeferLiteral : KimiDeclarationId.StringWitnessFormat)!;
+        var subst = compilation.Types.Synthesized(target, deferred ? this.body.TypeOf(writer) : null, [], []);
+        var result = this.Hold(TyCtxt.Signature(target, subst, -1, out _)!, node);
+        var discriminant = this.Hold(BoundType.ISize, node);
+        var record = this.Viewed(this.Literal(write.ArgumentOperations[1].Source!), BoundType.String, node);
+        var adapter = this.Borrow(SemanticsKind.Uniq, writer, node);
+        var at = this.arguments.Count;
+        this.arguments.Add(deferred ? adapter : record); // deferLiteral(self, text); format(self: ref/string, writer).
+        this.arguments.Add(deferred ? record : adapter);
+        this.Invoke(result, new(MirCalleeKind.Fn, target, subst), at, node);
+        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
+        this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
     }
 
     // An owning interpolation's failed writes' block, made by the first branch to it, failing with KIMI_E_FORMAT.
@@ -316,12 +358,33 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // FormatFinish of the moved adapter: the owning interpolation's string into the destination.
-    private void Finish(MirPlace destination, MirPlace writer, Koto node)
+    // An owning interpolation's end (SPEC 22.10.3, 22.9.3): Utf8Writer.finish over an exclusive borrow of the writer, tested as a write (the
+    // recorded failure, else a deferred literal that no reservation wrote, written and committed), is the writer's last use, so its Loan
+    // on the buffer ends there; then HeapBuffer.intoString of the moved buffer, its Ok string moved into the destination, its Err, which no
+    // run reaches (every byte is a literal or a built-in formatter's committed encoding, so it validates nothing), to done. Its
+    // temporaries end here.
+    private void Finish(MirPlace destination, MirPlace writer, MirPlace buffer, int done, Koto node)
     {
+        var scope = this.OpenScope(block: false);
+        var finish = compilation.Library.GetSymbol(KimiDeclarationId.WriterFinish)!;
+        var subst = compilation.Types.Synthesized(finish, this.body.TypeOf(writer), [], []);
+        var ended = this.Hold(TyCtxt.Signature(finish, subst, -1, out _)!, node);
         var at = this.arguments.Count;
-        this.arguments.Add(MirOperand.Move(writer));
-        this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.FormatFinish), at, node);
+        this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
+        this.Invoke(ended, new(MirCalleeKind.Fn, finish, subst), at, node);
+        var discriminant = this.Temp(BoundType.ISize, node);
+        this.Set(discriminant, MirRvalue.Discriminant(this.Made(ended)), node);
+        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+        var take = compilation.Library.GetSymbol(KimiDeclarationId.HeapBufferIntoString)!;
+        subst = compilation.Types.Synthesized(take, this.body.TypeOf(buffer), [], []);
+        var result = this.Hold(TyCtxt.Signature(take, subst, -1, out _)!, node);
+        at = this.arguments.Count;
+        this.arguments.Add(MirOperand.Move(buffer));
+        this.Invoke(result, new(MirCalleeKind.Fn, take, subst), at, node);
+        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
+        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+        this.Use(destination, MirOperand.Move(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
+        this.CloseScope(scope);
     }
 
     // The block a branch leaves to, made by the first branch.
@@ -338,9 +401,9 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
     }
 
-    // An owning interpolation's intrinsic on the operands pushed since at, then its estimate (SPEC 22.10.5, 22.7): the literal bytes and a
-    // token of the Tuple of the values' Types from a position on, whose bounds its instance sums.
-    private void Estimate(MirPlace destination, IntrinsicId id, long bytes, int from, int at, Koto node)
+    // An owning interpolation's FormatSegment on the adapter pushed at at, then its estimate (SPEC 22.10.5): the literal bytes and a token
+    // of the Tuple of the values' Types from a position on, whose bounds its instance sums.
+    private void Estimate(MirPlace destination, long bytes, int from, int at, Koto node)
     {
         this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, bytes))));
         this.arguments.Add(
@@ -349,6 +412,6 @@ internal sealed partial class MirBuilder
             new(
             MirConstKind.TypeToken,
             compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[from..])))));
-        this.Invoke(destination, MirCallee.Intrinsic(id), at, node);
+        this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.FormatSegment), at, node);
     }
 }

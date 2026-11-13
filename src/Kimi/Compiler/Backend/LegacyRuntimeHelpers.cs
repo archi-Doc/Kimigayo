@@ -7,12 +7,10 @@
 // bounds, summed by its estimate (FormatEstimate); the runtime templates (.ll.in); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable by kind before any representation exists (X4); the
 // formatting runtime's routine ABIs, whose callers request its text (HelperNeeds.FormattingRuntime), and which call no library
-// function; the kind Context of a string literal's write is the runtime's own number (StringFormatKind),
-// and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is FormattingTypes.Bound's,
-// which an owning interpolation's estimate sums for its buffer and hints (FormatEstimate; R3-10).
-// The one map from a compiler
-// function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4 X39; DECISIONS R5-M116):
-// writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
+// function; the kind Context of Text.writer's destination is the runtime's own number (WriterKind); a bounded Type's maximum is
+// FormattingTypes.Bound's, which an owning interpolation's estimate sums for its hints (FormatEstimate; R3-10).
+// The one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4
+// X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; the
 // formatting runtime's text is written once when a caller requests it; warm writes allocate nothing; the expanded runtime texts
 // (Texts) are built only when a code generation writer first reads one, never on the check path (G350).
