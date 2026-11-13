@@ -109,6 +109,210 @@ public sealed partial class TyCtxtTest
         }));
     }
 
+    private const string ParameterKeysSource =
+        "struct Wrap<T>\n    internal let value: T\n" +
+        "struct Wrap2<T>\n    internal let value: T\n    internal let q: raw/u8\n" +
+        "struct Box<T>\n    internal let b: T\n    public func put(self: uniq/Self, p: raw/T) => ()\n    public func put2<U>(self: uniq/Self, p: raw/T, u: raw/U) => ()\n" +
+        "struct Box3<T>\n    internal let b: T\n    public func put3<U>(self: uniq/Self, p: raw/U) -> ()\n        U is T\n        return ()\n" +
+        "contract HasItem\n    associate Item\n" +
+        "contract RawItem: HasItem\n    Self.(HasItem).Item is raw/u8\n" +
+        "struct HA<S>\n    S is HasItem\n    internal let x: S.Item\n" +
+        "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
+        "struct SrcR\n    Self is RawItem\n    associate HasItem.Item is raw/u8\n" +
+        "struct Outer<S>\n    S is HasItem\n    internal let inner: HA<S>\n" +
+        "open struct RB<T>\n    internal let r: T\n    internal let q: raw/u8\n" +
+        "struct DB<T>: RB<T>\n    internal let d: T\n" +
+        "struct Pair3<T, V>\n    internal let a: T\n    internal let q: raw/u8\n    internal let b: V\n" +
+        "enum E<U>\n    A(U)\n    B(raw/u8)\n" +
+        "func r1<S>(p: raw/S.Item) -> ()\n    S is HasItem\n    return ()\n" +
+        "func r2<S>(p: uniq/HA<S>) -> ()\n    S is HasItem\n    return ()\n" +
+        "func r3<S>(p: uniq/HA<S>) -> ()\n    S is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func r4<s/U>(p: s/U) -> ()\n    s is ref or uniq\n    return ()\n" +
+        "func r5<s/U>(p: s/U) -> ()\n    s is owner or uniq\n    return ()\n" +
+        "func r6<T, V>(p: uniq/Pair3<T, V>) => ()\nfunc r7<U>(p: uniq/Option<U>) => ()\nfunc r8<U>(p: uniq/[2 of U]) => ()\n" +
+        "func r9<U>(p: uniq/(U, raw/u8)) => ()\nfunc r10<U>(p: uniq/Array<U>) => ()\nfunc r13<U>(p: uniq/Wrap<U>) -> ()\n    U is raw/u8\n    return ()\n" +
+        "func r15<U>(p: uniq/E<U>) => ()\nfunc r18<U>(p: raw/U) => ()\n" +
+        "func r20<S>(p: uniq/HA<S>) -> ()\n    S is RawItem\n    return ()\n" +
+        "func r20b<S>(p: raw/S.Item) -> ()\n    S is RawItem\n    return ()\n" +
+        "func r21<S, V>(p: uniq/HA<S>) -> ()\n    S is HasItem\n    S.Item is V\n    V is raw/u8\n    return ()\n" +
+        "func r21c<S, V>(p: uniq/HA<S>) -> ()\n    S is HasItem\n    S.Item is V\n    return ()\n" +
+        "func r22<s/U>(p: s/U) -> ()\n    s is ref or uniq\n    U is raw/u8\n    return ()\n" +
+        "func r24<S>(p: uniq/Outer<S>) -> ()\n    S is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func r25<S>(p: uniq/Outer<S>) -> ()\n    S is HasItem\n    return ()\n" +
+        "func r26<s/U>(p: s/Wrap<U>) -> ()\n    s is ref or uniq\n    U is raw/u8\n    return ()\n" +
+        "func r27<s/U>(p: s/Wrap<U>) -> ()\n    s is ref or uniq\n    return ()\n" +
+        "func r28<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    V is raw/u8\n    return ()\n" +
+        "func r29<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    return ()\n" +
+        "func r30<U, V>(p: uniq/(U, V)) -> ()\n    U is V\n    return ()\n" +
+        "func rb<U>(p: uniq/DB<U>) => ()\nfunc rbp<U>(p: uniq/DB<U>) -> ()\n    U is raw/u8\n    return ()\n" +
+        "func gargs<V>(gv: raw/V) -> ()\n    return ()\n" +
+        "func wa<U>(p: raw/U) => ()\nfunc wa2<U>(p: raw/(raw/U)) => ()\nfunc wu<U>(p: uniq/Wrap<U>) => ()\nfunc wu2<U>(p: uniq/Wrap2<U>) => ()\n" +
+        "func wv<U>(p: U) => ()\nfunc wp<U>(p: raw/U) -> ()\n    U is raw/u8\n    return ()\nfunc viaRawWrap(slot: raw/Wrap<raw/u8>, value: raw/u8) => ()\n" +
+        "func args(k: ref/u8 during a, t: raw/((raw/(uniq/u8 during a), raw/(raw/(raw/u8)))), n: raw/(raw/(raw/u8)), w2: raw/(raw/(raw/u8)),\n" +
+        "    wu: uniq/Wrap<raw/u8>,\n" +
+        "    wu2: uniq/Wrap2<raw/u8>, wv: raw/u8, wm: raw/(raw/u8), wp: raw/(raw/u8), view: raw/Wrap<raw/u8>, a2: uniq/HA<Src>, a4: uniq/(raw/u8),\n" +
+        "    a6: uniq/Pair3<raw/u8, raw/u8>, a7: uniq/Option<raw/u8>, a8: uniq/[2 of raw/u8], a9: uniq/(raw/u8, raw/u8), a10: uniq/Array<raw/u8>,\n" +
+        "    a13: uniq/Wrap<raw/u8>, a15: uniq/E<raw/u8>, a20: uniq/HA<SrcR>, a24: uniq/Outer<Src>, a28: uniq/Wrap<Wrap<raw/u8>>,\n" +
+        "    ab: uniq/DB<raw/u8>) -> ()\n    return ()\n" +
+        "public func main() => ()\n";
+
+    // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key marks each part in the binding of the function's own
+    // Type parameter (H; S shown), at the root and at every key past it (Past, nested in braces, four keys deep): G790's rAliasClean
+    // three and hPunWriteOk (wa's U, t and n), a nested layer the Type expression writes (wa2's outer raw/U), a Field of U beside a Field
+    // the declaration states (wu, wu2), a bare U (wv), a projection (r1, r2), a pair target (r4), Fields of T and V beside a stated one
+    // (r6), an Option or enum payload (r7, r15), a fixed-array and an Array element (r8, r10), a method's own U (put2's u); shown: an
+    // enclosing Type's parameter (Box.put, put2's p), a premise naming U's or S.Item's Type in the function's view, inside a Type too
+    // (wp, r13, r3: SPEC 8.2.3's closure under replacement), a premise naming an enclosing Type's parameter (put3), and a Type argument
+    // the parameter's own Type expression writes (viaWrap's pWrapViewOk and pWrapViewBad). Named limit: a pair layer's owner case ends
+    // the pairing, shown (r5; SPEC labels it hidden). The function's view (SPEC 8.2.3, 8.5.3; the review's View twins i1-i7): a Contract's
+    // associated-Type requirement (r20, r20b), a chain of premises (r21; r21c without its last), a pair target under a premise (r22), a
+    // Field of a Field (r24; r25 without the premise), a case view then the premise (r26; r27), two premises at depth 2 (r28; r29 with
+    // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). Labels: F's G823
+    // labels.md and its reviews' twins.
+    [Theory]
+    [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- H}, raw/raw/raw/u8 H {raw/raw/u8 H {raw/u8 H}}}")]
+    [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 H}}")]
+    [InlineData("wa2", "p", "w2", "raw/raw/raw/u8 S {raw/raw/u8 S {raw/u8 H}}")]
+    [InlineData("wu", "p", "wu", "- S {raw/u8 H}")]
+    [InlineData("wu2", "p", "wu2", "- S {raw/u8 H, raw/u8 S}")]
+    [InlineData("wv", "p", "wv", "raw/u8 H")]
+    [InlineData("put", "p", "wm", "raw/raw/u8 S {raw/u8 S}")]
+    [InlineData("wp", "p", "wp", "raw/raw/u8 S {raw/u8 S}")]
+    [InlineData("viaRawWrap", "slot", "view", "raw/Wrap<raw/u8> S {raw/u8 S}")]
+    [InlineData("r1", "p", "wm", "raw/raw/u8 S {raw/u8 H}")]
+    [InlineData("r2", "p", "a2", "- S {raw/u8 H}")]
+    [InlineData("r3", "p", "a2", "- S {raw/u8 S}")]
+    [InlineData("r4", "p", "a4", "- S {raw/u8 H}")]
+    [InlineData("r5", "p", "wv", "raw/u8 S")]
+    [InlineData("r6", "p", "a6", "- S {raw/u8 H, raw/u8 S, raw/u8 H}")]
+    [InlineData("r7", "p", "a7", "- S {raw/u8 H}")]
+    [InlineData("r8", "p", "a8", "- S {raw/u8 H}")]
+    [InlineData("r9", "p", "a9", "- S {raw/u8 H, raw/u8 S}")]
+    [InlineData("r10", "p", "a10", "- S {raw/u8 H}")]
+    [InlineData("put2", "p", "wm", "raw/raw/u8 S {raw/u8 S}")]
+    [InlineData("put2", "u", "wm", "raw/raw/u8 S {raw/u8 H}")]
+    [InlineData("r13", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("r15", "p", "a15", "- S {raw/u8 H, raw/u8 S}")]
+    [InlineData("put3", "p", "wm", "raw/raw/u8 S {raw/u8 S}")]
+    [InlineData("r20", "p", "a20", "- S {raw/u8 S}")]
+    [InlineData("r20b", "p", "wm", "raw/raw/u8 S {raw/u8 S}")]
+    [InlineData("r21", "p", "a2", "- S {raw/u8 S}")]
+    [InlineData("r21c", "p", "a2", "- S {raw/u8 H}")]
+    [InlineData("r22", "p", "a4", "- S {raw/u8 S}")]
+    [InlineData("r24", "p", "a24", "- S {raw/u8 S}")]
+    [InlineData("r25", "p", "a24", "- S {raw/u8 H}")]
+    [InlineData("r26", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("r27", "p", "a13", "- S {raw/u8 H}")]
+    [InlineData("r28", "p", "a28", "- S {raw/u8 S}")]
+    [InlineData("r29", "p", "a28", "- S {raw/u8 H}")]
+    [InlineData("r30", "p", "a9", "- S {raw/u8 H, raw/u8 H}")]
+    [InlineData("r18", "p", "gv", "raw/V S {- H {- H {- H}}}")]
+    public void AParameterKeyHidesTheBindingOfTheCalledFunctionsOwnTypeParameter(string callee, string parameter, string argument, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var function = functions.Single(x => x.Name == callee);
+        var inputs = functions.Where(static x => x.Name is "args" or "gargs").SelectMany(static x => x.Parameters);
+        var input = inputs.Single(x => x.InternalName == argument).Type.TypeOf()!;
+        var slot = function.Parameters.Select(static x => x.InternalName).ToList().IndexOf(parameter);
+        var key = TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, slot, input);
+        Assert.Equal(expected, Hiding(c.Types, key, 0));
+    }
+
+    // Base steps a parameter key's Signature by Select's rule (SPEC 8.2.3, 15.6.4; review N3, N5): a generic derived struct's base, its
+    // Field of U hidden beside the Field RB states, shown under the premise `U is raw/u8` and at a body's key (labels.md b1-b3).
+    [Theory]
+    [InlineData("rb", "raw/u8 H, raw/u8 S")]
+    [InlineData("rbp", "raw/u8 S, raw/u8 S")]
+    [InlineData("", "raw/u8 S, raw/u8 S")]
+    public void BaseKeepsAParameterKeysPath(string callee, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var input = functions.Single(static x => x.Name == "args").Parameters.Single(static x => x.InternalName == "ab").Type.TypeOf()!;
+        var function = functions.SingleOrDefault(x => x.Name == callee);
+        var key = function is null ? PlaceKey.Root(input) : TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input);
+        var into = new List<OwnLayer>();
+        Assert.True(c.Types.OwnLayers(key, into));
+        Assert.Equal(expected, Hiding(c.Types, c.Types.Base(into.Single().Past), 1));
+    }
+
+    // Select steps a parameter key's Signature by OwnParts' rule (SPEC 8.2.3, 15.6.4): each part of the borrow's referent, then OwnLayers
+    // there (r2 against r3's premise, Pair3's T, stated q and V, a Tuple's U beside a stated raw/u8).
+    [Theory]
+    [InlineData("r2", "a2", "raw/u8 H")]
+    [InlineData("r3", "a2", "raw/u8 S")]
+    [InlineData("r6", "a6", "raw/u8 H | raw/u8 S | raw/u8 H")]
+    [InlineData("r9", "a9", "raw/u8 H | raw/u8 S")]
+    public void SelectKeepsAParameterKeysPath(string callee, string argument, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var function = functions.Single(x => x.Name == callee);
+        var input = functions.Single(static x => x.Name == "args").Parameters.Single(x => x.InternalName == argument).Type.TypeOf()!;
+        var into = new List<OwnLayer>();
+        Assert.True(c.Types.OwnLayers(TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input), into));
+        var referent = into.Single().Past;
+        var parts = expected.Split(" | ").Select((_, i) => Hiding(c.Types, c.Types.Select(referent, i), 1));
+        Assert.Equal(expected, string.Join(" | ", parts));
+    }
+
+    // Any key a body forms for its own Places hides nothing (no walked signature): the rows above with PlaceKey.Root.
+    [Fact]
+    public void ARootKeyHidesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
+        var args = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "args");
+        Assert.DoesNotContain(args.Parameters, x => Hiding(c.Types, PlaceKey.Root(x.Type.TypeOf()!), 0).Contains(" H", StringComparison.Ordinal));
+    }
+
+    // The contract: a warm parameter key and its OwnLayers reads, the Past keys included, allocate nothing, an identity premise's view
+    // (r3's `S.Item is raw/u8`, Binding.TypeIdentity's classes) included.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmParameterKeyReadAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(ParameterKeysSource);
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        var args = functions.Single(static x => x.Name == "args").Parameters;
+        var calls = new[] { ("wa", "t"), ("wa", "n"), ("r3", "a2"), ("r2", "a2") }.Select(x =>
+        {
+            var function = functions.Single(f => f.Name == x.Item1);
+            return (HirTables.Of(function).Symbols[function.SyntaxId]!, args.Single(a => a.InternalName == x.Item2).Type.TypeOf()!);
+        }).ToArray();
+        var (types, into, past) = (c.Types, new List<OwnLayer>(16), new List<OwnLayer>(16));
+        void Read()
+        {
+            foreach (var (symbol, input) in calls)
+            {
+                into.Clear();
+                _ = types.OwnLayers(TyCtxt.ParameterKey(symbol, 0, input), into);
+                foreach (var layer in into)
+                {
+                    past.Clear();
+                    _ = types.OwnLayers(layer.Past, past);
+                }
+            }
+        }
+
+        Read();
+        Assert.Equal(0, AllocationMeasurement.Measure(Read));
+    }
+
+    // The keys' layers with their Hidden bit, and each Past key's nested (four keys deep).
+    private static string Hiding(TyCtxt types, PlaceKey key, int depth)
+    {
+        var into = new List<OwnLayer>();
+        Assert.True(types.OwnLayers(key, into));
+        return string.Join(", ", into.Select(x =>
+        {
+            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {(x.Hidden ? "H" : "S")}";
+            var below = depth < 3 && x.Past.Type is not null ? Hiding(types, x.Past, depth + 1) : string.Empty;
+            return below.Length == 0 ? row : $"{row} {{{below}}}";
+        }));
+    }
+
     private static (Compilation C, Dictionary<string, BoundType> Parameters) OwnLayersForms()
     {
         var c = MinimalEmissionTest.Analyze(OwnLayersSource);
