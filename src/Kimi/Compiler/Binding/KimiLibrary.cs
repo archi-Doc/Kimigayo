@@ -38,7 +38,7 @@ public sealed partial class KimiLibrary
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
-        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.Utf8Slice })
+        foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer })
         {
             if (this.FormattingContainer(kind) is { } container)
             {
@@ -179,6 +179,15 @@ public sealed partial class KimiLibrary
 
     internal BindingScope Scope { get; }
 
+    /// <summary>Gets the ordinal of Option's Some Case, taken from the declaration (the Case named Some; AdtDef numbers Cases in
+    /// declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is (TyCtxt.NonnullSome, the
+    /// for statement's Some position).</summary>
+    internal int OptionSome => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "Some");
+
+    /// <summary>Gets the ordinal of Option's None Case, taken from the declaration as <see cref="OptionSome"/> is: the one statement of
+    /// where None is (the for statement's None position).</summary>
+    internal int OptionNone => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "None");
+
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; private set; }
 
@@ -205,6 +214,10 @@ public sealed partial class KimiLibrary
     /// <summary>Gets the internal Kimi group whose receiver function is Unit's built-in formatting body (SPEC 22.10.2), which the witness
     /// table's UnitFormat row selects; Unit gains no members from it.</summary>
     internal DeclarationContainerKoto? UnitFormatMembers { get; private set; }
+
+    /// <summary>Gets the internal Kimi group whose receiver function is the view's built-in formatting body (SPEC 22.10.2), which the
+    /// witness table's Utf8SliceFormat row selects; <c>Text.Utf8Slice</c> gains no members from it.</summary>
+    internal DeclarationContainerKoto? Utf8SliceFormatMembers { get; private set; }
 
     /// <summary>Gets the internal Kimi group whose receiver function is f32's built-in formatting body (SPEC 22.10.2), which the witness
     /// table's F32Format row selects; f32 gains no members from it.</summary>
@@ -240,6 +253,7 @@ public sealed partial class KimiLibrary
         WitnessMembers.BoolFormat => this.BoolFormatMembers,
         WitnessMembers.CharFormat => this.CharFormatMembers,
         WitnessMembers.UnitFormat => this.UnitFormatMembers,
+        WitnessMembers.Utf8SliceFormat => this.Utf8SliceFormatMembers,
         WitnessMembers.F32Format => this.F32FormatMembers,
         WitnessMembers.F64Format => this.F64FormatMembers,
         WitnessMembers.WrappingFormat => this.WrappingFormatMembers,
@@ -454,6 +468,7 @@ public sealed partial class KimiLibrary
         this.BoolFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "BoolFormat", false) as DeclarationContainerKoto;
         this.CharFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "CharFormat", false) as DeclarationContainerKoto;
         this.UnitFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "UnitFormat", false) as DeclarationContainerKoto;
+        this.Utf8SliceFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "Utf8SliceFormat", false) as DeclarationContainerKoto;
         this.F32FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F32Format", false) as DeclarationContainerKoto;
         this.F64FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F64Format", false) as DeclarationContainerKoto;
         this.WrappingFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "WrappingFormat", false) as DeclarationContainerKoto;
