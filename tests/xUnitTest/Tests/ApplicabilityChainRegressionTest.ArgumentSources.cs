@@ -133,7 +133,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "o11m", Sources + SourcesBody + "    let j = if c => xs@move else => [u@ref]\n    return r\n", "*: let j = if c => xs@move else => [u@ref] | ...")]
     [InlineData("guard", "o12", Sources + SourcesBody + "    r = p2(if c => ([y], [u@ref]) else => ([y], [y]))\n    return r\n", "*: r = p2(if c => ([y], [u@ref]) else => ([y], [y])) | ...")]
     [InlineData("guard", "o16", Sources + SourcesBody + "    r = g(if c => ([y], 1) else => ([u@ref], 2))\n    return r\n", "*: r = g(if c => ([y], 1) else => ([u@ref], 2)) | ...")]
-    [InlineData("I2", "o18", Sources + SourcesBody + "    let t = identity(([y], [u@ref]))\n    return r\n", "", Explicit = true)]
+    [InlineData("I2", "o18", Sources + SourcesBody + "    let t = identity(([y], [u@ref]))\n    return r\n", "")]
     [InlineData("guard", "o19", Sources + SourcesBody + "    let j = if c => ([y], [u@ref]) else => ([y], [y])\n    return r\n", "*: let j = if c => ([y], [u@ref]) else => ([y], [y]) | ...")]
     [InlineData("guard", "c16", Sources + SourcesBody + "    let t = identity(match d\n        true => [u@ref]\n        false => [y]\n    )\n    return r\n", "*: * | ...")]
     [InlineData("guard", "c17", Sources + SourcesBody + "    let j = match d\n        true => [u@ref]\n        false => [y]\n    return r\n", "*: * | ...")]
@@ -142,6 +142,23 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "d12", Sources + SourcesBody + "    r = g(if c => [y: y] else => [u@ref: y])\n    return r\n", "*: r = g(if c => [y: y] else => [u@ref: y]) | ...")]
     [InlineData("guard", "d13", Sources + SourcesBody + "    r = fd(if c => [1: x] else => [2: b])\n    return r\n", "*: r = fd(if c => [1: x] else => [2: b]) | ...")]
 
+    // SPEC 10.8, 10.5.1, 4.3.1 (PLAN G378's literal forms, G725): a whole Tuple or array literal at a bare slot is one piece of evidence when
+    // every element is, typed as its own binder types it; it agrees or conflicts with the slot's other evidence in every order (o21 to o23,
+    // o33; o28: G725's list literal). A literal holding a Literal element is none: its parts fit the slot's binding (o26, o27, o29 to
+    // o32) or, with no other evidence, take their defaults after selection (o24, o25: the two defaulted Types conflict in either order).
+    [InlineData("guard", "o21", Sources + SourcesBody + "    r = h2((y, u), (y, u@ref))\n    return r\n", "*: r = h2((y, u), (y, u@ref)) | ...")]
+    [InlineData("guard", "o22", Sources + SourcesBody + "    r = h2((y, u@ref), (y, u))\n    return r\n", "*: r = h2((y, u@ref), (y, u)) | ...")]
+    [InlineData("guard", "o23", Sources + SourcesBody + "    r = p2(((y, u), (y, u@ref)))\n    return r\n", "*: r = p2(((y, u), (y, u@ref))) | ...")]
+    [InlineData("guard", "o24", Sources + SourcesBody + "    r = h2((x, 1), (2, y))\n    return r\n", "*: r = h2((x, 1), (2, y)) | ...")]
+    [InlineData("guard", "o25", Sources + SourcesBody + "    r = h2((2, y), (x, 1))\n    return r\n", "*: r = h2((2, y), (x, 1)) | ...")]
+    [InlineData("guard", "o26", Sources + SourcesBody + "    r = h2((x, 1), (x, y))\n    return r\n", "")]
+    [InlineData("guard", "o27", Sources + SourcesBody + "    r = h2((x, y), (x, 1))\n    return r\n", "")]
+    [InlineData("guard", "o28", Sources + SourcesBody + "    let t = identity([y])\n    return r\n", "")]
+    [InlineData("guard", "o29", Sources + SourcesBody + "    r = h2([y], [1])\n    return r\n", "")]
+    [InlineData("guard", "o30", Sources + SourcesBody + "    r = h2([1], [y])\n    return r\n", "")]
+    [InlineData("guard", "o31", Sources + SourcesBody + "    let t = identity([[y], [1]])\n    return r\n", "")]
+    [InlineData("guard", "o32", Sources + SourcesBody + "    let t = identity([[1], [y]])\n    return r\n", "")]
+    [InlineData("guard", "o33", Sources + SourcesBody + "    let t = identity([[y], [x]])\n    return r\n", "*: let t = identity([[y], [x]]) | ...")]
     // SPEC 14.9.2 step 1, 10.2: a fixed expectation, an explicit Type argument's or a parameter's, fits each source, a reference at a value element
     // position value-read. A source conflict only makes the argument wait for the selected candidate (SPEC 10.5.1).
     [InlineData("guard", "e10", Sources + SourcesBody + "    r = g<Array<i32>>([u@ref])\n    return r\n", "")]

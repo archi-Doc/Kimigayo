@@ -329,11 +329,12 @@ public sealed partial class Binding
     }
 
     // SPEC 4.3.1, 12.4.1, 14.9.2 step 3: the element agreement of an array literal's elements and of a Dictionary literal's keys or
-    // values, the one rule its binders share (CollectLiteralElementEvidence with no expected Type, BindContextualArrayLiteral and
-    // BindDictionaryLiteral at one, ArrayElementEvidence at an annotation hole, DefaultWaitingPart for the parts that waited). A typed
-    // part agrees as it is with the Type the typed parts established (AgreeElement: null when they do not agree); a part whose Type
-    // only literals supply adopts that Type, and without one such parts agree among themselves, the first kept on a conflict
-    // (AgreeAwaiting); the literal's element Type is the established one, else the awaiting parts'.
+    // values, the one rule its binders (CollectLiteralElementEvidence with no expected Type, BindContextualArrayLiteral and
+    // BindDictionaryLiteral at one, ArrayElementEvidence at an annotation hole, DefaultWaitingPart for the parts that waited) and the
+    // whole-literal evidence at a bare slot (LiteralElementType) share. A typed part agrees as it is with the Type the typed parts
+    // established (AgreeElement: null when they do not agree); a part whose Type only literals supply adopts that Type, and without
+    // one such parts agree among themselves, the first kept on a conflict (AgreeAwaiting); the literal's element Type is the
+    // established one, else the awaiting parts'.
     private BoundType? AgreeElement(BoundType? established, BoundType type, out ComparisonFailure failure)
     {
         failure = default;

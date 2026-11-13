@@ -441,13 +441,18 @@ public sealed partial class Binding
 
             if (pattern.Kind == BoundTypeKind.Parameter)
             {
+                // SPEC 10.8 (PLAN G378, G725; G267fd): at a bare slot the whole literal is one piece of evidence, which agrees or conflicts
+                // with the slot's other evidence whatever their order; a literal holding a part that is no evidence yet, or at a slot an
+                // explicit Type argument fixed (kept, 10.8), fits its parts at the slot's binding.
+                if (FixedPattern.Of(binding, pattern, this.Fixed).Type.Kind == BoundTypeKind.Parameter &&
+                    binding.IndependentPositionType(start, late) is { } inferred)
+                {
+                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
+                }
+
                 if (binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
                 {
                     pattern = fixedType;
-                }
-                else if (binding.IndependentPositionType(start, late) is { } inferred)
-                {
-                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
                 }
             }
 
