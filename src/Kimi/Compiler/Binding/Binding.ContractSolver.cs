@@ -18,7 +18,7 @@
 //   PremiseRefines reads the available rows; discovery reads every row, as a lookup is not a proof (the use is judged: SPEC 9.6,
 //   8.5.2). Which rows exist reads no availability, only the column does, so a lookup depends on no source state (SPEC 8.3.3).
 //   Rows are interned references: one reference spelled two ways in the view (`Getter<U>`, `Getter<S>` under `U is S`) is two rows,
-//   which discovery compares by the identity judge (SameContractReference, SPEC 8.2.3).
+//   whose requirements discovery compares as two paths' are (SameNormalizedRequirement, SameConformanceType: SPEC 8.2.3).
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers itself to Supply; availability
 //   is asked per fact, lazily, in the caller's order. Enumerate is a leaf of the judgment graph: its walk compares interned Types
 //   (FactStates, AssociatedIdentityMatches) and calls no judgment, so a request demands only while it prepares its view

@@ -58,12 +58,15 @@ public partial class TypeIdentityTest
 
     // SPEC 8.2.3, 8.5.1, 8.6.4: identity is closed under replacing a Type inside Contract arguments, so under `U is S` the references
     // `Getter<U>` and `Getter<S>` are one and name one requirement or associated Type (v2, v3: AmbiguousBinding_Kd before R7-C2 c1''s
-    // fix; v1 the non-generic control); `Boxed<i32>` and `Boxed<i64>` stay two (v11).
+    // fix; v1 the non-generic control); `Boxed<i32>` and `Boxed<i64>` stay two (v11). So are two written spellings under `U is i32`
+    // (w1, w2: PLAN G302's false AmbiguousBinding_Kd before the fix).
     [Theory]
     [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\nfunc g<S, U>(v: ref/S) -> i32\n    U is Getter<U>\n    U is S\n    S is Getter<S>\n    return v.get()", "")]
     [InlineData("contract Boxed<X>\n    associate Item\nfunc g<S, U>(items: ref/S, e: ref/S.Item) -> i32\n    U is Boxed<U>\n    U is S\n    S is Boxed<S>\n    return 0", "")]
     [InlineData(Getter + "func g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    S is Getter\n    return v.get()", "")]
     [InlineData("contract Boxed<X>\n    associate Item\nfunc g<S, U>(items: ref/S, e: ref/S.Item) -> i32\n    U is Boxed<i32>\n    U is S\n    S is Boxed<i64>\n    return 0", "AmbiguousBinding_Kd")]
+    [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\nfunc g<T, U>(v: ref/T) -> i32\n    T is Getter<U>\n    U is i32\n    T is Getter<i32>\n    return v.get()", "")]
+    [InlineData("contract Boxed<X>\n    associate Item\nfunc g<T, U>(e: ref/T.Item) -> i32\n    T is Boxed<U>\n    U is i32\n    T is Boxed<i32>\n    return 0", "")]
     public void IdenticalContractReferencesNameOneCandidate(string source, string codes)
     {
         var c = MinimalEmissionTest.Check(source + "\n()");

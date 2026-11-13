@@ -157,25 +157,43 @@ public sealed partial class Binding
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 var identity = shape.AssociatedTypes[i];
-                var associated = identity.Symbol;
-                if (associated.Name == name)
+                if (identity.Symbol.Name != name)
                 {
-                    var candidate = identity.Contract;
-                    // SPEC 8.5.1, 8.2.3: paths to one declaration whose references are one in the view count once.
-                    if (found is not null && (!ReferenceEquals(found, associated) || !this.SameContractReference(foundReference!, candidate, scope)))
-                    {
-                        alternative ??= identity;
-                        (this.ambiguousAssociatedMatches ??= new()).Add(new(found, foundReference!));
-                        this.ambiguousAssociatedMatches.Add(identity);
-                    }
-                    else
-                    {
-                        found = associated;
-                        foundReference = candidate;
-                        source ??= searching;
-                    }
+                    continue;
+                }
+
+                // SPEC 8.5.1, 8.2.3: paths to one declaration whose references are one in the view count once; the first spelling is kept.
+                if (found is null)
+                {
+                    (found, foundReference) = (identity.Symbol, identity.Contract);
+                    source ??= searching;
+                }
+                else if (this.SameNormalizedRequirement(new(found, foundReference!), identity, scope))
+                {
+                    source ??= searching;
+                }
+                else
+                {
+                    alternative ??= identity;
+                    Match(new(found, foundReference!));
+                    Match(identity);
                 }
             }
+        }
+
+        // An ambiguity's candidate, unless a listed one is it (SameNormalizedRequirement).
+        void Match(BoundRequirement candidate)
+        {
+            var matches = this.ambiguousAssociatedMatches ??= new();
+            foreach (var listed in matches)
+            {
+                if (this.SameNormalizedRequirement(listed, candidate, scope))
+                {
+                    return;
+                }
+            }
+
+            matches.Add(candidate);
         }
     }
 

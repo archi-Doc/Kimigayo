@@ -158,12 +158,13 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.2.3: a reference identical in the view to one seen (`Getter<U>`, `Getter<S>` under `U is S`) is that reference.
+        // SPEC 8.2.3: a requirement reached through a reference identical in the view to a seen one's (`Getter<U>`, `Getter<S>` under
+        // `U is S`) is the seen one (SameNormalizedRequirement).
         bool Unseen(BoundRequirement identity)
         {
             foreach (var seen in group.Seen)
             {
-                if (ReferenceEquals(seen.Symbol, identity.Symbol) && this.SameContractReference(seen.Contract, identity.Contract, scope))
+                if (this.SameNormalizedRequirement(seen, identity, scope))
                 {
                     return false;
                 }
