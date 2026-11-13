@@ -436,6 +436,21 @@ public sealed partial class MirOriginsTest
         Assert.Empty(Origins(c));
     }
 
+    // DECISIONS R4-M154 (Revision 4; MirOrigins.Outlives' contract): the walk from an end stops at a Fixed node, its own included, so
+    // the Fixed nodes at or above c are c alone; c outlives b by z's implied premise (SPEC 15.3.3), so the pair holds; the body's Refuted
+    // store of `local@ref` into p.* (a Finite node above c, Judge's own problem) lies past c. b need not outlive c. Fail-before: a walk
+    // reaching a Fixed node read every edge of the nodes up to its index, so the Finite node joined c's bounds and the pair failed.
+    [Fact]
+    public void AnOutlivesWalkStopsAtAFixedNode()
+    {
+        const string Source = "func f(p: uniq/(ref/i32 during c) during u, z: ref/(ref/i32 during c) during b) -> i32\n    let local = 1\n" +
+            "    p@follow = local@ref\n    return 0\n";
+        var (origins, body, _) = Judged(Source, "f");
+        var z = body.Locals.ToArray().Single(static x => x.Name == "z");
+        var (b, c, site) = (z.Type.Origin!, z.Type.Components[0].Origin!, body.Subject(z.Source));
+        Assert.Equal((true, false), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
+    }
+
     // V16 "F4 Refuted" (2a0-D §6.4): N finite Borrows into one chain into one fixed Origin keep the work within c·(N_o + E_o·⌈Fin/64⌉), one
     // problem per source.
     [Fact]
