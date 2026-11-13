@@ -344,11 +344,44 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds.
+        // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds;
+        // at a fixed `ref/U` it is a borrowed temporary (InferTemporary).
         private bool InferLiteral(BoundType pattern, Koto literal, bool late)
-            => !late || this.Binding.DefaultOf(literal) is not { } literalDefault ||
-                this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
-                this.InferAdapted(pattern, literalDefault, literal);
+        {
+            if (!late)
+            {
+                return true;
+            }
+
+            if (this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
+            {
+                if (this.Binding.TemporaryTarget(literal, fixedType, this.Scope) is not null)
+                {
+                    this.InferTemporary(pattern, literal);
+                }
+
+                return true;
+            }
+
+            return this.Binding.DefaultOf(literal) is not { } literalDefault || this.InferAdapted(pattern, literalDefault, literal);
+        }
+
+        // SPEC 10.2 row 2, 15.3.6: a temporary borrowed at `ref/U during a` (a Literal fitted at U, a Tuple or array literal or a mixed range)
+        // supplies its Place Origin as an input of `a`, at the root and at every nested position: matched (MatchInputOrigin) and a bound of
+        // the call's Origin solve, as a typed input's Origin is (InferAdapted).
+        private void InferTemporary(BoundType pattern, Koto part)
+        {
+            if (pattern.Origin is not { } origin)
+            {
+                return;
+            }
+
+            var binding = this.Binding;
+            var place = binding.PlaceOrigin(part);
+            binding.MatchInputOrigin(origin, place, this.Binder, this.Origins, this.Inputs);
+            this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
+            AddInputBound(this.OriginInference, origin, place);
+        }
 
         // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
         // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
@@ -359,11 +392,7 @@ public sealed partial class Binding
             var part = binding.positionParts[start];
             if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
             {
-                if (pattern.Origin is { } origin)
-                {
-                    binding.MatchInputOrigin(origin, binding.PlaceOrigin(part), this.Binder, this.Origins, this.Inputs);
-                }
-
+                this.InferTemporary(pattern, part);
                 pattern = pattern.Components[0];
             }
 
