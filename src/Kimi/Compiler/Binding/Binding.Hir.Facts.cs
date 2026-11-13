@@ -138,9 +138,9 @@ public sealed partial class Binding
             return call is null || (plan is not null && Complete(plan));
         }
 
-        // The calls of a formatting plan in CallPlan.Of's order: an interpolation's heap (whose Type alone the builder reads, FormatBuffer
-        // serving it) and adapter (taking the buffer), then its writes; a $tryWrite's writes, then its status. Each write takes the writer
-        // and its text or value, of the value's Type.
+        // The calls of a formatting plan in CallPlan.Of's order: an interpolation's heap (which the builder makes with the capacity 0) and
+        // adapter (taking the buffer), then its writes; a $tryWrite's writes, then its status. Each write takes the writer and its text or
+        // value, of the value's Type.
         static bool Formats(Koto node, BoundFormatting format)
         {
             var first = format.Acquisition is null ? 2 : 0;

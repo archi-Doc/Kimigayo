@@ -36,12 +36,14 @@ public class Utf8FloatTest
         NativeAllocationAudit.WriteFixture("Utf8Float" + name, source, 0, 0, 0, expected + "\n");
     }
 
+    // SPEC 22.10.5: toString's buffer starts empty (Text.heap(0), R8-W2 c3b), so its one allocation is the written bytes (fail-before:
+    // the Type's bound, 17 and 24).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("f32", 17)]
-    [InlineData("f64", 24)]
-    public void OwningFloatConversionPreallocatesOnce(string type, int bound)
-        => NativeAllocationAudit.WriteFixture("Utf8FloatOwn" + type, "var value: " + type + " = 1.25\nConsole.writeLine(Text.toString(value))", 1, 1, bound, "1.25\n");
+    [InlineData("f32")]
+    [InlineData("f64")]
+    public void OwningFloatConversionAllocatesItsBytesOnce(string type)
+        => NativeAllocationAudit.WriteFixture("Utf8FloatOwn" + type, "var value: " + type + " = 1.25\nConsole.writeLine(Text.toString(value))", 1, 1, 4, "1.25\n");
 
     [Fact]
     public void DecimalCoreMatchesAnIndependentOracleAcrossBinaryIntervals()

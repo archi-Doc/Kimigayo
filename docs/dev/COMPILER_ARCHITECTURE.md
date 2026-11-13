@@ -87,7 +87,7 @@ a SPEC basis and owner approval.
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits; IntrinsicId uses 30 and returns to 27 at R8-I1 (DECISIONS R5-M137). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits; IntrinsicId uses 28 and returns to 27 at R8-I1 (DECISIONS R5-M137). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic
 rows' `Need` column; a new form adds a row.
@@ -141,7 +141,7 @@ entries, the code and CODEMAP. Each entry file begins with the component's contr
 | Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind`; `IntrinsicDisposition.Effect`, its effect class (SPEC 8.11.2); `KimiLibraryCatalog.Row`, an operation's published row `PublishedRow(Runs, On, Destroys, InPlace, Calls)` (SPEC 4.9.6, 12.4.3, 22.10.1; DECISIONS BU-70), which `TyCtxt.Published` gives MIR; `KimiLibraryCatalog.KeepsOutOfLine` over `OutOfLineRows`, the functions code generation keeps out of line (a closed set; DECISIONS R8-M36) | `Binding/KimiLibraryKinds.cs`, `Binding/KimiLibraryCatalog.Rows.cs` |
 | The library's size in a compilation's tables | `KimiLibrarySize`: the one statement of the embedded library's entry count in each per-compilation table it sizes (`Stated`, each count rounded up to `Granule`), the room a program has in a table of each kind (`NodeRoom` in the node table, `KeyedRoom` in a keyed table, none in a library-only table) and the capacity such a table starts at (`NodeCapacity`, `KeyedCapacity`; a library-only table starts at its stated count). Read by the sized tables' initializers only (`Binding`'s nodes, symbols, scopes, interned constraints, associated-Type answers and substituted parts; `TyCtxt`'s Type keys; library-only: `Binding`'s member selections and capability nodes); `KimiLibraryShapeTest` compares the statement with a Bind of the empty program (`Binding.TableCounts`) and checks the room it leaves in the tables with a room (`Binding.TableFree`). A table is sized when the doubling that follows the library's fill would allocate more than 64 KB. The library-only kind has no room: member accesses and Copy struct declarations fill its two tables, whose next doubling sits where the library's fill puts it (DECISIONS R8-M28's RP8 exception). No count measured at run time, no mutable static, no capacity or room of a table's own. Removal: R8-L1, if RQ13 adopts it (DECISIONS R8-M28) | `Binding/KimiLibrarySize.cs` |
 | Intrinsic Contracts (SPEC 8.7.1) | `IntrinsicContract.Of`: one row per `IntrinsicKind`, None included, of what Binding decides for it (`Judged`, `Declaration`, `SelfRequirement`); a judged intrinsic is a refinement parent whose conformance, as a parent or a Contract clause, is the capability judgment, and never opts a Type in; a new intrinsic adds a row, never a case at a reader (DECISIONS BU-20, BU-152) | `Binding/KimiLibraryKinds.cs` |
-| Premise supply (SPEC 8.3) | `Binding.ContractSolver`: Supply and the evidence view `ViewOf` (G170 C2), the view's serial (`SerialOf`) and its closure of Complete readings (`Reading`, C1 §5's `Completion`; DECISIONS R7-M20), the eager derivation until C3; Enumerate comes at C3 (DECISIONS BU-29) | `Binding/Binding.ContractSolver.cs` |
+| Premise supply (SPEC 8.3) | `Binding.ContractSolver`: Supply and the evidence view `ViewOf` (G170 C2), the view's serial (`SerialOf`) and its closure of Complete readings (`Reading`, C1 §5's `Completion`; DECISIONS R7-M20), the eager derivation until C3; `Enumerate(subject, view)` and `PremiseRefines(subject, contract, scope)` over it (R7-C2a1; DECISIONS BU-199). Responsibility: SPEC 8.3.2's refinement row by demand. Inputs: the subject, the view, clause storage and published source states. Output: the rows of a subject: request-owned and, until C2e2, kept per view value and requirement Contract for one capability epoch in R7-M20's kept region. Invariants: a leaf of the judgment graph, Finality, a root-up chain walk; request-owned tables; kept tables of one epoch, cleared with the capability results. Prohibitions: no judgment, no Binding write, no mode parameter, no answer kept across requests but R7-M20's Complete readings and, until C2e2, Enumerate's kept rows, each in R7-M20's kept region alone; the request's tables keyed by the view value. The no-judgment prohibition is `ArchitectureRulesTest`'s `EnumeratesWalkCallsNoJudgment` (the walk's members call exactly the listed names; the two callees that can normalize are passed `false`); C3c's guard may own it later | `Binding/Binding.ContractSolver.cs` |
 | Source states (SPEC 8.2.1, 8.3.3) | `Binding.SourceStates`: each premise source's published state (`BindingSymbol.SourceState`, `SourceCause`), its declaration's closed-clause check run by one writer in rounds (`PublishSourceStates`) and read, never run, by premise availability and conformance verification (DECISIONS BU-57, BU-59) | `Binding/Binding.SourceStates.cs` |
 | Declaration queries (SPEC 9, 11.6) | `Binding.DeclQuery`: each (declaration, kind) query's state, NotStarted, Running or Done in the pass `storageVersion` names, inline on the declaration's own symbol; a kind row gives its owner, output, re-entry rule and not-ready path; a new kind adds a row; `Signature` (`BindHeader`) the first (DECISIONS BU-105); `DirectBase`, a struct's base clause (Base layers, DECISIONS R7-M9); `InheritedConformances`, a struct's inherited conformance paths (SPEC 8.6.2), demanded by every by-type read of `ImplTable` (DECISIONS BU-147) | `Binding/Binding.DeclQuery.cs` |
 | Base layers (SPEC 6.2.2, 9.5, 9.6) | `Binding.BaseLayers`: the one reading of a base clause as a declaration (`DirectBase`, a declaration query), the one walk of those readings (`BaseLayers`, with `BaseWalk` its cycle test) and the rule for a read while a clause is not ready: the read ends the chain and is counted; inputs, outputs and prohibitions in its contract (DECISIONS R7-M9) | `Binding/Binding.BaseLayers.cs` |
@@ -263,15 +263,16 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - the Koto semantic forwarding properties and `BaseReferenceKoto.BasePath` (R7; R6-check H14
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193);
-  - the temporary intrinsics `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
-    `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
+  - the temporary intrinsic `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133; the hint only since R8-W2 c1, R8-M39; until
+    R8-W2 c2b) that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; `FormatBuffer` and `FormatFinish`
+    deleted at R8-W2 c3b and c3a, R8-M24; DECISIONS R3-9, R3-10, R5-M137);
   - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
     「Cで決定します」; DECISIONS R4-M111, R5-M188, R5-M192);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
-  - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row
-    map of the Body-disposition compiler functions, with `StringFormatKind`, `WriterKind` and `FormatEstimate`
-    (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131 as amended by R8-M24; `FormatFixed` until R8-W2 c);
+  - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row map of the Body-disposition compiler
+    functions, with `WriterKind` and `FormatEstimate` (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131 as amended by
+    R8-M24; `FormatEstimate` keeps only `Total` and `Hint` since R8-W2 c3b, until c2b);
   - R5's temporaries (recorded by their first units, DECISIONS R5-M18; reviewed with the owner at R5's exit, R5-M148):
     Binding's i128 division and remainder and its 128-bit float conversion gates
     beside the capability table's operation rows (R7, DECISIONS R5-M190); the legacy comparison composition (A-12, else R7; DECISIONS
@@ -294,6 +295,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - G799's, removed at R7-D2 c (the indexer's walk replaced by SyntaxTable's pre-order, which reaches every node; DECISIONS BU-194):
     `Binding.RowReset`, a stateless visitor (one static instance) that resets the HIR rows of an effect item's selector and Name,
     which `IndexVisitor` does not index, so no lookup a pass published on them is read by the next (`Binding.Indexing.cs`);
+  - Enumerate's kept rows (ContractSolver; DECISIONS BU-199 item 7): removed by R7-C2e2;
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).
