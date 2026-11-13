@@ -817,6 +817,11 @@
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
     Arguments="cases:Number,limit:Number"
 
+  + Name="ModuleCountLimit_Kd"
+    Category="Resource"
+    Message="The program's dependency graph has {0} modules, where at most {1} are supported"
+    Arguments="modules:Number,limit:Number"
+
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
     Message="Project preparation failed"
