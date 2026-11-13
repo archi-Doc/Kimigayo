@@ -3791,8 +3791,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a computed `Receiver` (a capture loop per read); the three missed positions added to `ClosureEffects`' own list (a third fix of an
     open family); a net counting an unlisted use Exclusive in every case (a conservative Language error on valid programs).
 - **R4-M132 Rule W on the MIR, with MirProblem's facts as one representation (2a-2, G:A5-F4's merge unit; design C)** (owner,
-  2026-10-25; superseded in part by R4-M148; amended 2026-11-05 (PLAN G263); verbatim: the departures 「(a) 一括で承認 (推奨)」, publication
-  「(a) PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」) SPEC 15.6, 15.6.4, 15.6.5, 23.1.2.
+  2026-10-25; superseded in part by R4-M148; amended 2026-11-05 (PLAN G263) and 2026-11-14 (PLAN G824); verbatim: the departures
+  「(a) 一括で承認 (推奨)」, publication 「(a) PrerequisiteUnavailable_Kd (推奨)」, the vocabulary 「(a) すべて承認 (推奨)」) SPEC 15.6, 15.6.4, 15.6.5,
+  23.1.2.
   - Design C (`2a-2-review.md` §5, units §6: U1 the representation, U2 the result role, U3 rule W, U4 G213's arguments, U5 records):
     A's representation and owner split (indirect markers below `loanBase`, MirOrigins' published causes and `Fixed`, Judge recording
     first), with B's exact R4-M96 scan, per-holder read-through, Content retention, write-through rows, validator rule (corrected),
@@ -3827,15 +3828,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`MirBuilder.Defaults.Copies`). MirValidator: a Result local is a Temp of local 0's Type, read only by the whole Move into `_0`
     that delivers it, else `MirViolation.Local` (no new violation). Code generation reads no role.
   - U3 (rule W): MirOrigins publishes, for the body Judge last judged, each Ref's recorded Refuted problems whose `Reason.Longer` is
-    its own atom (`Causes`, a counting sort by atom; `Refutes`, the gate) and whether a receiving Type holds an Origin and every Origin
-    it holds is Fixed (`Fixed`; a raw layer, a Type parameter, a projection or a Callable fails). MirBorrows (`MirBorrows.Causes.cs`):
-    where `Refutes` is false nothing is set up; else the Loans and guard markers whose Refs' causes cover the run's views are W
-    elements, each with an indirect marker below the Loans (`Indirect`, its markers interned in one pass, `MirLoanSets.Of`);
-    aggregates, part steps, a raw Deref, a Value callee's environment and a read through a part's or E's reference mark; a read through
-    a reference to a whole holder keeps; an arrival into E, `_0` or a Result temp is kept only where `Fixed` holds, into a local only
-    whole or written through a reference to its whole root; joins union; endings remove markers with their Loans. A conflict is derived
-    exactly when every conflicting candidate the check set takes is a W element no carrier keeps (a transit value, a holder other than
-    an escape holder, an escape holder holding its marker), its causes appended as `Cause` facts; err(ended) likewise for γ_H.
+    its own atom (`Causes`, a counting sort by atom; `Refutes`, the gate) and whether a receiving Type holds an Origin and every
+    Origin it holds is Fixed (`Fixed`, under the run's views: an Origin is Fixed where its atom is, or where it is Inferred and
+    every class of those views has one Fixed node that the class's edges reach from it and that reaches it, neither path through
+    another Fixed node, so the body's relations make it equal to that fixed Origin (SPEC 15.6.1, 15.6.5; amended 2026-11-14, PLAN
+    G824: a store through a reassignable local's region slot); MirOrigins forms each class's equal nodes once per Judge from its
+    Fixed nodes, so a query's cost does not grow with the slots queried; no view, a view without a class or a class over the storage
+    limit fails; a raw layer, a Type parameter, a projection or a Callable fails). MirBorrows (`MirBorrows.Causes.cs`): where
+    `Refutes` is false nothing is set up; else the Loans and guard markers whose Refs' causes cover the run's views are W elements,
+    each with an indirect marker below the Loans (`Indirect`, its markers interned in one pass, `MirLoanSets.Of`); aggregates, part
+    steps, a raw Deref, a Value callee's environment and a read through a part's or E's reference mark; a read through a reference
+    to a whole holder keeps; an arrival into E, `_0` or a Result temp is kept only where `Fixed` holds, into a local only whole or
+    written through a reference to its whole root; joins union; endings remove markers with their Loans. A conflict is derived
+    exactly when every conflicting candidate the check set takes is a W element no carrier keeps (a transit value, a holder other
+    than an escape holder, an escape holder holding its marker), its causes appended as `Cause` facts; err(ended) likewise for γ_H.
     `MirReport` merges derivedness (direct wins, causes unioned); the ledger leaves derived problems off the MIR side.
   - U4 (G213): one record of the analyses' storage limit, `MirDataflow.StorageLimit(report, body, views, table, words)`:
     `OwnershipStorageLimit_Kd` at the body with the facts `Required` (the arena's bytes), `Limit` (the byte limit) and `Table` (a
@@ -13171,6 +13177,41 @@ resumed by R4-M86 (2026-10-20).
   - **Remainder (R7-I2 d's position source):** adapting the formed value once where no part supplies it, at a `ref/T` pattern (j15);
     a bare slot's evidence beside a literal (q7: `T` bound from the typed part alone; bl10), j15's cause, since the evidence's
     adapted common Type (`InferAdaptedParts`) does not read `BesideLiterals` (F's ruling 9); the interim above.
+- **BU-204 `Infer`'s pattern is always the callee's: at a pair-target position a slot's binding is compared with evidence, never
+  matched as a pattern (PLAN G854; a crash patch)** (2026-11-14; Front, Binding inference; Minor, a crash fixed at once under plan
+  revision 69 (B); one review by F's reviewer, ACCEPT WITH NOTES; the Middle's C-316 consent; F's D-590 rulings 1-4) SPEC 10.8
+  (Solving), 8.1.1.
+  - **Rule.** At a pair-target position (`Infer`'s TargetProjection arm, `Binding.CallSlots`) a slot's binding is a caller Type: it
+    is compared with the evidence by a Type relation (`ReferenceEquals` or `FitsStructuralPart`, both ways), never passed back into
+    `Infer` as a callee pattern. Before, the arm passed the binding's target (`DirectTarget(whole)`, in the caller's terms) back
+    into `Infer`, so where the caller owns the callee's slots (a recursive call; a structure's member constructing that structure)
+    the same pattern returned for ever: valid programs (S1, G4, G4i, G4p, G4q) overflowed the stack.
+  - **A temporary structure** (a local patch for a crash that cannot wait). Removal: the common fix, callee slots with their own
+    identity, so that no caller Type is ever read as a callee pattern (the design's rejected option 2); PLAN G854 keeps it open.
+    `InferComposite` (`Binding.ArgumentKinds.Evidence.cs`) reads a bound slot's substituted binding as its children's pattern the
+    same way (the review's F1): IC1, a valid recursive `f(n, p, (t, 2))`, is rejected on dev and after the patch (Q17 class 3, no
+    crash); the common fix removes both.
+  - **Correction.** The unit's commit states in its Search line that nothing else shares the cause; F1 shows `InferComposite` does.
+    This entry corrects it; the commit is not amended.
+- **BU-205 The grammar owner decides each Parsing form PB1 fixes: F.5's PathQualifier, F.6.3's override header, F.3.3's one modifier
+  (PLAN G489 D1, G569, G557's override part)** (2026-11-14; Front, Parsing; Major, plan revision 69 (B) class 1, the Front's Parsing
+  bundle PB1; design reviews 1-2 and implementation reviews by F's reviewer; the Middle's C-317 consent) SPEC F.5, F.9.4, F.6.3,
+  F.3.3, 19.4.
+  - **F.5.** `ContainerPath := PathQualifier PathSuffix+` is decided by the group, in one whitelist (`Parser.ContinuesGroupedType`):
+    a BoundContainerQualifier, a Unit or Tuple Type or a grouped Function Type takes either PathSuffix; no other group does, and the
+    Type ends at the `.`. In an adaptation target (`TypeContext.Target`, `TargetOperand`) no group or fixed array continues: F.9.4
+    makes either a DelimitedTarget, a ClosedTarget whose `.` is the adapted value's PostfixSuffix, and a target groups a projection
+    (`x@((i32, u8).(C).Item)`, F.5's note); `ParseAnnotatedType`, which every Type head passes through, decides it once by the `(`
+    or `[` head.
+  - **F.6.3.** An override header is a header form of `ParseFuncDeclaration`, beside `ConstructorHeader` and `SpecializationHeader`:
+    its access word is rejected as for every production without Access, and Type parameters, `!`, a parameter default or an
+    Attribute is one `SyntaxForm.OverrideHeader` record per header, the override a recovery.
+  - **F.3.3.** "At most one modifier" is judged by the same owner for every FunctionHeader and OverrideDeclaration: more than one of
+    unsafe, virtual and override is one `SyntaxForm.SecondModifier` record at the second modifier word (the modifier reader
+    publishes `TokenReader.SecondModifierSpan`, beside `AccessModifierSpan`), the function a recovery.
+  - **Moved from Binding:** `VirtualDeclarationCause.Combined`, `Unsafe` and `RedeclaredParameter` are removed; `RedeclaredHeader`
+    becomes `RedeclaredConstraints`. Rejected: the specialization's list flag for the override's `!` (a second record and the
+    recovery anyway); a clause per qualifier form; the header span for SecondModifier (every other F.3.3 record is at its word).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -14152,6 +14193,10 @@ structure is recorded here by the unit that first implements it.
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it);
     targets per
     operand of every statement (a site would hold several).
+  - Amended by G149-w (PLAN G149, 2026-11-14): a declaring Type carries the enclosing instance only when the enclosing declaration
+    has no length slot (`InstanceCollector.CarriesInstance`, `HasLengthSlot`, read from its schema), since a declaring Type holds
+    `Never` at every length slot and so cannot key `Instantiates`' instances; otherwise the nested function is the located
+    `EnclosingInstance` gap. Removal: R7-P7.
 - **R5-M44 Layout obligations of the checked set** (2026-10-18; plan K10a; under R5-M18 and R5-M37; its record clause amended by
   R5-M171) The collector is the one owner of `Layout.Of`'s outcomes (`Compilation.Layout`, passed at its construction). Each item's
   by-value uses (its body's locals but drop flags, its aggregates, and the Type argument of an intrinsic whose row's new
