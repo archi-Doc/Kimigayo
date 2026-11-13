@@ -223,7 +223,7 @@ public sealed partial class Binding
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
             (WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null);
-        if (!nominal && !this.HasContractFact(subject, entry, scope))
+        if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
             return false;
         }

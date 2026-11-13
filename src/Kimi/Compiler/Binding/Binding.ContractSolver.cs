@@ -3,9 +3,9 @@
 // ContractSolver (PlanB §4.1; DECISIONS BU-29, R7-C2a): premise derivation and evidence availability (SPEC 8.3): what the premises supply
 // for a proposition and its negation (Supply) under the request's view (ViewOf, the one derivation point); the Contract rows they
 // supply for a subject (Enumerate) and SPEC 8.3.2's refinement row over them (PremiseRefines, the row's one predicate: ProveConformance,
-// SymbolicCapability); until C3 the eager derivation too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over
-// a Contract premise's supply, ContractSupply, which retention's handed signatures read too) and the availability of a fact
-// (AvailableConstraintFact).
+// SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic); until C3 the eager derivation
+// too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply, which
+// retention's handed signatures read too) and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names);
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) an available direct Contract fact of the view stating

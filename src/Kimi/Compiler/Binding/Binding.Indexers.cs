@@ -130,11 +130,11 @@ public sealed partial class Binding
 
             exclusiveAvailable = this.ConformsHere(core, uniq, scope);
         }
-        else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
+        else if (core.Kind == BoundTypeKind.Parameter && this.PremiseRefines(core, indexable, scope))
         {
-            // SPEC 4.7.1, 8.4: a constrained Type parameter indexes through its Indexable fact; the synthesized call
+            // SPEC 4.7.1, 8.4, 8.3.2: a constrained Type parameter indexes through its Indexable row; the synthesized call
             // resolves to the requirement, and the instance supplies the conforming Type's implementation.
-            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.HasContractFact(core, uniqIndexable, scope);
+            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.PremiseRefines(core, uniqIndexable, scope);
         }
         else
         {
@@ -225,29 +225,6 @@ public sealed partial class Binding
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
     private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
         => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
-
-    // SPEC 8.4.3, 8.3: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
-    private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)
-    {
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, subject) && fact.Contract is { } bound &&
-                    this.AvailableConstraintFact(environment, fact, out _) && RefinesDeclaration(bound, contract.Declaration))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)
     {
