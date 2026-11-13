@@ -141,12 +141,14 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 9.7.3: a conformance is a candidate as the receiver sees it, its bound reference at the receiver's arguments, the
+            // terms a premise's reference is in, so one conformance reached both ways is one candidate (PLAN G798).
             if (type.Symbol is { } symbol && this.ConformancesOf(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
                     searching = list[i];
-                    Search(list[i].Contract.Contract!);
+                    Search(this.SubstituteRequirementContract(list[i].Contract, type).Contract!);
                 }
             }
         }
