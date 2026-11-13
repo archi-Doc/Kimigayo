@@ -231,9 +231,7 @@ internal sealed partial class MirBuilder
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Ref, fixedBuffer, node));
         this.Invoke(result, new(MirCalleeKind.Fn, view, subst), at, node);
-        var discriminant = this.Temp(BoundType.ISize, node);
-        this.Set(discriminant, MirRvalue.Discriminant(result), node);
-        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+        this.CaseTest(result, 0, done, node);
         at = this.arguments.Count;
         this.arguments.Add(MirOperand.Copy(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
         var line = compilation.Library.GetSymbol(KimiDeclarationId.WriteLineUtf8)!; // A body since R8-W1c-3.
