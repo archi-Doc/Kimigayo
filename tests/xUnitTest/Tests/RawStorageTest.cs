@@ -237,16 +237,13 @@ public class RawStorageTest
     public void ABufferOwnsItsStorageThroughSelf()
         => Assert.Empty(RawPointerSyntaxTest.Records(Buffer + "func use()\n    var b = Buffer<i32>.init(capacity: 4)\n    b.push(1)\n    let v = b.view()\n    require v.get(0) == 1 else => $abort(\"view\")"));
 
-    // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. Since the MIR decides acceptance (R6-check
-    // H5), the write Binding rejects initializes nothing, so A1 also records UninitializedPlace_Kd at that write and at the constructor
-    // (PLAN G105), published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. The write Binding rejects for its value's
+    // Origin fit still places a value derived from that failure (DECISIONS R5-M195), so A1 records nothing at it or at the constructor
+    // (Q13: the two dependent UninitializedPlace_Kd, PLAN G105's, went).
     [Fact]
     public void AConstructorFillsSelfStorageWithAClaim()
         => Assert.Equal(
-            [
-                "UninitializedPlace_Kd: init() => self.data = Raw.allocate<i32>(1)", "UninitializedPlace_Kd: self.data = Raw.allocate<i32>(1)",
-                "UnsatisfiedOriginRelation_Kd: Raw.allocate<i32>(1)",
-            ],
+            ["UnsatisfiedOriginRelation_Kd: Raw.allocate<i32>(1)"],
             RawPointerSyntaxTest.Records("struct B\n    internal let data: raw/i32 during self\n    public init() => self.data = Raw.allocate<i32>(1)"));
 
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110): through no dereference, except through `self` in the constructors and drop of
