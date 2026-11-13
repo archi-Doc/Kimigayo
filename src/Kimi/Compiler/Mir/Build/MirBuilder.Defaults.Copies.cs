@@ -269,7 +269,9 @@ internal sealed partial class MirBuilder
             };
         }
 
-        // A constant in the call's instance: its Type, and a Length's term, of LengthOperand's form there (SPEC 4.4.1).
+        // A constant in the call's instance: its Type, and a Length's term, of LengthOperand's form there (SPEC 4.4.1). A call without a
+        // substitution copies a Length unchanged, as FoldType keeps its Type: its callee has no slot of its own, so the term names only an
+        // enclosing slot the caller shares.
         MirOperand FoldOperand(in MirOperand operand) => operand.Kind != MirOperandKind.Const ? operand with { Place = FoldPlace(operand.Place) }
             : template.Consts[operand.Arg] is { Kind: MirConstKind.Length, Value: BoundLength length } && subst is not null
             ? this.LengthOperand(compilation.Types.InstanceLength(length, subst)!)
