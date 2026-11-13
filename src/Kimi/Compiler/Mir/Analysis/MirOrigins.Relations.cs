@@ -118,7 +118,8 @@ internal sealed partial class MirOrigins
                 found.Add(node);
             }
 
-            for (var e = node < this.edgesNodes && kind != OriginAtomKind.Fixed ? index[node] : 0; node < this.edgesNodes && e < index[node + 1]; e++)
+            var (first, end) = node < this.edgesNodes && kind != OriginAtomKind.Fixed ? (index[node], index[node + 1]) : (0, 0);
+            for (var e = first; e < end; e++)
             {
                 if (ends[edges[e]] is var next && this.reachStamps[next] != stamp)
                 {

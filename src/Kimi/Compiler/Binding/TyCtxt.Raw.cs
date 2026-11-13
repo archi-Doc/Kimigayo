@@ -210,17 +210,8 @@ internal sealed partial class TyCtxt
     internal PlaceKey Select(PlaceKey at, int part) => binding.Select(at, part);
 
     // SPEC 5.7 (C-189): the key of a struct's base Place (MIR's Base, once per depth): its kept base (StoredParts' parent), inline, the
-    // path's dereference kept; Type null for any other Type.
-    internal PlaceKey Base(PlaceKey at)
-    {
-        BoundType? parent = null;
-        if (at.Type is { } type && AdtDef.IsStruct(type))
-        {
-            _ = this.StoredParts(type, out parent);
-        }
-
-        return at with { Type = parent, Written = null, Holder = null, Case = -1 };
-    }
+    // path's dereference kept, on a parameter path the declared base (Binding.Retention.PlaceKeys' one rule); Type null for any other Type.
+    internal PlaceKey Base(PlaceKey at) => binding.Base(at);
 
     // SPEC 4.1, 6.7.1, IMPL 21.1.2, 21.1.3 (C-211, PLAN G667c, G808): the key of the part the specification places at a Place's own
     // address, the one step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset

@@ -136,11 +136,9 @@ public sealed partial class Binding
             context.Expected = null;
         }
 
-        if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
+        if (context.HasLiteral)
         {
-            // SPEC 3.5.3, 14.9.2: an unfitted literal is fitted to the terminal read Type of the reference sources,
-            // which then supply that Type by a value read.
-            context.Expected = terminal;
+            context.Expected = this.BesideLiterals(context.Expected, scope);
         }
 
         if (conflict)
