@@ -59,6 +59,29 @@ public sealed partial class MirBorrowsTest
         enum PunE
             Ptr(raw/(raw/u8))
             Num(u64)
+        struct OBoxP
+            public var v: u64
+            public init(v: u64) => self.v = v
+        #Layout("C")
+        struct NodeO
+            public var link: Option<obj/OBoxP>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(OBoxP.init(v: 0)@obj)
+                self.next = null
+        struct NodeKO
+            public var link: Option<obj/OBoxP>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(OBoxP.init(v: 0)@obj)
+                self.next = null
+        #Layout("C")
+        struct NodeOO
+            public var link: Option<Option<obj/OBoxP>>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(.Some(OBoxP.init(v: 0)@obj))
+                self.next = null
         func storePunBad()
             var kk: u8 = 1
             let r = kk@uniq
@@ -807,6 +830,67 @@ public sealed partial class MirBorrowsTest
             setTag(n@raw@raw/u32, 7)
             stash(n.next, spare)
             kk = 2
+        func optCastObjTyped()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
+        func optMatchObjTyped()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let p = n@raw
+            unsafe
+                match ((*p).link)@uniq
+                    .Some(let b) => b.v = 7
+                    .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func kOptCastRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeKO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
+        func kOptMatchRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeKO.init()
+            n.next = other@raw
+            let p = n@raw
+            unsafe
+                match ((*p).link)@uniq
+                    .Some(let b) => b.v = 7
+                    .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func optOptCastRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeOO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
         func wholeTupleLoanOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1278,7 +1362,9 @@ public sealed partial class MirBorrowsTest
     // so stash's store through n.next is a conflict without any write (cLayoutNoWrite), and the same conflict, not a limit, with the
     // typed one (cLayoutFirstField*Typed); cLayoutField*LoanOk are accepted. A later Field's Type there is a pun: NodeD's u32 starts on
     // next's first byte (the chain's end is a raw pointer: invalid, the conflict and no limit, cLayoutSecondFieldBad); a Kimigayo-layout
-    // Field's is not decided (kLayoutFieldRests).
+    // Field's is not decided (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places its Some payload there too (IMPL 21.1.3, PLAN
+    // G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's own conflict stands (SPEC 15.6: the result's
+    // raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is not decided (kOpt*Rests, optOptCastRests).
     // A written array of no element over a pointer is no pun (zeroArrayOk, 5.2: positive-sized). A length that is no constant is not
     // established positive (4.4.2: the body is checked for every binding that meets the public conditions, which may all make it 0:
     // `N - N`, `N * 0`, a bare `N` beside a `[(0 - N) of u8]` parameter), so no pun is decided over one, written or the holder's: a
@@ -1375,6 +1461,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("cLayoutNoWrite", "cLayoutNoWrite: kk = 2")]
     [InlineData("cLayoutFirstFieldTyped", "cLayoutFirstFieldTyped: kk = 2")]
     [InlineData("cLayoutFirstFieldCallTyped", "cLayoutFirstFieldCallTyped: kk = 2")]
+    [InlineData("optCastObjTyped", "optCastObjTyped: kk = 2")]
+    [InlineData("optMatchObjTyped", "optMatchObjTyped: kk = 2")]
+    [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
+    [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2 Unsupported_Kd")]
+    [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleLoanOk", "")]
     [InlineData("wholeTupleNoLoanOk", "")]
     [InlineData("wholeTupleCallLoanOk", "")]
@@ -1432,6 +1523,36 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
         var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // SPEC 5.2 (PLAN G806; the owner's O-220 (a), O-231 (a)): a whole-value write writes the written Type's raw Places (TyCtxt.RawPlaces).
+    // A UniqSlice<T>'s stored Fields are raw Places, so a UniqSlice written over the raw pointer `q` holds writes `length`, a Scalar, there
+    // (uSliceBad4, rejected since G806; uSliceBad3 beside its own Origin record). A struct whose storage Binding cannot state whole, at
+    // Binding's Limit (Nest<u64>) or with an unbound Field (US), is undecided and keeps its published rows, so its Scalar Field still puns
+    // beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer.
+    [Theory]
+    [InlineData("uSliceBad4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "uSliceBad4: kk = 2")]
+    [InlineData("uSliceOk4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "")]
+    [InlineData("uSliceBad3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "uSliceBad3: kk = 2")]
+    [InlineData("uSliceOk3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "")]
+    [InlineData("nNestBad", "", "Nest<u64>", "", "nNestBad: kk = 2; nNestBad: viaW(q@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("nNestOk", "", "Nest<u64>", "", "nNestOk: viaW(w@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("bUnboundFieldBad", "", "US", "UnresolvedBinding_Kd", "bUnboundFieldBad: kk = 2")]
+    [InlineData("bUnboundFieldOk", "", "US", "UnresolvedBinding_Kd", "")]
+    public void AWholeWriteWritesTheWrittenTypesRawPlaces(string form, string parameters, string written, string bound, string expected)
+    {
+        var over = form.Contains("Bad", StringComparison.Ordinal) ? "q" : "w";
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] +
+            (written == "US" ? "struct US\n    public var n: u64\n    public var bad: NoSuchType\n" : string.Empty) +
+            $"func viaW(slot: raw/({written.Split(" during ")[0]})) => ()\nfunc {form}({parameters})\n    var kk: u8 = 1\n    let r = kk@uniq\n" +
+            "    var spare: raw/u8 = r@follow@raw\n    var other: raw/u8 = null\n    var q: raw/(raw/u8) = other@raw\n" +
+            (over == "w" ? "    var w: (u64, u64, u64) = (0, 0, 0)\n" : string.Empty) +
+            $"    viaW({over}@raw@raw/({written}))\n    stash(q, spare)\n    kk = 2\n");
+        Assert.Equal(bound, string.Join("; ", c.Binding.Issues.Select(static x => $"{x.Code}").Distinct().Order(StringComparer.Ordinal)));
+        var program = c.BuildMir();
+        new Stratum(c.Types).Run(program);
+        var problems = Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems.Order(StringComparer.Ordinal))}]");
     }
 
     // PLAN G667c's named limit (a) on the stated-store forms (StatedForms; the Middle's Q13 rulings): a Scalar written at the whole

@@ -15,6 +15,7 @@ namespace Kimi.Compiler;
 internal sealed partial class TyCtxt
 {
     private readonly Dictionary<BoundType, bool> punnable = new(); // Punnable's answer per composite Type, memoized like the interning.
+    private readonly List<Hold> rawForm = []; // Decided's Holdings scratch, a stack.
 
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
     // Case payload or base clause writes without `during`, which an instance's kept parts (StoredParts) state as Unstated at any depth
@@ -23,15 +24,14 @@ internal sealed partial class TyCtxt
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.
     internal static bool RawStated(BoundType layer) => layer.RawOrigin?.Kind == OriginKind.Unstated;
 
-    // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672): whether a part of a raw Place of this Type is itself a raw Place, so that a Take moves it
-    // without state tracking: the storage of an `owner` struct (a stored Field, a base), Tuple (an element) or fixed array (an element at
-    // any position, from-end included) holds the part itself. So does an `owner` enum's: a Case payload's components are parts of the
-    // value's Place (SPEC 3.4), which no Take observes, since no source form takes a payload Place in place (a Subject is borrowed,
-    // SPEC 15.1.6; `@move` takes the whole value). An Array's, view's or Dictionary's element is the referent of `index`/`indexUniq`,
-    // and a reference's or handle's part a referent: never raw Places. The one statement of the rule: Binding's IsRawPlace walk
-    // (ElementAccess) and MIR's move paths (MirMoveData.Resolve) read it per step. A read of the Type; total; allocates nothing.
+    // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672, G806): whether a part of a raw Place of this Type is itself a raw Place (RawPlaces' rows
+    // exist), so that a Take moves it without state tracking: an `owner` struct's stored Field or base, a Tuple's element, a fixed
+    // array's element at any position, from-end included. An enum's Case payload is none (SPEC 5.2 lists Fields and elements: a payload is
+    // reached by matching the enum, which reads it), nor is a Closure's environment, an Array's, view's or Dictionary's element (the
+    // referent of `index`/`indexUniq`) or a reference's or handle's part (a referent). The one statement of the rule: Binding's IsRawPlace
+    // walk (ElementAccess), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
-        (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container) || AdtDef.IsEnum(container));
+        (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container));
 
     // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
     // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
@@ -120,6 +120,28 @@ internal sealed partial class TyCtxt
         return answer;
     }
 
+    // SPEC 5.2 (PLAN G806, the owner's O-220 (a)): the raw Places directly within a raw Place of key `at`, appended to `into`; the raw
+    // Place itself is its reader's (the root it holds), and a reader takes "transitively" by reading each row's key again. Rows exactly
+    // where RawPart holds: an `owner` struct's stored Fields, in MIR's numbering, after its base's rows (an inherited Field is a Field of
+    // the struct; the base subobject is none, SPEC 6.2), a Tuple's elements, a fixed array's element (one row for every index: Element,
+    // a grid of the element's stride; whether it has one is the reader's length reading, A5's Sized). Each row's key is Select's
+    // (Leading's for the element), so a part's written Type and holder stay. Lead: at the raw Place's own address where IMPL 21.1 fixes
+    // it there (Leading's one step: a `#Layout("C")` struct's first Field; an element row, whose element 0 is there); every other row is
+    // off: IMPL 21.1.2 leaves a Kimigayo-layout offset open and a C-layout later Field's needs sizes (Layout's), so a verdict resting on
+    // where it lies is the reader's rested located Unsupported_Kd. The answer is one of three classes (O-228 (a), O-231 (a)), read from
+    // Holdings' one form table at the key (Decided): Listed, the rows (RawPart's forms); Empty, no row: an enum (a Case payload is reached by
+    // matching the enum, which reads it), a Closure (its environment) and every form whose Holdings rows hold nothing inline (a
+    // referent, a collection's elements, Type arguments, an erased environment, a Scalar); Undecided, so that no reader counts too few:
+    // an Abstract row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places, as Punnable's abstract row states it), an Unsupported row,
+    // an unbound part, an Inline row of any other form (an owner layer, a pair layer's owner case: its target's, not listed here; none
+    // reaches it on dev) and Binding's Limit. Rows are published for RawPart's forms whatever the answer (as Holdings publishes its
+    // entries at a Limit): at Undecided they are the parts Binding's storage states, an unbound part giving none. At Undecided the
+    // reader keeps its own reading (O-231 (a): the pun rule its written parts; A5 its abstract rule or its located Unsupported_Kd),
+    // never "empty". Total, a function of the key; allocates nothing warm.
+    // Must not: list an enum's Case payload or a Closure's environment (Holdings' by-value reading, the holder and written side, keeps
+    // them); read a size, an offset or a length; decide a pun, typed or none (the reader's).
+    internal RawPlacesAnswer RawPlaces(PlaceKey at, List<RawPlace> into) => this.RawPlaces(at, on: true, into);
+
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
     // then the inline positions (a Tuple's component, a fixed array's element). Shared when the declaration states the layer with a slot
@@ -200,23 +222,40 @@ internal sealed partial class TyCtxt
         return at with { Type = parent, Written = null, Holder = null, Case = -1 };
     }
 
-    // SPEC 4.1, 6.7.1, IMPL 21.1.2 (C-211, PLAN G667c): the key of the part the specification places at a Place's own address, the one
-    // step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset i * stride; `element`
-    // true), or a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), each as Select steps it, the path's
-    // dereference kept. The first written Field is MIR's Field 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and
-    // AdtDef keeps stored Fields in declaration order. Type null for every other Type (a Kimigayo-layout struct, a Tuple, an enum or its
-    // Case, a Closure: IMPL 21.1.2 promises no offset there), for an unbound key and for a first Field Binding did not bind. `element` true
-    // always comes with a part (a fixed array's Type states its element at any length), so a reader takes the part of an element step
-    // without a null test; a null Type has `element` false. Reads no length: whether an array has an element is its reader's (A5's
-    // Sized). The answer's Type is a function of the key's Type, so a reader steps a Type that has no path (a written or stride Type, a
-    // chain row) as PlaceKey.Root of it. Total, a function of the key; allocates nothing warm. Must not decide a pun, a covering or a
-    // designation (A5's).
+    // SPEC 4.1, 6.7.1, IMPL 21.1.2, 21.1.3 (C-211, PLAN G667c, G808): the key of the part the specification places at a Place's own
+    // address, the one step of a Place's leading chain: a fixed array's element, whatever the array's length (element i is at offset
+    // i * stride; `element` true), a `#Layout("C")` struct's first Field in written order (offset 0; `element` false), or a nonnull
+    // Option's Some payload (NonnullSome: the payload is the Option's whole word; `element` false), each as Select steps it (the payload:
+    // the Some Case, then its component 0, MIR's Downcast and Field), the path's dereference kept. The first written Field is MIR's Field
+    // 0: a C-layout struct has no base and one storage fragment (SPEC 6.7.1), and AdtDef keeps stored Fields in declaration order. Type
+    // null for every other Type (a Kimigayo-layout struct, a Tuple, any other enum or a Case key, a Closure: IMPL 21.1.2-21.1.3 promise no
+    // offset there), for an unbound key and for a first Field Binding did not bind. `element` true always comes with a part (a fixed
+    // array's Type states its element at any length), so a reader takes the part of an element step without a null test; a null Type has
+    // `element` false. Reads no length: whether an array has an element is its reader's (A5's Sized). The answer's Type is a function of
+    // the key's Type, so a reader steps a Type that has no path (a written or stride Type, a chain row) as PlaceKey.Root of it. Total, a
+    // function of the key; allocates nothing warm. Must not decide a pun, a covering or a designation (A5's).
     internal PlaceKey Leading(PlaceKey at, out bool element)
     {
         element = at is { Case: < 0, Type.Kind: BoundTypeKind.FixedArray };
-        return element || (at is { Case: < 0, Type: { } type } && AdtDef.IsStruct(type) && type.Symbol!.Adt is { IsCLayout: true })
-            ? binding.Select(at, 0) : at with { Type = null, Written = null, Holder = null, Case = -1 };
+        if (element || (at is { Case: < 0, Type: { } type } && AdtDef.IsStruct(type) && type.Symbol!.Adt is { IsCLayout: true }))
+        {
+            return binding.Select(at, 0);
+        }
+
+        return at.Case < 0 && this.NonnullSome(at.Type) is var some and >= 0
+            ? binding.Select(binding.Select(at, some), 0) : at with { Type = null, Written = null, Holder = null, Case = -1 };
     }
+
+    // IMPL 21.1.3 (G808): the nonnull Option: `Option<R>`, R a `ref`, `uniq`, `obj`, `rc`, `arc`, `objref` or `objuniq` layer, is one
+    // pointer-sized word, null None and every valid R Some. The Some Case's ordinal (KimiLibrary.OptionSome) for such a Type; -1 for every
+    // other (`Option<raw/T>`, `Option<Weak<S>>`, `Option<Option<R>>`, an Option of a Tuple, a Scalar, an abstract or a pair part, any
+    // other enum). The one statement of IMPL's R list: Leading reads it, and the Backend's Layout reads it with PLAN U8. Total; allocates
+    // nothing.
+    internal int NonnullSome(BoundType? type)
+        => type is { Semantics: Parsing.SemanticsKind.Owner, Components: [{ Kind: BoundTypeKind.Semantics } payload] } &&
+            ReferenceEquals(type.Symbol, library.Option) && payload.Semantics is Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq or
+            Parsing.SemanticsKind.Obj or Parsing.SemanticsKind.Rc or Parsing.SemanticsKind.Arc or Parsing.SemanticsKind.ObjRef or
+            Parsing.SemanticsKind.ObjUniq ? library.OptionSome : -1;
 
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal, raw Origins included: the structural part of a
     // fit (Binding's relation walk, every Origin binding equal, no Never root rule), symmetric; reads no premise. Total, O(size of the
@@ -242,5 +281,67 @@ internal sealed partial class TyCtxt
         var storage = binding.Instance(instance);
         parent = storage.PartsBase;
         return storage.Parts;
+    }
+
+    // RawPlaces' whitelist, read from Holdings' one form table (SPEC 3.3.4; Binding.Holdings, its rows at the key; O-228 (a)): a form is
+    // decided where every row is one of: a layer's or a collection's referent, a Type argument, an erased environment (none of them
+    // inline), no row at all (a Scalar, a Range, a Function Item), or an Inline part of a form whose inline parts SPEC 5.2 classifies:
+    // RawPart's (Fields, base, elements: the rows), an enum's Case payloads or a Closure's environment (no raw Place). Every other row
+    // leaves it unknown: Abstract (SPEC 8.15.1: a binding's), Unsupported (a form with no row), a part Binding did not bind, an Inline
+    // part of any other form (an owner layer's or a pair layer's owner case: its target at its own address, not listed here), a Limit.
+    private bool Decided(PlaceKey at, BoundType type)
+    {
+        var inline = RawPart(type) || AdtDef.IsEnum(type) || type.Kind == BoundTypeKind.Closure;
+        var start = this.rawForm.Count;
+        var decided = binding.Holdings(type, at.Written, at.Holder, this.rawForm);
+        for (var i = start; decided && i < this.rawForm.Count; i++)
+        {
+            decided = this.rawForm[i] switch
+            {
+                { Step: HoldStep.Abstract or HoldStep.Unsupported } => false,
+                { Step: HoldStep.Inline } part => inline && part.Part is not null,
+                _ => true,
+            };
+        }
+
+        this.rawForm.RemoveRange(start, this.rawForm.Count - start);
+        return decided;
+    }
+
+    // RawPlaces' rows and answer; `on`: the raw Place is at the address its reader starts from (false for a base's rows).
+    private RawPlacesAnswer RawPlaces(PlaceKey at, bool on, List<RawPlace> into)
+    {
+        if (at.Type is not { } type)
+        {
+            return RawPlacesAnswer.Undecided;
+        }
+
+        var decided = this.Decided(at, type);
+        if (at.Case >= 0 || !RawPart(type))
+        {
+            return decided ? RawPlacesAnswer.Empty : RawPlacesAnswer.Undecided;
+        }
+
+        var answer = decided ? RawPlacesAnswer.Listed : RawPlacesAnswer.Undecided;
+        var lead = this.Leading(at, out var element);
+        if (element)
+        {
+            into.Add(new(lead, on, Element: true));
+            return answer;
+        }
+
+        // A base is a struct, listed unless its own storage is undecided; no base gives none.
+        if (AdtDef.IsStruct(type) && this.Base(at) is { Type: not null } parent && this.RawPlaces(parent, on: false, into) != RawPlacesAnswer.Listed)
+        {
+            answer = RawPlacesAnswer.Undecided;
+        }
+
+        var count = AdtDef.IsStruct(type) ? AdtDef.Count(type) : type.Components.Count;
+        for (var i = 0; i < count; i++)
+        {
+            into.Add(new(binding.Select(at, i), on && i == 0 && lead.Type is not null, Element: false));
+        }
+
+        return answer;
     }
 }
