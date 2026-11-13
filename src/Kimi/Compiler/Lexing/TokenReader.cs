@@ -23,6 +23,8 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 
     internal SourceSpan AccessModifierSpan { get; init; }
 
+    internal SourceSpan SecondModifierSpan { get; init; }
+
     internal int DocumentationExcludedStart { get; init; }
 
     internal int HeaderPosition { get; init; }
@@ -125,6 +127,10 @@ public ref partial struct TokenReader
 
     /// <summary>Gets or sets the first access word of the pending item prefix, when one is written (Appendix F.6 Access).</summary>
     internal SourceSpan AccessModifierSpan { get; set; }
+
+    /// <summary>Gets or sets the function modifier word after which the pending item prefix holds more than one of unsafe, virtual and
+    /// override, when one is written (SPEC F.3.3); the function header reports it there.</summary>
+    internal SourceSpan SecondModifierSpan { get; set; }
 
     /// <summary>Gets or sets the token position where the pending item's header starts, after its prelude (SPEC 2.3): the first word of
     /// its line after the Attributes and directives, a modifier or else the introducer. The item prefix sets it
@@ -342,6 +348,7 @@ public ref partial struct TokenReader
             PendingExclusion = this.PendingExclusion,
             PendingExclusionStart = this.PendingExclusionStart,
             AccessModifierSpan = this.AccessModifierSpan,
+            SecondModifierSpan = this.SecondModifierSpan,
             DocumentationExcludedStart = this.DocumentationExcludedStart,
             HeaderPosition = this.HeaderPosition,
         };
@@ -360,6 +367,7 @@ public ref partial struct TokenReader
         this.ModifierKind = context.ModifierKind;
         this.DispatchModifierSpan = context.DispatchModifierSpan;
         this.AccessModifierSpan = context.AccessModifierSpan;
+        this.SecondModifierSpan = context.SecondModifierSpan;
         this.IsExcluded = context.IsExcluded;
         this.PendingExclusion = context.PendingExclusion;
         this.PendingExclusionStart = context.PendingExclusionStart;
@@ -951,6 +959,7 @@ public ref partial struct TokenReader
         this.ModifierKind = default;
         this.DispatchModifierSpan = default;
         this.AccessModifierSpan = default;
+        this.SecondModifierSpan = default;
         this.IsExcluded = false;
         this.HasCompileTimeIfPrefix = false;
     }
