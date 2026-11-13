@@ -75,8 +75,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
-    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
+    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
+    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
     internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
         failure = default;
@@ -85,10 +86,9 @@ public sealed partial class Binding
             return false;
         }
 
-        signature = this.ContractType(signature, this.ConstraintScope(use));
-        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
+        if (HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(signature, required, SignatureOwner(item), out failure))
+            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;
             }
