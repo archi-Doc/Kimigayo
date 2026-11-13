@@ -18278,6 +18278,47 @@ structure is recorded here by the unit that first implements it.
     `Binding.JudgeChains` (BU-62) and BU-72's `PublishIdentityPremise`, `ClearIdentityPremise` and `HirTables.IdentityPremise`
     retagged R7 (2026-11-06, verbatim 「一括承認します。」).
   - The D5 freeze ends with this exit (COMPILER_ARCHITECTURE).
+- **R5-M195 A plain write Binding rejected for its value's fit keeps its write** (2026-11-13; PLAN G105, G791 (D-456), board C-272; the
+  owner, O-241 (a), verbatim 「推奨どおりでお願いします」, relayed by K 11-13 13:4x; the Front's hunk review and the Middle's design review,
+  ACCEPT WITH NOTES) SPEC 13.7.1, 15.1.1, 23.1.2. Supersedes R5-M63's Error-node rule ("a failed node ... the Error node's own value
+  stays a derived Opaque") for this form, as BU-106 did for `do`, under the owner's O-241 (a) as BU-106 under O-5; PLAN G105's A6 item
+  no longer covers it.
+  - Cause: a value that does not fit its destination is the write's own failure (`FailMismatch(binary, at: value)`), so the publisher
+    made the write an Error and the builder one Opaque naming the target as a use: A1 lost `ReassignedLet_Kd` (G791) and reported
+    dependent `UninitializedPlace_Kd`, A5 lost or added records, and the target's operands were never evaluated.
+  - Rule: BindBinary's one destination check (G782: `CheckDestination`, then the Holder admission) publishes its verdict for a plain
+    write that fails after it, an admitted misfit: `Binding.AdmittedMisfit`, the write's plan row Mode, one writer `SetAdmittedMisfit`,
+    reset at each binding and set at its end; a row only for such a write. A typed target reaching that point was admitted, since every
+    refusal returns at once. The publisher keeps an admitted misfit as `HirOp.Assign` (`OpOf`, still under `HasFacts`) and publishes
+    its value as the Error (`Rejected`, a value Binding resolved included), taken as its derived value (Temporary, None); `HirOp`'s
+    remarks state the exception. The builder builds it by `Replace` unchanged: the target is evaluated and placed (SPEC 13.7.1 steps
+    2-4), a setter called with the derived input. `Rejected`'s other readers follow: a value `do` keeps its resolved parts (BU-106), a
+    value compound Place keeps its resolved operands (R5-M63 (2)), `ClosureReceivers.TakenByCase` gives false.
+  - Unchanged, none of them an admitted misfit (O-241 (a)): a write refused by `CheckDestination`, a reference binding's mode record or
+    the Holder record, and a compound assignment or update Binding rejects, are Error nodes; a write whose target Binding refused at
+    the target itself (a shared path, an inaccessible setter) or did not type rests on that target with `Assign` under `HasFacts`, and
+    the builder derives it whole (`MirBuilder.Into`'s rejected-target arm), as before.
+  - R4-M125's rejected option: for a rejected `let`, R4-M125 rejected "the publisher publishing such a declaration as Op Let over a
+    folded initializer (a second meaning of Op Let for one form)". Its reason does not reach `Assign`: `Assign` keeps one meaning (it
+    places its value), every reader builds it as before, and an `Assign` whose value is an Error is the resting form's representation
+    already (`x = nope`); the exception is `HirOp.Error`'s, stated in its contract, and the value is R4-M109's derived value. The two
+    rules share one meaning where a `let`'s failure is its initializer's fit (an admitted effect placed with a derived value), decided by
+    the builder for `let` and by the publisher for `=`; R4-M125's other part, a declared local's storage identity whatever the failure,
+    has no `=` counterpart. PLAN's open issue (D4) holds the one-owner question.
+  - Records (Q13): restored independent: `ReassignedLet_Kd` at a second placement of a `let` local or Field; `MovedPlace_Kd` at a later
+    use where the target's access path moves (`a[k(s@move)] = "a"`, step 2); A5's `ComparisonLoanConflict_Kd` at a write to a target
+    whose Loan is live (`x = "a"` while `x@ref` or `x@uniq` is live). Relocated to the use they name: a `MovedPlace_Kd` or
+    `UninitializedPlace_Kd` the value reads, now at the value, and one in the target's access path, now at its operand (`a[i] = "a"`
+    with `i` uninitialized). Removed dependent: `UninitializedPlace_Kd` at the write, the target's later uses and a constructor's end;
+    `MovedPlace_Kd` where it rested on the lost write (a written part of a partly moved root, a moved local re-initialized); A5's
+    `ComparisonLoanConflict_Kd` after a replaced reference's write. No acceptance move.
+  - Not covered (PLAN G105): compound assignments and updates and writes whose target has no Type (left parts of this cause, staged by
+    O-241 (a)); writes refused at their destination or target; a value's own parts, which stay replaced (`t = takes(s@move)`, G121); an
+    Opaque site naming a whole root (site-root granularity).
+  - Rejected: Binding reporting `ReassignedLet_Kd` (only control flow decides a first placement, SPEC 15.1.1); the misfit recorded on the
+    value (moves the write's verdict onto a valid child); the builder deciding from an Error write (its children's Place facts are not
+    published); a HirPosition or HirAcquire member (a vocabulary entry where `Rejected` carries the meaning); the write's Type Unit as the
+    verdict (an Invalid node's BoundType is what a later bind returns); A6 suppression (cannot restore the lost record).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)
