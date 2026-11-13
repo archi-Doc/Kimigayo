@@ -88,6 +88,10 @@ public enum SyntaxForm : ushort
     /// modifier (SPEC F.3.3).</summary>
     SecondModifier,
 
+    /// <summary>An access word after <c>unsafe</c>, <c>virtual</c> or <c>override</c>: the access specification precedes the modifier
+    /// (SPEC F.3.3).</summary>
+    AccessAfterModifier,
+
     /// <summary>A receiver parameter that is repeated, renamed, defaulted or declared outside a struct or Contract.</summary>
     ReceiverParameter,
 

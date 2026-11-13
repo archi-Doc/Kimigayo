@@ -359,6 +359,13 @@ public static partial class Parser
         var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
         if (acc == default)
         {
+            // F.3.3: the access specification precedes the modifier. An access word after unsafe, virtual or override is misplaced where
+            // it stands and kept, so the declaration has the access it wrote; open's order is OpenModifier's, and static is no modifier.
+            if ((reader.ModifierKind & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0)
+            {
+                reader.Unexpected(SyntaxForm.AccessAfterModifier);
+            }
+
             reader.ModifierKind |= kind;
             reader.AccessModifierSpan = reader.CurrentTokenRange;
         }
