@@ -134,6 +134,7 @@ internal sealed class ImplTable
             conformance.Active = false;
             conformance.IsVerified = false;
             conformance.Checking = false;
+            conformance.Reentries = 0;
             conformance.RejectedSelfSignature = null;
             conformance.Invalid = false;
             conformance.WitnessStorage.Clear();

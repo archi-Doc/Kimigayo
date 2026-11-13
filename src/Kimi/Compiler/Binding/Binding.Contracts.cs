@@ -141,6 +141,7 @@ public sealed partial class Binding
 
         this.ResetAssociatedInference();
         this.failedCause = null;
+        this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.impls.Reset();

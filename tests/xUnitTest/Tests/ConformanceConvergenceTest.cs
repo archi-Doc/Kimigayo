@@ -318,6 +318,11 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             let v: T.(Has2).Out
         """;
 
+    // The 24 orders of four declarations, each with its bound's two spellings and without Wrap's K
+    // (ACapabilityReadUnderAnOpenObligationIsJudgedAgain).
+    public static TheoryData<int, string, bool> DeclarationOrders
+        => [.. Enumerable.Range(0, 24).SelectMany(static order => new[] { (order, "Copy or K", true), (order, "K or Copy", true), (order, "Copy or K", false) })];
+
     // The owner's O-44, SPEC 8.6.3, 8.3.2: a conformance forms no signature, so each Type is judged where it is written, after the conformance holds, in
     // any declaration order (8.3.3). The second program stays invalid at its own requirements: Box<Self> in C needs Self is K, which C does not supply
     // (7.5, 8.15.1). The last two are DECISIONS Q13's: the conformance's record went with the gate (k1) or names the true cause (m3).
@@ -357,6 +362,34 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("contract C\n    associate Item is Owned\nstruct Box<T>\n    public var n: i32 = 0\nstruct P\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is P\n", true)]
     public void ACapabilityOfAnInstanceRestsOnItsFormation(string source, bool valid)
         => Assert.Equal(valid, CompilationTestHelper.ParseSuccess(source).Bind().IsComplete);
+
+    // SPEC 8.3.2, 8.3.3 Finality (R7-C2e2 e2-5a): `S is C`'s bound asks `Wrap<i32> is Copy or K`, and Wrap's Copy needs its stored
+    // Box<S>, whose formation is `S is C`. Read while `S is C` is open the Copy supplies nothing, and it is judged again afterwards, so
+    // no declaration order changes the result: with Wrap's own K the bound holds and `w` is copied at a call and a capture; without it
+    // the bound rests on the conformance it proves, and the program is invalid in every order.
+    [Theory]
+    [MemberData(nameof(DeclarationOrders))]
+    public void ACapabilityReadUnderAnOpenObligationIsJudgedAgain(int order, string bound, bool k)
+    {
+        var blocks = new List<string>
+        {
+            "struct S\n    Self is C\n    associate C.Item is Wrap<i32>\n",
+            $"struct Wrap<T>\n    Self is Copy\n{(k ? "    Self is K\n" : string.Empty)}    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n",
+            "struct Box<T>\n    T is C\n    Self is Copy\n    public init() => ()\n",
+            $"contract K\ncontract C\n    associate Item is {bound}\n",
+        };
+        var source = string.Empty;
+        for (var radix = blocks.Count; radix > 0; order /= radix--)
+        {
+            source += blocks[order % radix];
+            blocks.RemoveAt(order % radix);
+        }
+
+        source += "func twice<V>(v: V) -> (V, V)\n    V is Copy\n    return (v, v)\nfunc count(w: Wrap<i32>) -> i32 => 2\n" +
+            "func use() -> ()\n    let w = Wrap<i32>.init()\n    let t = twice(w)\n" +
+            "func capture() -> ()\n    let w = Wrap<i32>.init()\n    let f = func () -> i32 => 1 + count(w)\n";
+        Assert.Equal(k, DiagnosticCorpus.RecordProfile(source) == "clean");
+    }
 
     // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))

@@ -11,6 +11,7 @@ public sealed partial class Binding
 
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
+    private readonly List<CapabilityWork> pendingCapabilities = []; // The works a request's evaluations left Pending.
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -255,6 +256,7 @@ public sealed partial class Binding
         this.ClearKeptRows(); // So do Enumerate's kept rows (ContractSolver).
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
+        this.pendingCapabilities.Clear();
         this.capabilityConsumer = null;
         foreach (var work in this.capabilityNodes.Values)
         {
@@ -347,7 +349,14 @@ public sealed partial class Binding
                 this.capabilityConsumer = next;
                 this.ScopeReads = default;
                 next.Parts?.Clear();
+                var reads = this.reentryReads;
                 var result = this.ComputeCapability(next);
+                next.Pending = this.reentryReads != reads;
+                if (next.Pending)
+                {
+                    this.pendingCapabilities.Add(next);
+                }
+
                 var cause = this.ProofCause(result);
                 next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
                 next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
@@ -376,7 +385,40 @@ public sealed partial class Binding
 
         this.ScopeReads = default;
         this.ScopeReads.Origin = work.Result == ConstraintProof.Proven ? null : work.Origin;
-        return this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
+        var verdict = this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
+        this.ForgetPendingCapabilities();
+        return verdict;
+    }
+
+    // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
+    // that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that proof ends. None is kept
+    // past the outermost request, which has answered its requester inside that proof: each returns to its initial state and is
+    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did.
+    private void ForgetPendingCapabilities()
+    {
+        var pending = this.pendingCapabilities;
+        for (var i = 0; i < pending.Count; i++)
+        {
+            var work = pending[i];
+            if (!work.Pending)
+            {
+                continue;
+            }
+
+            foreach (var dependent in work.Dependents)
+            {
+                this.capabilityEdges.Remove((work, dependent));
+                if (dependent.Evaluated && !dependent.Pending)
+                {
+                    dependent.Pending = true;
+                    pending.Add(dependent);
+                }
+            }
+
+            work.Reset();
+        }
+
+        pending.Clear();
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)

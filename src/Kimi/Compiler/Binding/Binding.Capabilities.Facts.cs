@@ -98,6 +98,10 @@ public sealed partial class Binding
 
         internal bool Queued { get; set; }
 
+        // Whether its last evaluation read an open obligation, or a work that did (SPEC 8.3.3 Finality): no fact past the outermost
+        // request, which returns it to its initial state (Binding.ForgetPendingCapabilities).
+        internal bool Pending { get; set; }
+
         internal CapabilityWork? Parent { get; set; }
 
         // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
@@ -123,6 +127,7 @@ public sealed partial class Binding
             this.Result = InitialResult(this.Intrinsic, this.Type);
             this.Evaluated = false;
             this.Queued = false;
+            this.Pending = false;
             this.Parent = null;
             this.Cause = null;
             this.Origin = null;

@@ -140,7 +140,7 @@ public sealed partial class Binding
         // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
         if (conformance.Checking)
         {
-            return ConstraintProof.Unknown;
+            return this.ReentryRead(conformance);
         }
 
         conformance.Checking = true;
@@ -388,7 +388,7 @@ public sealed partial class Binding
         }
         finally
         {
-            conformance.Checking = false;
+            this.EndChecking(conformance);
             conformance.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
