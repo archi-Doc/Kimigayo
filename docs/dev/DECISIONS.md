@@ -19427,7 +19427,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Temporary** (W1c-1), removed by an event: `LegacyRuntimeHelpers.FormatFixed` and `FormatHeap` (`__kimi_text_fixed`,
     `__kimi_text_heap` without rows): FormatBuffer's routines and the conversions'; a second statement of the two constructions (the
     runtime's FixedBuffer words, the heap allocation) beside `Text.fixed`'s and `Text.heap`'s bodies; removed at W2 (FormatBuffer
-    replaced by the library adapter), after W1c-2 removes the conversions' use (done; both stay for FormatBuffer, below).
+    replaced by the library adapter), after W1c-2 removes the conversions' use (done; both stay for FormatBuffer, below). Removed by
+    R8-M24's c3b amendment (R8-W2 c3b).
   - Rejected (W1c-1): H2, `HeapBuffer.init(data, capacity)` with the claim `data@(raw/u8 during self)`: in an `init` the claim is
     `UnsatisfiedOriginRelation_Kd` (W1a's claim works only in a `uniq/Self` member), and it would state the allocation a second
     time.
@@ -19505,8 +19506,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Temporaries (W1c-2): `LegacyRuntimeHelpers.FormatFixed` (`__kimi_text_fixed`) is **kept**: W1c-2b removed no caller. Its two
     callers are `FunctionCodegen.Interpolation.cs:65` (FormatBuffer's buffer over an owning interpolation's stack Region) and
     `__kimi_text_heap`'s template (`Utf8BufferRuntime.ll.in:29`; `FormatHeap`, FormatBuffer's routine). Both are W2's to remove,
-    with `FormatHeap`. `WriteBuiltin` (R8-M18) loses its conversion callers; removed at W2 (SegmentText, FormatLiteral).
-    `FormatBound` is the only bound table until W2.
+    with `FormatHeap`; removed by R8-M24's c3b amendment (R8-W2 c3b). `WriteBuiltin` (R8-M18) loses its conversion callers; removed
+    at W2 (SegmentText, FormatLiteral). `FormatBound` is the only bound table until W2.
   - Counts (RQ9; W1c-2 with W1c-2b, over W1c-3's head c1aeeee7a): `CompilerFunctionKind` 30 → 28 (`TextToString`, `TextTryFormat`);
     `LegacyWriter` 2 → 0 (the enum is gone; R8-M11 left it at 5 and R8-M17's deletion of `Replace`, `Exchange` and `Swap` at 2);
     `KimiDeclarationId` unchanged; `Utf8FormatRuntime.ll.in` −64 lines.
@@ -19649,6 +19650,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     Origin); (C) the builder deciding only on closed Types (the Generic row 0 → 1, an owner question); two complete expansions (a
     copying expansion outside IMPL 21.3.2's limit, doubling per nested line); a per-write branch between two writers (two calls per
     position; the erased writer makes it unnecessary).
+  - Amended at R8-W2 c3b (Back, 2026-11-13; Major with a design review; the Middle's C-267: consent with conditions, hunk review
+    ACCEPT WITH NOTES; B's implementation review 1 ACCEPT WITH NOTES; the Front's C-268). An owning interpolation's private buffer
+    is the library's `Text.heap(0)`, the plan's first call, which the MIR builder makes with the constant 0; the FormatBuffer
+    intrinsic, `__kimi_text_heap` and `__kimi_text_fixed` are deleted (`IntrinsicId` 30 -> 29). The buffer starts empty and the
+    adapter's first reservation grows it once (its bytes, the deferred literal and the hint), so SPEC 22.10.5's counts hold and an
+    all-bounded line's bytes fall (B5). A direct line whose term an instance decides makes **both** buffers on every path before its
+    first branch, `Text.fixed` over the region (of no bytes at an owning instance) and `Text.heap(0)` (no allocation), and each arm
+    makes only the writer. Each end therefore reads a buffer initialized on every path: **A1's own-bit rule for a temp is removed as
+    the reason these reads are accepted** (the residual contract's second half; the first, FormatFinish reading the adapter's Field
+    0, goes at c3a); the rule itself stays general (the Middle's N3). Rejected: a capacity term for byte-identical rows (a term kept
+    for bytes B5 leaves open); keeping the one-path construction as a permanent contract. Cost: on a generic two-arm line,
+    `Text.heap(0)` and a release of null on the fixed path, `Text.fixed<0>` on the owning path (RP8 T-176: O2 no slowdown; Generate
+    on the Interpolation kernel +1.9% cold, +1.7% warm; warm bytes 0). Superseded sentences of this entry: "else the owning buffer
+    (FormatBuffer)"; "so an owning buffer made on one path has a flagged drop (MirDrops)" (the buffer is made on every path; until
+    c3a moves it its Drop is Keep); the residual contract's A1 half and its "Removed at R8-W2 c" for that half; the Temporary bullet
+    (`FormatFixed` is deleted with `__kimi_text_heap`, its one caller; its "and Utf8FloatTest's hand IR" named no caller, c3b's
+    census). One vocabulary entry removed (`IntrinsicId.FormatBuffer`); no new representation, component or entry.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
