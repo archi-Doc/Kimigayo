@@ -22,6 +22,19 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
+    // PLAN G724, B4: a member access's side is published beside its selection in a table cleared each pass, so a warm Bind of Type-side,
+    // value-side, constructor and Case accesses allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfMemberSidesAllocatesNothing()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(
+            "enum Message\n    Quit\n    Write(i32)\nstruct S\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "    public func make() -> S => S.init()\nfunc f(s: ref/S) -> i32 => s.m()\nfunc g() -> Message => Message.Write(1)\nfunc h() -> S => S.make()");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {

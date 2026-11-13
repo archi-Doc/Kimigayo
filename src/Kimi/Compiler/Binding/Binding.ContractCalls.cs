@@ -31,7 +31,6 @@ public sealed partial class Binding
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
-        group.TypeAccess = typeAccess;
         group.PropertyRequirement = false;
         group.Properties.Clear();
         group.PropertyContracts.Clear();
@@ -57,7 +56,8 @@ public sealed partial class Binding
         }
 
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
-        // concrete integers gain no members.
+        // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
+        // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
         if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
         {
             Add(position);
@@ -211,8 +211,6 @@ public sealed partial class Binding
         internal BoundType Self { get; set; } = null!;
 
         internal bool Active { get; set; }
-
-        internal bool TypeAccess { get; set; }
 
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }

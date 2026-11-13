@@ -280,6 +280,29 @@ public class RawStorageTest
     [InlineData("()", "for _ in b.arr@uniq => _ = 0", "UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "MovedPlace_Kd: var b = Block.init() | MovedPlace_Kd: b.data = fresh | UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
+    // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
+    // its own record is reported; another layer's non-null source and an update, which reads no value, keep their records.
+    [InlineData("()", "b.data = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (nope, 1)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.data = 5", "TypeMismatch_Kd: 5")]
+    [InlineData("()", "b.arr = [nope, shared]", "UnsatisfiedOriginRelation_Kd: b.arr = [nope, shared] | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "unsafe => b.data += nope", "UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
+    // A Case payload's layers are judged over its failed parts as a write's are: a non-null source at a layer beside a failed part keeps
+    // its record, a failed part at the layer gives none.
+    [InlineData("()", "let c = Cell.Two((fresh, nope))", "UnsatisfiedOriginRelation_Kd: (fresh, nope) | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((nope, 1))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Some(nope)", "UnresolvedBinding_Kd: nope")]
+    // Only the elements the stored Tuple has are read: a longer Tuple literal's misfit is its fit's record, and a layer inside the arity
+    // is still judged (the misfit's record beside U is lost, PLAN G262). A longer fixed-array literal fails as a whole (rule W).
+    [InlineData("()", "b.pair = (nope, 1, 2)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (fresh, 1, 2)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((nope, 1, 2))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((fresh, 1, 2))", "UnsatisfiedOriginRelation_Kd: (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((null, 1, 2))", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [fresh, null, null]", "TypeMismatch_Kd: [fresh, null, null]")]
+    [InlineData("()", "b.pair = (null, 1, 2)", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [nope, null, null]", "TypeMismatch_Kd: [nope, null, null] | UnresolvedBinding_Kd: nope")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)
         => Assert.Equal(records.Split(" | "), RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 

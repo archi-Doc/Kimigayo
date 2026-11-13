@@ -502,8 +502,8 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.Iterable, "public contract Iterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source\nfunc iterate(self: ref/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.UniqIterable, "public contract UniqIterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for uniq/Self during source\nfunc iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.IntoIterable, "public contract IntoIterable\nassociate IteratorType is ::Kimi.LendingIterator\nfunc intoIterator(self: Self) -> Self.IteratorType")]
-    [InlineData(KimiDeclarationId.Position, "public contract Position: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\nfunc tryResolve(self: Self, length: isize) -> Option<isize>")]
-    [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
+    [InlineData(KimiDeclarationId.Position, "public contract Position: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<isize>")]
+    [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
     [InlineData(KimiDeclarationId.Utf8Format, "public contract Utf8Format\nfunc format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>")]
     [InlineData(KimiDeclarationId.BufferWriter, "public contract BufferWriter\nfunc reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
