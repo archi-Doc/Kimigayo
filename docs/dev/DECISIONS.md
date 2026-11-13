@@ -20127,6 +20127,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     Hello, Milestone26 and Strings: every B/A' within 0.979-1.041 and inside each row's A'/A spread or at its edge (the only B/A'
     above 1.012 is Milestone26's warm Generate, 77 µs, 1.041 against A'/A 0.972: noise at that size); cold bytes B 200 B below A
     on all three (11,816,064 against 11,816,264 on Hello), warm 0 B. The compile cost is unchanged.
+  - Superseded in part by R8-M38 (PLAN G815, 2026-11-13): the view's `Utf8Format` conformance is the witness table's
+    `Utf8SliceFormat` row; `Utf8Slice` declares no `format`.
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
@@ -20299,6 +20301,31 @@ R8-M* and R9-M* by the stage of the recording unit.
     it asserts completion, which also holds before). Open for S2d1 (I-N1): f32/f64 rows in
     `FunctionCodegenTest.ATableBodyWriteReportsItsCallersLocation` (the IR layer of revision 3's CallerLocation rule); S2c pins it
     by the native Abort rows.
+- **R8-M38 The view's `Utf8Format` conformance is the witness table's row (PLAN G815)** (Back, 2026-11-13; D-508, C-286; the Front's
+  consent C-286; supersedes R8-M30's S2d1 view sentence) SPEC 22.10.2, 22.9.3, 22.5.1.
+  - Rule: the view's `Utf8Format` conformance is the witness table's `Utf8SliceFormat` row, as every built-in conformance is (SPEC
+    22.10.2: built in, adding no member, reached only through a proven `T is Utf8Format`; SPEC 22.9.3 and LIBRARY give the view
+    `length` and `bytes()` only). Its body is `Formatting.kimi`'s `internal group Utf8SliceFormat`,
+    `func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer)` (body unchanged, `writer.writeUtf8(self@follow)`); its catalog
+    row, `KimiDeclarationId.Utf8SliceFormatFormat` (renamed from S2d1's `Utf8SliceFormat` to the `<Group><member>` form of every
+    other witness row), keeps `SourceFunction` and `CallerLocation` (SPEC 22.5.1, until G1) under `Owner: "Utf8SliceFormat"`.
+    `struct Utf8Slice` declares neither `Self is Utf8Format` nor `format`.
+  - Superseded, in R8-M30's S2d1 part: the "Owner, S2d1" sentence on `Text.Utf8Slice` (declared conformance, public `format`, the
+    row through `KimiLibraryContainer.Utf8Slice`); F2's reason ("the view's conformance is declared"; `IsBuiltin` still excludes the
+    view, now because the table answers it); move (2) (`Text.Utf8Slice.format` as a Function Item is invalid, no longer a limit).
+    The reason that no longer holds: "as FromEnd does": FromEnd's `format` comes with the conformance its declaration states,
+    `Self is Position` (`Position: Equatable, Utf8Format`, LIBRARY §3.1), which SPEC 22.10.2 does not list among the built-in
+    conformances; SPEC 22.10.2 does list the view's.
+  - Moves: acceptance (Q17 class 1): `Text.utf8(x).format(w)` accepted -> `UnresolvedBinding_Kd` at the member access; a rejected
+    program's record: `let show = Text.Utf8Slice.format` goes from `Unsupported_Kd` to `UnresolvedBinding_Kd` at the item. Writes,
+    interpolations, `toString`, `tryFormat`, `Console.writeLine` and generic `T is Utf8Format` uses of a view are unchanged (fixture
+    IR identical).
+  - Counts: `WitnessMembers` +1 (`Utf8SliceFormat`); `KimiLibraryContainer` -1 (S2d1's `Utf8Slice`, left with no catalog row); the
+    `KimiDeclarationId`, `CompilerFunctionKind` and catalog counts unchanged (one id renamed).
+  - Rejected: a declared `format` made internal (SPEC 8.6.3, 9.4.6: a conformance's implementation member is at least as accessible
+    as the Contract, and two kinds of built-in conformance beside R8-M4's one table); a member-lookup filter for the view's `format`
+    (a consumer deciding by syntax).
+  - Open, not this entry: whether FromEnd's public `format` is itself sound by SPEC is the Front's question (G776-a's review N6).
 - **R8-M36 The writer's reservation is kept out of line; the library's out-of-line rows are a closed catalog table** (Back,
   2026-11-12; PLAN G779; the owner's O-195 (a), O-196; design `back\leaf-inline\design.md` Revision 1, design reviews 1 REVISE, 2
   ACCEPT).
