@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -8,6 +9,10 @@ namespace XunitTest;
 public class Utf8FormatBindingTest
 {
     private const string Prefix = "var buffer = Text.heap(0)\nvar writer = Text.writer(buffer@uniq)\n";
+
+    // SPEC 22.10.2's built-in Utf8Format conformances but Utf8Slice's, which its declaration states: the numeric Types (the integers and
+    // floats among the Primitives, every Wrapping<T>), bool, char, Unit and string.
+    private static readonly BoundType[] BuiltinFormattable = [.. BoundType.Primitives.Values, .. BoundType.WrappingScalars.Values];
 
     [Theory]
     [InlineData("0@i8")]
@@ -22,6 +27,7 @@ public class Utf8FormatBindingTest
     [InlineData("0@u128")]
     [InlineData("0@isize")]
     [InlineData("0@usize")]
+    [InlineData("(200@u8)@Wrapping<u8>")]
     [InlineData("0@f32")]
     [InlineData("0@f64")]
     [InlineData("true")]
@@ -148,6 +154,25 @@ public class Utf8FormatBindingTest
         var c = MinimalEmissionTest.Analyze("struct Plain\n    public init() => ()\n" + Prefix + "_ = (writer@uniq).write(Plain.init())");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(["NoApplicableOverload_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // SPEC 22.10.2 (R8-S2b2, R8-S2d2; DECISIONS R8-M30): every Type of BuiltinFormattable has a witness table row, which alone states
+    // and proves its Utf8Format conformance since R8-S2d2 (fail-before: i128 and u128 had no row).
+    [Fact]
+    public void EveryBuiltinFormattableTypeHasATableRow()
+        => Assert.All(BuiltinFormattable, static x => Assert.NotNull(Binding.WitnessGroup(x, KimiDeclarationId.Utf8Format)));
+
+    // SPEC 4.6.1, 8.7, 22.1, 22.10.2 (R8-S2d2): every Type of BuiltinFormattable is proven Utf8Format at a use site, through the witness
+    // table's arm alone since R8-S2d2 deleted the built-in proof arm (DECISIONS R8-M30, temporary 2); it passes before and after that
+    // deletion.
+    [Fact]
+    public void EveryBuiltinFormattableTypeIsProvenUtf8Format()
+    {
+        var c = CompilationTestHelper.ParseSuccess("func use() => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "use");
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Utf8Format)!;
+        Assert.All(BuiltinFormattable, x => Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(x, contract, use, out _)));
     }
 
     private static string Describe(Compilation c)

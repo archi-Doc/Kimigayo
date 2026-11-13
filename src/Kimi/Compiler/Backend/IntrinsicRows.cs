@@ -102,7 +102,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.Witness,
             LayoutNeed.None,
             IntrinsicWriter.Writer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
+            RuntimeAbi.TextWriter),
         new(
             IntrinsicId.ErasedReserve,
             IntrinsicTarget.None,
