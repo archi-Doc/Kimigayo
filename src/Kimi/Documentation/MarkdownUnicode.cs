@@ -6,42 +6,16 @@ namespace Kimi.Documentation;
 
 internal static class MarkdownUnicode
 {
-    // CommonMark whitespace is Zs plus TAB, LF, FF, CR. Neither VT nor NEL is whitespace.
+    // CommonMark's character classes (2.1), each a generated row of MarkdownUnicodeData (Unicode 15.0.0) read above ASCII: whitespace
+    // is Zs plus TAB, LF, FF and CR (neither VT nor NEL), punctuation the P and S categories. Outside the text (scalar < 0) is
+    // whitespace, not punctuation.
     internal static bool IsWhitespace(int scalar)
-        => scalar < 0 || scalar is 0x09 or 0x0A or 0x0C or 0x0D or 0x20 or 0xA0 or 0x1680 or (>= 0x2000 and <= 0x200A) or 0x202F or 0x205F or 0x3000;
+        => scalar < 128 ? scalar is < 0 or 0x20 or (>= 0x09 and <= 0x0D and not 0x0B) : InRanges(MarkdownUnicodeData.Whitespace, scalar);
 
     internal static bool IsAsciiPunctuation(char value) => value is (>= '!' and <= '/') or (>= ':' and <= '@') or (>= '[' and <= '`') or (>= '{' and <= '~');
 
     internal static bool IsPunctuation(int scalar)
-    {
-        if (scalar < 128)
-        {
-            return scalar >= 0 && IsAsciiPunctuation((char)scalar);
-        }
-
-        var ranges = new IntegerTable<int>(MarkdownUnicodeData.Punctuation);
-        var low = 0;
-        var high = (ranges.Length / 2) - 1;
-        while (low <= high)
-        {
-            var middle = (low + high) >> 1;
-            var offset = middle * 2;
-            if (scalar < ranges[offset])
-            {
-                high = middle - 1;
-            }
-            else if (scalar > ranges[offset + 1])
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+        => scalar < 128 ? scalar >= 0 && IsAsciiPunctuation((char)scalar) : InRanges(MarkdownUnicodeData.Punctuation, scalar);
 
     internal static int Before(ReadOnlySpan<char> text, int offset)
     {
@@ -65,5 +39,32 @@ internal static class MarkdownUnicode
         return char.IsHighSurrogate(first) && offset + 1 < text.Length && char.IsLowSurrogate(text[offset + 1])
             ? char.ConvertToUtf32(first, text[offset + 1])
             : first;
+    }
+
+    // Whether a scalar lies in one of a row's merged inclusive (first, last) ranges, ascending: a binary search.
+    private static bool InRanges(ReadOnlySpan<byte> row, int scalar)
+    {
+        var ranges = new IntegerTable<int>(row);
+        var low = 0;
+        var high = (ranges.Length / 2) - 1;
+        while (low <= high)
+        {
+            var middle = (low + high) >> 1;
+            var offset = middle * 2;
+            if (scalar < ranges[offset])
+            {
+                high = middle - 1;
+            }
+            else if (scalar > ranges[offset + 1])
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
