@@ -39,14 +39,16 @@ public partial class TypeDagScalingTest
     [InlineData(1)]
     [InlineData(16)]
     [InlineData(64)]
-    public void AnInstanceFamilyIsSummarizedOncePerDeclaration(int depth)
+    public async Task AnInstanceFamilyIsSummarizedOncePerDeclaration(int depth)
     {
         var source = "contract C\nstruct Box<T>\n    T is C\n    Self is C\n" +
             string.Concat(Enumerable.Range(0, depth).Select(i => $"struct D{i}<T>\n    T is C\n    let next: Array<D{(i + 1) % depth}<Box<T>>>\n")) +
             "struct S\n    Self is C\nstruct H\n    let d: D0<S>\nfunc inspect(a: H) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n";
-        var run = Task.Run(() => MinimalEmissionTest.Analyze(source));
-        Assert.True(run.Wait(TimeSpan.FromSeconds(60)), "the summary solve did not finish within 60 s");
-        Assert.True(run.Result.Binding.Result.IsComplete, MinimalEmissionTest.Describe(run.Result));
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(() => MinimalEmissionTest.Analyze(source), cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        var c = await run;
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
