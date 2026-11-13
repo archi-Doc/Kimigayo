@@ -266,10 +266,12 @@ public static partial class Parser
         return list.Count == 0 ? null : list;
     }
 
-    /// <summary>Reports an Origin annotation on a borrow layer of an adaptation target.</summary>
+    /// <summary>Judges an adaptation target read as a Type by SPEC 13.5.1's two rules of its own chain, through grouping and Semantics
+    /// layers down to its Core: no Origin annotation on a borrow layer, and no bound Container qualifier as the head of the Core's
+    /// path (F.5). Types nested in the Core keep both forms.</summary>
     /// <param name="type">The parsed target.</param>
-    /// <returns>The key of the first Error, or <see langword="null"/> when every layer is unannotated.</returns>
-    private static DiagnosticKey? CheckAdaptationOrigins(Koto type)
+    /// <returns>The key of the first Error, or <see langword="null"/> when the chain writes neither form.</returns>
+    private static DiagnosticKey? CheckAdaptationTarget(Koto type)
     {
         DiagnosticKey? cause = null;
         var outer = true;
@@ -294,6 +296,19 @@ public static partial class Parser
             {
                 // Stop at a Core. Payloads and function contracts contain independent
                 // complete Types; their annotations do not prescribe this operation's borrow.
+                // SPEC 13.5.1, F.5: a bound Container qualifier is unavailable as the head of the target's own path, even through
+                // grouping. A path's grouped head that is no Function Type is one (ContinuesGroupedType; a Tuple or Unit head is its own node).
+                var head = type;
+                while (head is MemberAccessKoto or GenericsKoto { Identifier: not null })
+                {
+                    head = head is MemberAccessKoto member ? member.Left : ((GenericsKoto)head).Identifier!;
+                }
+
+                if (!ReferenceEquals(head, type) && head is ParenthesizedTypeKoto { Type: not FunctionTypeKoto })
+                {
+                    cause ??= head.Unexpected(SyntaxForm.AdaptationQualifier);
+                }
+
                 return cause;
             }
         }

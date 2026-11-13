@@ -97,7 +97,7 @@ public static partial class Parser
                 {
                     // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
                     typeKoto = ParseType(ref reader, TypeContext.Target);
-                    if (CheckAdaptationOrigins(typeKoto) is { } annotated)
+                    if (CheckAdaptationTarget(typeKoto) is { } annotated)
                     {
                         typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
                     }

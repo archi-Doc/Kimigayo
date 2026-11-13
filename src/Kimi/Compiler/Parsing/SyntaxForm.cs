@@ -198,6 +198,9 @@ public enum SyntaxForm : ushort
     /// <summary>An Origin annotation on the borrow layer of an adaptation target.</summary>
     AdaptationOrigin,
 
+    /// <summary>A bound Container qualifier as the head of an adaptation target's own path (SPEC 13.5.1, F.5).</summary>
+    AdaptationQualifier,
+
     /// <summary>An Origin annotation anywhere in a runtime Type-test target.</summary>
     RuntimeTypeTestOrigin,
 

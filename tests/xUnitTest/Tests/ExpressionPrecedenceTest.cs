@@ -243,6 +243,15 @@ public class ExpressionPrecedenceTest
     [InlineData("x@i64--", "--", "postfix suffix after an open adaptation target")]
     [InlineData("p@P@follow", "@follow", "postfix suffix after an open adaptation target")]
     [InlineData("f(p@(P)@P(1))", "(1)", "postfix suffix after an open adaptation target")]
+
+    // SPEC 13.5.1, F.5: a bound Container qualifier never heads the target's own path, through any grouping or Semantics prefix.
+    [InlineData("x@((S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S during z).Item)", "(S during z)", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S{k}).(K).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S{k}).Item<i32>)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@(((S{k}).Item))", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@ref/((S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@(ref/(S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
     public void AnAdaptationOutsideItsGrammarIsOneRecordInEverySelection(string expression, string at, string phrase)
     {
         foreach (var excluded in (bool[])[false, true])
@@ -278,6 +287,20 @@ public class ExpressionPrecedenceTest
     [InlineData("f(p@P)(1)")]
     [InlineData("a[x@isize]")]
     [InlineData("[x@i64, 1]")]
+
+    // SPEC 13.5.1, F.5: another PathQualifier is grouped as a target, a plain path and a binding set are no qualifier, and a Type nested
+    // in the target's Core (a Type argument, an Optional's payload, a Tuple or fixed array element, a Function Type's part) keeps the form.
+    [InlineData("x@((i32, u8).(C).Item)")]
+    [InlineData("x@(((i32) -> i32).(C).Item)")]
+    [InlineData("x@([2 of i32].(C).Item)")]
+    [InlineData("x@(S.Item)")]
+    [InlineData("x@(S{k})")]
+    [InlineData("x@(S{k}).Item")]
+    [InlineData("x@Option<(S{k}).Item>")]
+    [InlineData("x@((S{k}).Item)?")]
+    [InlineData("x@((S{k}).Item, i32)")]
+    [InlineData("x@[2 of (S{k}).Item]")]
+    [InlineData("x@(((S{k}).Item) -> i32)")]
     public void AnAdaptationInsideItsGrammarHasNoRecordInEverySelection(string expression)
     {
         Assert.Empty(Parse("let result = " + expression + "\nlet next = 42").Diagnostics);

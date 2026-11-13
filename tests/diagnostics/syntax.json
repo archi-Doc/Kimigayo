@@ -1077,5 +1077,7 @@
   { "Name": "access-after-function-modifier", "Source": "public open struct Shape\n    #if false\n        virtual public func size(self: objref/Self) -> i32 => 0\npublic func main() => ()\n", "Intended": "the access specification precedes the modifier (SPEC F.3.3's own example), a grammar error in excluded syntax too (SPEC 19.4)",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "AccessAfterModifier", "At": "public func size", "Length": 6 } ] },
   { "Name": "root-path-group", "Source": "#if false\n    func f(v: ::(i32, u8), w: i32) -> i32 => w\npublic func main() => ()\n", "Intended": "only a TypeSegment follows '::' (SPEC F.5 ContainerPath, PLAN G489): a group there is where the Name was expected, in excluded syntax too (SPEC 19.4)",
-    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "(i32, u8)", "Length": 1, "Found": "(" } ] }
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "(i32, u8)", "Length": 1, "Found": "(" } ] },
+  { "Name": "adaptation-target-bound-qualifier", "Source": "contract K\n    associate Item\nstruct S {s}\n    Self is K\n    associate Item is i32\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nfunc t(x: i32, z: i32) -> i32\n    #if false\n        let y = x@((S during z).Item)\n    return 0\npublic func main() => ()\n", "Intended": "a bound Container qualifier is unavailable as the head of an adaptation target's own path, even through grouping (SPEC 13.5.1, F.5), in excluded syntax too (SPEC 19.4)",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "AdaptationQualifier", "At": "(S during z)" } ] }
 ]

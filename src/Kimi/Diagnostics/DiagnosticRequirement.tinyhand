@@ -258,6 +258,10 @@
     Description="the adaptation infers its borrow Origin"
     Phrase="Origin annotation on an adaptation's borrow layer"
 
+  + Name="Syntax.AdaptationQualifier"
+    Description="a bound Container qualifier is a Type-side form, unavailable in an adaptation target"
+    Phrase="bound Container qualifier in an adaptation target"
+
   + Name="Syntax.RuntimeTypeTestOrigin"
     Description="the runtime Type-test target writes no Origin annotation at any depth"
     Phrase="Origin annotation in a runtime Type-test target"
