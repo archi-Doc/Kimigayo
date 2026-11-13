@@ -153,7 +153,7 @@ public sealed partial class InstanceCollectorTest
     // call of that Closure through the failed access is checked as a request and then rests on Binding's record (InstanceCollector.Callee;
     // before: CheckFaulted_Kd, a null body read).
     [Theory]
-    [InlineData(GroupStaticHead + "(Array<T>.init(capacity: 4), " + Four + ")\nlet n = Box<i32>.G.s.1()\n", "UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), " + Four + "); Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s.1()")]
+    [InlineData(GroupStaticHead + "(Array<T>.init(capacity: 4), " + Four + ")\nlet n = Box<i32>.G.s.1()\n", "UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), " + Four + "); Unsupported_Kd Box<i32>.G.s.1; Unsupported_Kd Box<i32>.G.s.1()")]
     public void ADefinitionOutsideABodyNeedsItsContainersParametersOwned(string source, string records)
         => Assert.Equal(records, CheckRecords(source));
 
