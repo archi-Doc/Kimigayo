@@ -582,7 +582,7 @@ public sealed class MirInitTest
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS M-G105; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
+    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
     // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
     // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
     // reference's old referent are not; its target's operands are evaluated (SPEC 13.7.1 step 2), so a move there is a later use's

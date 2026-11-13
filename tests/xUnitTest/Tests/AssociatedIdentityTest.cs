@@ -354,7 +354,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     // (SPEC 7.5: written, read, under the identity premise); closed instances read as before. Before, each was TypeMismatch_Kd ("found
     // T.Output", "expected S.Output"). Read without the premise (`T is Addable<T>`), or a read, write, payload, Pattern binding or
     // constructor write as bool, stays TypeMismatch_Kd. The constructor's `self.x` write Binding rejects for its value still places a
-    // value derived from that failure (DECISIONS M-G105), so A1 records nothing there (Q13: the two dependent UninitializedPlace_Kd at that
+    // value derived from that failure (DECISIONS R5-M195), so A1 records nothing there (Q13: the two dependent UninitializedPlace_Kd at that
     // write and at the constructor, PLAN G105's, went).
     [Theory]
     [InlineData("func f<T>(a: T) -> T\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "")]

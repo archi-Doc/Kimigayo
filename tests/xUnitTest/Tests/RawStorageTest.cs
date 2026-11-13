@@ -238,7 +238,7 @@ public class RawStorageTest
         => Assert.Empty(RawPointerSyntaxTest.Records(Buffer + "func use()\n    var b = Buffer<i32>.init(capacity: 4)\n    b.push(1)\n    let v = b.view()\n    require v.get(0) == 1 else => $abort(\"view\")"));
 
     // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. The write Binding rejects for its value's
-    // Origin fit still places a value derived from that failure (DECISIONS M-G105), so A1 records nothing at it or at the constructor
+    // Origin fit still places a value derived from that failure (DECISIONS R5-M195), so A1 records nothing at it or at the constructor
     // (Q13: the two dependent UninitializedPlace_Kd, PLAN G105's, went).
     [Fact]
     public void AConstructorFillsSelfStorageWithAClaim()

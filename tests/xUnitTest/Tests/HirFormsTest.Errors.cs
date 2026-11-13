@@ -175,7 +175,7 @@ public sealed partial class HirFormsTest
         Assert.All(nodes.Where(x => !ReferenceEquals(x, error)), static x => Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow), HirTables.AdjustOf(x)));
     }
 
-    // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): a plain write Binding rejected for its value's fit after admitting its destination keeps
+    // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): a plain write Binding rejected for its value's fit after admitting its destination keeps
     // Assign, its target its own Op (a local's Name, a setter's Call) and its value, which Binding resolved, the Error taken as its derived
     // value (Temporary, None); a write its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound
     // update Binding rejected stay Error, their children replaced (fail-before: the local's and the setter's writes were Error too).

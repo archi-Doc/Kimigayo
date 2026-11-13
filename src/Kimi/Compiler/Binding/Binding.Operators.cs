@@ -15,7 +15,7 @@ public sealed partial class Binding
     private static bool NonNumericOperand(BoundType type)
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
 
-    // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): whether a plain write Binding rejected after BindBinary's one destination check admitted its
+    // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): whether a plain write Binding rejected after BindBinary's one destination check admitted its
     // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
     // failure is then its value's fit (a Type mismatch, an Origin or Owned fit, a fit's limit), and the write still places a value derived
     // from that failure. A write refused there, or whose target Binding did not type, is not one.
