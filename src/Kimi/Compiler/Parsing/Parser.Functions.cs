@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 // Input: a reader after the function keyword with the item's prefix pending; the header's form as ParseFuncDeclaration's arguments.
 // Output: a FunctionKoto without its body, which takes the prefix, or null when nothing of the header can be kept.
 // Invariants: a declaration whose header failed is omitted with its body; a function expression leaves the rest to its expression. A
-// specialization publishes no modifier: each it wrote is reported here.
+// specialization publishes no modifier: each it wrote is reported here. An override's header elements F.6.3 omits are one
+// OverrideHeader record, and the override rests on it.
 // Prohibitions: a body's items belong to Parser.Blocks, the clauses after a header to Parser.Syntax.
 public static partial class Parser
 {
@@ -28,10 +29,16 @@ public static partial class Parser
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, bool anonymous = false, bool constructor = false, bool specialization = false)
     {
         // A constructor, a specialization and an override take no attributes (SPEC 6.3, 8.13.2, 6.4.1): the prefix's are reported
-        // and attach to nothing.
-        if (constructor || specialization || (reader.ModifierKind & ModifierKind.Override) != 0)
+        // and attach to nothing. An OverrideDeclaration has no Access either (F.6.3).
+        var overrides = !(anonymous || constructor || specialization) && (reader.ModifierKind & ModifierKind.Override) != 0;
+        if (constructor || specialization || overrides)
         {
             ReportPendingAttributes(ref reader);
+        }
+
+        if (overrides)
+        {
+            RejectAccessWord(ref reader);
         }
 
         var context = reader.TakeContext();
@@ -114,6 +121,23 @@ public static partial class Parser
             {
                 reader.CodeContext.RecordRecovery(functionKoto, cause);
             }
+        }
+
+        // F.3.3: a FunctionHeader and an OverrideDeclaration write at most one of unsafe, virtual and override (a constructor's and a
+        // specialization's header rows judge each modifier they take none of). The record is at the second word, as the prefix's other
+        // modifier records are; the function's declaration checks rest on it.
+        if (!(anonymous || constructor || specialization) && context.SecondModifierSpan != default)
+        {
+            reader.CodeContext.RecordRecovery(functionKoto, reader.Unexpected(SyntaxForm.SecondModifier, context.SecondModifierSpan));
+        }
+
+        if (overrides && (genericArguments is not null || nameBoundary >= 0 ||
+            parameters?.Exists(static x => x.DefaultValue is not null || x.AttributeChain is not null) == true) &&
+            functionKoto.Unexpected(SyntaxForm.OverrideHeader) is { } overrideCause)
+        {
+            // F.6.3's OverrideDeclaration takes no Type parameters, no "!" boundary and no parameter default or attribute: the override
+            // inherits them (SPEC 6.4.1). Its slot matching and declaration checks rest on this Error.
+            reader.CodeContext.RecordRecovery(functionKoto, overrideCause);
         }
 
         // A declaration's header ends its line, since the declaration may be bodyless. A function expression's required body judges its
