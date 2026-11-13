@@ -19667,6 +19667,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     c3a moves it its Drop is Keep); the residual contract's A1 half and its "Removed at R8-W2 c" for that half; the Temporary bullet
     (`FormatFixed` is deleted with `__kimi_text_heap`, its one caller; its "and Utf8FloatTest's hand IR" named no caller, c3b's
     census). One vocabulary entry removed (`IntrinsicId.FormatBuffer`); no new representation, component or entry.
+  - Amended at R8-W2 c3a (Back, 2026-11-13; Major; review 1 and its fix round; RP8 T-180 with T-196's GC-free reading). An owning
+    interpolation ends through the library: `Utf8Writer.finish` (internal, a `CallerLocation` row; `KimiDeclarationId` +1,
+    `WriterFinish`), tested as a write, is the writer's last use: the recorded failure, else a deferred literal no reservation
+    wrote, written through `reserve(0)` and `settled` and committed; then `HeapBuffer.intoString` of the moved buffer, its Ok string
+    the result, its Err (unreachable: every byte was committed by an adapter, so it validates nothing) to the `KIMI_E_FORMAT` block.
+    The FormatFinish intrinsic, `__kimi_format_finish`, `__kimi_format_take_string`, `__kimi_format_check` and `__kimi_buffer_bytes`
+    are deleted (`IntrinsicId` 29 -> 28). **The residual contract's first half (FormatFinish reading the adapter's Field 0) is
+    removed**; with c3b's removal of the second, this entry has no residual contract left. On a generic two-arm line the owning
+    buffer's Drop is MirDrops' flagged one (its owning arm moves it); elsewhere every path moves it (Elide). Rejected: `finish`
+    returning the string (the transfer is HeapBuffer's); `finish` aborting itself (one failure path, the interpolation's block).
+    Cost (T-180, T-196): Generate on the Interpolation kernel +5.5% to +8.6% (about 50 us of a 33 ms compilation; each owning end
+    now calls `finish` and `intoString`); cold Bind and Analyze within 1.5% without the concurrent collector; O2 no slowdown.
+    Superseded sentences of this entry: "owning end: FormatFinish" (now `finish`, then `intoString`); the Residual contract bullet
+    (its FormatFinish half here, its A1 half at c3b) with its "Removed at R8-W2 c (FormatFinish deleted)"; the Code generation
+    bullet's "FormatFinish's 4 → 1" (the intrinsic is deleted). One vocabulary entry removed (`IntrinsicId.FormatFinish`); no new
+    representation or component.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -20298,6 +20314,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     operand of its chain however many flags join; calls are unchanged; inert at O0 (no opt pass).
   - Closed set: a row needs a measured O2 reason named in its commit with its kernel (a single-caller function absorbed into a hot
     leaf); revisit the row at a second library caller of the reservation, R8-W2's adapter replacement, or a fast-path split.
+  - Revisit due at R8-W2 c3a: `Utf8Writer.finish` calls `reserve(0)`, a second library caller of the reservation (this entry's first
+    revisit condition). The row is unchanged at c3a; T-180 (c3a's RP8, the Interpolation kernel, whose owning ends call `finish`)
+    reads whether `reserve` stays out of line, and the row's change, if any, is c3a's or b1's decision on that measurement, recorded
+    here.
   - Trade (loop probe, review R2-N3): a program whose only write is one site in a hot loop pays one call per write to the
     reservation, where S2d1's leaf had the whole chain inlined (one call site at every level); A, the runtime path, also called its
     reserve once per write there, so this is no cost against A. S2d1's advantage there is smaller than the call count says: with the

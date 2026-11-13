@@ -1364,6 +1364,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 68 (2026-11-13, plan §14; the Back's D-540): after R8-W2 c1 (DECISIONS R8-M39) §5.2's W2 row records part c's c0 and c1 done, next c3b and c3a. Nothing frozen.
 - Revision 69 (2026-11-13, plan §14; the owner's adoption of K's three R7 proposals in K's session, verbatim 「O-244 a O-245 a R7 の 3 案（A・B・C） ABC全て で決定します。」): §3.3's R7 core seats are two and two, open issues during R7 are fixed at once only for class 1, wrong code or a blocker (the others go to the R7 unit rewriting their component or after R7's exit), and small fixes in one component are bundled into one unit. Nothing frozen.
 - Revision 70 (2026-11-13, plan §14; the Back's D-557): after R8-W2 c3b (DECISIONS R8-M24's amendment) §5.2's W2 row records part c's c3b done, next c3a. Nothing frozen.
+- Revision 71 (2026-11-13, plan §14; the Back's D-558): after R8-W2 c3a (DECISIONS R8-M24's c3a amendment) §5.2's W2 row records part c's c3a done, next c2a and c2t, c2b, c4. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
