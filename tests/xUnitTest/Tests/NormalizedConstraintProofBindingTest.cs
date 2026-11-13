@@ -59,6 +59,22 @@ public class NormalizedConstraintProofBindingTest
         Assert.Equal(records, DiagnosticCorpus.RecordProfile(Trees + twin + "public func main() => ()\n") == "clean" ? "clean" : "invalid");
     }
 
+    // DECISIONS R7-C2e2-1: the facts the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
+    // and Derived (an identity view, prepared again before the phase, where its readings are not kept), less the library's: exact. An
+    // entry read across its serial, or one Kept with readings that were not kept, indexes fewer.
+    [Fact]
+    public void AViewsIndexIsFormedAtEachSerialUntilComplete()
+    {
+        Assert.Equal(146, Work(Trees + Moved + Derived) - Work(Trees));
+
+        static int Work(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRebindThatRebuildsAViewsIndexAllocatesNothing()

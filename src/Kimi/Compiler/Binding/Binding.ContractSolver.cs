@@ -63,8 +63,10 @@
 // Complete: written facts in every phase (a function of the chain's environments, which the serial counts), readings where
 // KeptRegion kept them (the one rule), so an entry whose preparation formed a reading that was not kept stays owned by its outermost
 // request and goes when that returns. A Kept entry lasts the pass (ClearClosure, in ResetCapabilities) and spares a later outermost
-// request its preparation. A nested demand reads an entry's written facts alone (the leaf rule), so it reads any entry. Temporary:
-// the readings become C3a's class keys at R7-C2c2; an entry holding them is then Kept only when that identity table is Complete.
+// request its preparation; its readings are read only in KeptRegion, so outside it an outermost request forms its own (R7-M20) and
+// the entry again. A nested demand reads an entry's written facts alone (the leaf rule), so it reads any entry. Retained memory is
+// the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm rebinds. Temporary: the
+// readings become C3a's class keys at R7-C2c2; an entry holding them is then Kept only when that identity table is Complete.
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
 // enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
@@ -387,11 +389,13 @@ public sealed partial class Binding
     }
 
     // The entry of the view value in Closure(view): when the view has none at its serial, its entry is formed in place with the written
-    // facts, owned by the outermost request until Kept.
+    // facts, owned by the outermost request until Kept. A Kept entry's readings are read only in KeptRegion (R7-M20): outside it an
+    // outermost request forms its own readings, so it forms the entry again (a nested demand reads written facts alone).
     private ViewIndex IndexOf(EvidenceView view, int serial)
     {
         var key = (view, this.activeRequirementContract);
-        if (this.enumerateIndex.TryGetValue(key, out var index) && index.Serial == serial)
+        if (this.enumerateIndex.TryGetValue(key, out var index) && index.Serial == serial &&
+            (!index.Readings || this.enumerateDepth != 1 || this.KeptRegion))
         {
             return index;
         }
@@ -652,6 +656,8 @@ public sealed partial class Binding
 
         internal bool Kept { get; set; }
 
+        internal bool Readings { get; private set; }
+
         internal Dictionary<(BindingScope Scope, BindingSymbol? Symbol, BoundType Type), List<(BoundConstraint Raw, BoundConstraint Fact)>> Buckets { get; }
             = new();
 
@@ -659,6 +665,7 @@ public sealed partial class Binding
         {
             this.Serial = serial;
             this.Kept = false;
+            this.Readings = false;
             this.Buckets.Clear();
             this.used = 0;
         }
@@ -681,6 +688,7 @@ public sealed partial class Binding
             }
 
             list.Add((raw, fact));
+            this.Readings |= !ReferenceEquals(raw, fact);
         }
     }
 
