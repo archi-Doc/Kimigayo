@@ -59,6 +59,29 @@ public sealed partial class MirBorrowsTest
         enum PunE
             Ptr(raw/(raw/u8))
             Num(u64)
+        struct OBoxP
+            public var v: u64
+            public init(v: u64) => self.v = v
+        #Layout("C")
+        struct NodeO
+            public var link: Option<obj/OBoxP>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(OBoxP.init(v: 0)@obj)
+                self.next = null
+        struct NodeKO
+            public var link: Option<obj/OBoxP>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(OBoxP.init(v: 0)@obj)
+                self.next = null
+        #Layout("C")
+        struct NodeOO
+            public var link: Option<Option<obj/OBoxP>>
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Some(.Some(OBoxP.init(v: 0)@obj))
+                self.next = null
         func storePunBad()
             var kk: u8 = 1
             let r = kk@uniq
@@ -807,6 +830,67 @@ public sealed partial class MirBorrowsTest
             setTag(n@raw@raw/u32, 7)
             stash(n.next, spare)
             kk = 2
+        func optCastObjTyped()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
+        func optMatchObjTyped()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let p = n@raw
+            unsafe
+                match ((*p).link)@uniq
+                    .Some(let b) => b.v = 7
+                    .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func kOptCastRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeKO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
+        func kOptMatchRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeKO.init()
+            n.next = other@raw
+            let p = n@raw
+            unsafe
+                match ((*p).link)@uniq
+                    .Some(let b) => b.v = 7
+                    .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func optOptCastRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeOO.init()
+            n.next = other@raw
+            let hp = n@raw@raw/(obj/OBoxP)
+            unsafe => (*hp).v = 7
+            stash(n.next, spare)
+            kk = 2
         func wholeTupleLoanOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1278,7 +1362,9 @@ public sealed partial class MirBorrowsTest
     // so stash's store through n.next is a conflict without any write (cLayoutNoWrite), and the same conflict, not a limit, with the
     // typed one (cLayoutFirstField*Typed); cLayoutField*LoanOk are accepted. A later Field's Type there is a pun: NodeD's u32 starts on
     // next's first byte (the chain's end is a raw pointer: invalid, the conflict and no limit, cLayoutSecondFieldBad); a Kimigayo-layout
-    // Field's is not decided (kLayoutFieldRests).
+    // Field's is not decided (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places its Some payload there too (IMPL 21.1.3, PLAN
+    // G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's own conflict stands (SPEC 15.6: the result's
+    // raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is not decided (kOpt*Rests, optOptCastRests).
     // A written array of no element over a pointer is no pun (zeroArrayOk, 5.2: positive-sized). A length that is no constant is not
     // established positive (4.4.2: the body is checked for every binding that meets the public conditions, which may all make it 0:
     // `N - N`, `N * 0`, a bare `N` beside a `[(0 - N) of u8]` parameter), so no pun is decided over one, written or the holder's: a
@@ -1375,6 +1461,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("cLayoutNoWrite", "cLayoutNoWrite: kk = 2")]
     [InlineData("cLayoutFirstFieldTyped", "cLayoutFirstFieldTyped: kk = 2")]
     [InlineData("cLayoutFirstFieldCallTyped", "cLayoutFirstFieldCallTyped: kk = 2")]
+    [InlineData("optCastObjTyped", "optCastObjTyped: kk = 2")]
+    [InlineData("optMatchObjTyped", "optMatchObjTyped: kk = 2")]
+    [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
+    [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2 Unsupported_Kd")]
+    [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleLoanOk", "")]
     [InlineData("wholeTupleNoLoanOk", "")]
     [InlineData("wholeTupleCallLoanOk", "")]

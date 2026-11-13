@@ -1581,11 +1581,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(reported || findings.Length == 0);
     }
 
-    // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
-    // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
-    // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
+    // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case
+    // (Binding.CaseLimits), so a body with more views or none is a Binder finding at the body, which is not checked further: six binders of
+    // two cases, 64 views, are valid but for an Adapt no view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views
+    // unresolved, and so does one binder that admits no case (PLAN G723).
     [Fact]
-    public void ViewsBeyondTheCaseBoundAreAFinding()
+    public void ViewsOutsideTheCaseBoundAreAFinding()
     {
         var binders = new List<PairBinder>();
         PairBinder.Collect(Fixture.Value.Types.Generic, binders);
@@ -1602,6 +1603,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Binders.AddRange(Enumerable.Repeat(binder, 6));
         Assert.Equal([(MirViolation.Operation, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
         body.Binders.Add(binder);
+        Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+        body.Binders.Clear();
+        body.Binders.Add(binder with { Admitted = SemanticsMask.None });
         Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
@@ -1622,7 +1626,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(Verdict(unordered));
         Assert.False(Verdict(Build(null)));
         var pooled = new MirBody();
-        Rebuild(pooled, 7); // 128 views (ViewsBeyondTheCaseBoundAreAFinding's).
+        Rebuild(pooled, 7); // 128 views (ViewsOutsideTheCaseBoundAreAFinding's).
         Assert.True(Verdict(pooled));
         Rebuild(pooled, 0);
         Assert.False(pooled.HasFinding);

@@ -230,9 +230,14 @@ public sealed partial class Binding
             if (TryPairLayer(reference, out _, out _))
             {
                 // SPEC 13.5.5: a pair layer is followed only when its admitted set lies in value or valueborrow.
-                if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
+                if (this.FollowablePair(reference, scope, out var pairTarget) is not { } admitted)
                 {
                     return this.Fail(conversion, BindingFailure.UnprovenConstraint);
+                }
+
+                if (admitted == SemanticsMask.None)
+                {
+                    return this.RestOnEmptiedSet(conversion, scope);
                 }
 
                 this.pairFollows[conversion] = admitted;

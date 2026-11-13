@@ -291,6 +291,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - G651 U1's, removed by G651 a1-a4 (DECISIONS BU-161): `Binding.sitelessHeightRefusal` (Transitional), a refusal past H during
     Binding's run with no consultation frame open, `InternalInvariant_Kd` at the project; a1 makes the site `SubstituteType`'s
     input, and the flag goes with the last unframed step (a4);
+  - G799's, removed at R7-D2 c (the indexer's walk replaced by SyntaxTable's pre-order, which reaches every node; DECISIONS BU-194):
+    `Binding.RowReset`, a stateless visitor (one static instance) that resets the HIR rows of an effect item's selector and Name,
+    which `IndexVisitor` does not index, so no lookup a pass published on them is read by the next (`Binding.Indexing.cs`);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).
