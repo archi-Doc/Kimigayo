@@ -200,9 +200,9 @@ public class CaptureDiagnosticTest
         Assert.Equal(twin, Records(source.Replace("MISSING", valid, StringComparison.Ordinal) + Main));
     }
 
-    // SPEC 23.1.2, 7.7.2 (PLAN G721, which supersedes BU-61's capture reader): a projection whose use's conformance check rejects it names
-    // no Type, and Binding keeps it as the binding's Type (R5-M155). A capture holds any Type, so a capture of such a projection, or of
-    // a valid one, adds no record of its own: `[t@move]` and every carrier (an annotated local, `let u = t`, a primitive, Tuple or Type
+    // SPEC 23.1.2, 7.7.2 (DECISIONS BU-184, which supersedes BU-61's capture reader): a projection whose use's conformance check rejects it
+    // names no Type, and Binding keeps it as the binding's Type (R5-M155). A capture holds any Type, so a capture of such a projection, or
+    // of a valid one, adds no record of its own: `[t@move]` and every carrier (an annotated local, `let u = t`, a primitive, Tuple or Type
     // parameter subject) publish only the rejection, and a valid projection's capture is accepted (a located Unsupported_Kd at the entry
     // before G721), in a list after or before another entry, in another closure, under a sibling's or a Field's rejection of the same
     // projection, or under the method's own premise or a conditional block's. A bare `[t]` acquires as `let u = t` would (below).

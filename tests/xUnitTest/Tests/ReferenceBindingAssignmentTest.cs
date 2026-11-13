@@ -27,15 +27,18 @@ public class ReferenceBindingAssignmentTest
         Assert.Equal([code.ToString()], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
+    // SPEC 15.1.6, 10.2 row 2, 12.3.1 (PLAN G585; the owner's O-201 (1) (a)): a ByValue Subject binds its stored reference, an ordinary
+    // `var` of `ref/i32`, so the mode diagnostic does not apply, and a literal assigned to it is a temporary borrowed for the
+    // assignment. A match binding's rows are the located limit: its slot keeps the Subject element's Origin, which no other borrow
+    // provably outlives, a local's (`b@ref`) as the literal's (STATUS).
     [Theory]
-    [InlineData("let a = 1\nvar refs: Array<ref/i32> = [a@ref]\nfor var r in refs@move\n    r = 2")]
-    [InlineData("let a = 1\nmatch (a@ref, 2)\n    (var r, _) => r = 3")]
-    public void OwnedReferenceBindingsReportTheOrdinaryMismatch(string source)
+    [InlineData("let a = 1\nvar refs: Array<ref/i32> = [a@ref]\nfor var r in refs@move\n    r = 2", null)]
+    [InlineData("let a = 1\nmatch (a@ref, 2)\n    (var r, _) => r = 3", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("let a = 1\nlet b = 2\nmatch (a@ref, 2)\n    (var r, _) => r = b@ref", DiagnosticCode.Unsupported_Kd)]
+    public void OwnedReferenceBindingsTakeALiteralAsABorrowedTemporary(string source, DiagnosticCode? limit)
     {
-        // SPEC 15.1.6: a ByValue Subject binds its stored reference; the mode diagnostic does not apply.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.SharedBindingAssignment_Kd or DiagnosticCode.ExclusiveBindingAssignment_Kd);
+        Assert.Equal(limit is { } code ? [code] : [], c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Theory]
