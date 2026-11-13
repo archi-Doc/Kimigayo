@@ -36,6 +36,8 @@ public partial class PropertyBindingTest
     private const string P2 = "struct P2\n    public let t: ((i32) -> i32, i32)\n    public init(t: ((i32) -> i32, i32)) => self.t = t@move\n";
     private const string E2 = "enum E2\n    A(((i32) -> i32, i32))\n    B\n";
     private const string Holder = "struct Holder\n    public let a: Array<(i32) -> i32>\n    public init(a: Array<(i32) -> i32>) => self.a = a@move\n";
+    private const string P6 = "group Hs\n    public func both(a: uniq/i32, b: ref/i32) -> i32 => 0\nstruct P6\n    public let f: (uniq/i32) -> i32\n    public init(f: (uniq/i32) -> i32) => self.f = f@move\n";
+    private const string P7 = "struct P7\n    public let f: (ref/i32) -> ref/i32 during static\n    public init(f: (ref/i32) -> ref/i32 during static) => self.f = f@move\n";
 
     [Theory]
     [InlineData("L2g", CbView + Local + "    return need(view.cb)", AtLiteral)]
@@ -81,7 +83,8 @@ public partial class PropertyBindingTest
     // G826). One whose environment has parts, an Item's bound Type arguments (q4), is one located Unsupported_Kd at the converted value
     // until Owned is judged during header binding (R7); it was InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its
     // typed and local twins are valid. A group's static `let` keeps only its Closure storage limit at the `let` (f9group; it was beside
-    // PLAN G381's false UnprovenConstraint_Kd).
+    // PLAN G381's false UnprovenConstraint_Kd). An invalid erasure there gets its local twin's Language or A5 record (k1fitbad,
+    // k2a5bad; each was the located Unsupported_Kd).
     [Theory]
     [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("q3t", "struct S\n    public let p: P = P.init(func (x: i32) -> i32 => x)\n", null)]
@@ -103,6 +106,10 @@ public partial class PropertyBindingTest
     [InlineData("f19static", "struct P4\n    public let f: (ref/u8 during static) -> i32\n    public init(f: (ref/u8 during static) -> i32) => self.f = f@move\nstruct S\n    public let p = P4.init(func (x: ref/u8 during static) -> i32 => 0)\n", null)]
     [InlineData("f23use", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", null)]
     [InlineData("f9group", "group G\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: let p = P.init(func (x: i32) -> i32 => x)")]
+    [InlineData("k1fitbad", P7 + "struct S\n    public let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
+    [InlineData("k1fitlocal", P7 + "func h() -> i32\n    let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n    return 0\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
+    [InlineData("k2a5bad", P6 + "struct S\n    public let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
+    [InlineData("k2a5local", P6 + "func h() -> i32\n    let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n    return 0\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
     public void AnErasureInAFieldHeaderIsDecidedForAnEmptyEnvironment(string id, string declarations, string? record)
         => Assert.Equal(
             [id, .. new[] { record }.OfType<string>()],
