@@ -131,6 +131,10 @@ internal static class CompilationTestHelper
     internal static void AssertBindingRecordsAtLines(string form, string program, string records)
         => AssertLines(form, program, records, BindingErrors(MinimalEmissionTest.Analyze(program)));
 
+    // A program's published Errors as AssertRecordsAtLines reads them: `Code: source line`, each pair once, sorted.
+    internal static string[] RecordsAtLines(string program)
+        => [.. PublishedErrors(MinimalEmissionTest.Analyze(program)).Select(x => $"{x.Code}: {LineAt(program, x.Span.Start)}").Distinct().Order(StringComparer.Ordinal)];
+
     // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
