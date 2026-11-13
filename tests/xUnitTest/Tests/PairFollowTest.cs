@@ -348,7 +348,7 @@ public class PairFollowTest
         "func g(v: ref/i32) -> i32 => v + 0\nfunc both(a: ref/i32, b: uniq/i32) -> i32 => 0\n";
 
     private const string Reached = Layered + Box +
-        "struct Outer\n    public var inner: Node\n    public init(inner: Node) => self.inner = inner@move\n";
+        "struct Outer\n    public var inner: Node\n    public init(inner: Node) => self.inner = inner@move\nfunc look<T>(x: ref/T) => ()\n";
 
     // SPEC 4.7.1: a struct with two Key conformances, whose key Type below the key's layers selects one.
     private const string TwoKeys =
@@ -927,7 +927,8 @@ public class PairFollowTest
     // shared dereference and the layers after it in each admitted case: the owner case from the operand Place, the ref case from the
     // slot, the uniq case from the layers outside it and the slot. Below a met layer a slot that does not restart is implied by
     // well-formedness in its borrow cases (`during b` holds where owner is admitted too); an outer pair layer admitting owner bounds the
-    // inner slot only in its borrow cases, and the per-case judge reads the owner case (`origin m1 outlives m0`).
+    // inner slot only in its borrow cases, so the inner slot alone bounds the owner case's Borrow: used locally it needs no relation
+    // (the Middle's C-291 rows), returned it needs the inner slot to outlive the result (`origin m1 outlives m0`).
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/Node during m0), m: s/T) -> ref/i32 during x\n    s is owner or uniq\n    return x@follow@follow.weight@ref")]
     [InlineData("func f<s/T>(x: ref/(s/Node during m0), m: s/T) -> ref/i32 during x\n    s is uniq\n    return x@follow@follow.weight@ref")]
@@ -946,6 +947,19 @@ public class PairFollowTest
     [InlineData("func f<s/T, t/U>(x: s/(t/Node during m1) during m0, m: s/T, n: t/U) -> ref/i32 during m0\n    s is owner or uniq\n    t is ref or uniq\n    origin m1 outlives m0\n    return x.weight@ref")]
     [InlineData("func f<s/T, t/U>(x: s/(t/Node during m1) during m0, m: s/T, n: t/U) -> ref/i32 during m1\n    s is owner or ref\n    t is ref\n    return x.weight@ref")]
     [InlineData("func f<s/T, t/U>(x: ref/(s/(t/Node during m1) during m0), m: s/T, n: t/U) -> ref/i32 during x\n    s is owner or uniq\n    t is ref or uniq\n    return x.weight@ref")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    look(x.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is ref or uniq\n    look(x.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or uniq\n    r is uniq\n    look(x.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    let y = x.weight@ref\n    look(y)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    look(x@follow@follow.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(b: Box<s/(r/Node during a2) during a1>, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    look(b.item.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(b: Box<s/(r/Node during a2) during a1>, m: s/T, n: r/U) -> i32\n    s is owner or uniq\n    r is uniq\n    look(b.item.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/Box<r/Node during a2> during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    look(x.item.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is uniq\n    origin a2 outlives a1\n    return x.weight@ref")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is owner or uniq\n    look(x.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T>(x: s/(s/Node during a2) during a1, m: s/T) -> i32\n    s is owner or uniq\n    look(x.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(b: uniq/(s/(r/Node during a2) during a1) during c, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    look(b.weight@ref)\n    return 0")]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> i32\n    s is owner or ref\n    r is uniq\n    let v: ref/Node = x\n    look(v)\n    return 0")]
     public void ReachedThroughPairMembersVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Reached + source);
@@ -971,6 +985,14 @@ public class PairFollowTest
     [InlineData("func f<s/T, t/U>(x: s/(t/Node during m1) during m0, m: s/T, n: t/U) -> ref/i32 during m0\n    s is owner or ref\n    t is owner or ref\n    return x.weight@ref", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
     [InlineData("func f<s/T, t/U>(x: s/(t/Node during m1) during m0, m: s/T, n: t/U) -> ref/i32 during m0\n    s is owner or ref\n    t is ref\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData("func f<s/T, t/U>(b: s/Box<t/Node during m1> during m0, m: s/T, n: t/U) -> ref/i32 during m0\n    s is owner or uniq\n    t is ref or uniq\n    return b.item.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is uniq\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is ref\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is ref or uniq\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or uniq\n    r is uniq\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(b: Box<s/(r/Node during a2) during a1>, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is uniq\n    return b.item.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(b: Box<s/(r/Node during a2) during a1>, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or uniq\n    r is uniq\n    return b.item.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(b: Box<s/(r/Node during a2) during a1>, m: s/T, n: r/U) -> ref/i32 during a1\n    s is owner or ref\n    r is uniq\n    return b.item@follow@follow.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func f<s/T, r/U>(x: s/(r/Node during a2) during a1, m: s/T, n: r/U) -> ref/i32 during a2\n    s is owner or ref\n    r is uniq\n    return x.weight@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
     public void ReachedThroughPairMembersReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Reached + source);

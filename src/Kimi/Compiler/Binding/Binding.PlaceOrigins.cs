@@ -211,7 +211,7 @@ public sealed partial class Binding
         }
 
         walk.Dereferenced = true;
-        this.MeetOuter(ref walk, type!.Origin, null);
+        this.MeetOuter(ref walk, type!.Origin, null, false);
         return type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
     }
 
@@ -220,15 +220,17 @@ public sealed partial class Binding
     {
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         walk.Dereferenced |= !inPlace;
-        this.MeetOuter(ref walk, shared ? slot : null, shared ? null : slot);
+        this.MeetOuter(ref walk, shared ? slot : null, shared ? null : slot, inPlace);
         return shared;
     }
 
     // SPEC 15.6.3, 15.6.1: one layer met into the walk, outside every layer met before it: `met`, an Origin it meets (a borrow layer's, a
-    // restarting slot's), or `unbounded`, a slot that does not restart. Either bounds the slot the walk kept so far, which is dropped.
-    private void MeetOuter(ref ContainmentWalk walk, BoundOrigin? met, BoundOrigin? unbounded)
+    // restarting slot's), or `unbounded`, a slot that does not restart. Either bounds the slot the walk kept so far by well-formedness in
+    // the cases where the layer exists, so it drops that slot unless the layer is a pair layer admitting owner (`ownerCase`, FollowedSlot's
+    // inPlace): there the layer is absent and the kept slot still bounds the Borrow, so both are kept and the per-case judge reads each case.
+    private void MeetOuter(ref ContainmentWalk walk, BoundOrigin? met, BoundOrigin? unbounded, bool ownerCase)
     {
-        walk.Unbounded = met is null && unbounded is null ? walk.Unbounded : unbounded;
+        walk.Unbounded = met is null && unbounded is null ? walk.Unbounded : ownerCase ? this.MeetWith(walk.Unbounded, unbounded) : unbounded;
         walk.Met = this.MeetWith(walk.Met, met);
     }
 
@@ -319,9 +321,10 @@ public sealed partial class Binding
     }
 
     // The facts of one containment walk (ContainedOrigin) from a Place's last step outward, decided by the walk alone (SPEC 15.6.3, 13.5.5,
-    // 15.6.1): Met, the Origins met; Unbounded, the slot of a followed pair layer that does not restart the dependency, kept while no layer
-    // outside it is met (in its borrow cases it outlives every layer outside it, a premise of those cases alone, so a met layer outside
-    // makes it redundant); Dereferenced, whether every admitted case has dereferenced a layer (an owner case selects its operand Place).
+    // 15.6.1): Met, the Origins met; Unbounded, the slots of followed pair layers that do not restart the dependency, kept until a layer
+    // outside them that exists in every case is met (in their borrow cases they outlive every layer outside them, a premise of those cases
+    // alone, so such a layer makes them redundant: MeetOuter); Dereferenced, whether some layer met dereferences in every admitted case
+    // (an owner case selects its operand Place).
     private struct ContainmentWalk
     {
         internal BoundOrigin? Met { get; set; }
