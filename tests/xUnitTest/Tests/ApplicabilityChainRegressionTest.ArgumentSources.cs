@@ -38,6 +38,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string DeepItems = "contract HasItem\n    associate Item\nstruct D0<T>\n    Self is HasItem\n    associate HasItem.Item is (T, i32)\nstruct D1<T>\n    Self is HasItem\n    associate HasItem.Item is D0<D0<T>.Item>.Item\nstruct D2<T>\n    Self is HasItem\n    associate HasItem.Item is D1<D1<T>.Item>.Item\nstruct D3<T>\n    Self is HasItem\n    associate HasItem.Item is D2<D2<T>.Item>.Item\nstruct D4<T>\n    Self is HasItem\n    associate HasItem.Item is D3<D3<T>.Item>.Item\nstruct D5<T>\n    Self is HasItem\n    associate HasItem.Item is D4<D4<T>.Item>.Item\nstruct D6<T>\n    Self is HasItem\n    associate HasItem.Item is D5<D5<T>.Item>.Item\nstruct D7<T>\n    Self is HasItem\n    associate HasItem.Item is D6<D6<T>.Item>.Item\nstruct D8<T>\n    Self is HasItem\n    associate HasItem.Item is D7<D7<T>.Item>.Item\nstruct D9<T>\n    Self is HasItem\n    associate HasItem.Item is D8<D8<T>.Item>.Item\nstruct D10<T>\n    Self is HasItem\n    associate HasItem.Item is D9<D9<T>.Item>.Item\nstruct D11<T>\n    Self is HasItem\n    associate HasItem.Item is D10<D10<T>.Item>.Item\nstruct D12<T>\n    Self is HasItem\n    associate HasItem.Item is D11<D11<T>.Item>.Item\nstruct D13<T>\n    Self is HasItem\n    associate HasItem.Item is D12<D12<T>.Item>.Item\nfunc fh<T, U>(p: Option<(T, U)>, q: U) -> bool => true\nfunc k(x: D13<i32>.Item) -> i32\n";
 
+    private const string OpenForms = "contract Elements\n    associate Item\nstruct Wb<X>\n    public var x: X\n    public init(x: X) => self.x = x@move\nfunc fn5<length N>(p: ([N of i32], i32)) -> bool => true\nfunc fn5(p: (i64, i32)) -> i32 => 0\nfunc fn5g<length N>(p: ([(N * 2) of i32], i32)) -> bool => true\nfunc fn5g(p: (i64, i32)) -> i32 => 0\nfunc fn5h<T>(p: ((T) -> i32, i32)) -> bool => true\nfunc fn5h(p: (i64, i32)) -> i32 => 0\nfunc fn5r<length N>(p: [2 of [N of i32]]) -> bool => true\nfunc fn5r(p: [2 of i64]) -> i32 => 0\nfunc fn5d<length N>(p: ([N of i32], i32)) -> bool => true\nfunc fn5d(p: ((i32, i32), i32)) -> i32 => 0\nfunc fn5j<s/T>(p: (s/(i32, i32) during a, i32)) -> bool => true\nfunc fn5j(p: (i64, i32)) -> i32 => 0\nfunc fn5q<T>(p: ((T) -> i32, i32)) -> bool => true\nfunc fn5q(p: ((i32, i32), i32)) -> i32 => 0\nfunc fn5f<length N>(p: (Option<[N of i32]>, i32)) -> bool => true\nfunc fn5f(p: (i64, i32)) -> i32 => 0\nfunc fn5b<length N>(p: [N of i32]) -> bool => true\nfunc fn5b(p: i64) -> i32 => 0\nfunc fn7<length N>(p: [(N * 2) of i32]) -> bool => true\nfunc fn7(p: Array<bool>) -> i32 => 0\nfunc fn5p<length N>(p: ([(N * 2) of i32], i32)) -> bool => true\nfunc fn5p(p: (Array<bool>, i32)) -> i32 => 0\nfunc fn5i<T>(p: (T.Item, i32)) -> bool\n    T is Elements\n    return true\nfunc fn5i(p: (i64, i32)) -> i32 => 0\nfunc gb<T>(p: Wb<(T.Item) -> i32>) -> bool\n    T is Elements\n    return true\nfunc gb(p: Wb<(i64) -> i32>) -> i32 => 0\nfunc ap<T>(f: (T.Item) -> i32) -> bool\n    T is Elements\n    return true\nfunc ap(f: (i64) -> i32) -> i32 => 0\nfunc k(c: bool, b: i64, fb: Wb<(i64) -> i32>) -> i32\n";
+
     private const string FixedSlots = "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\nstruct Tool\n    public var id: i32\n    public init(id: i32) => self.id = id\n    public func pick<U>(self: ref/Self, v: U) -> U => v@move\nfunc identity<U>(value: U) -> U => value@move\nfunc hg<U>(v: U) -> U\n    U is PrimitiveInteger\n    return v\nfunc same<U>(a: U, b: U) -> U => a@move\nfunc two<A, B>(a: A, b: B) -> A => a@move\nfunc look<U>(v: ref/U) -> () => ()\n";
 
     private const string FixedSlotForms = FixedSlots + "struct Pair<A>\n    public var a: A\n    public init(a: A) => self.a = a@move\n    public func with<B>(self: ref/Self, x: A, y: B) -> B => y@move\nfunc keep<s/T>(x: s/T) -> () => ()\nfunc lk<length N>(v: ref/[N of i32]) -> i32 => 0\nfunc ln<length N, T>(v: ref/[N of T], w: T) -> T => w@move\nfunc app<U>(v: U, f: (U) -> U) -> U => v@move\nfunc dflt<U>(v: U, w: i32 = 0) -> U => v@move\n";
@@ -492,6 +494,28 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("tp13", OpenProjections + "    let q = ga(arr@move)\n    return 0\n", "AmbiguousBinding_Kd: let q = ga(arr@move)")]
     [InlineData("tl1", OpenProjections + "    let q = fdl(a4)\n    return 0\n", "AmbiguousBinding_Kd: let q = fdl(a4)")]
     [InlineData("tl3", OpenProjections + "    let q = fe2(w7)\n    return 0\n", "AmbiguousBinding_Kd: let q = fe2(w7)")]
+    // SPEC 10.8 (PLAN G814; the owner's O-251 (a)): only the part an unbound slot decides is open; a fixed array's kind and element, a
+    // Function Type's kind and an `s/U` application's target fit as the closed fit requires, so a literal, Tuple literal or join that
+    // misfits them makes the open candidate inapplicable (w1, w1g, w1h, w1r, w1d, w1j, w1o, w1q); walked forms, the root and typed parts
+    // likewise (w1f, w1b, w4, w1c, w1n, w1p); a projection stays open (w1i), as does a Function Type to a value of a function's kind (a6 in
+    // an application, a17 a Closure value).
+    [InlineData("w1", OpenForms + "    let q = fn5((5, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1g", OpenForms + "    let q = fn5g((5, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1h", OpenForms + "    let q = fn5h((5, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1r", OpenForms + "    let q = fn5r([5, 6])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1d", OpenForms + "    let q = fn5d(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1j", OpenForms + "    let q = fn5j((5, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1o", OpenForms + "    let q = fn5((if c => 5 else => 6, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1q", OpenForms + "    let q = fn5q(((1, 2), 3))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1f", OpenForms + "    let q = fn5f((5, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1b", OpenForms + "    let q = fn5b(5)\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w4", OpenForms + "    let q = fn7([true, false])\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1c", OpenForms + "    let q = fn5((b, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1n", OpenForms + "    let q = fn5h((b, 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1p", OpenForms + "    let q = fn5p(([true, false], 1))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("w1i", OpenForms + "    let q = fn5i((5, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fn5i((5, 1))")]
+    [InlineData("a6", OpenForms + "    let q = gb(fb@move)\n    return 0\n", "AmbiguousBinding_Kd: let q = gb(fb@move)")]
+    [InlineData("a17", OpenForms + "    let cl = func (x: i64) -> i32 => 0\n    let q = ap(cl)\n    return 0\n", "AmbiguousBinding_Kd: let q = ap(cl)")]
     [InlineData("tp2", OpenProjections + "    let q = gq(w)\n    return 0\n", "UnboundTypeArgument_Kd: let q = gq(w)")]
     [InlineData("l1", OpenProjections + "    let q = fl1(.None, [7])\n    return 0\n", "NoApplicableOverload_Kd: let q = fl1(.None, [7])")]
     [InlineData("l2", OpenProjections + "    let q = fl(.None, [7])\n    let z: i32 = q\n    return z\n", "")]

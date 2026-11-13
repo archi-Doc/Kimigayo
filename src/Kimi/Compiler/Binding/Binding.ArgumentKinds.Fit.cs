@@ -13,12 +13,13 @@ public sealed partial class Binding
 
     // SPEC 4.3, 10.5.1: the one shape rule of a call argument's Tuple or array literal at a value Type or pattern: a Tuple literal fits a
     // Tuple of its arity; an array literal the fixed array of exactly its length (a fill: of its count), or the owned Array (not a fill).
-    private static bool LiteralShapeAt(Koto literal, BoundType expected) => literal switch
+    // A length an unbound slot decides is open in an open fit (OpenLength): judged after selection.
+    private bool LiteralShapeAt(Koto literal, BoundType expected) => literal switch
     {
         TupleLiteralKoto tuple => TupleShapeAt(tuple, expected),
         ArrayLiteralKoto array => expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
             (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
-            (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
+            (expected.Kind != BoundTypeKind.FixedArray || this.OpenLength(expected) || (array.FillLength is null ? expected.Length == array.Elements.Count :
                 array.FillCount is { } count && (count.IsConstant
                     ? expected.LengthExpression is null && expected.Length == count.Value
                     : ReferenceEquals(expected.LengthExpression, count)))),
@@ -46,7 +47,7 @@ public sealed partial class Binding
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
                 operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
-            case var _ when this.TakenWhole(type):
+            case var _ when this.TakenWhole(type) || (this.OpenFunction(type) && IsFunctionValued(kind, node)):
                 return this.FitTakenWhole(part, node, type, out operation);
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
@@ -105,12 +106,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.8, 10.2.1 (PLAN G814; O-240 (A)): while a candidate's open argument is fitted at its open Type (SlotSolution.OpenType), whether
-    // `type`, or the referent of `ref/type`, is a subterm whose form a slot no evidence binds decides: the slot itself, an `s/U` selector or
-    // a target projection, an associated projection or a Function Type over one (SPEC 10.8: call-signature matching, not the fit, matches
-    // the parts holding the slot), or a fixed array whose length expression names one: the slot takes the part there whole, and its fits
-    // are judged after selection. Read where a closed rule meets a Type: the fit's entry, a literal's leaf, a range boundary, a join
-    // position, the ref/U gate and the Type relation's walk (a typed part's components).
+    // SPEC 10.8, 10.2.1 (PLAN G814; O-240 (A); the owner's O-251 (a)): while a candidate's open argument is fitted at its open Type
+    // (SlotSolution.OpenType), whether `type`, or the referent of `ref/type`, is a form whose whole a slot no evidence binds decides: the
+    // slot itself (a target projection, an `s/U` adaptation's cases), or a projection of one: the slot takes the part there whole, and its
+    // fits are judged after selection. Every other form's closed parts fit as the closed fit requires (SPEC 10.8: other parts must fit):
+    // a fixed array's kind and element (its length's own term is open, OpenLength), a Function Type's kind (OpenFunction), an `s/U`
+    // application's target (the open substitution gives it). Read where a closed rule meets a Type: the fit's entry, a literal's
+    // leaf, a range boundary, a join position, the ref/U gate and the Type relation's walk (a typed part's components).
     private bool TakenWhole(BoundType type)
     {
         if (this.openFit.Owner is not { } owner)
@@ -120,9 +122,23 @@ public sealed partial class Binding
 
         var target = LiteralInputType(type);
         return (OwnSlot(target, owner) is >= 0 and var slot && this.openFit.Slots.Contains(slot)) ||
-            (target.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.Function && MentionsSlots(target, owner, this.openFit.Slots)) ||
-            (target.LengthExpression is { } length && MentionsLength(length, owner, this.openFit.Slots));
+            (target.Kind == BoundTypeKind.AssociatedProjection && MentionsSlots(target, owner, this.openFit.Slots));
     }
+
+    // SPEC 10.8 (PLAN G814; O-251 (a)): whether `type` is a Function Type that names a slot no evidence binds, in an open fit: a part of a
+    // function's kind meets it by call-signature matching, which judges the parts holding the slot after selection; a part of another
+    // kind misfits its kind, as at a closed Function Type.
+    private bool OpenFunction(BoundType type)
+        => this.openFit.Owner is { } owner && type.Kind == BoundTypeKind.Function && MentionsSlots(type, owner, this.openFit.Slots);
+
+    // Whether a part has a function's kind: an anonymous function, a function group, or a Closure, Function Item or Function value.
+    private static bool IsFunctionValued(PartKind kind, Koto node)
+        => kind is PartKind.Function or PartKind.Reference || node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.Function };
+
+    // SPEC 4.4.1, 10.8 (PLAN G814; O-251 (a)): whether a fixed array's length is a term an unbound length slot decides, in an open fit:
+    // the length alone is open, judged after selection; the array's kind and element fit as the closed fit requires.
+    private bool OpenLength(BoundType type)
+        => this.openFit.Owner is { } owner && type.LengthExpression is { } length && MentionsLength(length, owner, this.openFit.Slots);
 
     // SPEC 10.8, 10.2.1, 10.4 step 1 (PLAN G814; O-240 (A)): a part that an open slot takes whole fits it before selection, with no
     // position compared there: each position a Tuple or array literal holds is Unjudged (AddUnjudged), so its count is a closed fit's
@@ -162,7 +178,7 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source is ArrayLiteralKoto array)
         {
-            if (!LiteralShapeAt(array, expected))
+            if (!this.LiteralShapeAt(array, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -187,7 +203,7 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (!LiteralShapeAt(tuple, expected))
+            if (!this.LiteralShapeAt(tuple, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }

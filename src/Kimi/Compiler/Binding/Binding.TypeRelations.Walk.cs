@@ -139,7 +139,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
+            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !this.SameShape(actual, expected))
             {
                 return this.End(instance);
             }
@@ -239,9 +239,10 @@ public sealed partial class Binding
 
         // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
         // length (`[_ of T]`) admits any.
-        private static bool SameShape(BoundType actual, BoundType expected)
+        // An open fit's length an unbound slot decides holds as an inferred one does (Binding.OpenLength, PLAN G814).
+        private readonly bool SameShape(BoundType actual, BoundType expected)
         {
-            var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
+            var inferredLength = expected.Kind == BoundTypeKind.FixedArray && (expected.Length < 0 || (this.binding is { } open && open.OpenLength(expected)));
             return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
                 ReferenceEquals(actual.ClosureContext, expected.ClosureContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
                 (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
@@ -251,11 +252,13 @@ public sealed partial class Binding
         // Whether identity decides the relation of two parts: always, except in a whole-contract comparison (Contract), where a part that
         // carries an Origin may hold a Function Type whose Callable comparison has its own condition, the implementation's own
         // well-formedness at the use (the owner's (a); DECISIONS BU-93), which no identity discharges.
-        // Within an open fit (Binding.openFit, FitOpenArgument) a part of `expected` that a slot no evidence binds takes whole holds too:
-        // not a mismatch, judged after selection (SPEC 10.8, PLAN G814; TakenWhole).
+        // Within an open fit (Binding.openFit, FitOpenArgument) a part of `expected` that a slot no evidence binds takes whole holds too,
+        // as does an open Function Type against a value of a function's kind (call-signature matching): not a mismatch, judged after
+        // selection (SPEC 10.8, PLAN G814; TakenWhole, OpenFunction).
         private readonly bool Discharged(BoundType actual, BoundType expected)
             => (ReferenceEquals(actual, expected) && (this.part != OriginPart.Contract || !actual.CarriesOrigin)) ||
-                (this.binding is { } open && open.TakenWhole(expected));
+                (this.binding is { } open && (open.TakenWhole(expected) ||
+                    (actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem or BoundTypeKind.Function && open.OpenFunction(expected))));
 
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an

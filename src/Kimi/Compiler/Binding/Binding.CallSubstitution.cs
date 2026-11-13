@@ -15,8 +15,9 @@ namespace Kimi.Compiler;
 //   comparison's solved images; for a binder's own substitution (a container's clauses at an occurrence of its Type, SubstituteType's
 //   slots), the binder's columns alone.
 // - Outputs: the Type or clause in the caller's terms; null where a slot the Type names is unbound, except under an open substitution
-//   (Open: PLAN G814), which keeps each unbound Type or length slot as itself in every form naming it (the slot, an `s/U` selector, a
-//   target projection), so a Type around it is re-formed around it. Open's one writer is SlotSolution.OpenType, the open Type a
+//   (Open: PLAN G814), which keeps each unbound Type or length slot as itself in every form naming it (the slot, a target projection,
+//   an `s/U` adaptation; an `s/U` application, whose Semantics alone is the slot's, by its target's image), so a Type around it is
+//   re-formed around it. Open's one writer is SlotSolution.OpenType, the open Type a
 //   candidate's argument is fitted at before selection (SPEC 10.8, 10.2.1), which reads the typed outcome (SubstitutionOutcome).
 // - Invariants: one application is one pass over both binders: an atom or slot takes its image under the callee, else under the
 //   declaring occurrence, and no image is substituted again, so a caller's Type or Origin that names the callee's own or its declaring

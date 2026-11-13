@@ -277,7 +277,9 @@ public sealed partial class Binding
         var slot = substitution.Slot(type.Symbol, out var slotArguments);
         if (substitution.Open && NamesSlot(type) && (uint)slot < (uint)slotArguments.Length && slotArguments[slot] is null)
         {
-            return type; // SPEC 10.8 (PLAN G814): an open substitution keeps a slot no evidence binds as itself, in each form naming it.
+            // SPEC 10.8 (PLAN G814; O-251 (a)): an open substitution keeps a slot no evidence binds as itself, in each form naming it; of an
+            // `s/U` application only the Semantics is the slot's, so its image is its target's, which the closed fit reads.
+            return type.Kind == BoundTypeKind.SemanticsApplication ? this.SubstitutePart(type.Components[0], substitution, query) : type;
         }
 
         if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < slotArguments.Length && slotArguments[slot] is { } selection)
