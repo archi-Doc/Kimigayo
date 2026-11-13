@@ -12933,6 +12933,8 @@ resumed by R4-M86 (2026-10-20).
     `Closure(scope)`), the pre-phase normalizations (R7-M20's exclusion; R7-C2c3 and R7-C2e2), row (2)'s per-link supply (the
     design's rule; none). Recovery condition: C2c3's and C2e2's RP8 bring both programs down against this a1, or the core chain
     stops there.
+  - Superseded in part by R7-M25 (R7-C2c2 c2-1, 2026-11-13): item 5's completeness "modulo identity of supplied subjects", for
+    identity premises.
 
 - **BU-196 A solve's bound carries the Semantics cases it is required in (PLAN G809)** (2026-11-13; Front, Binding; Major with
   design reviews 1-3, implementation review ACCEPT WITH NOTES; the Middle's C-299 consent; the owner's O-233 (C)) SPEC 15.6.5; for
@@ -18910,6 +18912,25 @@ R8-M* and R9-M* by the stage of the recording unit.
     PremiseList +360 KB), warm bytes 0.
   - Rejected: withholding premises by rank, abstractness or dev's order (r3-r5, an open family); a mode parameter
     (`parametersOnly`); a depth cut on cycles; a table-wide correspondence of quantified Origins (a query mutated a memoized table).
+- **R7-M25 `Enumerate`'s subjects are keyed by identity class** (Front, 2026-11-13; R7-C2c2 c2-1, the plan's §5.0 C2 part c2; Major
+  with design reviews 1-2, an implementation review ACCEPT WITH NOTES and the C-308 fix's review ACCEPT; RP17: the Middle's C-308
+  consent, round 2; supersedes in part BU-199) SPEC 8.2.3, 8.3.2.
+  - The rule: a Contract premise's supply reaches every parameter and projection of its identity class in the view, whatever the
+    table's finality (finality decides only kept rows). A constructed member (`i32`, a struct, `Option<U>`) keys to itself over its
+    components' keys, so no parameter's premise rows reach it and its conformance is `ResolveConformance`'s (design option (D)): a
+    premise contradicting a Refuted one stays the premise's error (SPEC 8.3.2's closed world). Where that conformance is Unknown, a
+    premise is not yet read as evidence for the member (SPEC 8.2.3): the implementation's limit until c2-4, not SPEC's rule.
+  - Binding.TypeIdentity owns `ClassKey`: a class's least parameter or projection by a total structural order (`Order`: depth, kind,
+    symbol by span then `CompareNodes` across sources, Semantics, components, Origins by `CompareOrigins`, length, canonical name),
+    else the Type over its components' keys; erroneous or incomplete classes key nothing; the view's one identity table keeps each
+    Type's key until its next Open; a key never leaves the supply.
+  - Each request, nested ones included, keys its subject, its view's facts and the walk's comparisons by its own view's classes; the
+    written subject is walked beside the key. `Reading` stays until c2-4 (its binding completion); `IsRecursive` moves to C2e2's
+    `Closure`.
+  - Supersedes BU-199's item 5, completeness "modulo identity of supplied subjects", for identity premises.
+  - Rejected: a Final-table gate (R7-M20's W6 makes views with derived identity facts never Final), a gate on the view's own
+    premises (drops enclosing scopes'), a memo beside the table, normalizing by `NormalizeProofType`, a second index per spelling, a
+    source per kind.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
