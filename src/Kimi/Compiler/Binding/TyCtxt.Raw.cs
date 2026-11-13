@@ -10,9 +10,13 @@ namespace Kimi.Compiler;
 // address (Leading; C-189, C-211), which A5's pun rule reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
-// addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
+// addresses), whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row), and SPEC 5.2's
+// punnable set (Punnable, its one owner), which A5's pun rule reads.
 internal sealed partial class TyCtxt
 {
+    private readonly Dictionary<BoundType, bool> punnable = new(); // Punnable's answer per composite Type, memoized like the interning.
+    private readonly List<Hold> rawForm = []; // Decided's Holdings scratch, a stack.
+
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
     // Case payload or base clause writes without `during`, which an instance's kept parts (StoredParts) state as Unstated at any depth
     // below them, through every nested instance, Type argument, pair slot's argument, element and `during self` pointee they reach; false
@@ -20,15 +24,14 @@ internal sealed partial class TyCtxt
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.
     internal static bool RawStated(BoundType layer) => layer.RawOrigin?.Kind == OriginKind.Unstated;
 
-    // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672): whether a part of a raw Place of this Type is itself a raw Place, so that a Take moves it
-    // without state tracking: the storage of an `owner` struct (a stored Field, a base), Tuple (an element) or fixed array (an element at
-    // any position, from-end included) holds the part itself. So does an `owner` enum's: a Case payload's components are parts of the
-    // value's Place (SPEC 3.4), which no Take observes, since no source form takes a payload Place in place (a Subject is borrowed,
-    // SPEC 15.1.6; `@move` takes the whole value). An Array's, view's or Dictionary's element is the referent of `index`/`indexUniq`,
-    // and a reference's or handle's part a referent: never raw Places. The one statement of the rule: Binding's IsRawPlace walk
-    // (ElementAccess) and MIR's move paths (MirMoveData.Resolve) read it per step. A read of the Type; total; allocates nothing.
+    // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672, G806): whether a part of a raw Place of this Type is itself a raw Place (RawPlaces' rows
+    // exist), so that a Take moves it without state tracking: an `owner` struct's stored Field or base, a Tuple's element, a fixed
+    // array's element at any position, from-end included. An enum's Case payload is none (SPEC 5.2 lists Fields and elements: a payload is
+    // reached by matching the enum, which reads it), nor is a Closure's environment, an Array's, view's or Dictionary's element (the
+    // referent of `index`/`indexUniq`) or a reference's or handle's part (a referent). The one statement of the rule: Binding's IsRawPlace
+    // walk (ElementAccess), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
-        (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container) || AdtDef.IsEnum(container));
+        (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container));
 
     // DECISIONS BU-46, BU-58: whether a raw layer of a Type states Unstated at any depth, which a Type that is no kept part never does
     // (MirValidator's Local row: a MIR local's Type states none). Only a part carrying a raw Origin is walked, each distinct one once per
@@ -75,6 +78,69 @@ internal sealed partial class TyCtxt
     // Signature numbers it (the catalog's NoStoreRow: `slice` its storage, `initialize` its value, `release` its storage, `transferBytes`
     // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
+
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
+    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
+    // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A function of the
+    // interned Type, each composite one decided once (`punnable`, kept like the interning: a Type's answer never changes); a walk that
+    // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
+    internal bool Punnable(BoundType type)
+    {
+        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        {
+            return true;
+        }
+
+        var parts = type switch
+        {
+            { Kind: BoundTypeKind.Tuple } => type.Components.Count,
+            { Kind: BoundTypeKind.FixedArray } or { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Owner, Components.Count: > 0 } => 1,
+            _ => -1,
+        };
+
+        if (parts < 0)
+        {
+            return false;
+        }
+
+        if (!this.punnable.TryGetValue(type, out var answer))
+        {
+            answer = true;
+
+            // By index: a foreach over the interface would allocate an enumerator per call.
+            for (var i = 0; answer && i < parts; i++)
+            {
+                answer = this.Punnable(type.Components[i]);
+            }
+
+            this.punnable[type] = answer;
+        }
+
+        return answer;
+    }
+
+    // SPEC 5.2 (PLAN G806, the owner's O-220 (a)): the raw Places directly within a raw Place of key `at`, appended to `into`; the raw
+    // Place itself is its reader's (the root it holds), and a reader takes "transitively" by reading each row's key again. Rows exactly
+    // where RawPart holds: an `owner` struct's stored Fields, in MIR's numbering, after its base's rows (an inherited Field is a Field of
+    // the struct; the base subobject is none, SPEC 6.2), a Tuple's elements, a fixed array's element (one row for every index: Element,
+    // a grid of the element's stride; whether it has one is the reader's length reading, A5's Sized). Each row's key is Select's
+    // (Leading's for the element), so a part's written Type and holder stay. Lead: at the raw Place's own address where IMPL 21.1 fixes
+    // it there (Leading's one step: a `#Layout("C")` struct's first Field; an element row, whose element 0 is there); every other row is
+    // off: IMPL 21.1.2 leaves a Kimigayo-layout offset open and a C-layout later Field's needs sizes (Layout's), so a verdict resting on
+    // where it lies is the reader's rested located Unsupported_Kd. The answer is one of three classes (O-228 (a), O-231 (a)), read from
+    // Holdings' one form table at the key (Decided): Listed, the rows (RawPart's forms); Empty, no row: an enum (a Case payload is reached by
+    // matching the enum, which reads it), a Closure (its environment) and every form whose Holdings rows hold nothing inline (a
+    // referent, a collection's elements, Type arguments, an erased environment, a Scalar); Undecided, so that no reader counts too few:
+    // an Abstract row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places, as Punnable's abstract row states it), an Unsupported row,
+    // an unbound part, an Inline row of any other form (an owner layer, a pair layer's owner case: its target's, not listed here; none
+    // reaches it on dev) and Binding's Limit. Rows are published for RawPart's forms whatever the answer (as Holdings publishes its
+    // entries at a Limit): at Undecided they are the parts Binding's storage states, an unbound part giving none. At Undecided the
+    // reader keeps its own reading (O-231 (a): the pun rule its written parts; A5 its abstract rule or its located Unsupported_Kd),
+    // never "empty". Total, a function of the key; allocates nothing warm.
+    // Must not: list an enum's Case payload or a Closure's environment (Holdings' by-value reading, the holder and written side, keeps
+    // them); read a size, an offset or a length; decide a pun, typed or none (the reader's).
+    internal RawPlacesAnswer RawPlaces(PlaceKey at, List<RawPlace> into) => this.RawPlaces(at, on: true, into);
 
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
@@ -198,5 +264,67 @@ internal sealed partial class TyCtxt
         var storage = binding.Instance(instance);
         parent = storage.PartsBase;
         return storage.Parts;
+    }
+
+    // RawPlaces' whitelist, read from Holdings' one form table (SPEC 3.3.4; Binding.Holdings, its rows at the key; O-228 (a)): a form is
+    // decided where every row is one of: a layer's or a collection's referent, a Type argument, an erased environment (none of them
+    // inline), no row at all (a Scalar, a Range, a Function Item), or an Inline part of a form whose inline parts SPEC 5.2 classifies:
+    // RawPart's (Fields, base, elements: the rows), an enum's Case payloads or a Closure's environment (no raw Place). Every other row
+    // leaves it unknown: Abstract (SPEC 8.15.1: a binding's), Unsupported (a form with no row), a part Binding did not bind, an Inline
+    // part of any other form (an owner layer's or a pair layer's owner case: its target at its own address, not listed here), a Limit.
+    private bool Decided(PlaceKey at, BoundType type)
+    {
+        var inline = RawPart(type) || AdtDef.IsEnum(type) || type.Kind == BoundTypeKind.Closure;
+        var start = this.rawForm.Count;
+        var decided = binding.Holdings(type, at.Written, at.Holder, this.rawForm);
+        for (var i = start; decided && i < this.rawForm.Count; i++)
+        {
+            decided = this.rawForm[i] switch
+            {
+                { Step: HoldStep.Abstract or HoldStep.Unsupported } => false,
+                { Step: HoldStep.Inline } part => inline && part.Part is not null,
+                _ => true,
+            };
+        }
+
+        this.rawForm.RemoveRange(start, this.rawForm.Count - start);
+        return decided;
+    }
+
+    // RawPlaces' rows and answer; `on`: the raw Place is at the address its reader starts from (false for a base's rows).
+    private RawPlacesAnswer RawPlaces(PlaceKey at, bool on, List<RawPlace> into)
+    {
+        if (at.Type is not { } type)
+        {
+            return RawPlacesAnswer.Undecided;
+        }
+
+        var decided = this.Decided(at, type);
+        if (at.Case >= 0 || !RawPart(type))
+        {
+            return decided ? RawPlacesAnswer.Empty : RawPlacesAnswer.Undecided;
+        }
+
+        var answer = decided ? RawPlacesAnswer.Listed : RawPlacesAnswer.Undecided;
+        var lead = this.Leading(at, out var element);
+        if (element)
+        {
+            into.Add(new(lead, on, Element: true));
+            return answer;
+        }
+
+        // A base is a struct, listed unless its own storage is undecided; no base gives none.
+        if (AdtDef.IsStruct(type) && this.Base(at) is { Type: not null } parent && this.RawPlaces(parent, on: false, into) != RawPlacesAnswer.Listed)
+        {
+            answer = RawPlacesAnswer.Undecided;
+        }
+
+        var count = AdtDef.IsStruct(type) ? AdtDef.Count(type) : type.Components.Count;
+        for (var i = 0; i < count; i++)
+        {
+            into.Add(new(binding.Select(at, i), on && i == 0 && lead.Type is not null, Element: false));
+        }
+
+        return answer;
     }
 }

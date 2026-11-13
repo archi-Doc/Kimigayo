@@ -21,12 +21,15 @@ namespace Kimi.Compiler;
 //   the fixed array's member lookup are other facts. A new built-in Type's conformance adds a row, never a witness kind, a proof arm or a
 //   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property,
 //   and a CallerLocation catalog row for the group's function when its witness can Abort on its caller's behalf (SPEC 22.5.1, until G1).
-//   No member lookup, diagnostic or written state beyond interning.
+//   A receiver-only group (the fixed array's members, SPEC 22.1) adds a value, a WitnessReceiver arm, a Members arm and its property, and
+//   no WitnessGroup arm: a built-in conformance adds no member (PLAN G776-b). No member lookup, diagnostic or written state beyond interning.
 
-/// <summary>The internal Kimi groups of the witness table.</summary>
+/// <summary>The internal Kimi groups of built-in receiver functions: the witness table's groups and the fixed array's member group
+/// (SPEC 22.1).</summary>
 internal enum WitnessMembers : byte
 {
-    FixedArray,
+    FixedArray, // The fixed array's members (SPEC 22.1), a receiver group with no row: member lookup reads it, no Contract selects it.
+    FixedArrayEntries,
     IntegerPosition,
     String,
     BoolFormat,
@@ -57,7 +60,7 @@ public sealed partial class Binding
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
             when contract is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable or KimiDeclarationId.IntoIterable
-            => new(WitnessMembers.FixedArray, "E", self.Components[0], "N"),
+            => new(WitnessMembers.FixedArrayEntries, "E", self.Components[0], "N"),
         { IsInteger: true, Semantics: SemanticsKind.Owner } when contract == KimiDeclarationId.Position
             => new(WitnessMembers.IntegerPosition, "I", self, null),
         { IsInteger: true, Semantics: SemanticsKind.Owner } when contract == KimiDeclarationId.Utf8Format
@@ -121,7 +124,8 @@ public sealed partial class Binding
     // its specializations' `ref/i128` and `ref/u128` (R8-S2b1, R8-S2b2). A new group states its own; none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
-        WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
+        WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries
+            => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
         WitnessMembers.IntegerPosition
             => type is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner },
         WitnessMembers.String => ReferenceEquals(EffectiveCore(type), BoundType.String),

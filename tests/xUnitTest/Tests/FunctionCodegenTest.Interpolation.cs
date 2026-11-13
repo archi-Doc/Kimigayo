@@ -123,9 +123,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): each FormatSegment step gives its hint, then writes its literal text with the string's kind
     // and checks the adapter: deferred to the next reservation (__kimi_format_literal) when a value follows, written (the built-in write) at
-    // the end, where no value follows; a value's write follows its step: Utf8Writer.write's instance at the value's Type (R8-W1b-4), named
-    // by the kind its BuiltinFormat shim gives, or "body" where the witness table's body formats it (a string's, R8-S2d1; an i32's,
-    // R8-S2b1) (fail-before: C9c's interim record at FormatBuffer and no text step).
+    // the end, where no value follows; a value's write follows its step: Utf8Writer.write's instance at the value's Type (R8-W1b-4),
+    // "body", the witness table's (fail-before: C9c's interim record at FormatBuffer and no text step).
     [Theory]
     [InlineData("ipPrefix", new[] { "hint 12", "literal 16", "check", "hint 12", "write body", "hint 11", "literal 16", "check", "hint 0", "write body" })]
     [InlineData("ipTail", new[] { "hint 1", "write body", "hint 0", "write 16", "check" })]
@@ -142,13 +141,9 @@ public sealed partial class FunctionCodegenTest
             [ir.Function("__kimi_writer_write_builtin")] = "write",
             [ir.Function("__kimi_format_check")] = "check",
         };
-        var shims = ShimsOf(ir, text);
         foreach (var write in FunctionsOf(ir, c, "write"))
         {
-            // A string's (R8-S2d1), an i32's (R8-S2b1) and ipShow(true)'s (R8-S2a) instances call the witness table's body, no shim.
-            routines[write] = CallsOf(write).SingleOrDefault(x => shims.Contains(x.Callee!))?.Callee is { } shim
-                ? "write " + Regex.Match(Assert.Single(CallsOf(shim)).Shape, @", i32 (\d+), ").Groups[1].Value
-                : "write body";
+            routines[write] = "write body";
         }
 
         Assert.Equal(
