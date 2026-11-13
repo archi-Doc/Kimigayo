@@ -239,52 +239,49 @@ public partial class Compilation
         List<(string Name, BasicValue Value)>? settings = null;
         foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
         {
-            if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                IsCondition(name) || setting is null || !setting.TryGetValue(out var value))
+            if (this.TryGetSetting(this.Project.FilePath, name, setting, out var value))
             {
-                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
-                failed = true;
-                continue;
+                (settings ??= []).Add((name, value));
             }
-
-            (settings ??= []).Add((name, value));
+            else
+            {
+                failed = true;
+            }
         }
 
         var targetTriple = TargetTriple.Parse(target);
         var irTarget = IrTarget.Create(targetTriple);
-
         if (irTarget.PointerWidth == 0)
         {
-            this.TargetTriple = TargetTriple.Invalid;
-            this.IrTarget = IrTarget.Invalid;
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedTarget_Kd, this.Project.FilePath, target);
-            return false;
+            failed = true;
         }
 
-        // Rebuild target-dependent conditional compilation variables.
-        var debug = this.Project.KimiOptions.Debug;
-        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
-        foreach (var (name, value) in Conditions)
+        if (!failed)
         {
-            variables.Add(name, value(targetTriple, irTarget, debug));
+            // Rebuild target-dependent conditional compilation variables.
+            var debug = this.Project.KimiOptions.Debug;
+            var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
+            foreach (var (name, value) in Conditions)
+            {
+                variables.Add(name, value(targetTriple, irTarget, debug));
+            }
+
+            for (var i = 0; i < (settings?.Count ?? 0); i++)
+            {
+                variables.Add(settings![i].Name, settings[i].Value);
+            }
+
+            this.TargetTriple = targetTriple;
+            this.IrTarget = irTarget;
+            this.Variables = new ReadOnlyDictionary<string, BasicValue>(variables);
+            this.BuildMetadata = new(target, debug, languageVersion, CompilerVersion, this.Variables);
         }
 
-        for (var i = 0; i < (settings?.Count ?? 0); i++)
-        {
-            variables.Add(settings![i].Name, settings[i].Value);
-        }
-
-        if (failed)
-        {
-            return false;
-        }
-
-        this.TargetTriple = targetTriple;
-        this.IrTarget = irTarget;
-        this.Variables = new ReadOnlyDictionary<string, BasicValue>(variables);
-        this.BuildMetadata = new(target, debug, languageVersion, CompilerVersion, this.Variables);
-
-        return this.PrepareModules();
+        // The graph's checks read its modules' configurations and its shape, never the root's target, language version or settings, so
+        // they follow the root's failures (SPEC 23.1.2). A configuration failure leaves them out: they read the root's configuration, and
+        // a resolved graph never holds a failed one (DependencyResolver validates every module's).
+        return invalid.Count == 0 && this.PrepareModules(failed);
     }
 
     /// <summary>
@@ -365,6 +362,22 @@ public partial class Compilation
             }
         }
 
+        return false;
+    }
+
+    // IMPL 20.2.1: a module's CompileTimeSettings entry is an identifier that reuses no built-in Condition Name, with one value. The
+    // Names are fixed (SPEC 19.2.1), so the rule reads no target; the root's and each dependency's entries follow it, each failure its
+    // own record at its module's project file (SPEC 23.1.2).
+    private bool TryGetSetting(string? path, string name, CompileTimeSetting? setting, out BasicValue value)
+    {
+        if (this.TryGetIdentifier(name, out _) && TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() &&
+            !IsCondition(name) && setting is not null && setting.TryGetValue(out value))
+        {
+            return true;
+        }
+
+        this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, path, name);
+        value = default;
         return false;
     }
 }

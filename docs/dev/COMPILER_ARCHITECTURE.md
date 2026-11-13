@@ -87,7 +87,7 @@ a SPEC basis and owner approval.
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits; IntrinsicId uses 30 and returns to 27 at R8-I1 (DECISIONS R5-M137). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits; IntrinsicId uses 28 and returns to 27 at R8-I1 (DECISIONS R5-M137). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic
 rows' `Need` column; a new form adds a row.
@@ -263,15 +263,16 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - the Koto semantic forwarding properties and `BaseReferenceKoto.BasePath` (R7; R6-check H14
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193);
-  - the temporary intrinsics `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
-    `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
+  - the temporary intrinsic `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133; the hint only since R8-W2 c1, R8-M39; until
+    R8-W2 c2b) that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; `FormatBuffer` and `FormatFinish`
+    deleted at R8-W2 c3b and c3a, R8-M24; DECISIONS R3-9, R3-10, R5-M137);
   - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
     「Cで決定します」; DECISIONS R4-M111, R5-M188, R5-M192);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
-  - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row
-    map of the Body-disposition compiler functions, with `StringFormatKind`, `WriterKind` and `FormatEstimate`
-    (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131 as amended by R8-M24; `FormatFixed` until R8-W2 c);
+  - `LegacyRuntimeHelpers`, the Backend's static formatting runtime text and the legacy row map of the Body-disposition compiler
+    functions, with `WriterKind` and `FormatEstimate` (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131 as amended by
+    R8-M24; `FormatEstimate` keeps only `Total` and `Hint` since R8-W2 c3b, until c2b);
   - R5's temporaries (recorded by their first units, DECISIONS R5-M18; reviewed with the owner at R5's exit, R5-M148):
     Binding's i128 division and remainder and its 128-bit float conversion gates
     beside the capability table's operation rows (R7, DECISIONS R5-M190); the legacy comparison composition (A-12, else R7; DECISIONS
@@ -291,6 +292,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - G651 U1's, removed by G651 a1-a4 (DECISIONS BU-161): `Binding.sitelessHeightRefusal` (Transitional), a refusal past H during
     Binding's run with no consultation frame open, `InternalInvariant_Kd` at the project; a1 makes the site `SubstituteType`'s
     input, and the flag goes with the last unframed step (a4);
+  - G799's, removed at R7-D2 c (the indexer's walk replaced by SyntaxTable's pre-order, which reaches every node; DECISIONS BU-194):
+    `Binding.RowReset`, a stateless visitor (one static instance) that resets the HIR rows of an effect item's selector and Name,
+    which `IndexVisitor` does not index, so no lookup a pass published on them is read by the next (`Binding.Indexing.cs`);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).

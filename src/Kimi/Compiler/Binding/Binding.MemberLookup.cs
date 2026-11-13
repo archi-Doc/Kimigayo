@@ -187,7 +187,8 @@ public sealed partial class Binding
 
         var qualifier = qualifierPath.Symbol;
         return this.TypeSideMember(member, qualifier, right.IdentifierName, scope, expected) is { } typeSide
-            ? this.SelectMember(member, qualifier, typeSide, this.ValueSideMember(member, right.IdentifierName, scope), scope)
+            && this.ValueSideMember(member, right.IdentifierName, scope) is { } valueSide
+            ? this.SelectMember(member, qualifier, typeSide, valueSide, scope)
             : null;
     }
 
@@ -243,12 +244,13 @@ public sealed partial class Binding
     }
 
     // SPEC 9.6, 3.4.3: the value path of `qualifier.name`: a member of the qualifier's value, at the referent of each safe value-reference
-    // layer, the payload of an object handle or view and the target of a qualifying pair layer. Formed when the qualifier may be a value.
-    private SideSelection ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
+    // layer, the payload of an object handle or view and the target of a qualifying pair layer. Formed when the qualifier may be a value;
+    // null when the selection rests on an emptied admitted set.
+    private SideSelection? ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
     {
         if (!this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope))
         {
-            return default;
+            return new(null, default, false);
         }
 
         BindingSymbol? valueMember = null;
@@ -271,10 +273,17 @@ public sealed partial class Binding
                 valueMember = valueSelection.Member ?? valueMember;
             }
 
-            // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
-            if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
+            // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target; one admitting no
+            // case rests the selection on the emptying environment (SPEC 8.3.4).
+            if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) is not { } followed)
             {
                 return new(valueMember, valueSelection, true);
+            }
+
+            if (followed == SemanticsMask.None)
+            {
+                this.RestOnEmptiedSet(member, scope);
+                return null;
             }
 
             receiverType = pairTarget;
