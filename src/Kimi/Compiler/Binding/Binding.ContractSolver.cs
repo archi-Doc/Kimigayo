@@ -29,7 +29,9 @@
 //   writes (SymbolicCapability's judgments) takes one per fact. A write added to such a loop outside Reading breaks this.
 //   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3).
 // - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class; a
-//   constructed member's conformance is ResolveConformance's alone (SPEC 8.3.2's closed world). Each request keys its
+//   constructed member's conformance is ResolveConformance's. That is the implementation's limit, not SPEC's rule: where it is
+//   Unknown, a premise is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on
+//   base, until c2-4 (a constructed member's conformance with premises for its arguments). Each request keys its
 //   subject, its view's facts and the walk's comparisons by its own view's classes (ClassKey, Binding.TypeIdentity's: a class's least
 //   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
 //   rows. The written subject is walked beside its key and both refine, so a key only adds rows. A key never leaves the supply: no

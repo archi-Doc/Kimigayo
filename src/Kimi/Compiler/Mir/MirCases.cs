@@ -29,15 +29,16 @@ internal sealed class MirCases(TyCtxt types)
     internal MirBody Body { get; private set; } = null!;
 
     /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
-    /// without a binder, at most <see cref="PairBinder.CaseBound"/>: Binding decides the bound once per definition and binds no part of a
-    /// definition beyond it (SPEC 8.15, 23.1.1), and <see cref="MirValidator"/> checks it, so the analyses run every view.</summary>
+    /// without a binder, from 1 to <see cref="PairBinder.CaseBound"/>: Binding decides the cases once per definition and publishes no part
+    /// of a definition beyond the bound or whose binders admit no case (SPEC 8.15, 8.3.4, 23.1.1), and <see cref="MirValidator"/> checks
+    /// it, so every binder of a validated body admits a case and the analyses run every view.</summary>
     /// <param name="body">The body.</param>
-    /// <returns>The number of views, saturated at the largest count.</returns>
+    /// <returns>The number of views, saturated at the largest count; 0 where a binder admits no case.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
 
     /// <summary>Gets every view of a body, the one form of "every view" of its problems and verdicts (<see cref="MirProblem"/>'s views):
-    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count by
-    /// <see cref="PairBinder.CaseBound"/> (64), and the count is at least 1, a product from 1 of non-empty admitted sets.</summary>
+    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count from 1 to
+    /// <see cref="PairBinder.CaseBound"/> (64).</summary>
     /// <param name="body">The validated body.</param>
     /// <returns>The views, bit i for view i.</returns>
     internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
@@ -81,10 +82,8 @@ internal sealed class MirCases(TyCtxt types)
     internal static ConversionBinding Operation(BoundType source, BoundType target, in MirRvalue adapt)
         => TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
 
-    /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
-    /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
-    /// its steps and acquisitions read as the owner case's.</summary>
-    /// <param name="body">The body.</param>
+    /// <summary>Selects a view of a body: for each binder, the admitted Semantics its digit of <paramref name="index"/> picks.</summary>
+    /// <param name="body">A validated body (<see cref="Count"/>).</param>
     /// <param name="index">The view, below <see cref="Count"/>.</param>
     /// <returns>The view: the case of each binder, by the binder's index.</returns>
     internal ReadOnlySpan<PairCase> Select(MirBody body, long index)
@@ -98,12 +97,6 @@ internal sealed class MirCases(TyCtxt types)
         (this.Body, this.width) = (body, binders.Count);
         for (var b = binders.Count - 1; b >= 0; b--)
         {
-            this.view[b] = default;
-            if (!binders[b].Resolved)
-            {
-                continue;
-            }
-
             var admitted = (uint)binders[b].Admitted;
             var size = BitOperations.PopCount(admitted);
             for (var digit = index % size; digit > 0; digit--)
@@ -131,7 +124,7 @@ internal sealed class MirCases(TyCtxt types)
         var bits = 0UL;
         for (var b = 0; b < this.width; b++)
         {
-            if (this.view[b].Target is not null && MirTypes.IsBorrow(this.view[b].Semantics))
+            if (MirTypes.IsBorrow(this.view[b].Semantics))
             {
                 bits |= 1UL << b;
             }
@@ -141,12 +134,12 @@ internal sealed class MirCases(TyCtxt types)
     }
 
     /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.15): for each
-    /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
+    /// binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
     /// admitted case while that Type is still abstract or its instance a Limit. The instance is read as every reader reads one
     /// (<see cref="TyCtxt.ReadableInstance"/>, DECISIONS R4-M139): over Rejected storage its case is the instance's Semantics, which no rejected part
     /// changes, so the view is the one its repair selects. Views are decoded as <see cref="Select"/> numbers them; the selected view is
     /// kept.</summary>
-    /// <param name="callee">The callee body.</param>
+    /// <param name="callee">A validated callee body (<see cref="Count"/>).</param>
     /// <param name="subst">The call's substitution, or null for the callee's own (every view).</param>
     /// <returns>The views, bit i for view i.</returns>
     internal ulong Views(MirBody callee, Subst? subst)
@@ -156,8 +149,8 @@ internal sealed class MirCases(TyCtxt types)
         for (var b = callee.Binders.Count - 1; b >= 0 && subst is not null; b--)
         {
             var binder = callee.Binders[b];
-            var size = binder.Resolved ? BitOperations.PopCount((uint)binder.Admitted) : 1;
-            if (binder.Resolved && binder.Target.WholeType is { } whole && types.ReadableInstance(whole, subst) is { } actual &&
+            var size = BitOperations.PopCount((uint)binder.Admitted);
+            if (binder.Target.WholeType is { } whole && types.ReadableInstance(whole, subst) is { } actual &&
                 this.Type(actual) is { IsAbstract: false } type)
             {
                 var bit = 1u << (int)type.Semantics;

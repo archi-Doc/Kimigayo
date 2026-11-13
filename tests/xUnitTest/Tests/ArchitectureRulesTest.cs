@@ -385,6 +385,23 @@ public class ArchitectureRulesTest
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
+    // PLAN G609 (RP6): the compiler reads a published list by index and a node's children through the one walk (Koto.VisitChildren), so a
+    // warm rebind allocates nothing: `foreach` over an interface calls its GetEnumerator, which boxes a List<T>'s enumerator or allocates
+    // an array's whenever the list is nonempty. The compiler's IL calls an interface's GetEnumerator only at these cold sites (parsing and
+    // printing syntax, adding sources, dumping MIR), counted by top-level type and method, a lambda's, local function's or state machine's
+    // in its declaring method's; every other Kimi.Compiler method calls none (52dc76fd1's site was Compilation's pipeline, not Binding).
+    // Not seen: an enumeration a library method makes for the compiler (LINQ over an interface, AddRange, string.Join or a constructor
+    // over an IEnumerable<T>); review reads those.
+    [Theory]
+    [InlineData("Kimi.Compiler", InterfaceEnumerationSites)]
+    public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
+    {
+        var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
+            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
     // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
     // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
@@ -415,23 +432,6 @@ public class ArchitectureRulesTest
         Assert.All(
             calls.Where(static x => CalledName(x.Expression) is "InstantiatedContract" or "ContractConstraint"),
             static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
-    }
-
-    // PLAN G609 (RP6): the compiler reads a published list by index and a node's children through the one walk (Koto.VisitChildren), so a
-    // warm rebind allocates nothing: `foreach` over an interface calls its GetEnumerator, which boxes a List<T>'s enumerator or allocates
-    // an array's whenever the list is nonempty. The compiler's IL calls an interface's GetEnumerator only at these cold sites (parsing and
-    // printing syntax, adding sources, dumping MIR), counted by top-level type and method, a lambda's, local function's or state machine's
-    // in its declaring method's; every other Kimi.Compiler method calls none (52dc76fd1's site was Compilation's pipeline, not Binding).
-    // Not seen: an enumeration a library method makes for the compiler (LINQ over an interface, AddRange, string.Join or a constructor
-    // over an IEnumerable<T>); review reads those.
-    [Theory]
-    [InlineData("Kimi.Compiler", InterfaceEnumerationSites)]
-    public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
-    {
-        var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
-            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
-            .Order(StringComparer.Ordinal).ToArray();
-        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).

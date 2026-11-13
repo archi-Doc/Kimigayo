@@ -37,7 +37,8 @@ public sealed partial class Binding
     /// <summary>
     /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.3):
     /// names and categories contribute their members, and/or/not intersect, unite and complement,
-    /// separate clauses intersect, and no premise admits all nine Semantics.
+    /// separate clauses intersect, and no premise admits all nine Semantics. An Invalid environment's Semantics premises stay premises
+    /// (a failed clause's fact is an Error, never a Semantics premise), so None is the 8.3.4 Error: the binder admits no case.
     /// </summary>
     /// <param name="whole">The pair's whole Type.</param>
     /// <param name="scope">The scope whose premises apply.</param>
@@ -47,7 +48,7 @@ public sealed partial class Binding
         var admitted = SemanticsMask.All;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -659,11 +660,13 @@ public sealed partial class Binding
 
         // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`; object-family bindings additionally need `U`
         // to be an Object Target.
+        // An empty set is the 8.3.4 Error of the environment that emptied it, its one record (ValidateConstraintEnvironments): no case
+        // forms here, so the occurrence has no cause of its own.
         var admitted = this.AdmittedSemantics(whole, scope);
         const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
         if (admitted == SemanticsMask.None)
         {
-            return TypeRoleCause.Role;
+            return TypeRoleCause.None;
         }
 
         var causes = TypeRoleCause.None;
