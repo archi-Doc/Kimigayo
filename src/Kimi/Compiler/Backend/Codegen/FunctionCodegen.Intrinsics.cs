@@ -11,11 +11,10 @@ namespace Kimi.Compiler.Backend;
 // retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
 // FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
 // Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
-// (FunctionCodegen.Objects), an owning interpolation's buffer, segment steps and end (FunctionCodegen.Interpolation) and a verification's
-// compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
-// declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read once by
-// the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a broken contract at the call
-// (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
+// (FunctionCodegen.Objects) and a verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes
+// its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the
+// collector's target, read once by the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a broken contract
+// at the call (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): Text.writer's two.
