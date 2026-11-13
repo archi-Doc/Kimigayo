@@ -310,7 +310,7 @@ public sealed partial class Binding
         for (var layer = type; layer is not null;)
         {
             if (layer is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef, Components.Count: 1 } ||
-                (TryPairLayer(layer, out _, out _) && (this.FollowablePair(layer, scope ??= this.ConstraintScope(expression), out _) & SemanticsMask.Ref) != 0))
+                (TryPairLayer(layer, out _, out _) && ((this.FollowablePair(layer, scope ??= this.ConstraintScope(expression), out _) ?? SemanticsMask.None) & SemanticsMask.Ref) != 0))
             {
                 return SubjectMode.Shared;
             }
@@ -414,7 +414,7 @@ public sealed partial class Binding
                 // SPEC 15.1.6: a whole-Subject binding of a reference-valued Subject copies that reference and never selects the
                 // internal slot. Exclusive access to an owned part of the Subject lends the Subject Place itself, which a getter result
                 // cannot lend exclusively (SPEC 15.1.5, 11.5): the binding is an error, never a shared binding.
-                symbol.Type = this.BindingTypeOf(type, reach);
+                symbol.Type = this.BindingTypeOf(type, reach, binding);
                 symbol.BindsReference = reach.Access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 if (reach is { Access: PatternAccessMode.Exclusive, OwnedPart: true } && IsGetterResult(plan.Syntax.Expression))
                 {

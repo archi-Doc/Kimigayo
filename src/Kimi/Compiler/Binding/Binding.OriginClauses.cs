@@ -124,7 +124,7 @@ public sealed partial class Binding
 
         foreach (var row in this.unboundRows)
         {
-            this.AddPrerequisite(row.Obligation.Use, this.UnboundCause(row.Atom));
+            this.AddPrerequisite(row.Obligation.Use, this.UnboundCause(row.Atom) ?? row.Atom.Binder!);
             this.Fail(row.Obligation.Use, BindingFailure.Unsupported);
         }
 

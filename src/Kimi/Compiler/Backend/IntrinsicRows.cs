@@ -41,9 +41,7 @@ internal enum IntrinsicWriter : byte
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
-    Buffer, // FormatBuffer: an owning interpolation's private buffer on the heap, of its estimate's capacity (FunctionCodegen.Interpolation).
-    Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
-    Finish, // FormatFinish: the routine over the adapter and its buffer (FunctionCodegen.Interpolation).
+    Segment, // FormatSegment: the hint routine given its estimate's hint (FunctionCodegen.Interpolation).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
@@ -102,7 +100,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.Witness,
             LayoutNeed.None,
             IntrinsicWriter.Writer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
+            RuntimeAbi.TextWriter),
         new(
             IntrinsicId.ErasedReserve,
             IntrinsicTarget.None,
@@ -129,14 +127,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Record, RuntimeAbi.TestValue),
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LayoutNeed.None, IntrinsicWriter.Ensure, null),
-        new(
-            IntrinsicId.FormatBuffer,
-            IntrinsicTarget.None,
-            LayoutNeed.None,
-            IntrinsicWriter.Buffer,
-            LegacyRuntimeHelpers.FormatHeap),
         new(IntrinsicId.FormatSegment, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Segment, LegacyRuntimeHelpers.FormatHint),
-        new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Finish, LegacyRuntimeHelpers.FormatFinish),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

@@ -185,7 +185,7 @@ public sealed partial class Binding
         // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
         if (TryPairLayer(type, out _, out _))
         {
-            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _) ?? SemanticsMask.None; // LayersTerminal followed it.
         }
 
         this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);

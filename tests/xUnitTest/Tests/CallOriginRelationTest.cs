@@ -106,6 +106,29 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 8.15.2, 15.6.5 (PLAN G809): a call's solve reads each bound's Semantics cases: `y`'s slot bounds put's `q` only in the `ref`
+    // case, where the caller's `x` proves `p outlives q`, so put's `q` is the caller's `q`, valid in each case (rejected before G809);
+    // without `x` the relation stays unproven.
+    [Theory]
+    [InlineData("x: t/(ref/i32 during p) during q, ", "clean")]
+    [InlineData("", "1*UnprovenOriginRelation_Kd")]
+    public void ACallsBoundOfABorrowCaseIsMetByAPremiseOfThatCase(string premise, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "func put<t/U>(q: ref/i32, y: t/U during q, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return r\n" +
+            $"func call<t/U>(q: ref/i32, p: ref/i32, {premise}y: t/U during p, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return put(q, y@move, r)\n"));
+
+    // SPEC 8.15.2 (PLAN G809's limit, the open issue "a call in a generic body is solved once for all Semantics cases"): valid in each
+    // Semantics case, as put's `a` there is the meet of the bounds that case has. The call's one solve for every case leaves `l1` in its
+    // candidate where `s` alone is a borrow, and `w` does not hold there: rejected, sound but incomplete. This row pins today's record
+    // (dev's too).
+    [Fact]
+    public void ACallInAGenericBodyIsSolvedOnceForEveryCase()
+        => Assert.Equal("1*UnprovenOriginRelation_Kd", DiagnosticCorpus.RecordProfile(
+            "func put<t/U, s/W>(a: ref/i32, b: t/U during a, c: s/W during a) -> s/W during a\n    t is owner or ref\n    s is owner or ref\n    return c@move\n" +
+            "func call<t/U, s/W>(u: ref/i32, l1: ref/i32, l2: ref/i32, f: ref/i32, w: t/(ref/i32 during l1) during l2, x2: s/(ref/i32 during l2) during f, " +
+            "y2: ref/(ref/i32 during u) during f, a: ref/i32 during u, b: t/U during l1, c: s/W during l2) -> s/W during f\n" +
+            "    t is owner or ref\n    s is owner or ref\n    return put(a, b@move, c@move)\n"));
+
     // SPEC 15.6.1: every failed chain is reported, each at the argument that does not fit.
     [Fact]
     public void EveryFailingArgumentIsItsOwnRecord()
