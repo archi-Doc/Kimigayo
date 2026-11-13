@@ -157,6 +157,11 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.TypeMismatch);
         }
 
+        if (this.IdentityPremiseErrorRead(node, actual.Type, expected.Type) is { } premise)
+        {
+            this.AddPrerequisite(node, premise); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
+        }
+
         var site = this.FactSite(at);
         return this.Record(
             node,

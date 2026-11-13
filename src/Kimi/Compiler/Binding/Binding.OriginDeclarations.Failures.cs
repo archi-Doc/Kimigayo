@@ -8,14 +8,16 @@ namespace Kimi.Compiler;
 // itself, not its owner, and the part each dependent rests on.
 // - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand), the first such clause,
 //   `Failure`, and each one's bound Origins, `FailedClauses`; the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
-//   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); a
+//   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); an
+//   end that rests on a failed part (Rests) and rule W's one per-conjunct split (HoldsResting; DECISIONS Q13, PLAN G739); a
 //   failed fit's failed Origin environment (FailedOriginEnvironment): for a record with no Unbound end, the dependence query
 //   (DependenceCause, RepairHolds; DECISIONS BU-69) over the failed clauses of the contracts the premise extraction reads at its use
 //   (ReadFailedClauses).
 // - Inputs: the declaration CompleteOriginDeclaration completes and its clauses' bound operands; the part that failed before completion
 //   (path c); a pending slot's atom; an Unbound atom; the use and the record of an Origin fit that failed.
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand; the named slots left Unbound; the part an
-//   Unbound atom rests on; the failed clause a failed fit rests on, or none when it is independent. Its owner's state, slot and other
+//   Unbound atom rests on, or none; whether a conjunct holds by a resting end; the failed clause a failed fit rests on, or none when
+//   it is independent (a resting end never reaches it: its conjunct holds). Its owner's state, slot and other
 //   clauses are untouched: the declaration completes as one without the failed clause.
 // - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed clause supplies no equality,
@@ -26,6 +28,12 @@ namespace Kimi.Compiler;
 //   relations independent; no message text.
 public sealed partial class Binding
 {
+    // One conjunct's ordinary answer, the leaf HoldsResting fits each operand that does not rest with.
+    private interface IOriginConjunct
+    {
+        bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition);
+    }
+
     // SPEC 23.1.2 (DECISIONS BU-62): the one writer of PendingFailure. A declaration that ends without completing its pending Origins leaves them
     // unbound, resting on the part that failed: its failed clause (FailOriginDeclaration), or, when completion is skipped, its Type,
     // alias target or payload operand (path c). No State change: a later bind in State 1 keeps the same pending atom.
@@ -39,9 +47,59 @@ public sealed partial class Binding
 
     // The part an Unbound atom rests on: its declaration's PendingFailure (paths a and c), else its binder, the slot whose own omission
     // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
-    private Koto UnboundCause(BoundOrigin atom)
-        => OriginOwner(atom.Binder!) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
-            declaration.PendingCause is { } failure ? failure : atom.Binder!;
+    // Null when nothing failed (a per-call image, PerCallImages; a pending atom of a declaration still in State 1): such an atom rests
+    // on nothing and its relation is independent.
+    private Koto? UnboundCause(BoundOrigin atom)
+        => atom.Binder is not { } binder ? null :
+            OriginOwner(binder) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
+            declaration.PendingCause is { } failure ? failure : binder.BindingFailure != BindingFailure.None ? binder : null;
+
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): whether an end holds an Unbound atom that rests on a failed part (UnboundCause).
+    private bool Rests(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return this.UnboundCause(origin) is not null;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (this.Rests(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 15.3.6, 23.1.2 (DECISIONS Q13 rule W; PLAN G739): whether `longer outlives shorter`, whose ordinary answer is false, holds by
+    // an end that rests. A resting shorter end holds whole (`x outlives a` proves `x outlives (a and b)`); a meet at the longer end
+    // outlives an Origin exactly when each operand does, so a resting operand's conjunct holds and every other operand's is `leaf`'s.
+    // The one split of its readers, each with its own leaf: the fit (FitOrigin), its position search (OriginFitSearch), and the contract
+    // comparison's decisions, an implementation's claims (ClaimHolds) and the Origin inference's bounds (SolveOriginInference).
+    private bool HoldsResting<T>(BoundOrigin longer, BoundOrigin shorter, ulong condition, in T leaf)
+        where T : struct, IOriginConjunct
+        => this.Rests(shorter) || (this.Rests(longer) && this.OperandsHold(longer, shorter, condition, leaf));
+
+    private bool OperandsHold<T>(BoundOrigin longer, BoundOrigin shorter, ulong condition, in T leaf)
+        where T : struct, IOriginConjunct
+    {
+        if (longer.Kind != OriginKind.Intersection)
+        {
+            return this.Rests(longer) || leaf.Holds(longer, shorter, condition);
+        }
+
+        for (var i = 0; i < longer.Operands.Count; i++)
+        {
+            if (!this.OperandsHold(longer.Operands[i], shorter, condition, leaf))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // A clause with a guessed operator or an unavailable operand (`left`, `right`: its operands' Origins, null when unavailable) fails
     // itself, not its owner (SPEC 15.3.3, 23.1.2): it supplies no equality, outlives edge, elision evidence or obligation, the Origins it
@@ -88,20 +146,10 @@ public sealed partial class Binding
     {
         var longer = this.OriginAtUse(recorded.Longer, use);
         var shorter = this.OriginAtUse(recorded.Shorter, use);
-        if (UnboundAtom(longer) is null && UnboundAtom(shorter) is null)
-        {
-            return this.DependenceCause(longer, shorter, recorded.Equality, use, recorded.Condition);
-        }
-
-        for (var owner = use; owner is not null; owner = owner.Parent)
-        {
-            if (this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.Failure is { } failure)
-            {
-                return failure;
-            }
-        }
-
-        return null;
+        // An Unbound end that rests on a failed part never reaches a record: its conjunct holds (Rests, FitOrigin). Any other Unbound end
+        // (a per-call image, PerCallImages) has no failed part, so its record is independent.
+        return UnboundAtom(longer) is null && UnboundAtom(shorter) is null
+            ? this.DependenceCause(longer, shorter, recorded.Equality, use, recorded.Condition) : null;
     }
 
     // SPEC 23.1.2 (DECISIONS BU-69): the failed clause a fixed-fixed relation that already failed rests on, or null when it is
