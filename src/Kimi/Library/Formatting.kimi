@@ -130,7 +130,7 @@ public struct Utf8Writer {target}
         return .Ok(())
 
     /// Writes `text` with one exact reservation, none when it is empty, and records a failed reservation
-    /// (SPEC 22.10.1). It has no failure test of its own: only the adapter `write` has that guard.
+    /// (SPEC 22.10.1). It has no failure test of its own: a non-empty text reaches the guard (`status`) via `reserve`.
     internal func writeUtf8(self: uniq/Self, text: Text.Utf8Slice) -> Result<(), BufferFull>
         let bytes = text.bytes()
         if bytes.length == 0 => return .Ok(())
