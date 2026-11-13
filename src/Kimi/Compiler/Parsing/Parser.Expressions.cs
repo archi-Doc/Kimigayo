@@ -81,6 +81,7 @@ public static partial class Parser
                 var token2 = reader.Read();
                 var operationSpan = reader.CanRead ? reader.TokenSpanAt(reader.Position) : default;
                 Koto typeKoto;
+                var open = false;
                 if (IsExpressionBoundary(ref reader))
                 {
                     reader.Expect(SyntaxForm.Type);
@@ -102,6 +103,10 @@ public static partial class Parser
                     }
 
                     typeKoto = ConversionOperationTarget(ref reader, typeKoto);
+
+                    // SPEC F.9.4: a target read as a Type is a ClosedTarget exactly when a DelimitedTarget's closer ends it; every
+                    // OpenTarget ends at a Name, a '>', a binding set's '}' or a '?'. A failed target judges nothing.
+                    open = typeKoto is not ErrorKoto && reader.PeekKind(-1) is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket);
                 }
 
                 if (reader.IsCurrentIdentifier("during"))
@@ -120,6 +125,14 @@ public static partial class Parser
                 {
                     reader.Hover(left, token2.Span);
                     reader.Hover(left, operationSpan);
+                }
+
+                // SPEC F.9.4: Adapted := Prefix ("@" (ClosedTarget PostfixSuffix* | OpenTarget))*: no PostfixSuffix follows an
+                // OpenTarget. The suffix is read over the adaptation, the grouping the repair writes, so later checks judge that form.
+                var suffix = reader.CurrentTokenRange;
+                if (open && IsPostfixOperator[(byte)reader.CurrentTokenKind] && TryParsePostfixExpression(ref reader, ref left))
+                {
+                    reader.Unexpected(SyntaxForm.OpenTargetSuffix, suffix);
                 }
 
                 continue;

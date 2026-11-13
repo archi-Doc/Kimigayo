@@ -1071,5 +1071,7 @@
   { "Name": "override-header-access", "Source": "open struct B\n    public virtual func m(self: objref/Self, x: i32) -> i32 => x\nstruct D : B\n    #if false\n        public override func m(self: objref/Self, x: i32) -> i32 => x\n    override func m(self: objref/Self, x: i32) -> i32 => x\npublic func main() => ()\n", "Intended": "an OverrideDeclaration has no Access (SPEC F.6.3): the access word is misplaced and dropped, in excluded syntax too (SPEC 19.4)",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "Decoration", "At": "public override", "Length": 6 } ] },
   { "Name": "second-function-modifier", "Source": "open struct B\n    #if false\n        public unsafe virtual func m(self: objref/Self) => ()\npublic func main() => ()\n", "Intended": "a function header writes at most one of unsafe, virtual and override (SPEC F.3.3), a grammar error in excluded syntax too (SPEC 19.4)",
-    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "SecondModifier", "At": "virtual func", "Length": 7 } ] }
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "SecondModifier", "At": "virtual func", "Length": 7 } ] },
+  { "Name": "open-target-postfix-suffix", "Source": "func f(items: Array<i32>) -> i32\n    #if false\n        let e = items@Array<i32>[0]\n    return 0\npublic func main() => ()\n", "Intended": "a postfix suffix follows only a closed adaptation target (SPEC F.9.4's own example): the adaptation is grouped first, a grammar error in excluded syntax too (SPEC 19.4, PLAN G857)",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "OpenTargetSuffix", "At": "[0]", "Length": 1 } ] }
 ]

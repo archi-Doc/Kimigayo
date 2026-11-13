@@ -200,6 +200,9 @@ public enum SyntaxForm : ushort
     /// <summary>A 'during' annotation after an ungrouped adaptation target.</summary>
     AdaptationDuring,
 
+    /// <summary>A postfix suffix after an open adaptation target (SPEC F.9.4): the adaptation is grouped first.</summary>
+    OpenTargetSuffix,
+
     /// <summary>An if expression nested directly in the body of an if.</summary>
     NestedIfExpression,
 

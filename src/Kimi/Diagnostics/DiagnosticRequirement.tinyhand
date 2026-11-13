@@ -262,6 +262,10 @@
     Description="an annotated adaptation target is grouped"
     Phrase="'during' after an ungrouped adaptation target"
 
+  + Name="Syntax.OpenTargetSuffix"
+    Description="a postfix suffix follows only a closed adaptation target; group the adaptation first"
+    Phrase="postfix suffix after an open adaptation target"
+
   + Name="Syntax.NestedIfExpression"
     Description="a nested if expression is grouped"
     Phrase="nested if expression"

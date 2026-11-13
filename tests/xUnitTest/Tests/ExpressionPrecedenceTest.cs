@@ -225,6 +225,65 @@ public class ExpressionPrecedenceTest
         Assert.IsType<ConversionKoto>(Assert.IsType<ParenthesizedKoto>(beforeNegation.Operand).Operand);
     }
 
+    // SPEC F.9.4 and 19.4: Adapted := Prefix ("@" (ClosedTarget PostfixSuffix* | OpenTarget))*. A form outside the production is one
+    // grammar record at the marked token, the same in selected and excluded syntax; a suffix after an OpenTarget is read over the
+    // adaptation (the grouping the repair writes), so a second suffix adds no record.
+    [Theory]
+    [InlineData("items@Array<i32>[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P(1).v", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@ref/P[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("p@Box<Box<i32>>(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P{k}.v", ".v", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i32?.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i32?\n    .foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("pair@(i32, u8)?.0", ".0", "postfix suffix after an open adaptation target")]
+    [InlineData("a@[2 of i32]?[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i64++", "++", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i64--", "--", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P@follow", "@follow", "postfix suffix after an open adaptation target")]
+    [InlineData("f(p@(P)@P(1))", "(1)", "postfix suffix after an open adaptation target")]
+    public void AnAdaptationOutsideItsGrammarIsOneRecordInEverySelection(string expression, string at, string phrase)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = (excluded ? "#if false\n    let result = " + expression.Replace("\n", "\n    ", StringComparison.Ordinal) : "let result = " + expression) + "\nlet next = 42";
+            var diagnostic = Assert.Single(Parse(source).Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
+            Assert.Contains(phrase, diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // The valid twins: a ClosedTarget takes the value's suffixes, a grouped adaptation any suffix, an OpenTarget none, and "." continues
+    // an open Type head (a PathSuffix); a second "@" follows any target.
+    [Theory]
+    [InlineData("(items@Array<i32>)[0]")]
+    [InlineData("(p@P)(1)")]
+    [InlineData("(pair@(i32, u8)?).0")]
+    [InlineData("p@(P)(1)")]
+    [InlineData("a@[2 of i32][0]")]
+    [InlineData("a@(Array<i32>)[0]")]
+    [InlineData("x@(i32?)[0]")]
+    [InlineData("x@(i64)++")]
+    [InlineData("p@(P)@follow")]
+    [InlineData("pair@ref/(i32, u8).0")]
+    [InlineData("a@uniq[0]")]
+    [InlineData("p@move(1)")]
+    [InlineData("p@P.Item")]
+    [InlineData("p@P{k}")]
+    [InlineData("p@P@ref.v")]
+    [InlineData("x@i32?@ref.foo")]
+    [InlineData("x@i32? == y")]
+    [InlineData("f(p@P)(1)")]
+    [InlineData("a[x@isize]")]
+    [InlineData("[x@i64, 1]")]
+    public void AnAdaptationInsideItsGrammarHasNoRecordInEverySelection(string expression)
+    {
+        Assert.Empty(Parse("let result = " + expression + "\nlet next = 42").Diagnostics);
+        Assert.Empty(Parse("#if false\n    let result = " + expression + "\nlet next = 42").Diagnostics);
+    }
+
     private static Koto ParseExpression(string expression)
     {
         var (body, diagnostics) = Parse("let result = " + expression);
