@@ -177,20 +177,6 @@ public sealed partial class Binding
     private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
         => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
 
-    // The declaration a Type parameter's syntax belongs to (a function or a Container, a Contract's Self included).
-    private static Koto DeclaringNode(Koto declaration)
-    {
-        for (var current = declaration; current is not null; current = current.Parent)
-        {
-            if (current is DeclarationKoto)
-            {
-                return current;
-            }
-        }
-
-        return declaration;
-    }
-
     // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
     // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
     private static Koto? EnclosingBody(Koto declaration)
@@ -566,12 +552,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) inherits, read
-    // from its declaration as its Item is formed: the Origins and Type parameters its declared signature names whose binder lies outside it
-    // and is no Container it is a member of below that body (whose slots its bound arguments instantiate), as one environment Tuple
-    // (EnvironmentTuple). Atoms bound inside its declaration (its own Origins, a Constraint set's slot, a nested Function Type's inputs)
-    // are per-call, and a Type a projection or a bound argument derives from them is never judged itself (15.2.3 counts the arguments).
-    // Null when a declared Type did not bind.
+    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) depends on by
+    // naming it, beyond its inherited parameters (CapabilityParts' environment parts, SPEC 6.1.3), read from its declaration as its Item is
+    // formed: the Origins its declared signature names whose binder lies outside it and is no Container it is a member of below that body,
+    // an enclosing Container's Origin slot excepted (an inherited parameter), as one environment Tuple (EnvironmentTuple): an enclosing
+    // function's Origins (SPEC 15.3: no function Origin parameter list) and a local's. Atoms bound inside its declaration (its own Origins,
+    // a Constraint set's slot, a nested Function Type's inputs) are per-call, and a Type a projection or a bound argument derives from them
+    // is never judged itself (15.2.3 counts the arguments). Null when a declared Type did not bind.
     private BoundType? InheritedEnvironment(FunctionKoto function, Koto body)
     {
         if (function.BoundSymbol?.Type is not { } result)
@@ -597,18 +584,15 @@ public sealed partial class Binding
             var signature = this.types.Tuple(declared.AsSpan(0, count + 1));
             var summary = this.SummaryOf(signature);
             var origins = this.originScratch.Rent(summary.Nodes.Length + summary.RawNodes.Length);
-            var types = this.RentTypes(this.InheritedParameters(signature, function, body, null, 0, this.visitedParts.Begin(this.storageVersion)));
             try
             {
                 var o = InheritedOrigins(summary.Nodes, function, body, origins, 0);
                 o = InheritedOrigins(summary.RawNodes, function, body, origins, o);
-                var t = this.InheritedParameters(signature, function, body, types, 0, this.visitedParts.Begin(this.storageVersion));
-                return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+                return this.EnvironmentTuple([], origins.AsSpan(0, o));
             }
             finally
             {
                 this.originScratch.Return(origins, clearArray: true);
-                this.typeScratch.Return(types, clearArray: true);
             }
         }
         finally
@@ -620,7 +604,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < nodes.Length; i++)
             {
-                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body))
+                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body) &&
+                    !(atom.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto))
                 {
                     into[count++] = atom;
                 }
@@ -628,36 +613,6 @@ public sealed partial class Binding
 
             return count;
         }
-    }
-
-    // The Type parameters a declared signature inherits, each part visited once per walk (DECISIONS BU-19): counted, or written into `into`.
-    private int InheritedParameters(BoundType type, FunctionKoto function, Koto body, BoundType[]? into, int count, uint query)
-    {
-        if (type.Kind == BoundTypeKind.Parameter)
-        {
-            if (type.Symbol?.Declaration is { } declaration && Inherited(DeclaringNode(declaration), function, body))
-            {
-                if (into is not null)
-                {
-                    into[count] = type;
-                }
-
-                count++;
-            }
-
-            return count;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var part = type.Components[i];
-            if (part.HasAbstractPart && this.FirstVisit(part, query))
-            {
-                count = this.InheritedParameters(part, function, body, into, count, query);
-            }
-        }
-
-        return count;
     }
 
     // An environment's parts as one Type (SPEC 7.7.4, 15.2.3): a Tuple of its Type parts whose Origin arguments are its Origin parts, which
@@ -772,39 +727,46 @@ public sealed partial class Binding
     }
 
     // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
-    // Item's Contract reference replaced by that reference's Type arguments (Argument), then its Origin parts: that reference's Origin
-    // arguments (a Contract's inherited Origins, SPEC 6.1.3), or an environment Tuple's (EnvironmentTuple). An environment's parts have
-    // this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's capture index). StructuralCapability,
-    // ErasureSubject and the component summaries' walk read this one enumeration.
+    // Item's Contract reference replaced by that reference's Type arguments (Argument), and, for an Item of a function nested in a body, its
+    // inherited parameters' Types (SPEC 6.1.3, "even an unused one"; the owner's O-249 Q4 (a)); then its Origin parts: that reference's
+    // Origin arguments (a Contract's inherited Origins), or an environment Tuple's (EnvironmentTuple), and the nested function's inherited
+    // Origin slots. An environment's parts have this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's
+    // capture index). StructuralCapability, ErasureSubject and the component summaries' walk read this one enumeration.
     private ref struct CapabilityParts(BoundType type)
     {
         private readonly BoundType type = type;
         private readonly BoundType? reference = RequirementReference(type);
+        private readonly Koto? body = type is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } ? EnclosingBody(function) : null;
         private int index = -1;
         private int argument = -1;
         private int origin = -1;
+        private int phase; // 0 components, 1 inherited Types, 2 Origin parts, 3 inherited Origin slots
+        private Koto? scope;
+        private int slot = -1;
 
         // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
         public (BoundType? Part, BoundOrigin? Origin, bool Argument) Current { readonly get; private set; }
 
         // The current part's member: its component's index; a requirement reference's Type and Origin arguments are member 1; an
-        // environment Tuple's Origin part follows its components.
-        public readonly int Member => this.argument >= 0 || (this.origin >= 0 && this.reference is not null) ? 1
-            : this.origin >= 0 ? this.type.Components.Count + this.origin : this.index;
+        // environment Tuple's Origin part follows its components; an inherited parameter is the Item's member Components.Count, beside
+        // what its signature names (CallSignature).
+        public readonly int Member => this.phase is 1 or 3 ? this.type.Components.Count
+            : this.argument >= 0 || (this.phase == 2 && this.reference is not null) ? 1
+            : this.phase == 2 ? this.type.Components.Count + this.origin : this.index;
 
         // The Origin parts: a requirement reference's Origin arguments, or an environment Tuple's, read by EnvironmentTuple's invariant
         // that only an environment Tuple has Origin arguments.
         private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
 
-        // The member of the part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject).
-        public static int MemberAt(BoundType type, int ordinal)
+        // The part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject), with its member here.
+        public static (BoundType? Part, BoundOrigin? Origin, int Member) At(BoundType type, int ordinal)
         {
             var parts = new CapabilityParts(type);
             for (var i = 0; parts.MoveNext(); i++)
             {
                 if (i == ordinal)
                 {
-                    return parts.Member;
+                    return (parts.Current.Part, parts.Current.Origin, parts.Member);
                 }
             }
 
@@ -815,18 +777,85 @@ public sealed partial class Binding
 
         public bool MoveNext()
         {
-            if (this.origin >= 0 || this.index >= this.type.Components.Count)
+            if (this.phase == 0)
             {
-                this.origin++;
-                if (this.origin < this.Origins.Count)
+                if (this.NextComponent())
+                {
+                    return true;
+                }
+
+                (this.phase, this.scope) = (1, this.body);
+            }
+
+            if (this.phase == 1)
+            {
+                if (this.NextInheritedType())
+                {
+                    return true;
+                }
+
+                this.phase = 2;
+            }
+
+            if (this.phase == 2)
+            {
+                if (++this.origin < this.Origins.Count)
                 {
                     this.Current = (null, this.Origins[this.origin], false);
                     return true;
                 }
 
-                return false;
+                (this.phase, this.scope, this.slot) = (3, this.body, -1);
             }
 
+            return this.NextInheritedOrigin();
+        }
+
+        // SPEC 6.1.3: an inherited parameter's Type: each generic slot of every function enclosing the body, upward, then of the nearest
+        // enclosing Container, whose Schema holds its outer Containers' slots; a length slot adds no Owned part (SPEC 15.2.3).
+        private bool NextInheritedType()
+        {
+            for (; this.scope is not null; this.scope = this.scope is DeclarationContainerKoto ? null : this.scope.Parent, this.slot = -1)
+            {
+                var slots = this.scope.BoundSymbol?.Schema?.GenericSlots ?? [];
+                while (++this.slot < slots.Count)
+                {
+                    if (slots[this.slot] is { Kind: not GenericSlotKind.Length, Symbol.WholeType: { } whole })
+                    {
+                        this.Current = (whole, null, false);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // SPEC 6.1.3, 15.3: an inherited Origin slot, the nearest enclosing Container's (with its outer Containers'); a function has no
+        // Origin parameter list, so an enclosing function's Origin is a name its signature may use (InheritedEnvironment).
+        private bool NextInheritedOrigin()
+        {
+            for (; this.scope is not null; this.scope = this.scope.Parent, this.slot = -1)
+            {
+                if (this.scope is DeclarationContainerKoto container)
+                {
+                    var slots = container.BoundSymbol?.Schema?.Origins ?? [];
+                    if (++this.slot < slots.Count)
+                    {
+                        this.Current = (null, slots[this.slot].Origin, false);
+                        return true;
+                    }
+
+                    this.scope = null;
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private bool NextComponent()
+        {
             if (this.argument >= 0 && ++this.argument < this.reference!.Components.Count)
             {
                 this.Current = (this.reference.Components[this.argument], null, true);
@@ -850,7 +879,7 @@ public sealed partial class Binding
                 }
             }
 
-            return this.MoveNext();
+            return false;
         }
     }
 }
