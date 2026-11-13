@@ -19,7 +19,7 @@ public sealed partial class TyCtxtTest
         "struct SelfOrigin {s}\n    internal let data: raw/i64 during self\n    internal let loan: Loan<uniq/i32 during s>\n" +
         "struct RefSlot {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal let at: raw/i32 during s\n" +
         "struct UniqSlot {s}\n    internal let loan: Loan<uniq/i64 during s>\n    internal let at: raw/i64 during s\n" +
-        "func probe<T, P>(i: i32, unit: (), tuple: (i32, bool), two: [2 of i32], one: [1 of i32], plain: Plain, cell: Cell, empty: Empty<bool>,\n" +
+        "func probe<T, P>(i: i32, unit: (), tuple: (i32, bool), two: [2 of i32], one: [1 of i32], zero: [0 of i32], plain: Plain, cell: Cell, empty: Empty<bool>,\n" +
         "    generic: Generic<bool>, ref: ref/Plain, uniq: uniq/Plain, slice: Slice<i32>, uniqSlice: UniqSlice<i32>, obj: obj/Plain, rc: rc/Plain,\n" +
         "    arc: arc/Plain, array: Array<i32>, dictionary: Dictionary<i32, i32>, text: string, bare: raw/u8, stated: raw/u8 during static,\n" +
         "    parameter: T, projection: P.(Iterator).Item, function: (i32) -> i32, heap: Text.HeapBuffer, start: Start, selfOnly: SelfOnly<bool>, x: uniq/i32,\n" +
@@ -28,13 +28,14 @@ public sealed partial class TyCtxtTest
         "public func main() => ()\n";
 
     // SPEC 3.3.4 (G416, fact.md rows 1-21): each form's entries, by a parameter of `probe` or a stored part: rows 1 (none), 2, 3 with 3b,
-    // 5-8, 9, 11, 14, 17, 18 and 20; `Written` and `Holder` read on through a stored part.
+    // 5-8, 9, 11, 14, 17, 18 and 20; `Written` and `Holder` read on through a stored part. A constant length 0 holds no element (G810).
     [Theory]
     [InlineData("i", "")]
     [InlineData("unit", "")]
     [InlineData("tuple", "i32 Inline Its; bool Inline Its")]
     [InlineData("two", "i32 Inline Its Repeated")]
     [InlineData("one", "i32 Inline Its")]
+    [InlineData("zero", "i32 Inline Its Repeated, Empty")]
     [InlineData("plain", "Base Inline Its; (i32, bool) Inline Its written holder; raw/u8 Inline Its written holder; Array<raw/u8> Inline Its written holder")]
     [InlineData("cell", "i32 Inline Its written holder; raw/u8 Inline Its written holder")]
     [InlineData("empty", "bool Loan Its")]

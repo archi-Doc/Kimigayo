@@ -36,7 +36,8 @@ public static partial class Parser
         /// <summary>An expression's grouped Type, such as a BoundContainerQualifier: Origin and suffix, no PathSuffix (the expression's).</summary>
         Qualifier,
 
-        /// <summary>An adaptation's OpenTarget (SPEC F.9.4): <c>&lt;</c> takes Type arguments only adjacent; no OriginApplication or BorrowOrigin.</summary>
+        /// <summary>An adaptation's OpenTarget (SPEC F.9.4): <c>&lt;</c> takes Type arguments only adjacent; no OriginApplication or BorrowOrigin;
+        /// a group or a fixed array is a DelimitedTarget, which takes no PathSuffix.</summary>
         Target,
 
         /// <summary>The SemanticsType after <c>Semantics /</c>, whose <c>?</c> and BorrowOrigin belong to the enclosing AnnotatedType.</summary>
@@ -105,13 +106,17 @@ public static partial class Parser
         Koto type;
         parameterList = false;
         var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+
+        // SPEC F.9.4: in a Target, a group or a fixed array is a DelimitedTarget, whose "." is the adapted value's PostfixSuffix.
+        var delimitedTarget = context is TypeContext.Target or TypeContext.TargetOperand && (grouped || reader.CurrentTokenKind == TokenKind.OpenBracket);
         if (grouped)
         {
             // SPEC F.5: a grouped head takes suffixes only as ContinuesGroupedType allows; an expression continues a Qualifier itself.
-            var qualifier = context != TypeContext.Qualifier && IsBoundContainerQualifier(ref reader, out _);
+            var path = !delimitedTarget && context != TypeContext.Qualifier;
+            var qualifier = path && IsBoundContainerQualifier(ref reader, out _);
             type = ParseBareParenthesizedType(ref reader);
             parameterList = true;
-            if (context != TypeContext.Qualifier && ContinuesGroupedType(ref reader, qualifier))
+            if (path && ContinuesGroupedType(ref reader, type, qualifier))
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
                 parameterList = false;
@@ -120,7 +125,7 @@ public static partial class Parser
         else
         {
             type = ParseTypeHead(ref reader, target);
-            if (type is not ErrorKoto)
+            if (type is not ErrorKoto && !delimitedTarget)
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
             }
@@ -180,7 +185,7 @@ public static partial class Parser
             // the Type was written and is consumed with the report; any other token is left to end the enclosing construct.
             var cause = reader.Expect(SyntaxForm.Type);
             var span = reader.InsertionSpan;
-            if (token.Kind is TokenKind.NumericLiteral or TokenKind.StringLiteral or TokenKind.CharLiteral or TokenKind.Underscore or TokenKind.Invalid && reader.CanRead)
+            if ((token.Kind.IsLiteralToken() || token.Kind is TokenKind.Underscore or TokenKind.Invalid) && reader.CanRead)
             {
                 reader.Advance();
             }
@@ -213,7 +218,8 @@ public static partial class Parser
                 return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, type.Span.End)) { Cause = operationCause };
             }
 
-            if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
+            if (type is TypeSemanticsKoto
+                { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
             {
                 type = transparentType.Type;
             }

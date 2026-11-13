@@ -33,28 +33,7 @@ public sealed partial class Binding
 
         if (a.Binder is { } left && b.Binder is { } right)
         {
-            order = StringComparer.Ordinal.Compare(left.CodeContext.Kotonoha.Name, right.CodeContext.Kotonoha.Name);
-            if (order == 0)
-            {
-                order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.Path, right.CodeContext.SourceDocument?.Path);
-            }
-
-            if (order == 0)
-            {
-                order = left.Span.Start.CompareTo(right.Span.Start);
-            }
-
-            if (order == 0)
-            {
-                order = left.Span.End.CompareTo(right.Span.End);
-            }
-
-            // Source-less generated fragments still have immutable source snapshots. Never order by addresses.
-            if (order == 0)
-            {
-                order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.SourceText, right.CodeContext.SourceDocument?.SourceText);
-            }
-
+            order = CompareNodes(left, right);
             if (order != 0)
             {
                 return order;
@@ -74,6 +53,29 @@ public sealed partial class Binding
         }
 
         return order;
+    }
+
+    // A declaration node's place among every source: its module, its source path, its span and, for a source-less generated fragment,
+    // its immutable source snapshot. Never order by addresses.
+    private static int CompareNodes(Koto left, Koto right)
+    {
+        var order = StringComparer.Ordinal.Compare(left.CodeContext.Kotonoha.Name, right.CodeContext.Kotonoha.Name);
+        if (order == 0)
+        {
+            order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.Path, right.CodeContext.SourceDocument?.Path);
+        }
+
+        if (order == 0)
+        {
+            order = left.Span.Start.CompareTo(right.Span.Start);
+        }
+
+        if (order == 0)
+        {
+            order = left.Span.End.CompareTo(right.Span.End);
+        }
+
+        return order != 0 ? order : StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.SourceText, right.CodeContext.SourceDocument?.SourceText);
     }
 
     /// <summary>Proves only context-independent outlives facts; lack of proof is not equality.</summary>

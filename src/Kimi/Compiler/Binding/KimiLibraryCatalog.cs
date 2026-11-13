@@ -13,7 +13,6 @@ internal enum KimiLibraryContainer : byte
     Text,
     FixedBuffer,
     HeapBuffer,
-    Utf8Slice,
     Storage,
     Raw,
     FixedArray,

@@ -644,6 +644,8 @@ struct Limited
 
 `format` borrows its input, and its output depends on neither that borrow nor the Writer. Successful output is the complete representation, the same for the same value and external state whatever the destination; a Writer reports `BufferFull` rather than abbreviating. User formatting may have effects and runs once. Built-in formatting reserves the exact encoded length once (nothing for empty output) and commits complete UTF-8, so `123` fits a three-byte destination.
 
+**Published effects.** `Utf8Writer.write`, `Text.toString` and `Text.tryFormat` ([§22.9.2](#2292-text-operations)) are published operations: the only user-code effects inside each are those of one `format` call on `T`, the value's Type, which callers compose through the call's substitution as they compose a row of [§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), never from a library body. With allocation, Abort, the accesses through the operation's inputs and the erased `reserve` under its `confined` bound ([§22.9.1](#2291-declarations)), this is the operation's complete published effect, and the library implementation must stay within it. In an interpolation or `$tryWrite`, the write of each embedded expression ([§22.10.3](#22103-owning-interpolation)) has this published effect.
+
 ### 22.10.2. Default representations
 
 | Value | Representation |
