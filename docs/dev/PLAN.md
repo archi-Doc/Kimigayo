@@ -14,7 +14,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 
 ## 2. Working rules
 
-Work policy (commit and push per unit, a final Session per working session) is in [AGENTS.md](../../AGENTS.md); design and review in [WORKFLOW.md](WORKFLOW.md); checks and evidence in [VERIFICATION.md](VERIFICATION.md); structure rules, migration rules and the stage ledger in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md). PLAN holds current work and keeps explicit blockers with their next steps. A closed §7 row moves to [PLAN_HISTORY](PLAN_HISTORY.md#closed-open-issues) as a one-line summary (the owner, 2026-11-01, verbatim 「完了済みの行を PLAN_HISTORY に要約して移す」); its open remainder stays here.
+Work policy (commit and push per unit, a final Session per working session) is in [AGENTS.md](../../AGENTS.md); design and review in [WORKFLOW.md](WORKFLOW.md); checks and evidence in [VERIFICATION.md](VERIFICATION.md); structure rules, migration rules and the stage ledger in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md). PLAN holds current work and keeps explicit blockers with their next steps. A closed §7 row is deleted, its one-line summary kept in the landing commit; [PLAN_HISTORY](PLAN_HISTORY.md#closed-open-issues) changes only on an explicit request (AGENTS' update table; the owner, 2026-11-13, superseding 2026-11-01's 「完了済みの行を PLAN_HISTORY に要約して移す」); its open remainder stays here.
 
 ## 3. Current position
 
