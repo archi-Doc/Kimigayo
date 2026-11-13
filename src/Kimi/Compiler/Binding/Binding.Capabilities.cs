@@ -490,7 +490,7 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type, this.types))
             {
                 owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
@@ -505,7 +505,7 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type);
+        var parts = new CapabilityParts(work.Type, this.types);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;
@@ -732,16 +732,20 @@ public sealed partial class Binding
     // Origin arguments (a Contract's inherited Origins), or an environment Tuple's (EnvironmentTuple), and the nested function's inherited
     // Origin slots. An environment's parts have this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's
     // capture index). StructuralCapability, ErasureSubject and the component summaries' walk read this one enumeration.
-    private ref struct CapabilityParts(BoundType type)
+    private ref struct CapabilityParts(BoundType type, TyCtxt types)
     {
         private readonly BoundType type = type;
+        private readonly TyCtxt types = types;
         private readonly BoundType? reference = RequirementReference(type);
-        private readonly Koto? body = type is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } ? EnclosingBody(function) : null;
+
+        // The declaration whose instance an Item's instance holds (TyCtxt.EnclosingDeclaration, SPEC 6.1.3): its function's enclosing
+        // declaration, null for a member or a top-level declaration, whose bound arguments are its whole dependence.
+        private readonly BindingSymbol? enclosing = type is { Kind: BoundTypeKind.FunctionItem, Symbol: { } function } ? types.EnclosingDeclaration(function) : null;
         private int index = -1;
         private int argument = -1;
         private int origin = -1;
         private int phase; // 0 components, 1 inherited Types, 2 Origin parts, 3 inherited Origin slots
-        private Koto? scope;
+        private BindingSymbol? declaration;
         private int slot = -1;
 
         // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
@@ -759,9 +763,9 @@ public sealed partial class Binding
         private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
 
         // The part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject), with its member here.
-        public static (BoundType? Part, BoundOrigin? Origin, int Member) At(BoundType type, int ordinal)
+        public static (BoundType? Part, BoundOrigin? Origin, int Member) At(BoundType type, int ordinal, TyCtxt types)
         {
-            var parts = new CapabilityParts(type);
+            var parts = new CapabilityParts(type, types);
             for (var i = 0; parts.MoveNext(); i++)
             {
                 if (i == ordinal)
@@ -784,7 +788,7 @@ public sealed partial class Binding
                     return true;
                 }
 
-                (this.phase, this.scope) = (1, this.body);
+                (this.phase, this.declaration) = (1, this.enclosing);
             }
 
             if (this.phase == 1)
@@ -805,19 +809,21 @@ public sealed partial class Binding
                     return true;
                 }
 
-                (this.phase, this.scope, this.slot) = (3, this.body, -1);
+                (this.phase, this.declaration, this.slot) = (3, this.enclosing, -1);
             }
 
             return this.NextInheritedOrigin();
         }
 
-        // SPEC 6.1.3: an inherited parameter's Type: each generic slot of every function enclosing the body, upward, then of the nearest
-        // enclosing Container, whose Schema holds its outer Containers' slots; a length slot adds no Owned part (SPEC 15.2.3).
+        // SPEC 6.1.3: an inherited parameter's Type: each generic slot of every declaration enclosing the function, upward through the
+        // declaration chain TyCtxt.EnclosingDeclaration publishes (a named function, an accessor's function, a Container; never a call's
+        // callee or an anonymous function), to the nearest Container, whose Schema holds its outer Containers' slots; a length slot adds no
+        // Owned part (SPEC 15.2.3).
         private bool NextInheritedType()
         {
-            for (; this.scope is not null; this.scope = this.scope is DeclarationContainerKoto ? null : this.scope.Parent, this.slot = -1)
+            for (; this.declaration is not null; this.declaration = this.declaration.Declaration is DeclarationContainerKoto ? null : this.types.EnclosingDeclaration(this.declaration.Scope), this.slot = -1)
             {
-                var slots = this.scope.BoundSymbol?.Schema?.GenericSlots ?? [];
+                var slots = this.declaration.Schema?.GenericSlots ?? [];
                 while (++this.slot < slots.Count)
                 {
                     if (slots[this.slot] is { Kind: not GenericSlotKind.Length, Symbol.WholeType: { } whole })
@@ -835,18 +841,18 @@ public sealed partial class Binding
         // Origin parameter list, so an enclosing function's Origin is a name its signature may use (InheritedEnvironment).
         private bool NextInheritedOrigin()
         {
-            for (; this.scope is not null; this.scope = this.scope.Parent, this.slot = -1)
+            for (; this.declaration is not null; this.declaration = this.types.EnclosingDeclaration(this.declaration.Scope), this.slot = -1)
             {
-                if (this.scope is DeclarationContainerKoto container)
+                if (this.declaration.Declaration is DeclarationContainerKoto)
                 {
-                    var slots = container.BoundSymbol?.Schema?.Origins ?? [];
+                    var slots = this.declaration.Schema?.Origins ?? [];
                     if (++this.slot < slots.Count)
                     {
                         this.Current = (null, slots[this.slot].Origin, false);
                         return true;
                     }
 
-                    this.scope = null;
+                    this.declaration = null;
                     return false;
                 }
             }

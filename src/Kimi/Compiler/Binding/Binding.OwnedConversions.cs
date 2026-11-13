@@ -67,7 +67,7 @@ public sealed partial class Binding
         // ErasureSubject's member i, in the callable's own numbering (CapabilityParts): a Closure's capture i; an Item's bound argument,
         // its Contract reference's Type and Origin arguments being that reference's, and an inherited parameter (member Components.Count,
         // SPEC 6.1.3) named by its parameter.
-        var (part, partOrigin, index) = CapabilityParts.At(implementation, i);
+        var (part, partOrigin, index) = CapabilityParts.At(implementation, i, this.types);
         var inherited = captures is null && index == implementation.Components.Count;
         var member = inherited ? part ?? implementation : implementation.Components[index];
         var name = captures is not null ? captures[i].Environment.Name
@@ -175,7 +175,7 @@ public sealed partial class Binding
 
         var t = 0;
         var o = 0;
-        foreach (var (part, _, _) in new CapabilityParts(callable))
+        foreach (var (part, _, _) in new CapabilityParts(callable, this.types))
         {
             (t, o) = part is null ? (t, o + 1) : (t + 1, o);
         }
@@ -185,7 +185,7 @@ public sealed partial class Binding
         try
         {
             (t, o) = (0, 0);
-            foreach (var (part, origin, _) in new CapabilityParts(callable))
+            foreach (var (part, origin, _) in new CapabilityParts(callable, this.types))
             {
                 if (part is not null)
                 {

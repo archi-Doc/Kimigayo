@@ -349,7 +349,7 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (part, _, _) in new CapabilityParts(type))
+        foreach (var (part, _, _) in new CapabilityParts(type, this.types))
         {
             if (part is not null)
             {
