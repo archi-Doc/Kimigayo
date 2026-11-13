@@ -119,6 +119,17 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationPendingEmpty", Source, 1, 1, 2, "ab\n");
     }
 
+    // SPEC 22.10.5, 22.10.3 (R8-W2 c3a): a deferred literal still held at the end, the value after it having written no bytes, is the
+    // string's: Utf8Writer.finish writes it through reserve(0), which grows the empty buffer once by its 3 bytes (the end's hint is 0),
+    // and commits it. A guard: FormatFinish's runtime flush grew the buffer by the same rule.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ALiteralStillDeferredAtTheEndUsesOneAllocation()
+    {
+        const string Source = "let e = \"\"\nlet text = \"abc\\(e)\"\nConsole.writeLine(text)";
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationPendingEnd", Source, 1, 1, 3, "abc\n");
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void NestedReservationsRetainTheOuterHint()

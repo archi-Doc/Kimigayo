@@ -186,7 +186,9 @@ public sealed partial class MirDropTest
         const string Partial = Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n";
         Assert.Empty(Problems(Partial));
         Assert.Equal(["drop _2 -> bb6 [elide]", "drop _4 -> bb8 [elide]", "drop _1 -> bb9 [keep]"], Lines(Partial, "f", all: true));
-        Assert.Equal(["drop _18 -> bb14 [open ((_ as case 0) open (.0 elide))]", "drop _2 -> bb15 [elide]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+        Assert.Equal(
+            ["drop _18 -> bb14 [open ((_ as case 0) open (.0 elide))]", "drop _2 -> bb15 [elide]"],
+            Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
     }
 
     // SPEC 14.10.3, 16.3.2, 8.15.3 (PLAN G641 kind 4): a Drop only the checks reach has the group of what it would destroy on its assumed

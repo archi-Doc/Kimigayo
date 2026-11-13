@@ -73,7 +73,9 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(end, CalleesOf(function).Where(end.Contains));
         Assert.DoesNotContain(CalleesOf(function), x => FunctionsOf(ir, c, "fixed").Contains(x));
         Assert.DoesNotContain(function.Instructions, static x => x.Opcode == "alloca" && x.Shape.StartsWith(RegionShape, StringComparison.Ordinal));
-        foreach (var routine in new[] { "__kimi_text_heap", "__kimi_text_fixed", "__kimi_format_finish", "__kimi_format_take_string", "__kimi_format_check", "__kimi_buffer_bytes" })
+        string[] routines =
+            ["__kimi_text_heap", "__kimi_text_fixed", "__kimi_format_finish", "__kimi_format_take_string", "__kimi_format_check", "__kimi_buffer_bytes"];
+        foreach (var routine in routines)
         {
             Assert.DoesNotContain(routine, text, StringComparison.Ordinal);
         }
@@ -96,7 +98,9 @@ public sealed partial class FunctionCodegenTest
         var past = Assert.Single(FunctionsOf(ir, c, "pastLimit"));
         var heap = Assert.Single(FunctionsOf(ir, c, "heap"));
         Assert.Matches(@"^call void @\(ptr %, i64 0, ptr @, i64 \d+\)$", Assert.Single(CallsOf(past), x => x.Callee == heap).Shape);
-        Assert.Equal([heap, Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString")), ir.Function("__kimi_write_line")], Ends(ir, c, past));
+        Assert.Equal(
+            [heap, Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString")), ir.Function("__kimi_write_line")],
+            Ends(ir, c, past));
         var generic = Analyze(Interpolations, OutputKind.Library);
         var instances = GeneratedIr.Parse(Generate(generic));
         Assert.Equal(
