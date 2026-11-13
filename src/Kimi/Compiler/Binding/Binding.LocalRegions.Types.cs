@@ -139,11 +139,25 @@ public sealed partial class Binding
             return type;
         }
 
+        // One call is one query of rewrittenParts (DECISIONS BU-19; PLAN G492): a Type is a DAG, so each distinct stored part is opened once
+        // and the paths that share it share its region slots; LocalRegionSlot and Rebuild use no table.
+        var query = this.rewrittenParts.Begin(this.storageVersion);
         var result = Open(type);
         _ = this.CheckTypeUse(type, result, value, out _);
         return result;
 
         BoundType Open(BoundType current)
+        {
+            if (!this.rewrittenParts.TryGet(current, query, out var opened))
+            {
+                opened = OpenPart(current);
+                this.rewrittenParts.Set(current, query, opened);
+            }
+
+            return opened!;
+        }
+
+        BoundType OpenPart(BoundType current)
         {
             // SPEC 15.6.5, 8.1.2 (PLAN G758): a pair layer's outer-Origin slot, the original's implicit `o` included (OuterOrigin), is a
             // slot of the local's Type as a concrete layer's Origin is; its target stays the binder's.
