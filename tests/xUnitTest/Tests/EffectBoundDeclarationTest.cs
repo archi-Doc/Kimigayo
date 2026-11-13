@@ -154,6 +154,23 @@ public class EffectBoundDeclarationTest
         Assert.Equal(parser, errors.Where(static x => x.Code != nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Code).ToArray());
     }
 
+    // SPEC 8.11.1, 9.5: a selector's names are looked up in every pass, so an ancestor or a Type argument declared in a source appended
+    // after a pass is found on the rebind, as a fresh compilation finds it, and a misplaced item's selector loses its own record (PLAN G799).
+    [Theory]
+    [InlineData("public contract Q: Take\n    effect Take.take confined\n", "public contract Take\n    func take(self: ref/Self)\n")]
+    [InlineData("public contract Take<U>\n    func take(self: ref/Self)\npublic contract Q: Take<M>\n    effect Take<M>.take confined\n", "public struct M\n")]
+    [InlineData("public struct S\n    effect Take.take confined\n", "public contract Take\n    func take(self: ref/Self)\n", "an effect item outside a Contract, original virtual function or Callable Constraint")]
+    public void RebindLooksTheSelectorUpAgainAfterAnAppend(string declarations, string appended, string? cause = null)
+    {
+        var c = CompilationTestHelper.Parse(declarations, "Hello.kimi");
+        Assert.False(c.Bind().IsComplete);
+        c.Kotonoha.AddSource(new SourceDocument("Appended.kimi", appended));
+        Assert.Equal(cause is null, c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        string[] causes = cause is null ? [] : [cause];
+        Assert.Equal(causes, TestDiagnostics.Of(c).Where(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Label).ToArray());
+    }
+
     // SPEC 8.11.1, 8.11.4: a rejected item relates the declaration it bounds, by its kind (a function requirement, an original
     // virtual slot or the Constraint of a Callable effect list; DECISIONS G223), and a duplicate the earlier bound in every position;
     // restating an ancestor's bound is valid (AcceptsClausesAndSpecifications).
