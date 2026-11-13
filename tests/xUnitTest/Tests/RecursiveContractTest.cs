@@ -189,11 +189,13 @@ public sealed class RecursiveContractTest
     // R7-C2c2 (RP17 review B1, ruling 15): a constructed member of a class (`i32`, a struct, `Option<U>`) is no key's: its conformance is
     // ResolveConformance's alone (SPEC 8.3.2's closed world), so `T is Mark` never reaches `i32` or `Leaf`, and a premise that contradicts
     // the closed world stays its declaration's error; the consistent twins (the conformance holds) stay accepted.
-    [InlineData("C2c2", "d09p-prim", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark<i32>(x)\n", "NoApplicableOverload_Kd: needMark<i32>(x)")]
-    [InlineData("C2c2", "d09q-priminf", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark(x)\n", "NoApplicableOverload_Kd: needMark(x)")]
-    [InlineData("C2c2", "d09t-paraminf", Marks + "func f<T>(y: ref/T)\n    T is i32\n    T is Mark\n    needMark(y)\n", "NoApplicableOverload_Kd: needMark(y)")]
-    [InlineData("C2c2", "d09z-prim2", Marks + "func f<T, U>(x: ref/i32)\n    U is T\n    T is i32\n    U is Mark\n    needMark<i32>(x)\n", "NoApplicableOverload_Kd: needMark<i32>(x)")]
-    [InlineData("C2c2", "d09r-struct", Marks + "struct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Leaf\n    T is Mark\n    needMark<Leaf>(x)\n", "NoApplicableOverload_Kd: needMark<Leaf>(x)")]
+    [InlineData("C2c2", "d09p-prim", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark<i32>(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/i32)")]
+    [InlineData("C2c2", "d09q-priminf", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/i32)")]
+    // N9 (SPEC 8.2.3, 8.3.2): a premise against the closed-world refutation of a complete constructed Type its subject is identical
+    // with is contradictory evidence, the premise's error at the declaration (as d09y's projection case on base), not the query's.
+    [InlineData("C2c2", "d09t-paraminf", Marks + "func f<T>(y: ref/T)\n    T is i32\n    T is Mark\n    needMark(y)\n", "InvalidConstraint_Kd: func f<T>(y: ref/T)")]
+    [InlineData("C2c2", "d09z-prim2", Marks + "func f<T, U>(x: ref/i32)\n    U is T\n    T is i32\n    U is Mark\n    needMark<i32>(x)\n", "InvalidConstraint_Kd: func f<T, U>(x: ref/i32)")]
+    [InlineData("C2c2", "d09r-struct", Marks + "struct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Leaf\n    T is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09y-leafproj", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "UnprovenConstraint_Kd: needMark<Option<U>>(x)")]
