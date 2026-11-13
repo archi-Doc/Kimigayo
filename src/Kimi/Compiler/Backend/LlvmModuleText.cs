@@ -6,7 +6,7 @@
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
 // integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine and its division by ten, a module part
 // on request), the runtime routines a module defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte
-// copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' and TestRuntime's texts too),
+// copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; TestRuntime's text too),
 // the external declarations, the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external
 // symbols, numbered names, numbers formatted on the stack and the bits of a floating constant's hexadecimal spelling. Code generation
 // writes the frame through it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69; Hexadecimal from

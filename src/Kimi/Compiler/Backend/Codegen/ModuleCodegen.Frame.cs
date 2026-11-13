@@ -13,10 +13,11 @@ namespace Kimi.Compiler.Backend;
 // DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the erased
 // writer's kept runtime (R8-W1b), the float formatting part (R8-S2c), the 128-bit integer formatting part (R8-S2b2), the storage byte
 // primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime (DECISIONS R5-M110) are written
-// only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through
-// FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each test root in catalog order inside the
-// test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's test variant followed by the test
-// runtime's routines (TestRuntime.Text, with the memory declarations it calls).
+// only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers
+// (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an
+// Application's its startup root, a test build's each test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry;
+// DECISIONS R5-M136), whose runtime is the template's test variant followed by the test runtime's routines (TestRuntime.Text, with the
+// memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized

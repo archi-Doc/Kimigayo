@@ -215,8 +215,8 @@ internal sealed partial class InstanceCollector
             IntrinsicTarget.None => -1,
 
             // Temporary, removed with LegacyRuntimeHelpers.WriterKind, at R8-W2 (only the owning adapter's arms carry `amount + pending`
-            // and the heap hint): the runtime reserves a FixedBuffer's (kind 0) or a HeapBuffer's (kind 1) writer through its own arms,
-            // never through the reserve body, so that body is no target of the adapter (DECISIONS R8-M16).
+            // and the heap hint): Utf8Writer.reserve's kind 0/1 arms reserve a FixedBuffer's or a HeapBuffer's writer themselves, never
+            // through the dispatch word, so the reserve body is no target of the adapter (DECISIONS R8-M16).
             IntrinsicTarget.Witness when LegacyRuntimeHelpers.WriterKind(argument) is 0 or 1 => -1,
             IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
             IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),

@@ -22,7 +22,7 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct LegacyRow(FunctionAbi Routine);
 
-/// <summary>The legacy runtime helpers' rows and writers, and the routines its helpers share.</summary>
+/// <summary>The legacy runtime helpers: the legacy row map and Text.writer's destination kind.</summary>
 [Transitional("R8", Reason = Removal)]
 internal static partial class LegacyRuntimeHelpers
 {
