@@ -39,7 +39,10 @@
 //   walk records the TypeIdentity clause instances of its Contract rows; an outermost request whose walk is not positive and recorded
 //   rows builds its own classes over the view's premises and those rows (ExtendedClassesOf: request-local, the rows Provisional),
 //   re-keys its subject and its view's facts and walks again while a round adds a row. Nothing computed under an extension is kept (no
-//   kept row, no key column of the view's table), so an answer is a function of (subject, view) (SPEC 8.3.3). At R7-C2e2 e2-1's merge,
+//   kept row, no key column of the view's table), and a kept row answers only where it decides: a refinement among the rows, or rows
+//   whose walk recorded no identity row, which no extension reaches; else the request walks and extends as if nothing were kept
+//   (whether a walk extends depends on the Contract asked, the rows do not). So an answer is a function of (subject, view) (SPEC
+//   8.3.3). At R7-C2e2 e2-1's merge,
 //   index entries built under an extension stay request-owned, never admitted to the view's index. Only depth-1 requests extend: a
 //   reading formed inside a preparation (a nested request) may differ from one formed through Supply, which joins note B's
 //   Completion row (R7-C2e2 e2-3).
@@ -76,8 +79,8 @@
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's Closure(scope) holds a view's rows with its index and
 // readings and deletes enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
-// - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), and a
-//   Contract's head depth per Contract.
+// - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), with
+//   whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them), and a Contract's head depth.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
 //   preparation that formed no reading, a view with no identity premise or a Final identity table (its keys are then a function of
 //   the view and the pass; a view with a derived identity fact keeps none until R7-C2e2): each fact of its index was a kept, Complete
@@ -267,9 +270,9 @@ public sealed partial class Binding
 
     // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
     // a Contract's head depth, and the rows an outermost request walked in the kept region per link, view value and requirement
-    // Contract.
+    // Contract, with whether that walk recorded an identity row (an extension may then supply what the rows lack).
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), List<BindingSymbol>> enumerateKept = new();
+    private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), (List<BindingSymbol> Rows, bool Extends)> enumerateKept = new();
     private readonly List<List<BindingSymbol>> enumerateKeptPool = new();
     private readonly List<List<BindingSymbol>> enumeratePool = new();
     private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> enumerateFactPool = new();
@@ -303,11 +306,17 @@ public sealed partial class Binding
         var view = this.ViewOf(scope);
         var serial = SerialOf(scope);
         var keep = this.enumerateDepth == 0 && this.KeptRegion && (classes is null ? !HasTypeIdentity(scope) : classes.Final);
+
+        // Kept rows answer only where they decide (the class header's Extension): a refinement among them, or no identity row recorded.
+        var keyed = default((List<BindingSymbol> Rows, bool Extends));
         if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept) &&
-            (ReferenceEquals(key, subject) || this.enumerateKept.ContainsKey((key, view, serial, this.activeRequirementContract))))
+            (ReferenceEquals(key, subject) || this.enumerateKept.TryGetValue((key, view, serial, this.activeRequirementContract), out keyed)))
         {
-            return RowsRefine(kept, contract) ||
-                RowsRefine(this.enumerateKept.GetValueOrDefault((key, view, serial, this.activeRequirementContract)), contract);
+            var answer = RowsRefine(kept.Rows, contract) || RowsRefine(keyed.Rows, contract);
+            if (answer || !(kept.Extends || keyed.Extends))
+            {
+                return answer;
+            }
         }
 
         var enclosing = this.enumerateClasses;
@@ -394,7 +403,8 @@ public sealed partial class Binding
         }
     }
 
-    // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies).
+    // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies), each marked
+    // with whether the walk recorded an identity row: a link's own walk records a subset of its request's.
     private void KeepRows(EvidenceView view, int serial)
     {
         foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
@@ -419,7 +429,7 @@ public sealed partial class Binding
             }
 
             copy.AddRange(rows);
-            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = copy;
+            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = (copy, this.enumerateIdentities.Count != 0);
         }
     }
 
