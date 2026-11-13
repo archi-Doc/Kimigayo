@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -71,12 +70,15 @@ public partial class Compilation
     internal string[] DefaultAliases(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
 
-    private bool PrepareModules()
+    // failed is the root's verdict. The graph's checks below read no root fact it rests on, so they run after a root failure, each
+    // failure its own record (SPEC 23.1.2); the modules are established only when no check failed. A module's variables start from the
+    // root's, empty after a root failure, and then stay unused.
+    private bool PrepareModules(bool failed)
     {
         this.rootAliases = EffectiveAliases(this.Project.ProjectFile.Alias);
         if (this.dependencyGraph is not { } graph)
         {
-            return true;
+            return !failed;
         }
 
         var modules = new Kotonoha[graph.Nodes.Length];
@@ -85,7 +87,6 @@ public partial class Compilation
         this.moduleVariables = new(modules.Length);
         this.moduleAliases = new(modules.Length);
         this.moduleConfigurations = new(modules.Length);
-        var failed = false;
         for (var i = 0; i < modules.Length; i++)
         {
             var node = graph.Nodes[i];
@@ -108,15 +109,14 @@ public partial class Compilation
 
             foreach (var (name, setting) in node.Input.Configuration.CompileTimeSettings)
             {
-                if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                    variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
+                if (this.TryGetSetting(node.Input.Path, name, setting, out var value))
                 {
-                    this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, node.Input.Path, name);
-                    failed = true;
-                    continue;
+                    variables.Add(name, value);
                 }
-
-                variables.Add(name, value);
+                else
+                {
+                    failed = true;
+                }
             }
 
             this.moduleVariables.Add(module, variables);
