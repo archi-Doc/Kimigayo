@@ -12946,6 +12946,59 @@ resumed by R4-M86 (2026-10-20).
     cases and accepted r10, invalid under (C)); for comparisons, reading A (the literal meet of every case's bounds) and reading B
     (a candidate per case: a per-case solution representation), both by the owner's O-233 (C); a premise-aware `Meet` (moves
     unconditional solutions outside this cause).
+- **BU-200 G821: until U8, a raw view of a nonnull Option's storage as another Type is a located `Unsupported_Kd`** (2026-11-13;
+  Front, Binding; Major, an acceptance mover; PLAN G821, the owner's O-237 (a); F's G821 rulings 1-12) IMPL 21.1.3, 21.1.2; SPEC 5.2,
+  5.3, 5.4.
+  - The owner is the adaptation table's case judge (`Binding.CheckAdaptationCase`), whose Pointer row calls the gate
+    (`CheckNonnullView`) once: within the compiler, a raw pointer's pointee Type other than its storage's is chosen only by a
+    `ConversionBinding.Pointer` operation, at two sites, a written conversion (`CompletePointerConversion`, which judges its one case
+    there; a `null` verdict, an unformed Borrow no Pointer case has, is its `InternalInvariant_Kd`) and a pair binder's raw case
+    (`ExplicitAdaptationPlan.Select` through `CheckAdaptationRows`); every other formation keeps the pointee (`P@raw`,
+    `Raw.allocate<T>`, a displacement, the Origin rewrites; a pointer read from storage has its declared Type or, punned, the Type of
+    the view that reads it, itself a conversion). Outside the compiler, a foreign import's raw result may address a raw argument's
+    storage at another pointee (SPEC 5.2.1 condition 1, 22.6: `(p: raw/(Option<obj/X>)) -> raw/u64` returning `p`); no conversion
+    sees it, so it is U8's FFI row, a limit beside the generic one.
+  - Rule: a conversion between raw pointer Types whose pointees are not the same Type (`TyCtxt.SameStructure`; a same-pointee
+    conversion is SPEC 5.4's ordinary Copy) is the located `Unsupported_Kd`, at its written pointee Type, where either pointee may hold a
+    nonnull Option (`Binding.MayHoldNonnull`): `TyCtxt.NonnullSome` (DECISIONS BU-195) holds at the pointee, at a part
+    `Binding.Holdings` states `Inline`, or past a raw layer the pointee holds (Holdings' `Raw` flag; SPEC 5.2: a punned raw pointer has
+    the provenance of the raw pointer whose bytes it reads, so a view of the layer reaches its pointee; a borrow's or an object handle's
+    bytes were written by no raw pointer and give none; a collection's handle component, whose `data` a raw write wrote, is an own or
+    shared step in Holdings, and IMPL 21.1.3 makes its layout implementation-defined for any source but the Kimi Kotonoha's), at any
+    depth; or a part is undecided (Holdings' `Unsupported` row, Binding's Limit), never read as "holds none".
+  - The walk: Holdings is one level by contract, and a temporary fact (removed at U8) does not enter a canonical walk (`StorageHeight`
+    reaches raw pointees but publishes only its height verdict over its components), so the gate's walk keeps a visited set (each
+    distinct part once, a raw-layer cycle closed) and a per-pass memo of each walked pointee's answer (stamped by `storageVersion`),
+    does not enter a declaration on an inline storage cycle (`AdtDef.InlineCycle`: its `InvalidInlineLayout_Kd` is the record), and
+    ends at Binding's own storage limits (an expanding instance is a Limit, hence undecided and gated). Linear in the distinct parts.
+  - The record sits at the written pointee Type (the conversion's target), not on the conversion: the conversion stays bound, so its
+    own checks (a claim outside an unsafe context), its operand's (a Loan conflict) and its uses' report beside it, and A5 receives the
+    view as a cast (SPEC 23.1.2; the Middle's C-302 G821-1).
+  - Nested: the view is judged whole, by what its pointees may hold, not by an access's offset: an access through it may reach any
+    byte within the operand Place's provenance (SPEC 5.2.1 condition 1, 5.3), and IMPL 21.1.2 fixes no Kimigayo-layout offset.
+  - **The over-gate (accepted, ruling 2):** every conversion between different pointees where either side holds a nonnull Option through
+    Inline parts or raw layers is gated, whatever its accesses, also where the tagged layout compiles it correctly: a view no access
+    uses, an Option no access reaches, an element view of an array of such Types, layout-equal Types, `Option<Option<R>>`, a byte arena
+    placing and reading one such Type (`Raw.allocate<u64>(n)` viewed as `raw/Node`), a struct that holds a raw pointer to one, and
+    an undecided pointee: an `Unsupported` row, or a pointee at Binding's storage limits, which count raw pointees (a struct of two raw
+    Fields nested 70 deep, accepted before, is now gated; A5's `nNestBad` and `nNestOk` keep their records beside the gate's). No
+    exemption clause (each would accept a narrow subset of the class).
+  - **Named limits (the known defects, ruling 3; review 3 N11):** a pointee that reaches a Type parameter (Holdings' `Abstract` row), in
+    a generic body Binding binds once: `raw/T`, `raw/(Option<T>)`, `raw/(W<T>)`, `raw/((u8, T))`. A generic body instantiated with a
+    nonnull Option there stays accepted and miscompiled until U8. `raw/(Option<ref/T>)` is gated in a generic body too (nonnull for
+    every T). A foreign import's raw result over a raw argument's storage (above) is U8's FFI row.
+  - **Removal condition: U8 lands.** U8's unit deletes the Pointer row's call, `CheckNonnullView`, `MayHoldNonnull` and their two
+    tables, turns `RawAddressTest`'s gate rows into accepted rows, returns A5's rows through a view (`optCastObjTyped`, `kOptCastRests`,
+    `optOptCastRests`) to their theory and drops Binding's record from `nNestBad` and `nNestOk` (their A5 records stay), and runs a
+    generic regression native.
+  - Rejected: a gate at each access (the pointer Type no longer states the storage; A5's dataflow runs only where a Loan check rests on
+    it), in the Backend's cast (it would reject the library's correct generic views, `Array<Option<obj/T>>`), the leading chain only
+    (misses later Fields), an element-view or layout-equality exemption, the source side only (misses raw storage), Inline parts only
+    (a pun of a raw layer escapes through the owner itself: review B2, option (b) rejected by ruling 7), a walk with no visited set or
+    memo (an inline cycle overflows the stack, a shared DAG is exponential: review B1, N1), undecided rows read as none (review N2), a
+    gate in `CompletePointerConversion` alone (a pair binder's raw case escapes: C-302 G821-2), failing the conversion node (its own,
+    its operand's and its uses' independent records are lost: C-302 G821-1), the fact in `StorageHeight` (a temporary bit in a
+    canonical walk, with an OR across each cycle component: review 2 N6).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
