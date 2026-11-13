@@ -49,7 +49,9 @@ public partial class Compilation
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
         }
 
-        if (!graph.IsResolved || graph.Nodes.Length == 0 || !ReferenceEquals(graph.Nodes[0].Input.Configuration, this.Project.ProjectFile))
+        // An unresolved graph's failures are its resolver's caller's records (IMPL 20.5); the root's checks read no graph and still run
+        // (SPEC 23.1.2), and the graph's, which read it, are left out.
+        if (graph.IsResolved && (graph.Nodes.Length == 0 || !ReferenceEquals(graph.Nodes[0].Input.Configuration, this.Project.ProjectFile)))
         {
             throw new ArgumentException("Compilation requires the resolved root configuration snapshot.", nameof(graph));
         }
@@ -79,6 +81,11 @@ public partial class Compilation
         if (this.dependencyGraph is not { } graph)
         {
             return !failed;
+        }
+
+        if (!graph.IsResolved)
+        {
+            return false;
         }
 
         var modules = new Kotonoha[graph.Nodes.Length];
