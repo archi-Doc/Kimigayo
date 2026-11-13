@@ -38,6 +38,7 @@ public sealed partial class Binding
         private BindingScope? scope;
         private bool provisional;
         private bool meetProvisional;
+        private int reading; // Same's meets in progress: they ask the attribute domains, which read no identity, so nothing reopens the table
 
         internal byte Worst { get; private set; }
 
@@ -53,6 +54,11 @@ public sealed partial class Binding
 
         internal void Open(BindingScope view)
         {
+            if (this.reading != 0)
+            {
+                throw new InvalidOperationException("An identity table was reopened while Same read it (InternalInvariant; R7-C3a).");
+            }
+
             this.scope = view;
             this.provisional = false;
             this.Work = 0;
@@ -167,7 +173,17 @@ public sealed partial class Binding
             }
 
             var start = this.parts.Count;
-            var same = this.Meet(a, b) == One;
+            bool same;
+            this.reading++;
+            try
+            {
+                same = this.Meet(a, b) == One;
+            }
+            finally
+            {
+                this.reading--;
+            }
+
             for (var i = start; same && i < this.parts.Count; i++)
             {
                 same = this.Same(this.parts[i].A, this.parts[i].B);

@@ -21,7 +21,7 @@ namespace Kimi.Compiler;
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
 //   rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses' own, so
-//   it is quadratic in the premises and linear in the uses); warm 0 B (pooled tables).
+//   it is quadratic in the premises and linear in the uses); one table per view and pass, rebuilt in place; warm 0 B (pooled tables).
 // - Prohibitions: no premise is withheld, ranked or chosen by order, and no mode parameter; no judgment inside the closure but the
 //   attribute domains', which read no identity; an erroneous class proves nothing and makes its declaration's context no failed one.
 public sealed partial class Binding
@@ -104,8 +104,15 @@ public sealed partial class Binding
 
         try
         {
-            var classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
-            this.identityLent.Add(classes);
+            // The view's one table of the pass is rebuilt in place when its premises moved or it was not Complete: no reader holds a
+            // view's table across a build of the same view (the attribute domains read no identity), and a build nested in another one
+            // takes its own table.
+            if (kept.Classes is not { } classes || this.identityBuilding.Count != 1)
+            {
+                classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
+                this.identityLent.Add(classes);
+            }
+
             classes.Open(scope);
             for (var current = scope; current is not null; current = current.Parent)
             {
@@ -135,11 +142,7 @@ public sealed partial class Binding
             classes.Close();
             this.IdentityClassWork += classes.Work;
             completion = classes.Completion;
-            if (classes.Final && SerialOf(scope) == serial)
-            {
-                this.identityClasses[scope] = (serial, classes);
-            }
-
+            this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, classes); // -1: kept, not memoized
             return classes;
         }
         finally
