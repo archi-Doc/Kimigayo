@@ -183,7 +183,9 @@ internal static class MirDescriptors
         // The bits, the width flag and the destination, the one operand written, through its `uniq` borrow (R8-S2c).
         IntrinsicId.FormatFloat => Intrinsic(MirEffect.None, 3),
         IntrinsicId.ErasedReserve => Intrinsic(MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
-        IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, arity: -1),
+        // The value and the destination, the one operand written, through its `uniq` borrow (R8-S2b2); the routine neither allocates nor
+        // Aborts.
+        IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, 2),
         IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.Fail => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.TestRequireAbort => Intrinsic(MirEffect.Abort, 2) with { Diverges = true }, // The issue and the site's location.

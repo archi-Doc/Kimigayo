@@ -179,6 +179,7 @@ A **position** denotes a boundary of a target of length `L` and resolves to an i
 public contract Position: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
     func tryResolve(self: Self, length: isize) -> Option<isize>
 ```
 
@@ -237,6 +238,7 @@ let f = (0..3) == (0..=2)     // Error: different range Types.
 public contract PositionRange: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
     func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
 ```
 
