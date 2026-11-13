@@ -132,11 +132,15 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether a request can rent the next nesting level's environment now (RentPremises' condition), asked before a request by a reader
+    // that answers Provisional instead of failing where the construction would depend on itself (Binding.TypeIdentity's Origin attribute).
+    private bool OriginPremisesAvailable => this.originPremiseDepth < MaxOriginPremiseDepth;
+
     // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
     // where the request's construction depends on itself and the requester fails.
     private OriginPremiseEnvironment? RentPremises(Koto use)
     {
-        if (this.originPremiseDepth == MaxOriginPremiseDepth)
+        if (!this.OriginPremisesAvailable)
         {
             return null;
         }

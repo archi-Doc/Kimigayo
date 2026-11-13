@@ -12758,6 +12758,71 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the element as a `Loan` entry (loses the empty view's Loan: R8-M6's row newly accepted); a `place` bool on `Holds`
     (review 1 B1); a length test in a reader; dropping the element (loses 4.3.3's Loans); G806's `RawPlaces` (its element row is the
     grid at every length).
+
+- **BU-194 G799: `Binding.RowReset` (temporary)** (2026-11-13; Front, Binding; Major without a separate design review, F's ruling 1;
+  PLAN G799; implementation review ACCEPT WITH NOTES) SPEC 23.1.2. The indexer resets each node's HIR row at its visit; an effect
+  item's selector and Name are resolved with the item and not indexed, so their rows are reset by `Binding.RowReset` before the item
+  is indexed, and the rebind after an append gives the fresh compilation's verdict.
+  - Removal: at R7-D2 c, whose pre-order walk reaches every node (COMPILER_ARCHITECTURE's temporaries list).
+  - Rejected: clearing each module's base columns at the pass start (R7-D2 c's change); a reset in `EffectTarget` or
+    `BindEffectBound` (consumers deciding the indexer's reset).
+
+- **BU-195 G808: the nonnull Option is one named predicate; its Some payload is a leading step** (2026-11-13; Front, Binding's
+  `TyCtxt`; Major; PLAN G808, the owner's O-220 (a); F's G806 ruling 1, G808 rulings 1-4; amends R4-M198's Leading sentence) IMPL
+  21.1.3, 21.1.2; SPEC 5.2, 4.1.
+  - `TyCtxt.NonnullSome(type)` is the one statement of IMPL 21.1.3's R list: for `Option<R>`, R a `ref`, `uniq`, `obj`, `rc`, `arc`,
+    `objref` or `objuniq` layer, it answers the Some Case's ordinal; -1 for every other Type (`Option<raw/T>`, `Option<Weak<S>>`,
+    `Option<Option<R>>`, an Option of a Tuple, a Scalar, an abstract or a pair part, any other enum). The ordinal is taken from the
+    declaration, never assumed: `KimiLibrary.OptionSome`, the Case named Some (AdtDef numbers Cases in declaration order), -1 before
+    Binding prepared the library's Cases. The for statement's Some and None positions (Binding.Sequences) read `OptionSome` and its
+    sibling `KimiLibrary.OptionNone` (the Case named None), in place of their literals 0 and 1, so no reader depends on Core.kimi
+    declaring Some first or None second (review N3 and R1; the Middle's C-287 G808-5).
+  - PLAN U8's Backend `Layout` reads `NonnullSome` for the nonnull representation; it states no second copy of the R list.
+  - `TyCtxt.Leading(at, out element)` gains one row: a key whose Type `NonnullSome` answers answers the Some payload's key
+    (`Select(Select(at, some), 0)`: the Some Case, then its component 0, MIR's Downcast and Field), `element` false: the payload is
+    the Option's whole word, at its address. R4-M198's sentence "Type null for any other Type" reads "for any other Type than these
+    three rows".
+  - Readers: A5's pun chain (`MirBorrows.PunTypes`' `Lead`, `Leads`, `End`, `Step`): a store past a nonnull payload's own step at a
+    C struct's first Field is typed, no longer undecided; `End` through it is the payload, never a raw pointer. `TyCtxt.RawPlaces`
+    is unchanged (a payload is no raw Place). G562-c's `Remainder` reads the row for its None case; a closed lead step (`Element`,
+    `First`, `Whole`) in place of `element` lands with it, its first reader, replacing every reader in that unit (ruling 2).
+  - Class (review N1; C-287 G808-2): records and infrastructure. The moved rows (`optCastObjTyped`, `optMatchObjTyped`) are invalid
+    by SPEC 15.6 (`NodeO.init()`'s result part `next` is a raw layer tied to no argument): they lose the located `Unsupported_Kd`
+    and keep `ComparisonLoanConflict_Kd`, their right independent record (SPEC 23.1.2), which the `Unsupported_Kd` hid. Nothing is
+    newly accepted. Q17 class 3 rests only on G562-c's `enumInRefU`.
+  - Not decided here (review N4): MIR's step rule keeps judging a Downcast off (`Step(of, -1)`), while `Leading` places the Some
+    payload at the Option's address. Only a shared-mode in-place match on a raw Place reaches that path on dev, its bindings without
+    write authority (SPEC 15.1.6, 5.2.1 condition 3), so no valid program observes it. Condition for A5's revision 3 (the Middle;
+    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step.
+  - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
+    located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
+    facts).
+
+- **BU-192 An emptied admitted set admits no case (PLAN G750)** (2026-11-13; Front, Binding; Major with a design review, F's ruling
+  1; the Middle's consent to `CaseProduct`'s contract, C-285; amends no entry) SPEC 8.3.4, 8.15.2, 23.1.2.
+  - The admitted set at a point is the intersection of every Semantics premise on the scope chain, an Invalid environment's
+    included; a failed clause's fact is an Error, never a premise. An empty set is the 8.3.4 Error, whose one record is the
+    environment's (`ValidateConstraintEnvironments` at its owner).
+  - One fact, `PairBinder.CaseProduct` 0 ('the binders here admit no case'), read before any division. `CheckCaseBound` (the owner
+    of a definition's cases) gives such a definition no case: it rests on the environment's failed node (prerequisite,
+    InvalidConstraint, derived), its parts are bound (their independent records stay) and none is published, as beyond the case
+    bound; it keeps no signature. A Semantics requirement read from the empty set (a case adaptation's rows, a follow, a selection
+    through the layer) rests on the emptying environment (`RestOnEmptiedSet`) and has no record of its own; a formation obligation
+    (`TypeRoleCauses`) gives no cause of its own. `FollowablePair` answers no case as its own outcome (None; null = not followable),
+    and each caller reads it; a caller with no node to rest (LayersTerminal, receivers, Subjects, patterns) reads it as not
+    followable until its consumers rest (PLAN G822).
+  - MIR reads a count from 1 to `CaseBound`: Binding publishes no body of a definition with no case (MirValidator's check of it is
+    the Middle's, G723).
+  - Proofs keep BU-161's rule (an Invalid environment supplies no premises; a proof reading it answers Error resting on it).
+  - C3's held routing of AdmittedSemantics through Enumerate (the C2a entry; `claude/bu30-g170-c2b-held`) must keep this reading;
+    G750's rows check it.
+  - Reason: skipping Invalid environments in the admitted set turned 'admits no case' into D's set or all nine (G723's probes), and
+    the cases the premises exclude gave records with no SPEC basis and, in some forms, `InternalInvariant_Kd`.
+  - Rejected: Binding stops publishing every part in scope of an Invalid environment (loses the independent records of parts whose
+    set is not empty, o3); MIR skipping bodies with an empty binder (a consumer deciding what Binding publishes, G723); keeping a
+    case's record of a definition whose own clauses empty its set (r18's TypeMismatch_Kd, a case the premises exclude; it needs a
+    second admitted set; F's ruling 5); FollowablePair's None for both 'not followable' and 'no case' (its callers decided no case
+    again).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18567,6 +18632,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ContractSolver`'s entry contract, and each change to a member is reviewed against that list. `ConformanceByDeclaration`'s
     finality rests on the `InheritedConformances` query being Done after Binding.cs's `RegisterInheritedConformances` (or abandoned
     again for a base cycle, whose re-demand changes only `InheritedConformanceWork`, with no record).
+    - W7 (R7-C3a; DECISIONS R7-M24): `Binding.TypeIdentity`'s identity classes of a view.
+      - **One finality rule per class.** A class is final unless one of its meets rests on an Origin proof's "no" while an Origin
+        declaration it read is not `Completed`, or while the premise environment cannot be rented (`OriginPremisesAvailable`). An
+        outlives "yes" only grows with the premises, so it is final.
+      - **Every reader reads that rule:** the identity proposition's Proven (`IdentityProven`): a final class in state One;
+        ContractTypeCore's guard (`ProjectionClassFailed`): a final class in an error state (W4 also meets the table's Completion);
+        the premise-error record (`RecordIdentityPremiseError`): a final error class that the parent's table does not hold, recorded
+        once per scope and pass.
+      - **The table's `Completion`** is Provisional when a class is not final, or when an availability it read is Provisional. That
+        second case is e1's conservative availability, which the record does not wait for: the record is made at the validation step
+        from the evidence there, as `ValidateConstraintEnvironments`' own proofs are.
+      - **The memo** keeps only Complete tables, keyed by `SerialOf(scope)`, for one pass (emptied in `ResetCapabilities`). A
+        re-entered build answers nothing (Provisional). The table's one `Completion.Complete` site is its `Completion` member.
+      - W7 replaces W2 and W3 (`SubstituteIdentity`, `IdentityPremise`) when R7-C2c2 deletes them.
   - `Reading(fact, view)` is the one caller of the request boundary's normalization of a fact (`Supply`'s and `SymbolicCapability`'s
     loops). It is formed only in the capability phase with `normalizingAssociated` and `identityExpansions` empty, kept per (view
     scope, fact, requirement Contract) under the serial taken before its formation, for one pass (emptied in `ResetCapabilities`),
@@ -18635,6 +18714,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     that cannot name it).
   - Closes PLAN G610: a conformance of a Type of one Kotonoha to a `protected internal` Contract of another Kotonoha's open struct
     is accepted when the associated binding or the implementation is a `protected` member of that struct.
+- **R7-M24 `Binding.TypeIdentity` judges SPEC 8.2.3's Type identity of a view by classes with explicit states; an unproven meet is
+  the declaration's Proof premise error** (Front, 2026-11-12; R7-C3a, the plan's §5.0 C3 part a; the owner's O-198 (a) and O-202
+  (a), verbatim 「決断事項は、すべて (a)」 and 「O-202 a」).
+  - The classes: every available identity premise of the view's chain applied (none withheld, ranked or chosen by order), closed
+    under decomposition and congruence (a node keyed by its head, compared attributes and components' class ids); per class a state
+    One, Unsupported, Unproven, Cyclic or Conflict from its constructed members' meets; union by the smaller index, states from the
+    round that joins nothing, so the classes are a function of the premise set.
+  - Each compared attribute is decided by its domain's own rule, which reads no identity: Origins by OriginDeclaration's `==`, then
+    the outlives judgment both ways (SPEC 15.6.5); lengths by the normalized expression; Function Types by their quantified Origins
+    paired by position within the pair (every Origin slot, a projection's Origin arguments included), decomposed at their abstract
+    positions, where a quantified Origin carried out is Refuted; pair heads by the admitted set (SPEC 8.3.4): an application
+    admitting exactly `owner` is its target from its addition (never a constructor or a cycle edge), one disjoint from the other's
+    outer Semantics Refuted, any other admitted set the Proof row. Cycles: the class graph's strongly connected components
+    (iterative Tarjan); a cycle only through owner-admitting pair applications is the Proof row, any other Cyclic.
+  - Readers: the identity proposition's Proven (`IdentityProven`, JudgeConstraintAtom's arm; through it `SameConformanceType` and
+    `NamesReference`), ContractTypeCore's guard (a Type in a final erroneous class is completed by no premise), the pair receiver's
+    target (`ReceiverTarget`, PLAN G772), the premise-error record (`RecordIdentityPremiseError`) and the producer channel (a Type
+    mismatch over a Type in an erroneous class rests on the declaration's record; a declaration whose own failure is its premise
+    error keeps its context). Finality: R7-M20's W7.
+  - Records: the premise error once per pass, at the declaration whose premises first form it (a parent's class is the parent's),
+    from the evidence at the validation step; Conflict and Cyclic Language (`InvalidConstraint_Kd`), Unproven Proof
+    (`UnprovenConstraint_Kd`), Unsupported the located limit; in the Final pass an own error class still waiting for its Origin
+    declarations is the located limit. The environment stays valid. Per error class at its premise clause: PLAN G830.
+  - Until R7-C2c2: dev's member substitution (`SubstituteIdentity`, `IdentityPremise`) and ContractTypeCore's first-premise choice
+    stay; c2 replaces both with the class canonical and keys evidence by class. BU-72's HIR premise stays until C3e.
+  - **Supersedes bu65 r5's departure** from C1 §5 (use verdicts and records following dev's premise order where a meet is unproven;
+    the owner's 「もう1回直してください」 and 「すべて推奨どおり」 under 「すべて推奨の内容でOkです」, held by 「(b) C3 まで保留」), by O-198 (a): the reason, that an
+    unproven meet could not be SPEC's error because the meet compared Origins by reference, no longer holds: the judge decides each
+    attribute by its domain, so an unproven meet is SPEC 8.2.3's unproven requirement.
+  - RP8: T-185 (11-13 15:26-15:34) passed with no stop; the accepted cold growth is the design's one table per view (Hello +75 KB,
+    PremiseList +360 KB), warm bytes 0.
+  - Rejected: withholding premises by rank, abstractness or dev's order (r3-r5, an open family); a mode parameter
+    (`parametersOnly`); a depth cut on cycles; a table-wide correspondence of quantified Origins (a query mutated a memoized table).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
