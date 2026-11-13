@@ -213,8 +213,8 @@ public sealed partial class Binding
         var origins = solution.Origins;
         var inputs = solution.Inputs;
         var declaringType = solution.DeclaringType;
-        var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var sourced = this.RentSlotSet(call.ArgumentNodes.Count);
+        var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var open = this.RentSlotSet(call.ArgumentNodes.Count);
         var openSignatures = this.RentSlotSet(call.ArgumentNodes.Count);
         var unboundSlots = this.RentSlotSet(CallSlotCount(function));
