@@ -8,6 +8,13 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row).
+    private static void AddInputBound(OriginInference inference, BoundOrigin parameter, BoundOrigin value)
+    {
+        inference.Discover(parameter, 1);
+        inference.Add(value, parameter, false, true);
+    }
+
     // The failure of a solve's bound under its source (OriginInference.Bounds): a declared clause, else a member's position, else a result
     // premise.
     private static ComparisonFailure BoundFailure(
@@ -86,6 +93,12 @@ public sealed partial class Binding
             if (known is not null && QuantifiedBy(value, known))
             {
                 return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
+            }
+
+            if (sign > 0 && !result)
+            {
+                AddInputBound(inference, parameter, value); // The covariant input row, one copy (a borrowed temporary's too).
+                return;
             }
 
             inference.Discover(parameter, sign == 0 ? 3 : sign > 0 ? 1 : 2);
