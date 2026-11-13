@@ -184,6 +184,10 @@ public sealed partial class KimiLibrary
     /// for statement's Some position).</summary>
     internal int OptionSome => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "Some");
 
+    /// <summary>Gets the ordinal of Option's None Case, taken from the declaration as <see cref="OptionSome"/> is: the one statement of
+    /// where None is (the for statement's None position).</summary>
+    internal int OptionNone => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "None");
+
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; private set; }
 
