@@ -226,6 +226,29 @@ public class RawAddressTest
         MirTargetSide.Check(c, (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(view, view[(view.LastIndexOf('@') + 1)..])));
     }
 
+    // PLAN G821 (the owner's O-252 (a); the Middle's G821-5): an Option whose Some payload is a pair layer is undecided at Binding
+    // (TyCtxt.NonnullOption) where the binder's admitted set meets IMPL 21.1.3's R list, so the gate rejects its view as it does a
+    // nonnull Option (the Middle's four natives: `obj`, `object` at an obj and an rc instance, `owner or obj`; `ref` with an Origin), also
+    // in a Tuple, as an Option's Case payload and past a raw layer; a set outside the list (`owner`, `raw`) is decided and not gated.
+    [Theory]
+    [InlineData("s is obj", "Option<s/Box>", "let q = p@raw/u64\n    var w: u64 = 0\n    unsafe => w = *q\n", "var h: Option<obj/Box> = .Some(Box.init(v: 1)@obj)\n    rd<obj/Box>(h@raw)\n", "p@raw/u64")]
+    [InlineData("s is object", "Option<s/Box>", "let q = p@raw/u64\n    var w: u64 = 0\n    unsafe => w = *q\n", "var h: Option<obj/Box> = .Some(Box.init(v: 1)@obj)\n    rd<obj/Box>(h@raw)\n", "p@raw/u64")]
+    [InlineData("s is object", "Option<s/Box>", "let q = p@raw/u64\n    var w: u64 = 0\n    unsafe => w = *q\n", "var h: Option<rc/Box> = .Some(Box.init(v: 1)@rc)\n    rd<rc/Box>(h@raw)\n", "p@raw/u64")]
+    [InlineData("s is owner or obj", "Option<s/Box>", "let q = p@raw/u64\n    var w: u64 = 0\n    unsafe => w = *q\n", "var h: Option<obj/Box> = .Some(Box.init(v: 1)@obj)\n    rd<obj/Box>(h@raw)\n", "p@raw/u64")]
+    [InlineData("s is ref", "Option<s/u64 during a>", "let q = p@raw/u64\n    var w: u64 = 0\n    unsafe => w = *q\n", "", "p@raw/u64")]
+    [InlineData("s is owner", "Option<s/u64>", "usep(p@raw/u8)\n", "", null)]
+    [InlineData("s is obj", "(u8, Option<s/Box>)", "usep(p@raw/u8)\n", "", "p@raw/u8")]
+    [InlineData("s is owner", "(u8, Option<s/Box>)", "usep(p@raw/u8)\n", "", null)]
+    [InlineData("s is obj", "Option<Option<s/Box>>", "usep(p@raw/u8)\n", "", "p@raw/u8")]
+    [InlineData("s is obj", "raw/(Option<s/Box>)", "usep(p@raw/(raw/u64))\n", "", "p@raw/(raw/u64)")]
+    [InlineData("s is raw", "Option<s/Box>", "usep(p@raw/u8)\n", "", null)]
+    public void AnOptionOfAPairPayloadIsGatedWhereItsSetMeetsTheList(string premise, string pointee, string view, string main, string? at)
+    {
+        var c = MinimalEmissionTest.Analyze($"struct Box\n    public var v: u64\n    public init(v: u64) => self.v = v\nfunc usep<T>(p: raw/T) => ()\n" +
+            $"func rd<s/T>(p: raw/({pointee}))\n    {premise}\n    {view}public func main()\n    {main}");
+        MirTargetSide.Check(c, at is null ? [] : [(DiagnosticCode.Unsupported_Kd, MirTargetSide.At(at, at[(at.LastIndexOf('@') + 1)..]))]);
+    }
+
     // PLAN G821 revision 1 (F's rulings 5-7): the gate reads through the raw layers a pointee holds (SPEC 5.2: a punned raw pointer has
     // the provenance of the raw pointer whose bytes it reads), one level, two levels, in a Tuple and at a C struct's first Field, but an
     // Option-free raw layer and a raw-layer cycle with no Option are not gated; a generic body's `raw/(Option<ref/T>)` is a nonnull
@@ -259,7 +282,8 @@ public class RawAddressTest
     // PLAN G821 revision 2 (ruling 11): the gate is the adaptation table's Pointer row (CheckAdaptationCase), so a pair binder's raw case
     // is gated as a written conversion is (G821-2); its record is at the written pointee Type and the conversion stays bound, so the
     // conversion's own record (a claim outside an unsafe context), its operand's (`h@raw` under a live `uniq`) and a use's (`*q` outside
-    // an unsafe context) stay beside it (G821-1, SPEC 23.1.2); the pair form over an Option-free pointee is not gated.
+    // an unsafe context) stay beside it (G821-1, SPEC 23.1.2); the pair form over an Option-free pointee is not gated. A view of an
+    // Option of a pair payload (O-252 (a)) keeps a use's record beside the gate's.
     [Theory]
     [InlineData("func f<s/T>(y: s/(Option<obj/Box>)) -> u64\n    s is raw\n    let q = y@raw/u64\n    unsafe => return *q\n", "", "Unsupported_Kd raw/u64")]
     [InlineData("#Layout(\"C\")\nstruct W\n    public var link: Option<obj/Box>\n    public var k: u64\nfunc f<s/T>(y: s/W) -> u64\n    s is raw\n    let q = y@raw/u64\n    unsafe => return *q\n", "", "Unsupported_Kd raw/u64")]
@@ -268,6 +292,7 @@ public class RawAddressTest
     [InlineData("", "let m = Raw.allocate<u64>(2)\n    let q = m@(raw/(Option<obj/Box>) during static)\n    usep(q)\n    unsafe => Raw.release(m)\n", "UnsatisfiedOriginRelation_Kd m | Unsupported_Kd (raw/(Option<obj/Box>) during static)")]
     [InlineData("", "let u = h@uniq\n    let q = h@raw@raw/u64\n    useu(u)\n    usep(q)\n", "ComparisonLoanConflict_Kd h@raw | Unsupported_Kd raw/u64")]
     [InlineData("", "let q = h@raw@raw/u64\n    let w = *q\n", "UnsafeBlockRequired_Kd *q | Unsupported_Kd raw/u64")]
+    [InlineData("func f<s/T>(p: raw/(Option<s/Box>)) -> u64\n    s is obj\n    let q = p@raw/u64\n    return *q\n", "", "UnsafeBlockRequired_Kd *q | Unsupported_Kd raw/u64")]
     public void TheGateIsThePointerRowAndKeepsTheConversionBound(string declarations, string body, string records)
     {
         var c = MinimalEmissionTest.Analyze(declarations + "struct Box\n    public var v: u64\n    public init(v: u64) => self.v = v\nfunc usep<T>(p: raw/T) => ()\n" +

@@ -107,12 +107,14 @@ public sealed partial class Binding
         }
     }
 
-    // Whether a value of the Type may hold a nonnull Option (TyCtxt.NonnullSome): at itself, at a part Holdings states at its own address
-    // (Inline: a Field, the base, an element, a Case payload, an environment binding) or past a raw layer it holds (a Raw entry: SPEC 5.2,
-    // a punned raw pointer has the provenance of the raw pointer whose bytes it reads, so a view of the layer reaches its pointee; a
-    // borrow's or an object handle's bytes were written by no raw pointer and give none, and a collection's handle component, whose
-    // `data` a raw write wrote, is an own or shared step whose layout is implementation-defined for any source but the Kimi Kotonoha's,
-    // IMPL 21.1.3), at any depth; or where a part is undecided (an Unsupported row, Binding's Limit), never read as none (ruling 6).
+    // Whether a value of the Type may hold a nonnull Option (TyCtxt.NonnullOption yes or undecided: a pair payload whose admitted set
+    // meets IMPL's R list is nonnull in some case, never read as none; the owner's O-252 (a)): at itself, at a part Holdings states at
+    // its own address (Inline: a Field, the base, an element, a Case payload, an environment binding) or past a raw layer it holds (a
+    // Raw entry: SPEC 5.2, a punned raw pointer has the provenance of the raw pointer whose bytes it reads, so a view of the layer
+    // reaches its pointee; a borrow's or an object handle's bytes were written by no raw pointer and give none, and a collection's
+    // handle component, whose `data` a raw write wrote, is an own or shared step whose layout is implementation-defined for any source
+    // but the Kimi Kotonoha's, IMPL 21.1.3), at any depth; or where a part is undecided (an Unsupported row, Binding's Limit), never
+    // read as none (ruling 6).
     // Adds nothing: a declaration on an inline cycle (its InvalidInlineLayout_Kd is the record; its parts are not walked), an Abstract
     // part (the named limit: Binding binds a generic body once), a part Binding did not bind (its own record).
     // Holdings is one level by contract, and this temporary fact (removed at U8) does not enter a canonical walk (StorageHeight, which
@@ -141,7 +143,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.types.NonnullSome(type) >= 0)
+        if (this.types.NonnullOption(type) != false)
         {
             return true;
         }

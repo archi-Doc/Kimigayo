@@ -14,6 +14,9 @@ namespace Kimi.Compiler;
 // punnable set (Punnable, its one owner), which A5's pun rule reads.
 internal sealed partial class TyCtxt
 {
+    // IMPL 21.1.3's R list: the layers whose Option is one nonnull word (NonnullSome, NonnullOption).
+    private const Parsing.SemanticsMask NonnullLayers = Parsing.SemanticsMask.Borrow | Parsing.SemanticsMask.Object;
+
     private readonly Dictionary<BoundType, bool> punnable = new(); // Punnable's answer per composite Type, memoized like the interning.
     private readonly List<Hold> rawForm = []; // Decided's Holdings scratch, a stack.
 
@@ -249,13 +252,21 @@ internal sealed partial class TyCtxt
     // IMPL 21.1.3 (G808): the nonnull Option: `Option<R>`, R a `ref`, `uniq`, `obj`, `rc`, `arc`, `objref` or `objuniq` layer, is one
     // pointer-sized word, null None and every valid R Some. The Some Case's ordinal (KimiLibrary.OptionSome) for such a Type; -1 for every
     // other (`Option<raw/T>`, `Option<Weak<S>>`, `Option<Option<R>>`, an Option of a Tuple, a Scalar, an abstract or a pair part, any
-    // other enum). The one statement of IMPL's R list: Leading reads it, and the Backend's Layout reads it with PLAN U8. Total; allocates
-    // nothing.
+    // other enum). The one statement of IMPL's R list (NonnullLayers): Leading reads it, and the Backend's Layout reads it with PLAN U8.
+    // Total; allocates nothing.
     internal int NonnullSome(BoundType? type)
         => type is { Semantics: Parsing.SemanticsKind.Owner, Components: [{ Kind: BoundTypeKind.Semantics } payload] } &&
-            ReferenceEquals(type.Symbol, library.Option) && payload.Semantics is Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq or
-            Parsing.SemanticsKind.Obj or Parsing.SemanticsKind.Rc or Parsing.SemanticsKind.Arc or Parsing.SemanticsKind.ObjRef or
-            Parsing.SemanticsKind.ObjUniq ? library.OptionSome : -1;
+            ReferenceEquals(type.Symbol, library.Option) && (Parsing.SemanticsMaskHelper.ToMask(payload.Semantics) & NonnullLayers) != 0 ? library.OptionSome : -1;
+
+    // PLAN G821, until U8 (the owner's O-252 (a)): whether an Option's Some may be IMPL 21.1.3's nonnull word, from NonnullSome's one R
+    // list: true where NonnullSome states it; null, undecided at Binding, where the payload is a pair layer whose admitted set (its
+    // binder's premises, Binding.LayerAdmitted) meets the list, so a case or an instance decides it; false for every other Type (a
+    // payload stated outside the list, a pair admitting none of it, not an Option). An abstract payload is its own level's: Holdings'
+    // Abstract row, the named limit. Total; allocates nothing.
+    internal bool? NonnullOption(BoundType type)
+        => this.NonnullSome(type) >= 0 ? true
+            : ReferenceEquals(type.Symbol, library.Option) && type.Components is [var payload] && Binding.TryPairLayer(payload, out _, out _) &&
+                (binding.LayerAdmitted(payload) & NonnullLayers) != 0 ? null : false;
 
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal, raw Origins included: the structural part of a
     // fit (Binding's relation walk, every Origin binding equal, no Never root rule), symmetric; reads no premise. Total, O(size of the
