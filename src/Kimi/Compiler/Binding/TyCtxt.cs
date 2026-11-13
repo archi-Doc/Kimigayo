@@ -91,6 +91,17 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
     }
 
+    // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type
+    // as the caller reads it) on the path of the Type the function's declaration writes at `slot` (Signature without the substitution), so
+    // that OwnLayers there, and at every key Select, Base, Leading and OwnLayers give past it, marks as Hidden each part whose declared
+    // counterpart, in the function's view (its identity classes at every part, Binding.TypeIdentity), is an abstract Type of the function's
+    // own declaration (a Type parameter, or a pair target or projection rooted at one). Shown: a part an identity premise gives a form
+    // (`S.Item is raw/u8` inside `HA<S>`), an enclosing Type's parameter, which the receiver's instance completes (DECISIONS BU-50); a Type
+    // the declaration and the input write with different constructors ends the path there, shown (named limit: a pair layer's owner case,
+    // `s/U` read as U itself). Must not decide what a hidden layer reaches (A5's).
+    internal static PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
+        => PlaceKey.Root(input) with { Signature = Signature(function, null, slot, out _) };
+
     // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
     // the MIR's case views resolve a case adaptation.
     internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)

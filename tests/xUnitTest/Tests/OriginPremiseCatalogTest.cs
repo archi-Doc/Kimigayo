@@ -196,6 +196,24 @@ public class OriginPremiseCatalogTest
         Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], codes);
     }
 
+    // SPEC 10.7, 15.6.1, 15.6.5 (PLAN G831): at a fit between Function Types, the implementation's pair-layer input is proven well formed
+    // in its binder's borrow cases, where the required input's own well-formedness proves it (also below a `ref` layer, and with `uniq`
+    // admitted); without such a premise (the required `k` at the pair target) it stays unproven. A pair slot's own fit (`j outlives c`)
+    // exists in those cases only, so `x`'s premise of those cases proves it, and never a relation that every case requires (plain `ref`).
+    [Theory]
+    [InlineData("owner or ref", "(t/(ref/i32 during j) during c, ref/i32 during j) -> i32", "(t/(ref/i32 during j) during c, ref/i32 during k) -> i32", "clean")]
+    [InlineData("owner or uniq", "(t/(ref/i32 during j) during c, ref/i32 during j) -> i32", "(t/(ref/i32 during j) during c, ref/i32 during k) -> i32", "clean")]
+    [InlineData("owner or ref", "(ref/(t/(ref/i32 during j) during c) during d, ref/i32 during j) -> i32", "(ref/(t/(ref/i32 during j) during c) during d, ref/i32 during k) -> i32", "clean")]
+    [InlineData("owner or ref", "(t/(ref/i32 during j) during c) -> i32", "(t/(ref/i32 during k) during c) -> i32", "1*UnprovenOriginContract_Kd")]
+    [InlineData("owner or ref", "(t/(ref/i32 during j) during c) -> i32", "(t/(ref/i32 during j) during j) -> i32", "clean", "x: t/(ref/i32 during j) during c, ")]
+    [InlineData("owner or uniq", "(t/(ref/i32 during j) during c) -> i32", "(t/(ref/i32 during j) during j) -> i32", "clean", "x: t/(ref/i32 during j) during c, ")]
+    [InlineData("owner or ref", "(t/(ref/i32 during j) during c) -> i32", "(t/(ref/i32 during j) during j) -> i32", "1*UnprovenOriginContract_Kd")]
+    [InlineData("owner or ref", "(ref/(ref/i32 during j) during c) -> i32", "(ref/(ref/i32 during j) during j) -> i32", "1*UnprovenOriginContract_Kd", "x: t/(ref/i32 during j) during c, ")]
+    public void AFunctionTypesPairLayerIsProvenWellFormedInItsBorrowCases(string admitted, string written, string required, string records, string premise = "")
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"func g<t/U>(j: ref/i32, k: ref/i32, c: ref/i32, d: ref/i32, {premise}f: {written}) -> i32\n    t is {admitted}\n    origin k outlives j\n" +
+            $"    origin j outlives d\n    let h: {required} = f@move\n    return 0\n"));
+
     // SPEC 8.1.1, 15.3.7, 15.6.5: the implicit outer Origin `o` of an original pair layer below a borrow layer is stored there in its
     // binder's borrow cases, so its relation to that layer is a premise of the definition (F14, A.9) and an obligation of each use, both
     // through a concrete argument (A.1c) and through a result premise; a pair without an enclosing borrow relates `o` to nothing, and a

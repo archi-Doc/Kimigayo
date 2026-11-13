@@ -121,10 +121,10 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind == BoundTypeKind.FunctionItem && (kind == IntrinsicKind.Copy || type.Components.Count == 0))
+        if (type.Kind == BoundTypeKind.FunctionItem && kind == IntrinsicKind.Copy)
         {
-            // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments are, which the
-            // structural proof over its Components decides.
+            // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments and its call signature are, which
+            // the structural proof decides (CallSignature).
             result = ConstraintProof.Proven;
             return true;
         }
@@ -172,10 +172,47 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.2.3 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a Function
-    // Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal, which
-    // every Closure Type names (ClosureType). A Closure's signature is unreadable, none, where BU-60's view withholds its held instance (an
-    // Origin position closed in no instance, PLAN G300) or its literal's header did not bind (the Type BindConcreteClosure starts with).
+    // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
+    // function and is no Container that the function is a member of below the body.
+    private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
+        => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
+
+    // The declaration a Type parameter's syntax belongs to (a function or a Container, a Contract's Self included).
+    private static Koto DeclaringNode(Koto declaration)
+    {
+        for (var current = declaration; current is not null; current = current.Parent)
+        {
+            if (current is DeclarationKoto)
+            {
+                return current;
+            }
+        }
+
+        return declaration;
+    }
+
+    // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
+    // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
+    private static Koto? EnclosingBody(Koto declaration)
+    {
+        for (var current = declaration.Parent; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto or PropertyAccessorKoto)
+            {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
+    // Function Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal,
+    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
+    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
+    // arguments are its whole dependence.
+    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
+    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
     private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
     {
         if (type.Kind == BoundTypeKind.Function)
@@ -183,14 +220,19 @@ public sealed partial class Binding
             return OwnFunctionBinder(type, type) is { } binder ? (type, binder) : null;
         }
 
-        if (type.Kind != BoundTypeKind.Closure)
+        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
         {
             return null;
         }
 
         if (type.Symbol?.Declaration is not FunctionKoto definition)
         {
-            throw new InvalidOperationException($"Closure Type `{type}` names no literal (InternalInvariant; BU-73).");
+            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
+        }
+
+        if (type.Kind == BoundTypeKind.FunctionItem)
+        {
+            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
         }
 
         return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
@@ -462,9 +504,9 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _) in new CapabilityParts(work.Type))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type))
             {
-                owned = CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
+                owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
 
             return owned;
@@ -480,17 +522,19 @@ public sealed partial class Binding
         var parts = new CapabilityParts(work.Type);
         while (parts.MoveNext())
         {
-            var (part, argument) = parts.Current;
+            var (part, origin, argument) = parts.Current;
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
-            var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
+            var proof = part is null ? (work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.StaticOrigin(origin, work.Scope) : ConstraintProof.Proven)
+                : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved);
         }
 
-        // A Closure's call signature is a part after its captures, member Components.Count; an unreadable one (CallSignature) answers
-        // BU-22's limit with its literal as the site, on which a failed literal's use rests (DECISIONS BU-73).
+        // A Closure's call signature, or what a Function Item inherits (InheritedEnvironment), is a part after its captures or bound
+        // arguments, member Components.Count; an unreadable one (CallSignature) answers BU-22's limit with its definition as the site, on
+        // which a failed definition's use rests (DECISIONS BU-73).
         if (call is { } closure)
         {
             var saved = this.ScopeReads.Origin;
@@ -499,18 +543,6 @@ public sealed partial class Binding
                 : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
-        }
-
-        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
-        {
-            for (var a = 0; a < reference.OriginArguments.Count; a++)
-            {
-                var saved = this.ScopeReads.Origin;
-                this.ScopeReads.Origin = null;
-                var proof = this.StaticOrigin(reference.OriginArguments[a], work.Scope);
-                result = CombineProof(result, proof, true);
-                this.ScopeReads.Origin = work.Part(1, proof, this.ScopeReads.Origin, saved);
-            }
         }
 
         return result;
@@ -533,6 +565,107 @@ public sealed partial class Binding
             this.originScratch.Return(inputs, clearArray: true);
         }
     }
+
+    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) inherits, read
+    // from its declaration as its Item is formed: the Origins and Type parameters its declared signature names whose binder lies outside it
+    // and is no Container it is a member of below that body (whose slots its bound arguments instantiate), as one environment Tuple
+    // (EnvironmentTuple). Atoms bound inside its declaration (its own Origins, a Constraint set's slot, a nested Function Type's inputs)
+    // are per-call, and a Type a projection or a bound argument derives from them is never judged itself (15.2.3 counts the arguments).
+    // Null when a declared Type did not bind.
+    private BoundType? InheritedEnvironment(FunctionKoto function, Koto body)
+    {
+        if (function.BoundSymbol?.Type is not { } result)
+        {
+            return null;
+        }
+
+        var count = function.Parameters.Count;
+        var declared = this.RentTypes(count + 1);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                if (function.Parameters[i].Type.BoundType is not { } parameter)
+                {
+                    return null;
+                }
+
+                declared[i] = parameter;
+            }
+
+            declared[count] = result;
+            var signature = this.types.Tuple(declared.AsSpan(0, count + 1));
+            var summary = this.SummaryOf(signature);
+            var origins = this.originScratch.Rent(summary.Nodes.Length + summary.RawNodes.Length);
+            var types = this.RentTypes(this.InheritedParameters(signature, function, body, null, 0, this.visitedParts.Begin(this.storageVersion)));
+            try
+            {
+                var o = InheritedOrigins(summary.Nodes, function, body, origins, 0);
+                o = InheritedOrigins(summary.RawNodes, function, body, origins, o);
+                var t = this.InheritedParameters(signature, function, body, types, 0, this.visitedParts.Begin(this.storageVersion));
+                return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+            }
+            finally
+            {
+                this.originScratch.Return(origins, clearArray: true);
+                this.typeScratch.Return(types, clearArray: true);
+            }
+        }
+        finally
+        {
+            this.typeScratch.Return(declared, clearArray: true);
+        }
+
+        static int InheritedOrigins(BoundOrigin[] nodes, FunctionKoto function, Koto body, BoundOrigin[] into, int count)
+        {
+            for (var i = 0; i < nodes.Length; i++)
+            {
+                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body))
+                {
+                    into[count++] = atom;
+                }
+            }
+
+            return count;
+        }
+    }
+
+    // The Type parameters a declared signature inherits, each part visited once per walk (DECISIONS BU-19): counted, or written into `into`.
+    private int InheritedParameters(BoundType type, FunctionKoto function, Koto body, BoundType[]? into, int count, uint query)
+    {
+        if (type.Kind == BoundTypeKind.Parameter)
+        {
+            if (type.Symbol?.Declaration is { } declaration && Inherited(DeclaringNode(declaration), function, body))
+            {
+                if (into is not null)
+                {
+                    into[count] = type;
+                }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            var part = type.Components[i];
+            if (part.HasAbstractPart && this.FirstVisit(part, query))
+            {
+                count = this.InheritedParameters(part, function, body, into, count, query);
+            }
+        }
+
+        return count;
+    }
+
+    // An environment's parts as one Type (SPEC 7.7.4, 15.2.3): a Tuple of its Type parts whose Origin arguments are its Origin parts, which
+    // CapabilityParts reads back in this order; Unit when it has none. Invariant: it is the only Tuple whose Origin arguments are Origin
+    // parts, and the only producer of a Tuple with Origin arguments (TyCtxt.Tuple gives none); it is a capability subject (the erasure's,
+    // an Item's signature part), never a value's Type. A new producer of a Tuple with Origin arguments must not reach CapabilityParts.
+    private BoundType EnvironmentTuple(ReadOnlySpan<BoundType> types, ReadOnlySpan<BoundOrigin> origins)
+        => types.IsEmpty && origins.IsEmpty ? BoundType.Unit : this.types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types, originArguments: origins);
 
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
     private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
@@ -639,27 +772,64 @@ public sealed partial class Binding
     }
 
     // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
-    // Item's Contract reference replaced by that reference's Type arguments (Argument). StructuralCapability and the component summaries'
-    // walk read this one enumeration.
+    // Item's Contract reference replaced by that reference's Type arguments (Argument), then its Origin parts: that reference's Origin
+    // arguments (a Contract's inherited Origins, SPEC 6.1.3), or an environment Tuple's (EnvironmentTuple). An environment's parts have
+    // this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's capture index). StructuralCapability,
+    // ErasureSubject and the component summaries' walk read this one enumeration.
     private ref struct CapabilityParts(BoundType type)
     {
         private readonly BoundType type = type;
         private readonly BoundType? reference = RequirementReference(type);
         private int index = -1;
         private int argument = -1;
+        private int origin = -1;
 
-        public (BoundType Part, bool Argument) Current { readonly get; private set; }
+        // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
+        public (BoundType? Part, BoundOrigin? Origin, bool Argument) Current { readonly get; private set; }
 
-        // The current part's member: its component's index; a requirement reference's Type arguments are member 1.
-        public readonly int Member => this.argument >= 0 ? 1 : this.index;
+        // The current part's member: its component's index; a requirement reference's Type and Origin arguments are member 1; an
+        // environment Tuple's Origin part follows its components.
+        public readonly int Member => this.argument >= 0 || (this.origin >= 0 && this.reference is not null) ? 1
+            : this.origin >= 0 ? this.type.Components.Count + this.origin : this.index;
+
+        // The Origin parts: a requirement reference's Origin arguments, or an environment Tuple's, read by EnvironmentTuple's invariant
+        // that only an environment Tuple has Origin arguments.
+        private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
+
+        // The member of the part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject).
+        public static int MemberAt(BoundType type, int ordinal)
+        {
+            var parts = new CapabilityParts(type);
+            for (var i = 0; parts.MoveNext(); i++)
+            {
+                if (i == ordinal)
+                {
+                    return parts.Member;
+                }
+            }
+
+            throw new InvalidOperationException($"`{type}` has no part {ordinal} (InternalInvariant; BU-73).");
+        }
 
         public readonly CapabilityParts GetEnumerator() => this;
 
         public bool MoveNext()
         {
+            if (this.origin >= 0 || this.index >= this.type.Components.Count)
+            {
+                this.origin++;
+                if (this.origin < this.Origins.Count)
+                {
+                    this.Current = (null, this.Origins[this.origin], false);
+                    return true;
+                }
+
+                return false;
+            }
+
             if (this.argument >= 0 && ++this.argument < this.reference!.Components.Count)
             {
-                this.Current = (this.reference.Components[this.argument], true);
+                this.Current = (this.reference.Components[this.argument], null, true);
                 return true;
             }
 
@@ -668,19 +838,19 @@ public sealed partial class Binding
             {
                 if (this.index != 1 || this.reference is null)
                 {
-                    this.Current = (this.type.Components[this.index], false);
+                    this.Current = (this.type.Components[this.index], null, false);
                     return true;
                 }
 
                 if (this.reference.Components.Count != 0)
                 {
                     this.argument = 0;
-                    this.Current = (this.reference.Components[0], true);
+                    this.Current = (this.reference.Components[0], null, true);
                     return true;
                 }
             }
 
-            return false;
+            return this.MoveNext();
         }
     }
 }
