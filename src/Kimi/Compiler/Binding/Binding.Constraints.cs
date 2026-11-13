@@ -88,41 +88,6 @@ public sealed partial class Binding
         return node;
     }
 
-    // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): whether the path of a subject that bound to no projection writes Type arguments
-    // (`W<Z>.Inner`, `A.B<i32>.C`, `::W<Z>.Inner`, `(Outer<Z>{o}).Cell`), read from its syntax; no fact is published for it. Such a path
-    // is F.5's ContainerPath in either tree: Names, Type arguments, `::`, `. Name` and `.(C). Name` suffixes and a BoundContainerQualifier's
-    // group, each below its transparent wrappers (UnwrapTransparentType, that rule's owner, as SubjectBase reads them). A Core head (F.5)
-    // is the base of a projection only, so it or any other node here is a broken contract, never "writes none".
-    private static bool WritesTypeArguments(Koto? syntax)
-    {
-        while (true)
-        {
-            switch (UnwrapTransparentType(syntax))
-            {
-                case GenericsKoto:
-                    return true;
-                case IdentifierNameKoto or TypeSemanticsKoto { Type: null }:
-                    return false;
-                case SyntaxFormKoto { Akind: KotoKind.RootName } rooted:
-                    syntax = rooted.Operands[0];
-                    break;
-                case ParenthesizedTypeKoto group:
-                    syntax = group.Type;
-                    break;
-                case MemberAccessKoto path:
-                    if (WritesTypeArguments(path.Right))
-                    {
-                        return true;
-                    }
-
-                    syntax = path.Left;
-                    break;
-                case var node:
-                    throw new InvalidOperationException($"`{node}` is no part of a nested Type's path (InternalInvariant; G567-a).");
-            }
-        }
-    }
-
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
@@ -422,6 +387,43 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): whether the path of a subject that bound to no projection writes Type arguments
+    // (`W<Z>.Inner`, `A.B<i32>.C`, `::W<Z>.Inner`, `(Outer<Z>{o}).Cell`), read from its syntax; no fact is published for it. Such a path
+    // is F.5's ContainerPath in either tree: Names, Type arguments, `::`, `. Name` and `.(C). Name` suffixes and a BoundContainerQualifier's
+    // group, each below its transparent wrappers (UnwrapTransparentType, that rule's owner, as SubjectBase reads them). A Core head (F.5)
+    // is the base of a projection only, so it or any other node here is a broken contract: the clause's InternalInvariant_Kd, its one
+    // record, and no subject, never "writes none".
+    private bool WritesTypeArguments(Koto? syntax, IsKoto clause)
+    {
+        while (true)
+        {
+            switch (UnwrapTransparentType(syntax))
+            {
+                case GenericsKoto:
+                    return true;
+                case IdentifierNameKoto or TypeSemanticsKoto { Type: null }:
+                    return false;
+                case SyntaxFormKoto { Akind: KotoKind.RootName } rooted:
+                    syntax = rooted.Operands[0];
+                    break;
+                case ParenthesizedTypeKoto group:
+                    syntax = group.Type;
+                    break;
+                case MemberAccessKoto path:
+                    if (this.WritesTypeArguments(path.Right, clause))
+                    {
+                        return true;
+                    }
+
+                    syntax = path.Left;
+                    break;
+                default:
+                    this.Fail(clause, BindingFailure.Internal);
+                    return true;
+            }
+        }
+    }
+
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
         if (IsRecovery(clause, out _))
@@ -507,7 +509,7 @@ public sealed partial class Binding
         // projection", not the normalized Type.
         var validSubject = subject is not null && (RootedInput(input, root?.Symbol ?? symbol) || closedSubject ||
             (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto))) &&
-            (subject.Kind == BoundTypeKind.AssociatedProjection || !WritesTypeArguments(clause.Left));
+            (subject.Kind == BoundTypeKind.AssociatedProjection || !this.WritesTypeArguments(clause.Left, clause));
         if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
