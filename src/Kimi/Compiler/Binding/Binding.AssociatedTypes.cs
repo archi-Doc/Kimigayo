@@ -161,7 +161,8 @@ public sealed partial class Binding
                 if (associated.Name == name)
                 {
                     var candidate = identity.Contract;
-                    if (found is not null && (!ReferenceEquals(found, associated) || !ReferenceEquals(foundReference, candidate)))
+                    // SPEC 8.5.1, 8.2.3: paths to one declaration whose references are one in the view count once.
+                    if (found is not null && (!ReferenceEquals(found, associated) || !this.SameContractReference(foundReference!, candidate, scope)))
                     {
                         alternative ??= identity;
                         (this.ambiguousAssociatedMatches ??= new()).Add(new(found, foundReference!));

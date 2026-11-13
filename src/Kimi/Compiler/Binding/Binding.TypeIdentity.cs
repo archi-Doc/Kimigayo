@@ -156,6 +156,13 @@ public sealed partial class Binding
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 
+    // SPEC 8.2.3 (identity is closed under replacing a Type inside Contract arguments): two bound references of one Contract are one in
+    // the view when their Types are (`Getter<U>` and `Getter<S>` under `U is S`). Name discovery's comparison of the references its
+    // candidates come from (RequirementMember, SearchAssociated); Enumerate's rows stay interned references, as its walk calls no judgment.
+    private bool SameContractReference(BindingSymbol a, BindingSymbol b, BindingScope scope)
+        => ReferenceEquals(a, b) || (IsBoundContractReference(a) && IsBoundContractReference(b) && ReferenceEquals(a.Type!.Symbol, b.Type!.Symbol) &&
+            this.IdentityProven(a.Type, b.Type, scope));
+
     // ContractTypeCore's guard: a Type in a final erroneous class is completed by no premise; the reading meets the table's Completion (W4).
     private bool ProjectionClassFailed(BoundType projection, BindingScope scope, out Completion completion)
         => this.ClassesOf(scope, out completion) is { } classes && classes.Failed(projection);

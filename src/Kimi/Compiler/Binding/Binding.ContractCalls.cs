@@ -141,7 +141,7 @@ public sealed partial class Binding
                 // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var identity = members[i];
                 var requirement = identity.Symbol;
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity))
+                if (requirement.Declaration is FunctionKoto && Unseen(identity))
                 {
                     group.Members.Add(requirement);
                     group.Contracts.Add(identity.Contract);
@@ -149,13 +149,27 @@ public sealed partial class Binding
                 else if (requirement.Kind == BindingSymbolKind.Property)
                 {
                     group.PropertyRequirement = true;
-                    if (group.Seen.Add(identity))
+                    if (Unseen(identity))
                     {
                         group.Properties.Add(requirement);
                         group.PropertyContracts.Add(identity.Contract);
                     }
                 }
             }
+        }
+
+        // SPEC 8.2.3: a reference identical in the view to one seen (`Getter<U>`, `Getter<S>` under `U is S`) is that reference.
+        bool Unseen(BoundRequirement identity)
+        {
+            foreach (var seen in group.Seen)
+            {
+                if (ReferenceEquals(seen.Symbol, identity.Symbol) && this.SameContractReference(seen.Contract, identity.Contract, scope))
+                {
+                    return false;
+                }
+            }
+
+            return group.Seen.Add(identity);
         }
     }
 
