@@ -18567,6 +18567,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ContractSolver`'s entry contract, and each change to a member is reviewed against that list. `ConformanceByDeclaration`'s
     finality rests on the `InheritedConformances` query being Done after Binding.cs's `RegisterInheritedConformances` (or abandoned
     again for a base cycle, whose re-demand changes only `InheritedConformanceWork`, with no record).
+    - W7 (R7-C3a; DECISIONS R7-M24): `Binding.TypeIdentity`'s identity classes of a view.
+      - **One finality rule per class.** A class is final unless one of its meets rests on an Origin proof's "no" while an Origin
+        declaration it read is not `Completed`, or while the premise environment cannot be rented (`OriginPremisesAvailable`). An
+        outlives "yes" only grows with the premises, so it is final.
+      - **Every reader reads that rule:** the identity proposition's Proven (`IdentityProven`): a final class in state One;
+        ContractTypeCore's guard (`ProjectionClassFailed`): a final class in an error state (W4 also meets the table's Completion);
+        the premise-error record (`RecordIdentityPremiseError`): a final error class that the parent's table does not hold, recorded
+        once per scope and pass.
+      - **The table's `Completion`** is Provisional when a class is not final, or when an availability it read is Provisional. That
+        second case is e1's conservative availability, which the record does not wait for: the record is made at the validation step
+        from the evidence there, as `ValidateConstraintEnvironments`' own proofs are.
+      - **The memo** keeps only Complete tables, keyed by `SerialOf(scope)`, for one pass (emptied in `ResetCapabilities`). A
+        re-entered build answers nothing (Provisional). The table's one `Completion.Complete` site is its `Completion` member.
+      - W7 replaces W2 and W3 (`SubstituteIdentity`, `IdentityPremise`) when R7-C2c2 deletes them.
   - `Reading(fact, view)` is the one caller of the request boundary's normalization of a fact (`Supply`'s and `SymbolicCapability`'s
     loops). It is formed only in the capability phase with `normalizingAssociated` and `identityExpansions` empty, kept per (view
     scope, fact, requirement Contract) under the serial taken before its formation, for one pass (emptied in `ResetCapabilities`),
@@ -18635,6 +18649,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     that cannot name it).
   - Closes PLAN G610: a conformance of a Type of one Kotonoha to a `protected internal` Contract of another Kotonoha's open struct
     is accepted when the associated binding or the implementation is a `protected` member of that struct.
+- **R7-M24 `Binding.TypeIdentity` judges SPEC 8.2.3's Type identity of a view by classes with explicit states; an unproven meet is
+  the declaration's Proof premise error** (Front, 2026-11-12; R7-C3a, the plan's §5.0 C3 part a; the owner's O-198 (a) and O-202
+  (a), verbatim 「決断事項は、すべて (a)」 and 「O-202 a」).
+  - The classes: every available identity premise of the view's chain applied (none withheld, ranked or chosen by order), closed
+    under decomposition and congruence (a node keyed by its head, compared attributes and components' class ids); per class a state
+    One, Unsupported, Unproven, Cyclic or Conflict from its constructed members' meets; union by the smaller index, states from the
+    round that joins nothing, so the classes are a function of the premise set.
+  - Each compared attribute is decided by its domain's own rule, which reads no identity: Origins by OriginDeclaration's `==`, then
+    the outlives judgment both ways (SPEC 15.6.5); lengths by the normalized expression; Function Types by their quantified Origins
+    paired by position within the pair (every Origin slot, a projection's Origin arguments included), decomposed at their abstract
+    positions, where a quantified Origin carried out is Refuted; pair heads by the admitted set (SPEC 8.3.4): an application
+    admitting exactly `owner` is its target from its addition (never a constructor or a cycle edge), one disjoint from the other's
+    outer Semantics Refuted, any other admitted set the Proof row. Cycles: the class graph's strongly connected components
+    (iterative Tarjan); a cycle only through owner-admitting pair applications is the Proof row, any other Cyclic.
+  - Readers: the identity proposition's Proven (`IdentityProven`, JudgeConstraintAtom's arm; through it `SameConformanceType` and
+    `NamesReference`), ContractTypeCore's guard (a Type in a final erroneous class is completed by no premise), the pair receiver's
+    target (`ReceiverTarget`, PLAN G772), the premise-error record (`RecordIdentityPremiseError`) and the producer channel (a Type
+    mismatch over a Type in an erroneous class rests on the declaration's record; a declaration whose own failure is its premise
+    error keeps its context). Finality: R7-M20's W7.
+  - Records: the premise error once per pass, at the declaration whose premises first form it (a parent's class is the parent's),
+    from the evidence at the validation step; Conflict and Cyclic Language (`InvalidConstraint_Kd`), Unproven Proof
+    (`UnprovenConstraint_Kd`), Unsupported the located limit; in the Final pass an own error class still waiting for its Origin
+    declarations is the located limit. The environment stays valid. Per error class at its premise clause: PLAN G830.
+  - Until R7-C2c2: dev's member substitution (`SubstituteIdentity`, `IdentityPremise`) and ContractTypeCore's first-premise choice
+    stay; c2 replaces both with the class canonical and keys evidence by class. BU-72's HIR premise stays until C3e.
+  - **Supersedes bu65 r5's departure** from C1 §5 (use verdicts and records following dev's premise order where a meet is unproven;
+    the owner's 「もう1回直してください」 and 「すべて推奨どおり」 under 「すべて推奨の内容でOkです」, held by 「(b) C3 まで保留」), by O-198 (a): the reason, that an
+    unproven meet could not be SPEC's error because the meet compared Origins by reference, no longer holds: the judge decides each
+    attribute by its domain, so an unproven meet is SPEC 8.2.3's unproven requirement.
+  - RP8: T-185 (11-13 15:26-15:34) passed with no stop; the accepted cold growth is the design's one table per view (Hello +75 KB,
+    PremiseList +360 KB), warm bytes 0.
+  - Rejected: withholding premises by rank, abstractness or dev's order (r3-r5, an open family); a mode parameter
+    (`parametersOnly`); a depth cut on cycles; a table-wide correspondence of quantified Origins (a query mutated a memoized table).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
