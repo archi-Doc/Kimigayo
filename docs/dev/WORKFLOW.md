@@ -183,7 +183,7 @@ PLAN's open issues hold one row per cause (DECISIONS Q17).
 - **Closing.** Each area session keeps one implementer lane on its area's open issues, in this order: wrong code or unsound
   acceptance, `InternalInvariant_Kd`, a valid program rejected, then the rest. Per milestone an area closes at least as many rows as it
   opens; the Coordinator reports the counts with the milestone's area sizes.
-- **Size.** PLAN stays within its 400 lines: the Coordinator merges rows of one cause and removes a row when its landing closes it.
+- **Size.** PLAN stays within its 500 lines: the Coordinator merges rows of one cause and removes a row when its landing closes it.
 
 ## Completion and landing
 

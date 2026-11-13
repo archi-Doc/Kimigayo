@@ -9,6 +9,9 @@ namespace XunitTest;
 
 public class ConditionalConformanceBindingTest
 {
+    private const string BorrowCasePremise = "x: t/(ref/i32 during p) during q, ";
+    private const string PinnedQ = "z: uniq/(ref/i32 during q), ";
+
     private const string BlockMemberNamesItsConformance = """
         contract C
             func m(self: ref/Self, other: ref/Box<Self>) -> i32
@@ -115,6 +118,102 @@ public class ConditionalConformanceBindingTest
             Assert.Equal(name == "yes" ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ResolveConformance(use.Parameters[0].Type.TypeOf()!, contract, use, out _));
         }
     }
+
+    // SPEC 15.6.1, 15.6.5, 15.3.7 (PLAN G809): a bound of the comparison's solve that a pair layer's slot requires exists only in its
+    // binder's borrow cases, so a premise of those cases proves it: the requirement's `x` gives `p outlives q` in the `ref` (or `uniq`)
+    // case, where the result's or `y`'s slot needs it (rejected before G809). Without `x`, or when every case requires the relation (no
+    // pair layer at `y`), it stays unproven.
+    [Theory]
+    [InlineData(BorrowCasePremise + "y: t/i32 during p) -> t/i32 during q", BorrowCasePremise + "y: t/i32 during p) -> t/i32 during p", "return y@move", "clean")]
+    [InlineData(PinnedQ + BorrowCasePremise + "y: t/i32 during p) -> i32", PinnedQ + BorrowCasePremise + "y: t/i32 during q) -> i32", "return 0", "clean")]
+    [InlineData(PinnedQ + BorrowCasePremise + "y: t/i32 during p) -> i32", PinnedQ + BorrowCasePremise + "y: t/i32 during q) -> i32", "return 0", "clean", "uniq")]
+    [InlineData("y: t/i32 during p) -> t/i32 during q", "y: t/i32 during p) -> t/i32 during p", "return y@move", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(PinnedQ + "y: t/i32 during p) -> i32", PinnedQ + "y: t/i32 during q) -> i32", "return 0", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(PinnedQ + "y: t/i32 during p) -> i32", PinnedQ + "y: t/i32 during q) -> i32", "return 0", "1*IncompatibleContractImplementation_Kd", "uniq")]
+    [InlineData(BorrowCasePremise + "y: ref/i32 during p) -> ref/i32 during q", BorrowCasePremise + "y: ref/i32 during p) -> ref/i32 during p", "return y", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(PinnedQ + BorrowCasePremise + "y: ref/i32 during p) -> i32", PinnedQ + BorrowCasePremise + "y: ref/i32 during q) -> i32", "return 0", "1*IncompatibleContractImplementation_Kd")]
+    public void ARequirementBindersBorrowCasePremiseProvesTheBoundsOfThatCase(string required, string written, string body, string records, string borrow = "ref")
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, {required}\n        t is owner or {borrow}\n" +
+            $"struct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, {written}\n        t is owner or {borrow}\n        {body}\n"));
+
+    // SPEC 15.3.6 (PLAN G809, the owner's O-233 (C)): the written `a`'s candidate is the meet of its unconditional upper bound `u` and of
+    // each conditional bound (`l1` in `t`'s borrow cases, `l2` in `s`'s) not proven, in its cases, to outlive `u`; the floor `f` (`s`'s
+    // borrow cases) then needs `l1 outlives f` there, which only `v2` gives. The verdict does not depend on the order of `b` and `c`.
+    [Theory]
+    [InlineData("", false, "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("", true, "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("v2: s/(ref/i32 during l1) during f, ", false, "clean")]
+    [InlineData("v2: s/(ref/i32 during l1) during f, ", true, "clean")]
+    public void AConditionalUpperBoundIsJudgedAgainstTheUnconditionalMeet(string premise, bool swapped, string records)
+    {
+        var premises = "u: ref/i32, l1: ref/i32, l2: ref/i32, f: ref/i32, w: t/(ref/i32 during l1) during l2, " +
+            "x2: s/(ref/i32 during l2) during f, y2: ref/(ref/i32 during u) during f, ";
+        var required = swapped ? "c: s/i32 during l2, b: t/i32 during l1" : "b: t/i32 during l1, c: s/i32 during l2";
+        var written = swapped ? "c: s/i32 during a, b: t/i32 during a" : "b: t/i32 during a, c: s/i32 during a";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract M\n    func put<t/U, s/W>(self: uniq/Self, {premises}{premise}a: ref/i32 during u, {required}) -> s/i32 during f\n" +
+            "        t is owner or ref\n        s is owner or ref\n" +
+            $"struct H\n    Self is M\n    public func put<t/U, s/W>(self: uniq/Self, {premises}{premise}a: ref/i32, {written}) -> s/i32 during a\n" +
+            "        t is owner or ref\n        s is owner or ref\n        return c@move\n"));
+    }
+
+    // SPEC 15.3.6, 15.6.5 (PLAN G809, the owner's O-233 (C)): the bound `l outlives a`, required by `b` in `t`'s borrow cases and by `c`
+    // in `s`'s (or `t`'s), exists in the union of those cases, not in every case, so it is no limit of the every-case meet `u`: neither
+    // `l` nor `l2` (`t`'s) is proven there to outlive `u`, both join the candidate, and the every-case floor `f` needs `l2 outlives f`,
+    // which no premise gives. Rejected for both binders of `c` (accepted before by a merge that read "every case").
+    [Theory]
+    [InlineData("s")]
+    [InlineData("t")]
+    public void ABoundRequiredUnderTwoBindersExistsInTheUnionOfTheirCases(string binder)
+    {
+        var inputs = "u: ref/i32, l: ref/i32, l2: ref/i32, f: ref/i32, w: t/(ref/i32 during l2) during l, " +
+            "y2: ref/(ref/i32 during u) during f, x3: ref/(ref/i32 during l) during f, ";
+        Assert.Equal("1*IncompatibleContractImplementation_Kd", DiagnosticCorpus.RecordProfile(
+            $"contract M\n    func put<t/U, s/W>(self: uniq/Self, {inputs}a: ref/i32 during u, b: t/i32 during l, c: {binder}/i32 during l, " +
+            "d: t/i32 during l2) -> ref/i32 during f\n        t is owner or ref\n        s is owner or ref\n" +
+            $"struct H\n    Self is M\n    public func put<t/U, s/W>(self: uniq/Self, {inputs}a: ref/i32, b: t/i32 during a, c: {binder}/i32 during a, " +
+            "d: t/i32 during a) -> ref/i32 during a\n        t is owner or ref\n        s is owner or ref\n        return a\n"));
+    }
+
+    // SPEC 15.3.6, 15.6.5 (PLAN G809, the owner's O-233 (C)): the bound `l outlives a`, required by `b` in `t`'s borrow cases and by `c`
+    // in `s`'s, is proven in each set of cases from that set's premises: `w` gives `l outlives u` in `t`'s and `x2` in `s`'s, so `l` does
+    // not join the every-case meet `u`, and the floor `f` needs only `u outlives f` (`y2`; rejected before G809). Without `x2` nothing
+    // proves it in `s`'s cases: `l` joins, and `f` needs `l outlives f`, which no premise gives.
+    [Theory]
+    [InlineData("x2: s/(ref/i32 during l) during u, ", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void ABoundRequiredInSeveralCaseSetsIsProvenInEachFromItsPremises(string premise, string records)
+    {
+        var inputs = $"u: ref/i32, l: ref/i32, f: ref/i32, w: t/(ref/i32 during l) during u, {premise}y2: ref/(ref/i32 during u) during f, ";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract M\n    func put<t/U, s/W>(self: uniq/Self, {inputs}a: ref/i32 during u, b: t/i32 during l, c: s/i32 during l) -> ref/i32 during f\n" +
+            "        t is owner or ref\n        s is owner or ref\n" +
+            $"struct H\n    Self is M\n    public func put<t/U, s/W>(self: uniq/Self, {inputs}a: ref/i32, b: t/i32 during a, c: s/i32 during a) -> ref/i32 during a\n" +
+            "        t is owner or ref\n        s is owner or ref\n        return a\n"));
+    }
+
+    // SPEC 15.3.6 (PLAN G809, the owner's O-233 (C)): with no upper bound in every case, every conditional upper bound joins the
+    // candidate: the written covariant `a` is `l` (`b`, `t`'s borrow cases), and the floor `f` (the result, `t`'s borrow cases) holds by
+    // `w` there (rejected before G809). Without `w` nothing proves `l outlives f`.
+    [Theory]
+    [InlineData("w: t/(ref/i32 during l) during f, ", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void WithoutAnEveryCaseUpperBoundEveryConditionalOneJoins(string premise, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract M\n    func put<t/U>(self: uniq/Self, l: ref/i32, f: ref/i32, {premise}b: t/i32 during l) -> t/i32 during f\n        t is owner or ref\n" +
+            $"struct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, l: ref/i32, f: ref/i32, {premise}b: t/i32 during a) -> t/i32 during a\n" +
+            "        t is owner or ref\n        return b@move\n"));
+
+    // SPEC 15.3.6 (PLAN G809): the written `a` sits at `b`'s covariant pair slot and at `g`'s contravariant Function Type input, so it
+    // takes the invariant row's candidate, and no equality is proven: rejected with or without a pair layer at `b`.
+    [Fact]
+    public void AnOriginOfBothPolaritiesNeedsAnEqualityProof()
+        => Assert.Equal("1*IncompatibleContractImplementation_Kd", DiagnosticCorpus.RecordProfile(
+            "contract M\n    func put<t/U>(self: uniq/Self, l: ref/i32, f: ref/i32, w: t/(ref/i32 during l) during f, b: t/i32 during l, " +
+            "g: (ref/i32 during f) -> i32) -> i32\n        t is owner or ref\n" +
+            "struct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, l: ref/i32, f: ref/i32, w: t/(ref/i32 during l) during f, " +
+            "b: t/i32 during a, g: (ref/i32 during a) -> i32) -> i32\n        t is owner or ref\n        return 0\n"));
 
     [Fact]
     public void StandardGetterCanUseTheConformanceCondition()

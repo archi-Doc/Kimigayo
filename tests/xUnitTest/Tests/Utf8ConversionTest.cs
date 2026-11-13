@@ -9,11 +9,13 @@ public class Utf8ConversionTest
 {
     private const string User = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"word\")\n";
 
+    // SPEC 22.9.2, 22.10.5: toString is the owning interpolation of its one value, whose buffer starts empty (Text.heap(0), R8-W2 c3b), so
+    // its one allocation is the value's written bytes (fail-before: the value Type's bound, 11 for an i32 and 5 for a bool).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Integer", "123", "123", 1, 11)]
+    [InlineData("Integer", "123", "123", 1, 3)]
     [InlineData("Wide", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455", 1, 39)]
-    [InlineData("Bool", "true", "true", 1, 5)]
+    [InlineData("Bool", "true", "true", 1, 4)]
     [InlineData("Char", "'😀'", "😀", 1, 4)]
     [InlineData("Unit", "()", "()", 1, 2)]
     [InlineData("String", "\"a君😀\"", "a君😀", 1, 8)]
@@ -25,7 +27,7 @@ public class Utf8ConversionTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Builtin", "", "123", "123", 11)]
+    [InlineData("Builtin", "", "123", "123", 3)]
     [InlineData("User", User, "Value.init()", "word", 4)]
     public void GenericOwningConversionSelectsTheFormatter(string name, string prefix, string value, string expected, int bytes)
     {

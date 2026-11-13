@@ -75,8 +75,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
-    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
+    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
+    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
     internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
         failure = default;
@@ -85,10 +86,9 @@ public sealed partial class Binding
             return false;
         }
 
-        signature = this.ContractType(signature, this.ConstraintScope(use));
-        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
+        if (HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(signature, required, SignatureOwner(item), out failure))
+            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;
             }
@@ -218,11 +218,12 @@ public sealed partial class Binding
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
     // the solve without them judges no bound either (SolveOriginInference).
-    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, bool select = false)
+    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, bool select = false)
     {
+        var use = inference.Use;
         if (!CarriesResultPremises(function))
         {
-            return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
+            return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
         }
 
         var result = function.BoundSymbol!.Type!;
@@ -233,7 +234,7 @@ public sealed partial class Binding
         this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Bound, inference, declaringType));
         if (inference.Bounds.Count != count)
         {
-            if (this.SolveOriginInference(inference, origins, inputs, use, declaringType))
+            if (this.SolveOriginInference(inference, origins, inputs, declaringType))
             {
                 return true;
             }
@@ -242,7 +243,7 @@ public sealed partial class Binding
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
+        return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
     }
 
     // SPEC 15.3.7: the selected call's obligations for its substituted result.
@@ -516,8 +517,8 @@ public sealed partial class Binding
 
         var function = binder as FunctionKoto;
         _ = function is not null
-            ? this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, use, select: true);
+            ? this.SolveCallOriginInference(function, inference, origins, inputs, null, select: true)
+            : this.SolveOriginInference(inference, origins, inputs, select: true);
 
         // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
         // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
