@@ -387,8 +387,8 @@ public class ArchitectureRulesTest
         [
             "Add", "AppliedAssociatedContract", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClauseHeads", "Clear",
             "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
-            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "Max", "ReadSourceState", "ReferenceEquals", "RemoveAt", "RemoveRange",
-            "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "Max", "ReadSourceState", "ReferenceEquals",
+            "RemoveAt", "RemoveRange", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
         ];
         var source = File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding/Binding.ContractSolver.cs"));
         var members = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken).DescendantNodes()
