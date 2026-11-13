@@ -60,51 +60,27 @@ public sealed partial class Binding
     private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        if (source is ArrayLiteralKoto array)
+        var parts = new AggregateParts(source);
+        if (parts.Exist)
         {
-            // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
-                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant
-                        ? expected.LengthExpression is not null || expected.Length != count.Value
-                        : !ReferenceEquals(expected.LengthExpression, count)))))
+            if (!this.AggregateShapeAt(source, expected))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
             var first = this.positionClasses.Count;
-            for (var i = 0; i < array.Elements.Count; i++)
+            for (var i = 0; i < parts.Count; i++)
             {
-                var result = this.FitElement(array.Elements[i], expected.Components[0], scope);
+                var result = this.FitElement(parts[i], ChildPattern(source, i, expected)!, scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
                 }
             }
 
-            if (array.FillLength is not null)
+            if (source is ArrayLiteralKoto { FillLength: not null })
             {
                 this.positionClasses.RemoveRange(first, this.positionClasses.Count - first); // SPEC 10.4: a fill stays one argument.
-            }
-
-            return CandidateApplicability.Applicable;
-        }
-
-        if (source is TupleLiteralKoto tuple)
-        {
-            if (!TupleShapeAt(tuple, expected))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            for (var i = 0; i < tuple.Elements.Count; i++)
-            {
-                var result = this.FitElement(tuple.Elements[i], expected.Components[i], scope);
-                if (result != CandidateApplicability.Applicable)
-                {
-                    return result;
-                }
             }
 
             return CandidateApplicability.Applicable;
@@ -131,6 +107,20 @@ public sealed partial class Binding
 
         throw new InvalidOperationException("A composite argument is a Tuple or array literal, a join or a mixed range (InternalInvariant).");
     }
+
+    // SPEC 3.8, 4.3, 10.5.1: whether an aggregate literal argument (AggregateParts) has the candidate's shape: a Tuple of its length
+    // (TupleShapeAt); the owned fixed array of exactly its length or its owned Array, a fill only a fixed array of its count.
+    private bool AggregateShapeAt(Koto source, BoundType expected) => source switch
+    {
+        TupleLiteralKoto tuple => TupleShapeAt(tuple, expected),
+        ArrayLiteralKoto array => expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
+            (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
+            (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
+                array.FillCount is { } count && (count.IsConstant
+                    ? expected.LengthExpression is null && expected.Length == count.Value
+                    : ReferenceEquals(expected.LengthExpression, count)))),
+        _ => throw new InvalidOperationException("An aggregate literal argument is a Tuple or array literal (InternalInvariant)."),
+    };
 
     // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
     // adaptation class appended to the positions the candidate is ranked by (positionClasses) after a nested literal's own positions:
@@ -316,15 +306,15 @@ public sealed partial class Binding
                 this.KeepsBoundaryType(range.End, type.Components[1], this.IndependentRangeBoundary(range.Start, this.StartType));
         }
 
-        if (core is not (TupleLiteralKoto or ArrayLiteralKoto))
+        var parts = new AggregateParts(core);
+        if (!parts.Exist)
         {
             return this.KindOf(core) != PartKind.Literal || ReferenceEquals(this.PartDefault(core, scope), type);
         }
 
-        var elements = core is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)core).Elements;
-        for (var i = 0; i < elements.Count; i++)
+        for (var i = 0; i < parts.Count; i++)
         {
-            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
+            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(parts[i], element, scope))
             {
                 return false;
             }

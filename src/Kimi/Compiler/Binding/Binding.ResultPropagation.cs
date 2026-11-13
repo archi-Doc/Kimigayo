@@ -325,7 +325,7 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
     // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
-    // delivers one, an aggregate each of whose parts at least one (CallableParts) was; a Waiting result target is bound since by its
+    // delivers one, an aggregate each of whose parts at least one (AggregateParts) was; a Waiting result target is bound since by its
     // outcome (ResultContext.Wait; DECISIONS BU-87), a decision whatever its sources hold since. Position waiting (Deferred), not a
     // call relation: it holds before any selection.
     private bool BoundSince(Koto source)
@@ -336,14 +336,14 @@ public sealed partial class Binding
         }
 
         return this.WaitingResult(source) is not null || source.BoundType is not null ||
-            (CallableParts(source) is { Count: > 0 } parts && this.AllBoundSince(parts));
+            (new AggregateParts(source) is { Count: > 0 } parts && this.AllBoundSince(parts));
     }
 
-    private bool AllBoundSince(List<Koto> parts)
+    private bool AllBoundSince(AggregateParts parts)
     {
-        foreach (var part in parts)
+        for (var i = 0; i < parts.Count; i++)
         {
-            if (!this.BoundSince(part))
+            if (!this.BoundSince(parts[i]))
             {
                 return false;
             }
@@ -768,7 +768,7 @@ public sealed partial class Binding
         if (!IsUnfittedLiteral(part) && this.Deferred(part) && this.SuppliesDefault(part) && this.BindWaiting(part, null) is { } type &&
             !ReferenceEquals(type, BoundType.Never))
         {
-            literalDefault = literalDefault is null ? type : this.CommonOriginType(literalDefault, type, out _) ?? literalDefault;
+            literalDefault = this.AgreeAwaiting(literalDefault, type);
         }
     }
 

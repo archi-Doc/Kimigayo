@@ -106,8 +106,7 @@ public sealed partial class Binding
             }
             else if (!ReferenceEquals(actual, BoundType.Never))
             {
-                var failure = default(ComparisonFailure);
-                var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
+                var common = this.AgreeElement(element, actual, out var failure);
                 if (common is null)
                 {
                     this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
@@ -292,7 +291,11 @@ public sealed partial class Binding
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         if (IsUnfittedLiteral(unwrapped))
         {
-            literalDefault ??= this.LiteralDefault(unwrapped);
+            if (this.LiteralDefault(unwrapped) is { } own)
+            {
+                literalDefault = this.AgreeAwaiting(literalDefault, own);
+            }
+
             return true;
         }
 
@@ -310,12 +313,11 @@ public sealed partial class Binding
         if (this.AwaitsPosition(source))
         {
             // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
-            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual, out _) ?? literalDefault;
+            literalDefault = this.AgreeAwaiting(literalDefault, actual);
             return true;
         }
 
-        var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
+        var common = this.AgreeElement(established, actual, out var failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);
@@ -325,6 +327,21 @@ public sealed partial class Binding
         established = common;
         return true;
     }
+
+    // SPEC 4.3.1, 12.4.1, 14.9.2 step 3: the element agreement of an array literal's elements and of a Dictionary literal's keys or
+    // values, the one rule its binders share (CollectLiteralElementEvidence with no expected Type, BindContextualArrayLiteral and
+    // BindDictionaryLiteral at one, ArrayElementEvidence at an annotation hole, DefaultWaitingPart for the parts that waited). A typed
+    // part agrees as it is with the Type the typed parts established (AgreeElement: null when they do not agree); a part whose Type
+    // only literals supply adopts that Type, and without one such parts agree among themselves, the first kept on a conflict
+    // (AgreeAwaiting); the literal's element Type is the established one, else the awaiting parts'.
+    private BoundType? AgreeElement(BoundType? established, BoundType type, out ComparisonFailure failure)
+    {
+        failure = default;
+        return established is null ? type : this.CommonOriginType(established, type, out failure);
+    }
+
+    private BoundType? AgreeAwaiting(BoundType? awaiting, BoundType type)
+        => awaiting is null ? type : this.CommonOriginType(awaiting, type, out _) ?? awaiting;
 
     private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault, out Koto? failed)
     {
@@ -414,8 +431,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
+        var common = this.AgreeElement(established, actual, out var failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);

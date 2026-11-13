@@ -112,7 +112,7 @@ public sealed partial class Binding
     };
 
     private static bool IsAggregateArgument(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 } || IsMixedRange(source);
+        => new AggregateParts(KotoHelper.UnwrapParentheses(source)).Exist || IsMixedRange(source);
 
     // SPEC 4.6.2: a range with a literal-only and a typed written boundary. Like a tuple element, each literal-only boundary
     // takes the S or E of the candidate's parameter, while a typed boundary keeps its independent Type.
@@ -688,9 +688,9 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
-    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each element of a Tuple or array literal is prepared as an argument at its position (a
-    // function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written boundaries of a
-    // mixed range on their own, since a boundary is never waiting.
+    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each element of a Tuple or array literal (AggregateParts) is prepared as an argument at
+    // its position (a function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written
+    // boundaries of a mixed range on their own, since a boundary is never waiting.
     private bool PrepareComposite(Koto part, BindingScope scope)
     {
         var source = KotoHelper.UnwrapParentheses(part);
@@ -700,16 +700,16 @@ public sealed partial class Binding
                 (range.End is null || IsUnfittedLiteral(range.End) || this.BindNode(range.End, scope) is not null);
         }
 
-        var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;
         var valid = true;
         if (source is ArrayLiteralKoto { FillLength: { } length } fill)
         {
             valid = (fill.FillCount = this.BindLength(length, scope)) is not null;
         }
 
-        for (var i = 0; i < elements.Count; i++)
+        var parts = new AggregateParts(source);
+        for (var i = 0; i < parts.Count; i++)
         {
-            valid &= this.PrepareArgument(elements[i], scope, null, callableContext: true);
+            valid &= this.PrepareArgument(parts[i], scope, null, callableContext: true);
         }
 
         return valid;

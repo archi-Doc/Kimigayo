@@ -32,6 +32,32 @@ public sealed partial class Binding
 {
     private readonly List<Koto> positionParts = new();
 
+    // SPEC 10.5.1, 10.4 step 1 (DECISIONS BU-43): the parts of a Tuple or array literal, the one representation every walk over an
+    // aggregate literal's parts reads: preparation (PrepareComposite), the fit (ProbeAggregateArgument), the type without an expectation
+    // (HasTypeWithoutExpectation), an unselected call's completion (CompleteUnselectedPart), the waiting walk (TakeWaiting, PartHolder,
+    // BoundSince) and the position walks (ChildPositions, AddChildPosition, PartChildPattern). Element i is part i at child position i.
+    // A view over the literal's own list: it allocates nothing. Unit `()` and every other form have no parts (Exist).
+    private readonly struct AggregateParts
+    {
+        private readonly List<Koto>? elements;
+
+        public AggregateParts(Koto node)
+        {
+            this.elements = node switch
+            {
+                TupleLiteralKoto { Elements.Count: > 0 } tuple => tuple.Elements,
+                ArrayLiteralKoto array => array.Elements,
+                _ => null,
+            };
+        }
+
+        public bool Exist => this.elements is not null;
+
+        public int Count => this.elements?.Count ?? 0;
+
+        public Koto this[int index] => this.elements![index];
+    }
+
     // SPEC 3.8, 10.5.1: whether a Tuple literal has the Type's shape, a Tuple of its length: the one Tuple shape rule of the walks, the
     // fit, the late Type, BindTuple and the shape evidence (arrays: ArrayShapeAt).
     private static bool TupleShapeAt(TupleLiteralKoto tuple, BoundType? type)
@@ -44,10 +70,10 @@ public sealed partial class Binding
         _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
     };
 
-    // The parameter Type at child position `index` of one part `core` whose position's is `pattern`: a Tuple or array literal element's
-    // (ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
+    // The parameter Type at child position `index` of one part `core` whose position's is `pattern`: an aggregate literal part's
+    // (AggregateParts, ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
     private static BoundType? PartChildPattern(Koto core, int index, BoundType? pattern)
-        => core is TupleLiteralKoto or ArrayLiteralKoto ? ChildPattern(core, index, pattern) : pattern;
+        => new AggregateParts(core).Exist ? ChildPattern(core, index, pattern) : pattern;
 
     // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
     // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
@@ -95,7 +121,8 @@ public sealed partial class Binding
     private int ChildPositions(Koto part)
     {
         part = KotoHelper.UnwrapParentheses(part);
-        return part is TupleLiteralKoto or ArrayLiteralKoto ? IndexedChildren(part) : this.ComposedJoin(part) is null ? 0 : 1;
+        var parts = new AggregateParts(part);
+        return parts.Exist ? parts.Count : this.ComposedJoin(part) is null ? 0 : 1;
     }
 
     // Appends the parts of child position `index` of [start, end), each part's there (AddIndexedChild), and gives the parameter Type at
@@ -117,7 +144,7 @@ public sealed partial class Binding
         }
 
         var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
-        if (part is TupleLiteralKoto or ArrayLiteralKoto)
+        if (new AggregateParts(part).Exist)
         {
             this.AddIndexedChild(part, index);
         }

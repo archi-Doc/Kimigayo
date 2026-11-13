@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // SPEC 10.5, 10.5.1, 10.5.4 (DECISIONS BU-2): the waiting-binds-F rule. A waiting callable at a position F, `ref/F` or `uniq/F`, F a slot
 // of the slot owner, binds F: F takes no evidence from it, and it is completed after the other evidence with the call signature S of F's
 // Callable Constraint, or without S when F has none. A position is an argument's or a payload's, or that of a Tuple or array literal
-// element within one. TakeWaiting is the one walk that finds such callables, through the forms CallableParts defines, which also decide
+// element within one. TakeWaiting is the one walk that finds such callables, through the parts AggregateParts defines, which also decide
 // where an anonymous function among a call's join results waits for its call (CallableTarget; DECISIONS BU-43), and CallableSlotType
 // the one test of F; they read a pattern and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case
 // construction (UnsolvedPayloadSlots) and the completions over a SlotSolution share them. Whether such an F is fixed with no outer
@@ -30,16 +30,6 @@ public sealed partial class Binding
             ? target : pattern;
         return slot.Kind == BoundTypeKind.Parameter && ContainerSlot(owner, slot.Symbol!) >= 0 ? slot : null;
     }
-
-    // SPEC 10.5.1 (DECISIONS BU-43, DR3 C1): the parts of an aggregate at whose own positions its call completes a waiting callable in it,
-    // each classified as an argument there: a Tuple or array literal's elements; a Dictionary literal is typed as a whole, and a callable
-    // in it does not wait. The one definition of the forms both TakeWaiting and the wait (CallableTarget) pass.
-    private static List<Koto>? CallableParts(Koto node) => node switch
-    {
-        TupleLiteralKoto tuple => tuple.Elements,
-        ArrayLiteralKoto array => array.Elements,
-        _ => null,
-    };
 
     // The result target at whose position its call completes a waiting callable: the first result target on the part path (PartParent).
     private static Koto? CallableTarget(Koto node)
@@ -69,12 +59,14 @@ public sealed partial class Binding
     // it (PartHolder), else the result target it is a source of (ResultTarget: a selection body, a transfer's operand, a `do` body).
     private static Koto? PartParent(Koto node) => PartHolder(node) ?? ResultTarget(node);
 
-    // The form delivering the part or the aggregate whose part it is (CallableParts), or null.
+    // The form delivering the part or the aggregate literal whose part it is (AggregateParts: a Tuple's or array's elements, at whose
+    // own positions its call completes a waiting callable; a Dictionary literal is typed as a whole, and a callable in it does not
+    // wait, DECISIONS BU-43, DR3 C1), or null.
     private static Koto? PartHolder(Koto node)
-        => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || CallableParts(parent) is not null) ? parent : null;
+        => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || new AggregateParts(parent).Exist) ? parent : null;
 
     // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
-    // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
+    // position (AggregateParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
     // (ComposedJoin; DECISIONS BU-43). False when the taker stops.
     private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
@@ -99,8 +91,8 @@ public sealed partial class Binding
         }
 
         var aggregate = KotoHelper.UnwrapParentheses(part);
-        var parts = CallableParts(aggregate);
-        for (var i = 0; parts is not null && i < parts.Count; i++)
+        var parts = new AggregateParts(aggregate);
+        for (var i = 0; i < parts.Count; i++)
         {
             if (ChildPattern(aggregate, i, pattern) is { } position && !this.TakeWaiting(parts[i], position, owner, taker))
             {

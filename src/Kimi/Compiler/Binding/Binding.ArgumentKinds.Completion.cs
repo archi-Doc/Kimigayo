@@ -168,7 +168,8 @@ public sealed partial class Binding
     // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
     // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are
     // reported once and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that
-    // would wait stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed
+    // would wait stay unbound, and the parts of a Tuple or array literal (AggregateParts), a contextual Case and a waiting nested call
+    // are completed
     // alike, as is a Typed part no preparation reached (after a value call's or a construction's stop). The call was decided before and
     // reads no result of these parts, so they are bound with its consultation suspended: none is its prerequisite, and its own record
     // (a failed callee's) stays direct. A control-flow part already bound in this pass is not bound again. Anonymous functions stay
@@ -230,17 +231,18 @@ public sealed partial class Binding
             return;
         }
 
-        var waitingCase = this.KindOf(node) == PartKind.Case;
-        IReadOnlyList<Koto>? parts = node switch
+        var aggregate = new AggregateParts(node);
+        for (var i = 0; i < aggregate.Count; i++)
         {
-            TupleLiteralKoto tuple => tuple.Elements,
-            ArrayLiteralKoto array => array.Elements,
-            InvocationKoto nested when waitingCase || this.WasDeferred(nested) => nested.ArgumentNodes,
-            _ => null,
-        };
-        for (var i = 0; parts is not null && i < parts.Count; i++)
+            this.CompleteUnselectedPart(aggregate[i], scope);
+        }
+
+        if (node is InvocationKoto nested && (this.KindOf(node) == PartKind.Case || this.WasDeferred(nested)))
         {
-            this.CompleteUnselectedPart(parts[i], scope);
+            for (var i = 0; i < nested.ArgumentNodes.Count; i++)
+            {
+                this.CompleteUnselectedPart(nested.ArgumentNodes[i], scope);
+            }
         }
     }
 
