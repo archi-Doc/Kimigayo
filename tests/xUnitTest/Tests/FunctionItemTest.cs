@@ -60,6 +60,41 @@ public class FunctionItemTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // SPEC 15.3.4, 9.3, 7.7.4: a nested function may name its enclosing function's Origins and Type parameters, fixed in the body, and
+    // its Function Item value keeps that contract (G811).
+    [Theory]
+    [InlineData("func h(anchor0: ref/u8 during a) -> raw/u8 during a\n    func pk(q: raw/u8 during a, anchor: ref/u8 during a) -> raw/u8 during a => q\n    let f = pk\n    return f(null, anchor0)")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(anchor: ref/u8 during a) -> i32 => 0\n    let f = pk\n    return f(anchor0)")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(x: i32) -> i32 => x\n    let f = pk\n    return f(1)")]
+    [InlineData("func h<T>(x: ref/T during a) -> i32\n    func pk(y: ref/T during a) -> i32 => 0\n    let f = pk\n    return f(x)")]
+    [InlineData("func h<T>(x: T) -> i32\n    func pk(y: i32) -> i32 => y\n    let f = pk\n    return f(1)")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk<U>(y: ref/U during a) -> i32 => 0\n    let f: (ref/u8 during a) -> i32 = pk\n    return f(anchor0)")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(anchor: ref/u8 during a) -> i32 => 0\n    let f: (ref/u8 during a) -> i32 = pk\n    return f(anchor0)")]
+    public void NestedItemsKeepTheEnclosingFunctionsFixedSlots(string body)
+        => Assert.Equal(string.Empty, Records("public func main() => ()\n" + body));
+
+    // The invalid twins: a nested function's value meets its direct call's judges (CALL is the value's call, then the direct call).
+    [Theory]
+    [InlineData("func h(anchor0: ref/u8 during a) -> raw/u8 during a\n    func pk(q: raw/u8 during a, anchor: ref/u8 during a) -> raw/u8 during a => q\n    var kk: u8 = 0\n    CALL(null, kk@ref)", "ComparisonLoanConflict_Kd var kk: u8 = 0; UnsatisfiedOriginRelation_Kd kk@ref")]
+    [InlineData("func h(anchor0: ref/u8 during a) -> i32\n    func pk(anchor: ref/u8 during a) -> i32 => 0\n    var kk: u8 = 0\n    CALL(kk@ref)", "UnsatisfiedOriginRelation_Kd kk@ref")]
+    [InlineData("func h<T>(x: ref/T during a, v: T) -> i32\n    func pk(y: ref/T during a) -> i32 => 0\n    CALL(v@ref)", "UnsatisfiedOriginRelation_Kd v@ref")]
+    public void NestedItemsMeetTheirDirectCallsJudges(string body, string records)
+    {
+        foreach (var call in new[] { "let f = pk\n    return f", "return pk" })
+        {
+            var source = "public func main() => ()\n" + body.Replace("CALL", call, StringComparison.Ordinal);
+            Assert.Equal(records, Records(source));
+        }
+    }
+
+    // A member of an Origin-bearing Container stays limited: its qualifier's omitted slots need body inference (PLAN G10).
+    [Fact]
+    public void MembersOfOriginBearingContainersStayLimited()
+    {
+        const string Source = "func look<T>(x: ref/T) => ()\npublic func main() => ()\nstruct Lens {source}\n    internal let anchor: ref/u8 during source\n    internal var at: raw/u8 during source\n    public init(anchor: ref/u8 during source)\n        self.anchor = anchor\n        self.at = null\n    public func setAt(self: uniq/Self, q: raw/u8 during source)\n        self.at = q\nfunc g()\n    var kk: u8 = 0\n    var l = Lens.init(anchor: kk@ref)\n    let f = Lens.setAt\n    f(l@uniq, null)\n    look(l)";
+        Assert.Equal("Unsupported_Kd Lens.setAt", Records(Source));
+    }
+
     [Fact]
     public void CliAndLspExplainAnItemTypeMismatch()
     {
@@ -102,4 +137,7 @@ public class FunctionItemTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
+
+    private static string Records(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }

@@ -17,10 +17,12 @@ public sealed partial class Binding
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
     // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
-    // An instance member is referenced unbound through its Type (SPEC 7.3).
+    // An instance member is referenced unbound through its Type (SPEC 7.3). A nested function's owner is its enclosing function, whose
+    // Origins and Type parameters are fixed in the body (SPEC 15.3.4, 9.3), so only a Container's slots limit a reference.
     private static bool UnsupportedReference(BindingSymbol candidate, bool unbound, BoundType? declaringType)
-        => (candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
-            (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType));
+        => (candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto ||
+            (candidate.Scope.Owner is DeclarationContainerKoto { BoundSymbol.Schema: { } container } &&
+            (container.Origins.Count > 0 || (container.GenericSlots.Count > 0 && !ContainerBound(candidate, declaringType))));
 
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
