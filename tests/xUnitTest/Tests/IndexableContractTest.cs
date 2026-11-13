@@ -105,6 +105,20 @@ public class IndexableContractTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
+    // SPEC 8.2.3, 3.4.3, 8.3.2, 4.7.1: a Type parameter indexes through every Contract its premises supply for it, here through an identity
+    // premise (`U is S` makes S one Type with U, whose Indexable row is S's): the indexer's gate, the synthesized call and the projection
+    // S.Element read the same rows (c2r, r14: rejected before R7-C2 c1'). A refinement naming a failed Contract supplies no evidence
+    // (8.3.1): the index is rejected beside the clause's own records (c1u, R2-4's unavailable refinement through an indexer).
+    [Theory]
+    [InlineData("func firstPlace<S, U>(items: ref/S) -> ref/U.Element during items\n    U is Indexable<isize>\n    U is S\n    return items[0]@ref", "")]
+    [InlineData("func firstPlace<S, U>(items: ref/S) -> ref/S.Element during items\n    U is Indexable<isize>\n    U is S\n    return items[0]@ref", "")]
+    [InlineData("contract Seq: Indexable<isize>\n    Self is Missing\nfunc firstPlace<S>(items: ref/S) -> ref/S.Element during items\n    S is Seq\n    return items[0]@ref", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd NotIndexable_Kd UnresolvedBinding_Kd")]
+    public void ATypeParameterIndexesThroughEveryRowItsPremisesSupply(string source, string codes)
+    {
+        var c = MinimalEmissionTest.Check(source + "\n()");
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code).Order()));
+    }
+
     // SPEC 13.7.1, 4.7.1, 23.1.2 (PLAN G782): every assignment, plain or compound and whatever its route, has its destination checked
     // whatever its value: a call's result, a literal and a `let` path are no writable Place, each reported beside the value's own record.
     // A failed value, on the operator path or the arithmetic route, had skipped the check (the MIR validator's InternalInvariant_Kd or no

@@ -23,6 +23,8 @@ public partial class TypeIdentityTest
         "let p = Pair<i32, i32>.init(1, 2)\n" +
         "require p.pick() and check(p@ref) and same(3, 4) == 4 else => $abort(\"identity\")\nConsole.writeLine(\"ok\")";
 
+    private const string Getter = "contract Getter\n    func get(self: ref/Self) -> i32\n";
+
     [Theory]
     [InlineData("func same<A, B>(a: A, b: B) -> A\n    B is A\n    return b@move")]
     [InlineData("func same<A, B>(a: A, b: B) -> A\n    B is A\n    let x: A = b@move\n    return x@move")]
@@ -39,6 +41,19 @@ public partial class TypeIdentityTest
         var c = MinimalEmissionTest.Analyze(source + "\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.2.3, 3.4.3, 8.5.2, 8.6.4: `U is S` makes S one Type with U, so name lookup on S reads U's Contracts (identity Constraints
+    // provide declarations): beside S's own premise a second same-named associated Type or requirement is ambiguous (r18, r21: accepted
+    // before R7-C2 c1' read Enumerate's rows), and alone U's requirement is S's (the counterpart).
+    [Theory]
+    [InlineData("contract Named2\n    associate Element\nfunc g<S, U>(items: ref/S, e: ref/S.Element) -> i32\n    U is Indexable<isize>\n    U is S\n    S is Named2\n    return 0", "AmbiguousBinding_Kd")]
+    [InlineData(Getter + "contract Getter2\n    func get(self: ref/Self) -> i32\nfunc g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    S is Getter2\n    return v.get()", "AmbiguousBinding_Kd")]
+    [InlineData(Getter + "func g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    return v.get()", "")]
+    public void NameLookupReadsTheIdenticalTypesContracts(string source, string codes)
+    {
+        var c = MinimalEmissionTest.Check(source + "\n()");
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
 
     [Fact]

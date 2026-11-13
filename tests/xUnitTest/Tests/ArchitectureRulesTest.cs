@@ -377,8 +377,8 @@ public class ArchitectureRulesTest
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
     // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
     // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
-    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines and the indexes are the
-    // request boundary, not the walk; a walk that reaches PremiseRefines fails at run time (InternalInvariant).
+    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRows and the indexes are the
+    // request boundary, not the walk; a walk that reaches PremiseRows fails at run time (InternalInvariant).
     [Fact]
     public void EnumeratesWalkCallsNoJudgment()
     {

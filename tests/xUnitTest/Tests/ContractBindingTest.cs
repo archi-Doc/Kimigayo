@@ -38,6 +38,11 @@ public class ContractBindingTest
     private const string PutSelf = "contract Put\n    func put<U>(self: uniq/Self, u: U)\n        U is Self\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U)\n        U is ";
     private const string ViewIsL = "struct View {source}\n    Self is L\n    let data: ref/i32 during source\n";
 
+    // C2's clause supplies C2, which refines Named, two Tree steps down: at heights 2 and 4 from a `T is C2`, never at 3.
+    private const string TreeC2 = "contract Tree\n    associate Child is Tree\ncontract Named\n    func name(self: ref/Self) -> i32\n";
+    private const string C2 = "contract C2: Tree, Named\n    Self.(Tree).Child.(Tree).Child is C2\n";
+    private const string Height4 = "T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child";
+
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -833,6 +838,16 @@ public class ContractBindingTest
     [InlineData("contract C: PrimitiveInteger\nfunc same<T>(a: T, b: T) -> bool\n    T is C\n    return a == b", "")]
     [InlineData("contract C: PrimitiveInteger\nfunc zero<T>() -> T\n    T is C\n    return 0", "")]
     public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // SPEC 8.3.2, 8.6.4, 9.6: a member call gathers the requirements of every Contract the premises supply for its receiver, a clause row
+    // at depth included (d1: C2's at height 4); one requirement reached by two paths is one (8.6.1), a second same-named requirement is
+    // ambiguous (r11, accepted before R7-C2 c1' read Enumerate's rows), and height 3 has no C2 row (the twins of design c1').
+    [Theory]
+    [InlineData(TreeC2 + C2 + "func f<T>(v: ref/" + Height4 + ") -> i32\n    T is C2\n    return v.name()", "")]
+    [InlineData(TreeC2 + "contract Other\n    func name(self: ref/Self) -> i32\n" + C2 + "func f<T>(v: ref/" + Height4 + ") -> i32\n    T is C2\n    " + Height4 + " is Other\n    return v.name()", "AmbiguousBinding_Kd")]
+    [InlineData(TreeC2 + C2 + "func f<T>(v: ref/" + Height4 + ") -> i32\n    T is C2\n    " + Height4 + " is Named\n    return v.name()", "")]
+    [InlineData(TreeC2 + C2 + "func f<T>(v: ref/T.(Tree).Child.(Tree).Child.(Tree).Child) -> i32\n    T is C2\n    return v.name()", "UnresolvedBinding_Kd")]
+    public void AMemberCallGathersTheRequirementsOfEveryRowAtDepth(string source, string codes) => AssertBindingCodes(source, codes);
 
     // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
     private static void AssertBindingCodes(string source, string codes)
