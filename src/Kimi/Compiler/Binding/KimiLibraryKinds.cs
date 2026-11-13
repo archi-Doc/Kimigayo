@@ -69,7 +69,6 @@ public enum CompilerFunctionKind : byte
     Clone,
     TestTempDirectory,
     TextWriter,
-    BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
@@ -153,7 +152,7 @@ internal enum DispositionKind : byte
 {
     Body, // A Kimigayo body: the declaration's own, or for a compiler function the body R8 writes, which until then the backend serves from the legacy runtime helpers.
     Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
-    Shim, // A built-in witness (formatting, equality, comparison, arithmetic), whose body the backend generates for its instance.
+    Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
 
 /// <summary>The intrinsic table (plan 5.8): the one disposition of each <see cref="CompilerFunctionKind"/>.</summary>
@@ -165,7 +164,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
-        CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
+        CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
         CompilerFunctionKind.MakeRc => Intrinsic(IntrinsicId.MakeRc),
@@ -196,12 +195,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
     // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
-    // built-in items (BuiltinFormat alone formats) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
+    // built-in items act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
         >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
-            >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
+            >= CompilerFunctionKind.BuiltinEquals and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,
     };
