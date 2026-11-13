@@ -142,32 +142,23 @@ public sealed partial class Binding
     private bool InfersConstruction(InvocationKoto call)
         => call.Method is MemberAccessKoto member && this.inferredConstructionTargets.Contains(member.Left);
 
-    // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms: U for owner, one reference layer with
-    // the occurrence's outer-Origin slot for ref or uniq. An application whose s is still open is returned as it is.
+    // SPEC 8.1.2: an s/U whose s is already inferred is matched as the Type it forms under the binding, by the one rule substitution
+    // reads (ApplySemantics): the target for an owner binding, the binding's layer with the occurrence's outer-Origin slot, an abstract
+    // binding's own application (a caller's pair), a family case by case. An application whose s is still open, or one the binding
+    // forms again (the binder's own pair, a recursive call), is returned as it is.
     private BoundType FormedApplication(BoundType pattern, Koto function, ReadOnlySpan<BoundType?> arguments)
     {
-        while (true)
+        while (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
+            ContainerSlot(function, selector) is >= 0 and var slot && slot < arguments.Length && arguments[slot] is { } whole)
         {
-            if (pattern is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } ||
-                ContainerSlot(function, selector) is not (>= 0 and var slot) || slot >= arguments.Length || arguments[slot] is not { } whole)
+            this.termWalks++;
+            var formed = this.ApplySemantics(whole, target, pattern.Origin);
+            if (ReferenceEquals(formed, pattern))
             {
                 break;
             }
 
-            this.termWalks++;
-            if (whole.Semantics == SemanticsKind.Owner)
-            {
-                pattern = target;
-            }
-            else if (whole.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
-            {
-                pattern = this.types.Intern(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
-                break;
-            }
-            else
-            {
-                break;
-            }
+            pattern = formed;
         }
 
         return pattern;
@@ -202,18 +193,24 @@ public sealed partial class Binding
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
             ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
         {
-            if (arguments[selectorSlot] is not { } whole)
+            if (arguments[selectorSlot] is null)
             {
                 return true; // SPEC 10.2: solved together; the substituted parameter is checked once another argument fixes s/T.
             }
 
-            if (whole.Semantics == SemanticsKind.Owner)
+            // SPEC 8.1.2: matched as the Type it forms; the binder's own application (a recursive call) is matched as a fixed pair's below.
+            if (this.FormedApplication(pattern, function, arguments) is var formed && !ReferenceEquals(formed, pattern))
             {
-                return this.Infer(pattern.Components[0], actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+                return this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
             }
+        }
 
-            return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
+        // SPEC 8.1.2: an application of a fixed pair meets any layer of that pair (the original, an annotated occurrence or an
+        // application) by its target; the outer slot is Origin evidence.
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && TryPairLayer(actual, out var actualWhole, out var actualTarget) &&
+            ReferenceEquals(pattern.Symbol?.WholeType, actualWhole))
+        {
+            return this.Infer(pattern.Components[0], actualTarget, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || IsInvariantLayer(pattern, this));
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
@@ -228,6 +225,15 @@ public sealed partial class Binding
             if ((uint)slot >= (uint)arguments.Length)
             {
                 return false;
+            }
+
+            // SPEC 8.1.2: an annotated occurrence of the original (`s/T during b`) binds only its outer-Origin slot, so once the pair is
+            // bound it is matched as the Type it forms (substitution's rule), the binding with that slot; the slot is Origin evidence.
+            if (pattern is { Origin: { } occurrence, Symbol.Kind: BindingSymbolKind.SemanticsTarget } && arguments[slot] is { } bound &&
+                this.types.PairBinding(bound) is var binding && (HasOuterSlot(binding) ? this.WithOrigins(binding, occurrence, (BoundOrigin[])binding.OriginArguments) : binding) is var formed &&
+                !ReferenceEquals(formed, pattern))
+            {
+                return this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
             }
 
             if (HasArrayLengthHole(actual))

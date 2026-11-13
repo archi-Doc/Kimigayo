@@ -129,6 +129,11 @@ public sealed partial class Binding
         return (mask & bit) == 0 ? null : family.Components[BitOperations.PopCount(mask & (bit - 1))];
     }
 
+    // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
+    // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none.
+    private static bool HasOuterSlot(BoundType binding)
+        => IsBorrow(binding.Semantics) || binding.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+
     // Short adaptations select the output mode with the input case; a fixed mode maps every input case. The cases are the binder's
     // admitted set at the adaptation (SPEC 8.3.4, 8.15.2: a conditional member's or block's premises included), not at its declaration,
     // within a family source's own cases. A family never reaches a scope wider than where it was formed (result and parameter Types are
