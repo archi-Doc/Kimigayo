@@ -128,9 +128,18 @@ public sealed partial class Binding
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
-        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A class's members are fixed after Close,
-        // so each class is scanned once per table, whatever the number of its members keyed. A constructed Type receives no key (ClassKey).
-        internal BoundType? Representative(BoundType type)
+        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A constructed Type receives no key (ClassKey).
+        internal BoundType? Representative(BoundType type) => this.Scanned(type) is { } root ? this.least[root] : null;
+
+        // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
+        // agree, so any one decides a conformance by the closed world); null otherwise. With Representative it is the one fact c2-1's
+        // rule rests on: a constructed member's conformance is ResolveConformance's alone. The answer is the table's, so it carries
+        // the table's Completion (Provisional while the table is not Final).
+        internal BoundType? CompleteMember(BoundType type) => this.Scanned(type) is { } root ? this.complete[root] : null;
+
+        // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
+        // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
+        private int? Scanned(BoundType type)
         {
             if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
             {
@@ -143,61 +152,29 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (this.least.TryGetValue(root, out var known))
+            if (!this.least.ContainsKey(root))
             {
-                return known;
-            }
-
-            BoundType? best = null;
-            for (var m = this.head[root]; m >= 0; m = this.next[m])
-            {
-                var member = this.types[m];
-                binding.IdentityKeyWork++;
-                if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && (best is null || Order(member, best) < 0))
+                BoundType? best = null;
+                BoundType? complete = null;
+                for (var m = this.head[root]; m >= 0; m = this.next[m])
                 {
-                    best = member;
+                    var member = this.types[m];
+                    binding.IdentityKeyWork++;
+                    if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
+                    {
+                        best = best is null || Order(member, best) < 0 ? member : best;
+                    }
+                    else if (!member.ContainsParameter)
+                    {
+                        complete = complete is null || Order(member, complete) < 0 ? member : complete;
+                    }
                 }
+
+                this.least[root] = best;
+                this.complete[root] = complete;
             }
 
-            this.least[root] = best;
-            return best;
-        }
-
-        // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member of a parameter's or projection's class in state One whose meets are
-        // complete, least by Order (the members agree, so any one decides a conformance by the closed world); null otherwise. It is the
-        // one fact c2-1's key rule and N9's rule share: a constructed member's conformance is ResolveConformance's, and a class holding
-        // one takes that conformance.
-        internal BoundType? CompleteMember(BoundType type)
-        {
-            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
-            {
-                return null;
-            }
-
-            var root = this.Find(n);
-            if (this.state[root] != One || this.incompleteClass[root])
-            {
-                return null;
-            }
-
-            if (this.complete.TryGetValue(root, out var known))
-            {
-                return known;
-            }
-
-            BoundType? best = null;
-            for (var m = this.head[root]; m >= 0; m = this.next[m])
-            {
-                var member = this.types[m];
-                if (member.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) && !member.ContainsParameter &&
-                    (best is null || Order(member, best) < 0))
-                {
-                    best = member;
-                }
-            }
-
-            this.complete[root] = best;
-            return best;
+            return root;
         }
     }
 }

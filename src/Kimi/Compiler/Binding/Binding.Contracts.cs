@@ -446,18 +446,19 @@ public sealed partial class Binding
         // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);
 
-        // N9 (SPEC 8.2.3, 8.3.2): a subject identical with a complete constructed Type takes that Type's closed-world refutation, and a
-        // premise against it is contradictory evidence (Error), as for the constructed Type itself (c2-1's rule). The member's Proven is
-        // not taken here: a conformance it proves reaches projections' completion, which is c2-4's (N8).
-        if (proof == ConstraintProof.Unknown && type.IsAbstract && HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.CompleteMember(type) is { } member &&
-            this.ResolveConformance(member, contract, scope, out _) == ConstraintProof.Refuted)
+        // N9 (SPEC 8.2.3, 8.3.2): for a subject identical with a complete constructed Type, that Type's resolved conformance only detects
+        // a premise contradicting it, in either polarity: the premises supplying the conformance against its refutation, or supplying its
+        // negation against its proof, are contradictory evidence (Error), the premise's error at the declaration. It never supplies
+        // evidence (a member's Proven reaching a projection's completion accepted an invalid program, r2-e3; that direction is c2-4's).
+        if (proof == ConstraintProof.Unknown && type.IsAbstract && HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.CompleteMember(type) is { } member)
         {
-            if (premise)
+            var resolved = this.ResolveConformance(member, contract, scope, out _);
+            if ((premise && resolved == ConstraintProof.Refuted) ||
+                (resolved == ConstraintProof.Proven &&
+                 this.Supply(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), this.ViewOf(scope)).Negative))
             {
                 return ConstraintProof.Error;
             }
-
-            proof = ConstraintProof.Refuted;
         }
 
         return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
