@@ -37,6 +37,7 @@ public sealed partial class Binding
     private readonly Dictionary<BindingScope, bool> identityRecorded = new(ReferenceEqualityComparer.Instance); // whether it is the owner's failure
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
+    private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
 
     // The scaling rows' measures: the nodes the identity classes added in this compilation, and ClassKey's steps and the class members
     // its Representative scanned.
@@ -122,31 +123,7 @@ public sealed partial class Binding
             }
 
             classes.Open(scope);
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Constraints is not { Invalid: false } environment)
-                {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject: { } subject, RequiredType: { } required })
-                    {
-                        continue;
-                    }
-
-                    if (this.AvailableConstraintFact(environment, fact, out var availability))
-                    {
-                        classes.Premise(subject, required, availability);
-                    }
-                    else
-                    {
-                        classes.Read(availability); // An unavailable premise that may become available: the classes may grow.
-                    }
-                }
-            }
-
+            this.ApplyIdentityPremises(classes, scope);
             classes.Close();
             this.IdentityClassWork += classes.Work;
             completion = classes.Completion;
@@ -156,6 +133,65 @@ public sealed partial class Binding
         finally
         {
             this.identityBuilding.Remove(scope);
+        }
+    }
+
+    // R7-C2c2 c2-2: the view's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
+    // Constraints `T is C` supplies at every depth). Request-local: one reused table, never memoized as the view's; its rows are
+    // Provisional (a derived availability), so nothing keyed by it is kept, and at R7-C2e2 e2-1's merge what it keys stays the
+    // request's. Its keys follow the table's rule: a constructed member keys to itself (Representative).
+    private IdentityClasses? ExtendedClassesOf(BindingScope scope, List<(BoundType A, BoundType B)> rows)
+    {
+        if (!this.identityBuilding.Add(scope))
+        {
+            return null;
+        }
+
+        try
+        {
+            var classes = this.identityExtended ??= new IdentityClasses(this);
+            classes.Open(scope);
+            this.ApplyIdentityPremises(classes, scope);
+            for (var i = 0; i < rows.Count; i++)
+            {
+                classes.Premise(rows[i].A, rows[i].B, Completion.Provisional);
+            }
+
+            classes.Close();
+            this.IdentityClassWork += classes.Work;
+            return classes;
+        }
+        finally
+        {
+            this.identityBuilding.Remove(scope);
+        }
+    }
+
+    private void ApplyIdentityPremises(IdentityClasses classes, BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject: { } subject, RequiredType: { } required })
+                {
+                    continue;
+                }
+
+                if (this.AvailableConstraintFact(environment, fact, out var availability))
+                {
+                    classes.Premise(subject, required, availability);
+                }
+                else
+                {
+                    classes.Read(availability); // An unavailable premise that may become available: the classes may grow.
+                }
+            }
         }
     }
 
