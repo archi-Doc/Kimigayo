@@ -14,7 +14,9 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && !type.IsProofDecided && type.Symbol?.Declaration is not ContractKoto)
+        // SPEC 9.6, 13.3.3, 13.4.1, 22.10.2: requirements are gathered from Constraints, so only a Type parameter, a projection or a
+        // Contract's Self has requirement members; a built-in conformance adds no member (a built-in Type, a Tuple, a reference layer).
+        if (!type.IsProofDecided && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -29,29 +31,9 @@ public sealed partial class Binding
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
-        group.TypeAccess = typeAccess;
         group.PropertyRequirement = false;
         group.Properties.Clear();
         group.PropertyContracts.Clear();
-        if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
-        {
-            Add(formatting);
-        }
-
-        if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
-            (ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable) || WitnessGroup(type, KimiDeclarationId.Equatable) is not null ||
-                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false, out _) == ConstraintProof.Proven)))
-        {
-            Add(equality);
-        }
-
-        if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
-            (ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Comparable) || WitnessGroup(type, KimiDeclarationId.Comparable) is not null ||
-                (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false, out _) == ConstraintProof.Proven)))
-        {
-            Add(ordering);
-        }
-
         if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
         {
             Add(own);
@@ -74,14 +56,15 @@ public sealed partial class Binding
         }
 
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
-        // concrete integers gain no members.
+        // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
+        // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
         if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
         {
             Add(position);
         }
 
         // Numeric witnesses are requirements under generic evidence, not named numeric members.
-        if (this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope))
+        if (this.IsGenericInteger(type, scope))
         {
             for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
             {
@@ -90,11 +73,6 @@ public sealed partial class Binding
                     Add(this.ArithmeticReference(id, type).Contract!);
                     break;
                 }
-            }
-
-            if (this.IsGenericWrapping(type, scope) && TypeSpelling(member.Right) == "negated")
-            {
-                Add(this.ArithmeticReference(KimiDeclarationId.Negatable, type).Contract!);
             }
         }
 
@@ -233,8 +211,6 @@ public sealed partial class Binding
         internal BoundType Self { get; set; } = null!;
 
         internal bool Active { get; set; }
-
-        internal bool TypeAccess { get; set; }
 
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }

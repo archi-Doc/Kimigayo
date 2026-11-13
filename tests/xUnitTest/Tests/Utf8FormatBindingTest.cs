@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -22,6 +23,7 @@ public class Utf8FormatBindingTest
     [InlineData("0@u128")]
     [InlineData("0@isize")]
     [InlineData("0@usize")]
+    [InlineData("(200@u8)@Wrapping<u8>")]
     [InlineData("0@f32")]
     [InlineData("0@f64")]
     [InlineData("true")]
@@ -35,32 +37,36 @@ public class Utf8FormatBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
+    // SPEC 22.10.2, 22.9.3, 9.6 (G776-a, the owner's O-194 (a)): a built-in Utf8Format conformance adds no member, so `format` called as a
+    // member of a built-in value, a wrapping integer's and a view's included (the view's also through a borrow and as its Type-qualified
+    // Function Item; a view has `length` and `bytes()` only), names none (fail-before: each bound, the item Unsupported_Kd), as it names
+    // none of an abstract Wrapping<T> (R8-S2d1's I-N1, the same record); the requirement is reached through `T is Utf8Format` or the
+    // adapter `write`.
     [Theory]
-    [InlineData("(42).format(writer@uniq)")]
-    [InlineData("\"text\".format(writer@uniq)")]
-    [InlineData("true.format(writer@uniq)")]
-    [InlineData("1.5.format(writer@uniq)")]
-    [InlineData("((200@u8)@Wrapping<u8>).format(writer@uniq)")]
-    [InlineData("(7@u8).format(writer@uniq)")]
-    [InlineData("(7@i128).format(writer@uniq)")]
-    public void DirectBuiltinRequirementSelection(string expression)
+    [InlineData("_ = (42).format(writer@uniq)", "(42).format")]
+    [InlineData("_ = \"text\".format(writer@uniq)", "\"text\".format")]
+    [InlineData("_ = true.format(writer@uniq)", "true.format")]
+    [InlineData("_ = 1.5.format(writer@uniq)", "1.5.format")]
+    [InlineData("_ = ((200@u8)@Wrapping<u8>).format(writer@uniq)", "((200@u8)@Wrapping<u8>).format")]
+    [InlineData("_ = (7@u8).format(writer@uniq)", "(7@u8).format")]
+    [InlineData("_ = (7@i128).format(writer@uniq)", "(7@i128).format")]
+    [InlineData("_ = Text.utf8(\"a\").format(writer@uniq)", "Text.utf8(\"a\").format")]
+    [InlineData("func put(r: ref/Text.Utf8Slice, w: uniq/Utf8Writer) -> Result<(), BufferFull> => r.format(w)", "r.format")]
+    [InlineData("let show = Text.Utf8Slice.format", "Text.Utf8Slice.format")]
+    [InlineData("func put<T>(w: ref/Wrapping<T>, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is PrimitiveInteger\n    return w.format(writer)", "w.format")]
+    public void ABuiltinFormattingConformanceAddsNoMember(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(Prefix + source);
+        Assert.Equal(["UnresolvedBinding_Kd " + at], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+    }
+
+    // The valid twin: FromEnd's `format`, a public member the library declares (LIBRARY), stays a member.
+    [Theory]
+    [InlineData("(^1).format(writer@uniq)")]
+    public void ADeclaredFormatStaysAMember(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = " + expression);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-    }
-
-    // SPEC 22.10.2, 22.9.3: the view's Utf8Format conformance is built in and adds no member, so its `format` is reached only through a
-    // proven `T is Utf8Format`; a direct call, a call through a borrow and the Type-qualified Function Item each name no member of the
-    // view, which has `length` and `bytes()` only.
-    [Theory]
-    [InlineData(Prefix + "_ = Text.utf8(\"a\").format(writer@uniq)\n", "Text.utf8(\"a\").format")]
-    [InlineData("func put(r: ref/Text.Utf8Slice, w: uniq/Utf8Writer) -> Result<(), BufferFull> => r.format(w)\n" + Prefix, "r.format")]
-    [InlineData("let show = Text.Utf8Slice.format\n", "Text.Utf8Slice.format")]
-    public void AViewsFormatIsNoMember(string source, string at)
-    {
-        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(("UnresolvedBinding_Kd", at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
-        Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), record.Span.Value.Start);
     }
 
     [Theory]
@@ -152,6 +158,35 @@ public class Utf8FormatBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(["NoApplicableOverload_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
+
+    // SPEC 22.10.2 (R8-S2b2, R8-S2d2; DECISIONS R8-M30): every Type of BuiltinFormattable has a witness table row, which alone states
+    // and proves its Utf8Format conformance since R8-S2d2 (fail-before: i128 and u128 had no row, nor had the view while it declared its
+    // conformance).
+    [Fact]
+    public void EveryBuiltinFormattableTypeHasATableRow()
+        => Assert.All(
+            BuiltinFormattable(MinimalEmissionTest.Analyze("let x = 1\n").Library),
+            static x => Assert.NotNull(Binding.WitnessGroup(x, KimiDeclarationId.Utf8Format)));
+
+    // SPEC 4.6.1, 8.7, 22.1, 22.10.2 (R8-S2d2): every Type of BuiltinFormattable is proven Utf8Format at a use site, through the witness
+    // table's arm alone since R8-S2d2 deleted the built-in proof arm (DECISIONS R8-M30, temporary 2); it passes before and after that
+    // deletion.
+    [Fact]
+    public void EveryBuiltinFormattableTypeIsProvenUtf8Format()
+    {
+        var c = CompilationTestHelper.ParseSuccess("func use() => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "use");
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Utf8Format)!;
+        Assert.All(
+            BuiltinFormattable(c.Library),
+            x => Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(x, contract, use, out _)));
+    }
+
+    // SPEC 22.10.2's built-in Utf8Format conformances: the numeric Types (the integers and floats among the Primitives, every
+    // Wrapping<T>), bool, char, Unit, string and the view (Text.Utf8Slice), the library's struct.
+    private static BoundType[] BuiltinFormattable(KimiLibrary library)
+        => [.. BoundType.Primitives.Values, .. BoundType.WrappingScalars.Values, library.GetSymbol(KimiDeclarationId.Utf8Slice)!.Type!];
 
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c) + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node));

@@ -103,6 +103,21 @@ public class PrimitiveIntegerTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in Equatable, Comparable and Utf8Format conformances and Position, each
+    // proven for the Type parameter on its own; it supplies no other Contract, so PositionRange stays unproven.
+    [Theory]
+    [InlineData("Equatable", true)]
+    [InlineData("Comparable", true)]
+    [InlineData("Utf8Format", true)]
+    [InlineData("Position", true)]
+    [InlineData("PositionRange", false)]
+    public void AProvenPrimitiveIntegerSuppliesItsContracts(string contract, bool supplied)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            $"func need<U>(value: ref/U) -> i32\n    U is {contract}\n    return 1\nfunc pass<T>(value: T) -> i32\n    T is PrimitiveInteger\n    return need(value@ref)");
+        Assert.Equal(supplied, c.Binding.Result.IsComplete);
+    }
+
     [Fact]
     public void RecognizesTheIntrinsicIdentity()
     {

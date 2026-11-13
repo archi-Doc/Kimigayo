@@ -1421,7 +1421,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Builtin i32 BuiltinArithmetic"], Targets(program, set, "Fn add [i32]"));
         Assert.Equal(["Builtin i32 BuiltinEquals"], Targets(program, set, "Fn same [i32]"));
         Assert.Equal(
-            ["library Fn iterate in group FixedArray [i32, ]", "library Fn next in struct ArrayIterator [ArrayIterator<i32>]"],
+            ["library Fn iterate in group FixedArrayEntries [i32, ]", "library Fn next in struct ArrayIterator [ArrayIterator<i32>]"],
             Targets(program, set, "Fn count [[3 of i32]]"));
         Assert.Equal(["library Fn tryResolve in group IntegerPosition"], Targets(program, set, "Fn at [i32]"));
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind is MonoKind.Builtin or MonoKind.PropertyWitness).ToArray();
