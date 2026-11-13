@@ -1475,7 +1475,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(program.Records(MirRecordClass.Collection));
         const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
         const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
-        const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
+        const string Status = "library Fn status in struct Utf8Writer"; // The body's guard, the recorded failure (R8-W2 b1).
+        const string Failure = "library Fn init in struct BufferFull"; // The body's failure recording.
         const string WideFormat = "library Fn format in group IntegerFormat"; // u128's specialization (R8-S2b2).
         const string ShowI32 = "library Fn toString in group Text [Text, i32]";
         const string ShowBox = "library Fn toString in group Text [Text, Box]";
@@ -1489,15 +1490,15 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([Heap, WriteI32, Finish, IntoString], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
         const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
-        Assert.Equal([FormatI32, Failure, Failure], Calls(program, set, WriteI32));
+        Assert.Equal([Status, FormatI32, Failure], Calls(program, set, WriteI32));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, FormatI32));
         Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
         Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
-        Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
+        Assert.Equal([Status, "Fn format", Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
         var (wide, wideSet) = Collect("func emitWide(writer: uniq/Utf8Writer, x: u128) -> Result<(), BufferFull> => writer.write(x)\n");
-        Assert.Equal([WideFormat, Failure, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
+        Assert.Equal([Status, WideFormat, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(wide, wideSet, WideFormat));
     }
 
