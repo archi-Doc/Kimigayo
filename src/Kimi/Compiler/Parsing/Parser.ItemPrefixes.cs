@@ -168,6 +168,13 @@ public static partial class Parser
                         reader.DispatchModifierSpan = reader.CurrentTokenRange;
                     }
 
+                    // F.3.3: the word that writes a second function modifier, which the function header reports.
+                    if ((reader.ModifierKind & ~flag & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0 &&
+                        reader.SecondModifierSpan == default)
+                    {
+                        reader.SecondModifierSpan = reader.CurrentTokenRange;
+                    }
+
                     ReadModifierFlag(ref reader, flag);
                     continue;
                 }
@@ -260,6 +267,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         reader.Advance();
@@ -290,6 +298,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
