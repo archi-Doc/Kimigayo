@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // closed under decomposition and congruence, each class with its state and its finality.
 public sealed partial class Binding
 {
-    private sealed class IdentityClasses(Binding binding)
+    private sealed partial class IdentityClasses(Binding binding)
     {
         internal const byte One = 0;
         internal const byte Unsupported = 1;
@@ -82,6 +82,8 @@ public sealed partial class Binding
             this.open.Clear();
             this.cycle.Clear();
             this.stack.Clear();
+            this.keys.Clear();
+            this.least.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
