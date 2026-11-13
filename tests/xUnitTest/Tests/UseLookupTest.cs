@@ -117,10 +117,11 @@ public class UseLookupTest
     // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head). `L.(C)` is a projection
     // whatever Type its left is, a built-in, an array or a tuple included (SPEC F.5), the base bound with its own records: a missing
     // Contract records at its step, a missing member at the path, a tuple without the conformance is unproven (no tuple conforms to a
-    // Contract with an associated Type, so that shape has no valid twin).
+    // Contract with an associated Type, so that shape has no valid twin). A fixed array's entry is no member, so the array's row starts
+    // its iterator through a Constraint (SPEC 22.1, PLAN G776-b).
     [Theory]
     [InlineData("func f(x: i32.(Addable<i32>).Output) -> i32 => x", "")]
-    [InlineData("func f() -> [2 of i32].(IntoIterable).IteratorType\n    let a: [2 of i32] = [1, 2]\n    return a.intoIterator()", "")]
+    [InlineData(FixedArrayEntryTest.Entries + "func f() -> [2 of i32].(IntoIterable).IteratorType\n    let a: [2 of i32] = [1, 2]\n    return E.into(a@move)", "")]
     [InlineData("func f(x: i32.(Missing).Output) -> i32 => 0", "UnresolvedBinding_Kd i32.(Missing)")]
     [InlineData("func f(x: i32.(Addable<i32>).Missing) -> i32 => 0", "UnresolvedBinding_Kd i32.(Addable<i32>).Missing")]
     [InlineData("func f(x: (i32, u8).(Addable<i32>).Output) -> i32 => 0", "UnprovenConstraint_Kd (i32, u8).(Addable<i32>).Output")]

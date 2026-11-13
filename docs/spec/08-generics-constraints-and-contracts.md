@@ -633,7 +633,7 @@ let small = sum(1..5@u8)   // 10
 
 ### 8.7.5. Closed Contracts
 
-`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members, and every implementation reads only its boundaries and the length and has no other effect.
+`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members. Every `tryResolve` implementation reads only its boundaries and the length and has no other effect. Both Contracts bound `format` with `confined` ([§8.11.1](#8111-declarations)); a requirement call of `format` on a position or a range uses that bound ([§8.11.3](#8113-checking-and-use)), also where the position's Type is a `T` with `T is PrimitiveInteger` ([§8.7.4](#874-primitiveinteger)).
 
 ```kimi
 struct Offset
@@ -903,6 +903,28 @@ struct Countdown
         if self.left == 0 => return .None
         self.left -= 1
         return Feeds.pull(self)   // Valid: Countdown is Feed is evidence; the bound is checked on the completed summary.
+```
+
+```kimi
+contract Report
+    func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        effect confined
+
+struct Meter<T>
+    T is Position
+    Self is Report
+    var reading: T
+
+    public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return self.reading.format(writer)   // Valid: Position bounds format with confined.
+
+struct Echo<T>
+    T is Utf8Format
+    Self is Report
+    var item: T
+
+    public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return self.item.format(writer)      // Error: Utf8Format declares no bound, so the call has unknown effects.
 ```
 
 ```kimi
