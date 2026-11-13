@@ -6271,6 +6271,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       (dFnStoreOk, dFnPutOk are valid); a pun decided by a binding's assumed size (review 2's B4, O-205 (a)); encoding the abstract
       part as `Extent.Open`, which means a length that is no constant (limit (c)), while an abstract part is a Scalar for some
       binding.
+    - Amended by BU-189 (PLAN G562-a): `Punnable`'s rows are split: the punnable set is `TyCtxt.Punnable`'s, the extent A5's
+      `MirBorrows.Scalar`; behaviour unchanged.
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
@@ -8048,7 +8050,8 @@ resumed by R4-M86 (2026-10-20).
     scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to
     `TransferOf` (null for an instance without an abstract part, for C8's closure path and from `RetainsErased`, which has no callee),
     else the library root's; `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
-    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, `FixedArrayMembers`). Under them a borrowed input keeps its
+    UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, the fixed array's two groups (`WitnessMembers.FixedArray` and
+    `FixedArrayEntries`, read through `KimiLibrary.MembersOf`)). Under them a borrowed input keeps its
     Chain only; `exchange`'s result only its target's Chain; for §4.9 only (Array, Dictionary) the receiver's storage keeps of the
     other inputs only the added ones: `KimiLibraryCatalog.Added` over `AddedRow(Id, Mask)` beside `WithinRows` (append, insertAt,
     insert, appendAll, appendCopies, tryInsert, insertOrReplace), with two new IDs `ArrayInsertPosition` (`insert<P>`) and
@@ -9172,6 +9175,9 @@ resumed by R4-M86 (2026-10-20).
     edge with a Dependent end is derived, unless that edge is the last edge of a chain through Dependent nodes that fails between its
     non-Dependent ends; site (1)'s two clauses fall away. Binding's fit records stay direct until A5's chain judgment is published at
     R6-check and H11 retires the fit twins (PLAN G206 (6)). Site (2) is applied by this entry.
+  - Amended by BU-190 (PLAN G739): "Binding's fit records stay direct" except where a fit's Origin conjunct rests: it holds, its
+    positions become body rows A5 judges with the atom Dependent, and `FailedOriginEnvironment`'s walk (G206 (6)'s stopgap) is
+    deleted.
   - Supersedes BU-26's pre-filter (`JudgeOriginObligation`'s verdict on a row with an Unbound end, which region inference or a rejected
     clause could prove) and its clause "derived when that end's binder failed".
   - Records: chains path a hid are reported at their last edge (x-chain-a, t-two-a, m-meet-a, m-operand-a, fan-a, eq-cycle-a, mp-a,
@@ -11989,6 +11995,8 @@ resumed by R4-M86 (2026-10-20).
     result, parameter, Field or payload slot) stays Unbound and reaches its uses: A5 treats it as Dependent, and Binding's fit
     reports `UnprovenOriginRelation_Kd` at uses outside the failed declaration, a counted dependent on a rejected program (Q13; PLAN
     G739).
+  - Amended by BU-190 (PLAN G739): the last sentence's Binding record no longer holds: a fit's or a contract comparison's Origin
+    conjunct over a resting slot holds, so a use outside the failed declaration reports no `UnprovenOriginRelation_Kd`.
   - **Rejected:**
     - Option A, two facts over a hand census (review 4's REJECT).
     - An unavailable contract without failing the owner. Every empty-`Relations` reader would still need the dependence channel, so
@@ -12622,6 +12630,65 @@ resumed by R4-M86 (2026-10-20).
       record to suppress);
     - `SyntaxForm.Declaration` misplaced (it names no kind, and bodies take declarations);
     - omitting the declaration (design revision 0): it lost the header's records, the startup record and a Repair's verification.
+- **BU-189 SPEC 5.2's punnable set has one owner, `TyCtxt.Punnable`** (2026-11-12; PLAN G562-a, the first of G562-a, G806, G808 and
+  G562-b/c; Front; behaviour-preserving; the Middle's consent C-271 (1)-(3)). A responsibility moved from MIR to Binding.
+  - Rule: `TyCtxt.Punnable(type)` (`TyCtxt.Raw.cs`) answers whether a Type is punnable (SPEC 5.2): the `owner` Scalars of 3.1
+    (`ScalarTypes.Supports`), raw pointer Types, an abstract part (SPEC 8.15.1; R4-M198's G792 amendment), and Tuples and fixed
+    arrays of punnable Types, an `owner` layer as its component; any other Type is not. A function of the interned Type: the leaf
+    rows answer at once, and each composite Type is walked once and then read from `TyCtxt`'s memo, which is kept like the interning
+    (an interned Type's answer never changes). No bound of its own; total; allocates nothing for a Type already decided. Every
+    reader of the set reads it: A5's pun rule now, G806's raw-Places fact and G562-b/c's retention next.
+  - A5 keeps only its own fact, `MirBorrows.Scalar` (`MirBorrows.PunTypes.cs`): how much of a Scalar a punnable Type holds inline
+    (`Extent`: a Scalar or abstract part Positive; an array its element's, by `Sized`; a Tuple its components' most where
+    `TyCtxt.Punnable` holds; None for a raw pointer and for any Type that is not punnable). It equals the former
+    `MirBorrows.Punnable(t).Scalar` for every Type; the former `(bool, Extent)` pair is deleted.
+  - Reason: the set lived inside A5's private walk, fused with A5's extent, so the Binding readers G562-b/c and G806 need had no
+    owner to read; a second copy would be a second statement of SPEC 5.2.
+  - Rejected: a gate at A5's entry (one more predicate per Scalar write); a walk in `TyCtxt` publishing A5's `Extent` (A5's fact
+    would move to Binding, against C-271 (1)); an unmemoized `TyCtxt.Punnable` (a second walk per Tuple write, the Middle's C-271
+    (2)); `Scalar` deciding punnability from its own per-component answers (a second copy of SPEC 5.2's composite rows).
+  - Work per use: a Scalar, raw pointer, array or struct write does the former work; a Tuple write whose parts hold a Scalar adds
+    one memo lookup per Tuple level after that Type's first write.
+
+- **BU-190 A fit's or a contract comparison's Origin conjunct over a resting slot holds** (2026-11-13; Front, Binding; Major; PLAN
+  G739; design reviews 1-2; amends BU-159's "Consequences" sentence on G739 and BU-62's "Binding's fit records stay direct") SPEC
+  23.1.2, 15.3.3, 15.3.6, 15.3.7; DECISIONS Q13 rule W.
+  - **Rule.** A conjunct of a fit's Origin position, or of a contract comparison's relation, holds and gives no evidence when one of
+    its ends, resolved at the use, rests: it holds an Unbound atom that rests on a failed part. A meet at the longer end splits into
+    one conjunct per operand (SPEC 15.3.6): a resting operand's conjunct holds and every other operand's is decided as usual; a
+    shorter end with a resting operand holds whole. The atom rests when its declaration has a `PendingCause` (a failed clause, or
+    the Type, alias target or payload operand that failed before completion) or its binder holds its own failure (a failed
+    omission); each leaves an Error, so no valid program meets the rule. A recording fit that held by resting leaves its positions
+    as rows of its body, formed at the fit's entry (`CheckTypeUse`, with the destination), and forming them never changes the fit's
+    answer: a position whose shape forms no row (a Function Type's whole contract) keeps the walk's. A5 judges the rows with the
+    atom Dependent (R4-M118; this entry closes its site (1) row), and a row with no body rests on `UnboundCause` in the declaration
+    judge (BU-62).
+  - **Owner.** `UnboundCause` (`Binding.OriginDeclarations.Failures.cs`; null when nothing failed) is the one statement of the fact,
+    read through `Rests`; `HoldsResting` is the one per-conjunct split, run after each reader's own answer with that reader's leaf
+    (`IOriginConjunct`): the fit (`FitOrigin`, `Binding.OriginProof.cs`), its position search (`OriginFitSearch.OriginPartFails`),
+    and the contract comparison's decision sites, an implementation's claims (`ClaimHolds` in `CompleteImplementationOrigins`) and
+    the Origin inference's bounds (`SolveOriginInference`, which `CompatibleRequirement`'s comparison reaches). The proof
+    (`ProvesOriginOutlives`) is unchanged: resting is a rule of these decisions, never a premise.
+  - **Removed.** `FailedOriginEnvironment`'s walk over the declarations enclosing a use (PLAN G206 (6)'s stopgap): a resting end no
+    longer reaches the recorder. A record with an Unbound end that has no failed part (a per-call image) stays independent outside a
+    failed declaration; inside one, the image's binder's owner is that declaration, which rests it, as the walk did.
+  - **Reason.** The recorder explained the record afterwards by the use's position, so a use outside the failed declaration
+    published a dependent as independent (G739) and a use inside it rested on whatever declaration enclosed it.
+  - **Records (Q13).** On rejected programs only: `UnprovenOriginRelation_Kd` and PLAN G105's `UninitializedPlace_Kd` pair at a
+    constructor go where the fit's end rests, `UnprovenOriginContract_Kd` and `IncompatibleContractImplementation_Kd` where a
+    comparison's does, and `Unsupported_Kd` where a Function value read from such a slot fits an annotated local or a parameter (the
+    twin's independent `TransferRequired_Kd` it hid is reported, fn3; and, g6, the twin's independent Unsatisfied record at the
+    twin's site); 4 expectations that pinned such a dependent move. A5 reports one escape once per value fit that holds by resting
+    inside an annotated initializer: each such `FitsTypeAt` forms rows beside the local's own fit (`CheckTypeUse`), so +1 at
+    `h0@move` beside the kept `let h: C{x} = h0@move` (FailedClause), +1 at `idc(h0@move)` through a call, +2 at `(h0@move, 1)` and
+    `h0@move` in a Tuple local (counted; PLAN G820). No acceptance move.
+  - **Rejected.** Completing the node as the atom's cause's dependent in the recorder (the node loses its Type and A5's chain record
+    at the same statement is lost); a resting record with an `IsDerived` row for `OriginRelation` (it takes the node's one failure
+    slot and derives the declaration judge's independent chain records); holding without a body row (A5 never sees the relation); a
+    distinct Origin kind for a resting slot (fabricates relations for every reader, R4-M118); copying `FailedClauses` in
+    `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
+    of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
+    itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -18603,6 +18670,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     `EffectsLimit`, Refused and None give false".
   - Its `EffectsLimit` bullet and its R5-M22 sentence are superseded by BU-142 (G589): `EffectsLimit` is gone, and R5-M22's sentence reads
     "Property, Refused and None give false".
+  - **Amended by G776-b** (Front, 2026-11-13; the owner's O-194 (a): a built-in conformance adds no member; SPEC 22.1, 14.6.2):
+    - `WitnessMembers` is the local set (R8-M4) of built-in receiver groups. It holds the witness table's groups, which
+      `WitnessGroup`'s rows name, and the fixed array's member group `FixedArray` (SPEC 22.1's members, the member scope
+      `LookupTypeMember` reads), which no row names. The entry witnesses moved to the new row group `FixedArrayEntries` (+1 value).
+      `KimiLibrary.Members`/`MembersOf` stay the one lookup for both kinds, so `IsBuiltinMemberGroup`, `IsReceiverType` and the transfer
+      key read them. A receiver-only group costs a value, a `WitnessReceiver` arm, a `Members` arm and its property, and no
+      `WitnessGroup` arm.
+    - The loop's entry has two forms. A Subject whose entry conformance is a table row binds the row's requirement as a selected
+      requirement call (`BindSelectedRequirement`, as operators do): the witness at a closed Self, the requirement at an abstract one. A
+      declared or abstract entry keeps the member call by name and its shadowing check (`ValidateIterationWitnesses`). The fork is keyed
+      on the table, not on syntax; a new entry row adds no case. This changed behaviour: a shared fixed-array Subject behind two
+      safe-reference layers (`ref/(ref/...)`, `ref/(uniq/...)`) is now accepted, as an Array's is (named in G776-b commit 1); the
+      exclusive `uniq/(uniq/...)` form stays rejected for both Types (PLAN G179).
+    - Rejected: every entry through the requirement, which changes the declared shadowing record and every loop's HIR; a name filter in
+      `LookupTypeMember` (an allowlist); dropping `WitnessMembers.FixedArray` for `FixedArrayMembers` arms in the readers (a second
+      statement of the lookup and the receiver); renaming the enum (churn).
+    - `KimiLibraryShapeTest`'s invariant: the row groups are every value except the receiver-only groups (`ReceiverOnlyGroups`), and no
+      row names a receiver-only group.
 - **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
   SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
   - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one
@@ -19837,6 +19922,37 @@ R8-M* and R9-M* by the stage of the recording unit.
     `AnInterpolatedWriteReportsItsCallersLocation` fail; `Utf8WriterTest`'s native I128 and U128 Abort rows are pins (they pass at
     base through the shim and at head through the specializations). Open for the next formatting unit (the Middle's M-N3): the
     specialization filter in `KimiLibraryShapeTest.EachWitnessGroupDeclaresItsContractsRequirements` is now redundant.
+  - **Temporaries 1, 2 and 3 removed, S2d2** (45ad6e3eb and 04390d4b5): Binding's `builtinFormat` target and
+    `CompilerRequirementTarget`'s Utf8Format narrowing (1); `ResolveConformance`'s built-in Utf8Format proof arm (2): the witness
+    table's arm alone states and proves a built-in Type's Utf8Format, pinned by `Utf8FormatBindingTest`'s
+    `EveryBuiltinFormattableTypeIsProvenUtf8Format` (passing before and after the deletion) and
+    `EveryBuiltinFormattableTypeHasATableRow` (moved from `FunctionCodegenTest`, assertion unchanged); `FormatKind`'s 16 numbers
+    (3's note discharged).
+  - **Vocabulary, S2d2.** `CompilerFunctionKind` 30 -> 29 (with `None`): `BuiltinFormat` deleted with its Shim disposition, the
+    shim's `Format` and the collector's arm. `FormatKind` -> `LegacyRuntimeHelpers.StringFormatKind = 16`.
+  - **Temporary 5, S2d2.** It now reads: "`StringFormatKind`, `__kimi_format_builtin`'s one arm (16; a plain define in
+    `Utf8FormatRuntime.ll.in` since R8-S2d2, byte-identical to the deleted row's expansion) and `{{writer_write_builtin}}` for
+    SegmentText and FormatLiteral: removed at W2".
+  - **`IsBuiltin`, S2d2.** It no longer states or proves the conformance (the table does). `FormattingTypes.IsBuiltin` is deleted by
+    R8-S2d2 (14a76d141), landing after G776-a removed `RequirementMember`'s two reads; its last readers, `Utf8FormatBindingTest`'s
+    two rows, take SPEC 22.10.2's explicit set of built-in conformances (`BoundType.Primitives` and the wrapping scalars).
+  - **The formatting row family is gone, S2d2** (0a62ff4ce): `FormattingHelperRow`, `FormattingRows`, `FormattingRow`,
+    `CreateFormattingRows`, `LlvmModuleText.ErasedWriterDefinitions`; Text.writer's routine ABI is `RuntimeAbi.TextWriter`, beside
+    `ErasedReserve` (the same kept runtime); `IntrinsicRows`' ErasedWriter row no longer reads a legacy formatting row (it still
+    reads `LegacyRuntimeHelpers.FormatHeap`, `FormatHint` and `FormatFinish`, the interpolation adapter's ABIs, until R8-W2 c;
+    implementation review 1's N1 corrects commit 3's message, which said "IntrinsicRows no longer initializes
+    LegacyRuntimeHelpers").
+  - **Rejected, S2d2.** Re-pointing `RequirementMember` to the witness table (D1): `WitnessGroup` answers a `Wrapping<T>` over an
+    abstract `T`, so a direct `w.format(writer)` there, `UnresolvedBinding_Kd` today and an error under O-194 (a), would resolve;
+    a `HasAbstractPart` guard would be a symptom fix. Form R1 (D2: `{{writer_write_builtin}}` calling `__kimi_format_bytes`): it
+    changes every formatting module's runtime text, the Interpolation kernel's SegmentText code and the natives, for churn W2
+    deletes.
+  - **RP8, S2d2 (T-165; no stop).** R7-M21 (2)'s plan-unit case, K's C-266 (b): compile cost only; the per-commit generated gate
+    against S2d2's parent stands in for the O2/O0 corpus. A 91f71aa54 (R8-S2b2's head, S2d2's parent side), B 0a62ff4ce (S2d2),
+    A' A's byte copy (`artifacts/benchmarks/r8-k1a-20261113-081018`): compile cost (Bind, Analyze, Generate cold and warm) on
+    Hello, Milestone26 and Strings: every B/A' within 0.979-1.041 and inside each row's A'/A spread or at its edge (the only B/A'
+    above 1.012 is Milestone26's warm Generate, 77 µs, 1.041 against A'/A 0.972: noise at that size); cold bytes B 200 B below A
+    on all three (11,816,064 against 11,816,264 on Hello), warm 0 B. The compile cost is unchanged.
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump

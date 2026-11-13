@@ -225,7 +225,7 @@ done:
   ret void
 }
 
-{{__kimi_format_builtin}}
+define internal void @__kimi_format_builtin(ptr %ret, ptr %value, ptr %self, i32 %kind, ptr %location, i64 %location_length) #0 {
 entry:
   switch i32 %kind, label %invalid [
     i32 16, label %bytes
