@@ -117,6 +117,7 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
+        private readonly Dictionary<int, BoundType?> complete = new(); // CompleteMember's answer per class root (N9)
         private readonly Dictionary<int, BoundType?> least = new(); // Representative's answer per class root (R7-C2c2)
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
@@ -159,6 +160,43 @@ public sealed partial class Binding
             }
 
             this.least[root] = best;
+            return best;
+        }
+
+        // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member of a parameter's or projection's class in state One whose meets are
+        // complete, least by Order (the members agree, so any one decides a conformance by the closed world); null otherwise. It is the
+        // one fact c2-1's key rule and N9's rule share: a constructed member's conformance is ResolveConformance's, and a class holding
+        // one takes that conformance.
+        internal BoundType? CompleteMember(BoundType type)
+        {
+            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
+            {
+                return null;
+            }
+
+            var root = this.Find(n);
+            if (this.state[root] != One || this.incompleteClass[root])
+            {
+                return null;
+            }
+
+            if (this.complete.TryGetValue(root, out var known))
+            {
+                return known;
+            }
+
+            BoundType? best = null;
+            for (var m = this.head[root]; m >= 0; m = this.next[m])
+            {
+                var member = this.types[m];
+                if (member.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) && !member.ContainsParameter &&
+                    (best is null || Order(member, best) < 0))
+                {
+                    best = member;
+                }
+            }
+
+            this.complete[root] = best;
             return best;
         }
     }
