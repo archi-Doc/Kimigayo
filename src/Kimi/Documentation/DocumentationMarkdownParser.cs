@@ -13,8 +13,6 @@ namespace Kimi.Documentation;
 // its rented scratch to the pool.
 internal ref partial struct DocumentationMarkdownParser
 {
-    private const int ShortCodeHeads = 8;
-
     private readonly string text;
 
     private readonly CancellationToken cancellationToken;
@@ -68,7 +66,14 @@ internal ref partial struct DocumentationMarkdownParser
 
     private int longestCodeRun;
 
+    private bool indexedCode;
+
     private bool indexedParentheses;
+
+    // A bracket opened before the last link's start makes no link: links do not nest.
+    private int lastLinkStart;
+
+    private TitleFailures failedTitles;
 
     private char[]? inlineCharacters;
 
@@ -174,6 +179,8 @@ internal ref partial struct DocumentationMarkdownParser
         this.DisposeInlineBuffers();
     }
 
+    // A line in two phases (CommonMark's appendix "A parsing strategy"): the open containers it continues, then the blocks it
+    // starts or the open block it continues.
     private void ParseLine(int start, int end)
     {
         var nonblankEnd = end;
@@ -183,9 +190,28 @@ internal ref partial struct DocumentationMarkdownParser
         }
 
         var cursor = new Cursor(start, end, nonblankEnd);
+        this.ContinueContainers(ref cursor);
+        if (this.fence != 0)
+        {
+            this.ContinueFence(cursor);
+        }
+        else if (cursor.IsBlank())
+        {
+            this.AddBlankLine(cursor, start);
+        }
+        else
+        {
+            this.StartBlocks(cursor);
+        }
+    }
+
+    // A quote continues past its '>' marker, a list item past its content indentation or on a blank line. The containers from
+    // the first one the line does not continue close.
+    private void ContinueContainers(ref Cursor cursor)
+    {
         // Blank lines need no per-level list-prefix checks. Remember the first quote
         // in each frame so absent quote markers still close the right containers.
-        var matched = nonblankEnd == start && this.containers[this.containers.Count - 1].FirstQuote == 0 ? this.containers.Count : 1;
+        var matched = cursor.IsBlank() && this.containers[this.containers.Count - 1].FirstQuote == 0 ? this.containers.Count : 1;
         for (; matched < this.containers.Count; matched++)
         {
             ref var container = ref this.containers[matched];
@@ -194,7 +220,7 @@ internal ref partial struct DocumentationMarkdownParser
             if (kind == DocumentationMarkdownKind.Quote)
             {
                 var indent = candidate.SkipWhitespace(this.text);
-                if (indent > 3 || candidate.Position == end || this.text[candidate.Position] != '>')
+                if (indent > 3 || candidate.Position == candidate.End || this.text[candidate.Position] != '>')
                 {
                     break;
                 }
@@ -224,69 +250,42 @@ internal ref partial struct DocumentationMarkdownParser
             this.paragraph = 0;
             this.fence = 0;
         }
+    }
 
-        if (this.fence != 0)
+    // A blank line ends a paragraph and, in a list, records the blank for looseness. Explicit quote markers are syntax even on
+    // an otherwise empty line.
+    private void AddBlankLine(Cursor cursor, int start)
+    {
+        this.paragraph = 0;
+        var top = this.containers.Count - 1;
+        var kind = this.nodes[this.containers[top].Node].Kind;
+        this.previousListBlank = kind
+            is DocumentationMarkdownKind.ListItem or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList;
+        if (kind == DocumentationMarkdownKind.ListItem)
         {
-            this.previousListBlank = false;
-            this.UpdateEnds(end);
-            this.nodes[this.fence].End = end;
-            // Only a line starting with whitespace or the fence character can close the fence.
-            var closes = false;
-            if (cursor.VirtualSpaces > 0 ||
-                (cursor.Position < end && (this.text[cursor.Position] == this.fenceCharacter || this.text[cursor.Position] is ' ' or '\t')))
+            if (this.nodes[this.containers[top].Node].First == 0)
             {
-                var closing = cursor;
-                var indent = closing.SkipWhitespace(this.text);
-                var count = closing.Count(this.text, this.fenceCharacter);
-                closes = indent <= 3 && count >= this.fenceLength && closing.IsBlank();
-            }
-
-            if (closes)
-            {
-                this.fence = 0;
+                // An empty item cannot adopt a block after a separating blank.
+                this.containers[top - 1].PreviousItemBlank = true;
+                this.containers.Count = top;
             }
             else
             {
-                if (this.fenceIndent > 0)
-                {
-                    cursor.ConsumeWhitespace(this.text, this.fenceIndent);
-                }
-
-                this.AddCodeLine(cursor, this.fence);
+                this.containers[top].Blank = true;
             }
-
-            return;
         }
 
-        if (cursor.IsBlank())
+        if (cursor.Position > start)
         {
-            this.paragraph = 0;
-            var top = this.containers.Count - 1;
-            this.previousListBlank = this.nodes[this.containers[top].Node].Kind
-                is DocumentationMarkdownKind.ListItem or DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList;
-            if (this.nodes[this.containers[top].Node].Kind == DocumentationMarkdownKind.ListItem)
-            {
-                if (this.nodes[this.containers[top].Node].First == 0)
-                {
-                    // An empty item cannot adopt a block after a separating blank.
-                    this.containers[top - 1].PreviousItemBlank = true;
-                    this.containers.Count = top;
-                }
-                else
-                {
-                    this.containers[top].Blank = true;
-                }
-            }
-
-            // Explicit quote markers are syntax even on an otherwise empty line.
-            if (cursor.Position > start)
-            {
-                this.UpdateEnds(end);
-            }
-
-            return;
+            this.UpdateEnds(cursor.End);
         }
+    }
 
+    // Blocks start until a leaf block takes the rest of the line: a quote or a list item opens a container whose content may
+    // start another block. A line that starts no block interrupting the open paragraph continues it.
+    private void StartBlocks(Cursor cursor)
+    {
+        var end = cursor.End;
         var followsListBlank = this.previousListBlank;
         this.previousListBlank = false;
         while (true)
@@ -307,34 +306,15 @@ internal ref partial struct DocumentationMarkdownParser
                 continue;
             }
 
-            var headingLevel = 0;
-            var openingFenceLength = 0;
             var afterMarker = content;
             var character = position < end ? this.text[position] : '\0';
-            if (indent <= 3 && character == '#')
-            {
-                headingLevel = afterMarker.Count(this.text, '#');
-                if (headingLevel > 6 || (afterMarker.Position < end && this.text[afterMarker.Position] is not (' ' or '\t')))
-                {
-                    headingLevel = 0;
-                }
-            }
-            else if (indent <= 3 && character is '`' or '~')
-            {
-                openingFenceLength = afterMarker.Count(this.text, character);
-                if (openingFenceLength < 3 || (character == '`' && this.text.AsSpan(afterMarker.Position, end - afterMarker.Position).Contains('`')))
-                {
-                    openingFenceLength = 0;
-                }
-            }
-
+            var headingLevel = indent <= 3 && character == '#' ? this.ReadHeadingLevel(ref afterMarker) : 0;
+            var fenceLength = indent <= 3 && character is '`' or '~' ? this.ReadFenceLength(ref afterMarker, character) : 0;
             var startsQuote = indent <= 3 && character == '>';
-            if (this.paragraph != 0 && !startsQuote && headingLevel == 0 && openingFenceLength == 0 &&
-                (marker.Width == 0 || marker.Empty || (marker.Ordered && marker.Number != 1)))
+            if (this.paragraph != 0 && !(startsQuote || headingLevel != 0 || fenceLength != 0 || marker.InterruptsParagraph))
             {
                 this.AddContentLine(this.paragraph, content.Position, end);
-                this.UpdateEnds(end);
-                return;
+                break;
             }
 
             this.paragraph = 0;
@@ -349,80 +329,27 @@ internal ref partial struct DocumentationMarkdownParser
 
             if (startsQuote)
             {
-                var quote = this.AddNode(DocumentationMarkdownKind.Quote, parent, position, end);
-                this.Push(new(quote, 0, '\0'));
-                content.Advance();
-                content.ConsumeWhitespace(this.text, 1);
-                cursor = content;
-                if (cursor.IsBlank())
+                cursor = this.StartQuote(parent, content);
+                if (!cursor.IsBlank())
                 {
-                    this.UpdateEnds(end);
-                    return;
+                    continue;
                 }
-
-                continue;
             }
-
-            if (marker.Width > 0)
+            else if (marker.Width > 0)
             {
-                if (!continuingList)
+                cursor = this.StartListItem(parent, marker, position, indent);
+                if (!cursor.IsBlank())
                 {
-                    parent = this.AddNode(marker.Ordered ? DocumentationMarkdownKind.OrderedList : DocumentationMarkdownKind.BulletList, parent, position, end);
-                    this.nodes[parent].Argument = marker.Number;
-                    this.Push(new(parent, 0, marker.Delimiter));
+                    continue;
                 }
-                else if (this.containers[top].PreviousItemBlank)
-                {
-                    this.nodes[parent].Flags |= MarkdownNodeFlags.Loose;
-                }
-
-                var item = this.AddNode(DocumentationMarkdownKind.ListItem, parent, position, end);
-                this.Push(new(item, indent + marker.Width + marker.Padding, '\0'));
-                cursor = marker.Content;
-                if (cursor.IsBlank())
-                {
-                    this.UpdateEnds(end);
-                    return;
-                }
-
-                continue;
             }
-
-            if (headingLevel != 0)
+            else if (headingLevel != 0)
             {
-                afterMarker.SkipWhitespace(this.text);
-                var contentEnd = end;
-                while (contentEnd > afterMarker.Position && this.text[contentEnd - 1] is ' ' or '\t')
-                {
-                    contentEnd--;
-                }
-
-                var closing = contentEnd;
-                while (closing > afterMarker.Position && this.text[closing - 1] == '#')
-                {
-                    closing--;
-                }
-
-                if (closing < contentEnd && (closing == afterMarker.Position || this.text[closing - 1] is ' ' or '\t'))
-                {
-                    contentEnd = closing;
-                    while (contentEnd > afterMarker.Position && this.text[contentEnd - 1] is ' ' or '\t')
-                    {
-                        contentEnd--;
-                    }
-                }
-
-                var heading = this.AddBlock(DocumentationMarkdownKind.Heading, parent, position, end);
-                this.nodes[heading].Argument = headingLevel;
-                this.AddContentLine(heading, afterMarker.Position, contentEnd);
+                this.AddHeading(parent, afterMarker, position, headingLevel);
             }
-            else if (openingFenceLength != 0)
+            else if (fenceLength != 0)
             {
-                this.fence = this.AddBlock(DocumentationMarkdownKind.CodeBlock, parent, position, end);
-                this.fenceLength = openingFenceLength;
-                this.fenceCharacter = character;
-                this.fenceIndent = indent;
-                this.SetLanguage(this.fence, afterMarker.Position, end);
+                this.OpenFence(parent, afterMarker, position, indent, fenceLength);
             }
             else
             {
@@ -430,54 +357,79 @@ internal ref partial struct DocumentationMarkdownParser
                 this.AddContentLine(this.paragraph, position, end);
             }
 
-            this.UpdateEnds(end);
-            return;
+            break;
         }
+
+        this.UpdateEnds(end);
     }
 
-    // The first word of the decoded info string. Borrow the source unless an
-    // escape or character reference makes the decoded word differ.
-    private void SetLanguage(int node, int infoStart, int end)
+    // A block quote's content follows its '>' and one optional space.
+    private Cursor StartQuote(int parent, Cursor content)
     {
-        while (infoStart < end && this.text[infoStart] is ' ' or '\t')
+        var quote = this.AddNode(DocumentationMarkdownKind.Quote, parent, content.Position, content.End);
+        this.Push(new(quote, 0, '\0'));
+        content.Advance();
+        content.ConsumeWhitespace(this.text, 1);
+        return content;
+    }
+
+    // A list item opens a list unless it continues the open one; its content starts after the marker's width and padding.
+    private Cursor StartListItem(int parent, in ListMarker marker, int position, int indent)
+    {
+        var end = marker.Content.End;
+        if (this.nodes[parent].Kind is not (DocumentationMarkdownKind.BulletList or DocumentationMarkdownKind.OrderedList))
         {
-            infoStart++;
+            parent = this.AddNode(marker.Ordered ? DocumentationMarkdownKind.OrderedList : DocumentationMarkdownKind.BulletList, parent, position, end);
+            this.nodes[parent].Argument = marker.Number;
+            this.Push(new(parent, 0, marker.Delimiter));
+        }
+        else if (this.containers[this.containers.Count - 1].PreviousItemBlank)
+        {
+            this.nodes[parent].Flags |= MarkdownNodeFlags.Loose;
         }
 
-        var wordEnd = infoStart;
-        while (wordEnd < end && !MarkdownUnicode.IsWhitespace(this.text[wordEnd]))
+        var item = this.AddNode(DocumentationMarkdownKind.ListItem, parent, position, end);
+        this.Push(new(item, indent + marker.Width + marker.Padding, '\0'));
+        return marker.Content;
+    }
+
+    // The level of an ATX heading's opening sequence: 1 to 6 '#' before a space, a tab or the line end; else 0.
+    private int ReadHeadingLevel(ref Cursor cursor)
+    {
+        var level = cursor.Count(this.text, '#');
+        return level <= 6 && (cursor.Position >= cursor.End || this.text[cursor.Position] is ' ' or '\t') ? level : 0;
+    }
+
+    // An ATX heading's content lies between its opening sequence and an optional closing sequence of '#', without the spaces
+    // and tabs around it.
+    private void AddHeading(int parent, Cursor afterMarker, int position, int level)
+    {
+        var end = afterMarker.End;
+        afterMarker.SkipWhitespace(this.text);
+        var contentEnd = end;
+        while (contentEnd > afterMarker.Position && this.text[contentEnd - 1] is ' ' or '\t')
         {
-            wordEnd++;
+            contentEnd--;
         }
 
-        if (wordEnd == infoStart)
+        var closing = contentEnd;
+        while (closing > afterMarker.Position && this.text[closing - 1] == '#')
         {
-            return;
+            closing--;
         }
 
-        var word = this.text.AsSpan(infoStart, wordEnd - infoStart);
-        if (word.IndexOfAny(DecodeCharacters) < 0)
+        if (closing < contentEnd && (closing == afterMarker.Position || this.text[closing - 1] is ' ' or '\t'))
         {
-            this.nodes[node].TextStart = infoStart;
-            this.nodes[node].TextLength = word.Length;
-            return;
+            contentEnd = closing;
+            while (contentEnd > afterMarker.Position && this.text[contentEnd - 1] is ' ' or '\t')
+            {
+                contentEnd--;
+            }
         }
 
-        var decoded = this.Decode(word);
-        var languageEnd = 0;
-        while (languageEnd < decoded.Length && !MarkdownUnicode.IsWhitespace(decoded[languageEnd]))
-        {
-            languageEnd++;
-        }
-
-        if (languageEnd == decoded.Length)
-        {
-            this.SetValue(node, decoded);
-        }
-        else if (languageEnd > 0)
-        {
-            this.SetValue(node, decoded[..languageEnd]);
-        }
+        var heading = this.AddBlock(DocumentationMarkdownKind.Heading, parent, position, end);
+        this.nodes[heading].Argument = level;
+        this.AddContentLine(heading, afterMarker.Position, contentEnd);
     }
 
     private ListMarker ReadListMarker(Cursor cursor)
@@ -582,57 +534,6 @@ internal ref partial struct DocumentationMarkdownParser
         data.TextLength++;
         data.End = Math.Max(data.End, end);
         this.lines.Add(new(start, end));
-    }
-
-    private void AddCodeLine(Cursor cursor, int parent)
-    {
-        this.maxDepth = Math.Max(this.maxDepth, this.links[parent].Level + 1);
-        if (cursor.VirtualSpaces > 0)
-        {
-            var padding = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position - 1, cursor.Position);
-            if (this.spacesValue < 0)
-            {
-                this.spacesValue = this.values.Add(new("    "));
-            }
-
-            this.nodes[padding].TextStart = ~this.spacesValue;
-            this.nodes[padding].TextLength = cursor.VirtualSpaces;
-        }
-
-        // Adjacent physical code lines can borrow one contiguous source slice.
-        // Consumed quote/list prefixes, partial tabs and decoded NULs split slices.
-        var lineEnd = cursor.End < this.text.Length ? cursor.End + 1 : cursor.End;
-        if (cursor.Position < lineEnd)
-        {
-            var content = this.text.AsSpan(cursor.Position, lineEnd - cursor.Position);
-            var last = this.links[parent].Last;
-            if (this.hasNul && content.Contains('\0'))
-            {
-                var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
-                this.SetValue(node, this.CreateText(content, normalizeCode: false));
-            }
-            else if (last != 0 && this.nodes[last].Kind == DocumentationMarkdownKind.Text && this.nodes[last].TextStart >= 0 &&
-                this.nodes[last].End == cursor.Position)
-            {
-                this.nodes[last].TextLength += content.Length;
-                this.nodes[last].End = lineEnd;
-            }
-            else
-            {
-                var node = this.AddNode(DocumentationMarkdownKind.Text, parent, cursor.Position, lineEnd);
-                this.nodes[node].TextStart = cursor.Position;
-                this.nodes[node].TextLength = content.Length;
-            }
-        }
-
-        // Fenced code has a final LF even when the physical last line has none.
-        if (cursor.End == this.text.Length)
-        {
-            this.AddNode(DocumentationMarkdownKind.SoftBreak, parent, cursor.End, lineEnd);
-        }
-
-        this.nodes[parent].End = lineEnd;
-        this.UpdateEnds(lineEnd);
     }
 
     private int AddNode(DocumentationMarkdownKind kind, int parent, int start, int end)
@@ -780,12 +681,6 @@ internal ref partial struct DocumentationMarkdownParser
         internal int Level;
     }
 
-    [System.Runtime.CompilerServices.InlineArray(ShortCodeHeads)]
-    private struct CodeHeadArray
-    {
-        private int element;
-    }
-
     internal struct ContentLine(int start, int end)
     {
         internal int Start = start;
@@ -796,7 +691,11 @@ internal ref partial struct DocumentationMarkdownParser
         internal int Joined;
     }
 
-    private readonly record struct ListMarker(int Width, int Padding, char Delimiter, bool Ordered, int Number, Cursor Content, bool Empty);
+    private readonly record struct ListMarker(int Width, int Padding, char Delimiter, bool Ordered, int Number, Cursor Content, bool Empty)
+    {
+        // A list item interrupts a paragraph only with content and, if ordered, from 1.
+        internal bool InterruptsParagraph => this.Width > 0 && !this.Empty && (!this.Ordered || this.Number == 1);
+    }
 
     private struct Cursor(int position, int end, int nonblankEnd)
     {

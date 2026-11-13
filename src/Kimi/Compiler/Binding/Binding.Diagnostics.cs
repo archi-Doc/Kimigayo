@@ -191,7 +191,7 @@ public sealed partial class Binding
     // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
     // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence and not VariableKoto } && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)

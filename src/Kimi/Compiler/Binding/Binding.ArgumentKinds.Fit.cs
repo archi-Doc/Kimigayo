@@ -168,9 +168,9 @@ public sealed partial class Binding
     // SPEC 10.5.1, 10.5.4, 14.9.2 (DECISIONS BU-43): a join its call classifies fits position by position, each position taking the parts
     // its sources hold there (PositionKind, ChildPositions), as its evidence does: a failed part fits every candidate (SPEC 23.1.2); a
     // position that waits (no typed part, one awaiting its call) is checked by the selected candidate, only a waiting anonymous function's
-    // header filtering here; an Aggregate one by each part's shape and then its child positions; any other by each part's late Type
-    // (LateFits), which applies no late write: the writes the late fits record are cleared per candidate, as no reader applies them
-    // (TryPropagate computes its own).
+    // header filtering here; an Aggregate one by each part's shape and then its child positions; a Typed one by each typed part's own
+    // Type (FitsTypedPart), ranked once; any other part by its late Type (LateFits), which applies no late write: the writes the
+    // late fits record are cleared per candidate, as no reader applies them (TryPropagate computes its own).
     private bool FitsJoin(Koto join, BoundType type)
     {
         this.lateWrites.Clear();
@@ -185,7 +185,8 @@ public sealed partial class Binding
     private bool FitsPosition(int start, BoundType type)
     {
         var end = this.positionParts.Count;
-        var kind = this.PositionKind(start, end, out _);
+        var kind = this.PositionKind(start, end, out var common);
+        ArgumentAdaptation? positionClass = null;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
@@ -196,12 +197,23 @@ public sealed partial class Binding
                 (PartKind.Call, _) => true,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
+                (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
+                    this.FitsTypedPart(part, own, type, common, ref positionClass),
                 _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
             };
             if (!fits)
             {
                 return false;
             }
+        }
+
+        if (common is not null && kind == PartKind.Typed)
+        {
+            // SPEC 10.4 step 1, 10.2.2: one class per typed position of a join formed part by part (a row iff the position is Typed with
+            // a common Type), its common Type's at the position's Type: Exact where no operation is needed (Exact concerns Types);
+            // otherwise a supplying part's (FitsTypedPart); with no supplying part every part was value-read into a read Type, whose
+            // owner temporary is borrowed (10.2 row 2).
+            this.positionClasses.Add(this.SameStructure(common, type) ? ArgumentAdaptation.Exact : positionClass ?? ArgumentAdaptation.CrossSemanticsBorrow);
         }
 
         var children = kind == PartKind.Aggregate && this.PartsShape(start, end) is not DictionaryLiteralKoto ? this.ChildPositions(start, end) : 0;
@@ -219,16 +231,43 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.5.1 last paragraph, 10.2, 10.4 step 1 (PLAN G729): a typed part of a join's typed position, one source of one control-flow
+    // argument, fits at the position's Type by the typed row (FitTyped: its own Type whole, its Place-ness and Loans its own), as its
+    // evidence adapts it whole (AdaptPart): a typed Tuple or array literal part is typed whole (BU-43), no element fitted or ranked.
+    // The position is ranked once, by the class of a temporary of its common Type there (10.2.2), read from a part whose own Type has
+    // the common Type's structure (it supplies that Type, 14.9.2 step 2): every such part that fits takes that one class, so the part
+    // read is order-free; a part's value read into the common Type is the join's, not the call's.
+    private bool FitsTypedPart(Koto part, BoundType own, BoundType type, BoundType common, ref ArgumentAdaptation? positionClass)
+    {
+        if (this.FitTyped(part, KotoHelper.UnwrapParentheses(part), type, this.ConstraintScope(part), part, out var operation) != CandidateApplicability.Applicable)
+        {
+            return false;
+        }
+
+        if (positionClass is null && this.SameStructure(own, common))
+        {
+            positionClass = operation.Adaptation;
+        }
+
+        return true;
+    }
+
     // SPEC 10.4 step 1, 10.5.1: a Tuple or array literal argument is ranked by its own fit (Literal by value, as where its slot stays open,
     // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively, a nested literal's own
-    // fit among them; a fill's element is no position (it stays one argument). A join formed part by part records no position here:
-    // SPEC 10.5.1 ranks each of its positions as one control-flow argument (PLAN G729).
+    // fit among them; a fill's element is no position (it stays one argument). A join formed part by part records one class per typed
+    // position, as one control-flow argument (FitsPosition; SPEC 10.5.1, PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
         var first = this.positionClasses.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
+        if (result == CandidateApplicability.Applicable && borrow && this.KindOf(node) == PartKind.Aggregate &&
+            this.TemporaryTarget(node, type, scope) is null && !this.HasTypeWithoutExpectation(node, valueType, scope))
+        {
+            result = CandidateApplicability.Inapplicable; // A fill or mixed range at `ref/U` whose own Type is not U (K2, K3).
+        }
+
         if (result != CandidateApplicability.Applicable)
         {
             this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
@@ -244,12 +283,63 @@ public sealed partial class Binding
         return result;
     }
 
+    // SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3 (PLAN G585; the owner's O-201 (1) (a), (2) (a)): the Type U of the owner temporary that a
+    // source at `ref/U` is, materialized once and shared-borrowed, the one rule of every position (an argument's fit, BindAndAdaptNode
+    // at any expected Type, the evidence walk, a value call's solve): a Tuple or array literal (a fill is none, 4.3.3), an untyped literal
+    // or a literal-only expression (12.3; a mixed range is none, 4.6.2), or an unbound selection, `do` or `loop` with such a source,
+    // directly or nested (its survey), whose value is the one temporary at its position. The source is fitted to U as at an expected U,
+    // so a misfit is its own record at U; a call's fit tests it (FitLiteral). A form that delivers its operand (a label, an expression
+    // body) passes the position to it; null at any other Type or part.
+    private BoundType? TemporaryTarget(Koto part, BoundType? type, BindingScope scope)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var target] } || DeliveredOperand(core) is not null)
+        {
+            return null;
+        }
+
+        return core is TupleLiteralKoto { Elements.Count: > 0 } or ArrayLiteralKoto { FillLength: null } || IsUnfittedLiteral(core) ||
+            (core.BoundType is null && ControlFlowExpression(core) is { } join && this.SurveyResult(join, scope).Literal) ? target : null;
+    }
+
+    // SPEC 10.2.1, 12.3.1, 4.3.3, 4.6.2 rules 2 and 3 (PLAN G585, K's K2 and K3): a composite at `ref/U` that is no temporary of U
+    // (TemporaryTarget: a fill, a mixed range) takes nothing from U: it is typed with no expected Type, as binding it with none types it
+    // (BindAndAdaptNode, a let), and fits only where that Type is U. Whether `part` has the Type `type` so, read only, where the probe
+    // fitted its shape and parts (ProbeAggregateArgument): a Literal part at any depth keeps its default (PartDefault), a literal-only
+    // boundary takes its other boundary's Type, else i32 (OtherBoundaryType); a typed, waiting or failed part is the probe's.
+    private bool HasTypeWithoutExpectation(Koto part, BoundType type, BindingScope scope)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        if (core is RangeKoto range && IsMixedRange(range))
+        {
+            return this.KeepsBoundaryType(range.Start, type.Components[0], this.IndependentRangeBoundary(range.End, this.EndType)) &&
+                this.KeepsBoundaryType(range.End, type.Components[1], this.IndependentRangeBoundary(range.Start, this.StartType));
+        }
+
+        if (core is not (TupleLiteralKoto or ArrayLiteralKoto))
+        {
+            return this.KindOf(core) != PartKind.Literal || ReferenceEquals(this.PartDefault(core, scope), type);
+        }
+
+        var elements = core is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)core).Elements;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 4.6.2 rules 2 and 3: whether a written boundary that is literal-only has the Type `type` beside the other boundary's Type.
+    private bool KeepsBoundaryType(Koto? boundary, BoundType type, BoundType? other)
+        => boundary is null || !IsLiteralOnlyPosition(boundary) || ReferenceEquals(this.OtherBoundaryType(boundary, other), type);
+
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        var target = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? type.Components[0] : null;
-        if (target is not null &&
-            (ScalarTypes.Supports(target) || this.TakesGenericLiterals(target, scope) || this.IsSyntaxPositionType(target)) &&
-            this.FitsLiteralPart(node, target, scope))
+        if (this.TemporaryTarget(node, type, scope) is { } target && this.FitsLiteralPart(node, target, scope))
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
             var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));

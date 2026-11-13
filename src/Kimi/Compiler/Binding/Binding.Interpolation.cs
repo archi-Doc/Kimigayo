@@ -30,19 +30,9 @@ internal sealed class BoundFormatting(Koto root)
 
     internal FormattingKoto Buffer { get; set; } = null!;
 
-    internal FormattingKoto BufferOwner { get; set; } = null!;
-
     internal FormattingKoto Writer { get; set; } = null!;
 
-    internal FormattingKoto WriterOwner { get; set; } = null!;
-
     internal FormattingKoto Capacity { get; set; } = null!;
-
-    internal FormattingKoto Check { get; set; } = null!;
-
-    internal FormattingKoto Hint { get; set; } = null!;
-
-    internal FormattingKoto Finish { get; set; } = null!;
 
     internal List<InvocationKoto> Writes { get; } = new();
 
@@ -62,13 +52,13 @@ internal sealed class BoundFormatting(Koto root)
         var index = this.nextNode++;
         if (index == this.nodes.Count)
         {
-            this.nodes.Add(new(this.Root, operation) { Parent = this.Root, Plan = this });
+            this.nodes.Add(new(this.Root, operation) { Parent = this.Root });
         }
 
         var node = this.nodes[index];
         if (node.Operation != operation || !node.Span.Equals(this.Root.Span))
         {
-            this.nodes[index] = node = new(this.Root, operation) { Parent = this.Root, Plan = this };
+            this.nodes[index] = node = new(this.Root, operation) { Parent = this.Root };
         }
 
         node.Resolve(type);
@@ -165,7 +155,6 @@ public sealed partial class Binding
         }
 
         plan.Writer = plan.Node(FormattingOperation.Storage, this.PreparedBorrowType(source.ArgumentNodes[0], acquired.ArgumentOperations[0].ParameterType!));
-        plan.Check = plan.Node(FormattingOperation.Status, BoundType.Boolean);
         var valid = true;
         if (source.ArgumentNodes[1] is InterpolatedStringKoto text)
         {
@@ -206,7 +195,6 @@ public sealed partial class Binding
             return Complete(syntax, null);
         }
 
-        plan.BufferOwner = plan.Node(FormattingOperation.Storage, bufferType);
         var bufferBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [bufferType], origin: this.OriginAtom(plan.Heap, OriginKind.Projection, 0));
         plan.Buffer = plan.Node(FormattingOperation.Storage, bufferBorrow);
         plan.Adapter = this.FormattingCall(syntax, KimiDeclarationId.TextWriter, [plan.Buffer], scope);
@@ -217,10 +205,6 @@ public sealed partial class Binding
 
         var writerBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [writerType], origin: this.OriginAtom(plan.Adapter, OriginKind.Projection, 0));
         plan.Writer = plan.Node(FormattingOperation.Storage, writerBorrow);
-        plan.WriterOwner = plan.Node(FormattingOperation.Storage, writerType);
-        plan.Check = plan.Node(FormattingOperation.Check, BoundType.Unit);
-        plan.Hint = plan.Node(FormattingOperation.Hint, BoundType.Unit);
-        plan.Finish = plan.Node(FormattingOperation.Finish, BoundType.String);
         var valid = true;
         for (var i = 0; i < syntax.Segments.Length; i++)
         {

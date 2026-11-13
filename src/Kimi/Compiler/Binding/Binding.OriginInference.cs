@@ -8,6 +8,14 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row), in
+    // the cases `condition` names (OriginInference.Bounds).
+    private static void AddInputBound(OriginInference inference, BoundOrigin parameter, BoundOrigin value, ulong condition = 0)
+    {
+        inference.Discover(parameter, 1);
+        inference.Add(value, parameter, false, true, condition);
+    }
+
     // The failure of a solve's bound under its source (OriginInference.Bounds): a declared clause, else a member's position, else a result
     // premise.
     private static ComparisonFailure BoundFailure(
@@ -30,7 +38,7 @@ public sealed partial class Binding
     {
         if (!this.originInferences.TryGetValue((use, binder), out var inference))
         {
-            this.originInferences.Add((use, binder), inference = new(binder));
+            this.originInferences.Add((use, binder), inference = new(use, binder));
         }
 
         inference.Bounds.Clear();
@@ -38,6 +46,7 @@ public sealed partial class Binding
         inference.WellFormed.Clear();
         inference.PremiseSolved.Clear();
         inference.Comparison = default;
+        inference.Conditional = false;
         inference.Source = default;
         return inference;
     }
@@ -58,13 +67,14 @@ public sealed partial class Binding
 
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
-            Add(p, a, polarity);
+            // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
+            Add(p, a, polarity, SlotCondition(actual, this, inference.Use));
         }
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
             var variance = OriginArgumentVariance(pattern, i, this);
-            Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance));
+            Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance), 0);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
@@ -81,22 +91,28 @@ public sealed partial class Binding
 
         static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
-        void Add(BoundOrigin parameter, BoundOrigin value, int sign)
+        void Add(BoundOrigin parameter, BoundOrigin value, int sign, ulong condition)
         {
             if (known is not null && QuantifiedBy(value, known))
             {
                 return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
             }
 
+            if (sign > 0 && !result)
+            {
+                AddInputBound(inference, parameter, value, condition); // The covariant input row, one copy (a borrowed temporary's too).
+                return;
+            }
+
             inference.Discover(parameter, sign == 0 ? 3 : sign > 0 ? 1 : 2);
             if ((sign >= 0) != result || sign == 0)
             {
-                inference.Add(value, parameter, false, true);
+                inference.Add(value, parameter, false, true, condition);
             }
 
             if ((sign <= 0) != result || sign == 0)
             {
-                inference.Add(parameter, value, true, false);
+                inference.Add(parameter, value, true, false, condition);
             }
         }
     }
@@ -105,9 +121,10 @@ public sealed partial class Binding
     // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
     // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
     // is never verified here.
-    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
+    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
+        var use = inference.Use;
         inference.Failure = default;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
@@ -147,7 +164,7 @@ public sealed partial class Binding
                 var incomparable = false;
                 foreach (var bound in inference.Bounds)
                 {
-                    if (bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable.Origin) && Resolve(bound.Longer, bound.LongerVariable) is { } limit)
+                    if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable.Origin) && Resolve(bound.Longer, bound.LongerVariable) is { } limit)
                     {
                         upper = upper is null ? limit : this.Meet(upper, limit);
                     }
@@ -162,6 +179,23 @@ public sealed partial class Binding
                         {
                             incomparable = true;
                         }
+                    }
+                }
+
+                // SPEC 15.6.5 (PLAN G809): a limit required only in some Semantics cases joins the meet unless, in those cases, it
+                // outlives the meet of the limits every case requires, and every such limit joins when no limit is required in every
+                // case; each is judged against that meet alone, so the candidate does not depend on the order of the bounds. For a
+                // contract comparison (SPEC 15.3.7) this is SPEC 15.3.6's rule, the owner's O-233 (C). For a call in a generic body,
+                // where SPEC 8.15.2 judges each case, this one solve for every case accepts only what that accepts, not all of it: the
+                // open issue "a call in a generic body is solved once for all Semantics cases".
+                var unconditional = upper;
+                for (var i = 0; inference.Conditional && i < inference.Bounds.Count; i++)
+                {
+                    var bound = inference.Bounds[i];
+                    if (bound.Condition != 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable.Origin) && Resolve(bound.Longer, bound.LongerVariable) is { } limit &&
+                        (unconditional is null || !this.ProvesOriginOutlives(limit, unconditional, use, inference.Comparison, bound.Condition)))
+                    {
+                        upper = upper is null ? limit : this.Meet(upper, limit);
                     }
                 }
 
@@ -225,7 +259,8 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison))
+            if (longer is null || shorter is null || (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
+                !this.HoldsResting(longer, shorter, bound.Condition, new ProofLeaf(this, use, inference.Comparison))))
             {
                 inference.Failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
@@ -387,14 +422,19 @@ public sealed partial class Binding
         return polarity == 2 ? lower ?? upper : upper ?? lower;
     }
 
-    private sealed class OriginInference(Koto binder)
+    private sealed class OriginInference(Koto use, Koto binder)
     {
+        // The use whose premises and pair binders the solve's proofs read (the first part of its key), its one source of the use.
+        internal Koto Use { get; } = use;
+
         internal Koto Binder { get; } = binder;
 
         // Each bound with its source (SPEC 15.6.1): the comparison's member whose position collected it (a parameter n + 1, the result
-        // ComparisonFailure.ResultStep), else the declared clause; neither, a result premise or a call's bound.
+        // ComparisonFailure.ResultStep), else the declared clause; neither, a result premise or a call's bound. Its Condition is the pair
+        // binders that are borrows in every case of the entry (SPEC 15.6.5, PairSlotCondition), 0 for every case. A bound's cases are
+        // the union of its entries' (Add), so it exists in every case exactly when one entry has Condition 0.
         internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable,
-            byte Member, Koto? Clause, bool Equality)> Bounds { get; } = new();
+            byte Member, Koto? Clause, bool Equality, ulong Condition)> Bounds { get; } = new();
 
         internal List<(BoundOrigin Origin, int Polarity)> Variables { get; } = new();
 
@@ -418,13 +458,43 @@ public sealed partial class Binding
         // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
         internal ComparisonFailure Failure { get; set; }
 
-        internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
+        // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
+        internal bool Conditional { get; set; }
+
+        internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true, ulong condition = 0)
         {
-            if ((!ReferenceEquals(longer, shorter) || longerVariable != shorterVariable) &&
-                this.IndexOf((longer, shorter, longerVariable, shorterVariable)) < 0)
+            if (ReferenceEquals(longer, shorter) && longerVariable == shorterVariable)
             {
-                this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality));
+                return;
             }
+
+            // SPEC 15.6.5: the same bound required again exists in the union of the two case sets. An entry whose binders are among the
+            // new ones already covers its cases; one whose binders include them widens to them; any other pair stays two entries, as no
+            // condition names the union of two binders' cases.
+            for (var i = 0; i < this.Bounds.Count; i++)
+            {
+                var known = this.Bounds[i];
+                if (!ReferenceEquals(known.Longer, longer) || !ReferenceEquals(known.Shorter, shorter) ||
+                    known.LongerVariable != longerVariable || known.ShorterVariable != shorterVariable)
+                {
+                    continue;
+                }
+
+                if ((known.Condition & ~condition) == 0)
+                {
+                    return;
+                }
+
+                if ((condition & ~known.Condition) == 0)
+                {
+                    known.Condition = condition;
+                    this.Bounds[i] = known;
+                    return;
+                }
+            }
+
+            this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality, condition));
+            this.Conditional |= condition != 0;
         }
 
         // The index of the bound with these ends (its source aside), or -1.

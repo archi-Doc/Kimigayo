@@ -53,7 +53,7 @@ The parameter list of a named function, constructor or Contract function require
 
 `external => internal: T` renames a parameter in either section; renaming alone does not make the name required. External names are unique across the whole list, including the receiver; internal names follow [§9.3](09-names-signatures-and-access.md#93-local-scopes-and-contextual-names).
 
-No other list has a boundary, and specialization headers write none. Foreign declarations allow it but no defaults ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
+No other list has a boundary, and specialization and override headers write none. Foreign declarations allow it but no defaults ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
 
 ### 7.2.2. Name contract and defaults
 
@@ -299,7 +299,7 @@ let reader = read        // Error: an unsafe function is not a value.
 
 An anonymous function is `func`, an optional Capture List, parameters, an optional result annotation and a body (grammar: [§F.9](appendices/F-syntax-summary.md#f9-expressions)). There is no bare `(x) => x` form, and there are no labels, defaults, `!` boundaries or generic anonymous functions. It has a task slot exactly when its header writes one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). Every parameter needs an argument, and calls are positional.
 
-An omitted parameter Type needs a fixed expected call signature ([§10.5.2](10-overload-resolution-and-inference.md#1052-call-signatures)), which supplies the Types aligned after any task slot; parameter Types are never inferred from the body or later uses. The result comes from that expectation or, once the parameters are fixed, from the body, with its result Origins and Loans ([§15.8.2](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies)). A body's result is never evidence for an enclosing call's slots: the anonymous function is a waiting argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)), and a Closure Type bound to a slot fills no other slot ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). A `try` failure supplies no result Type candidate ([§17.3](17-failure-handling.md#173-try-propagation)); success values are never wrapped.
+An omitted parameter Type needs a fixed expected call signature ([§10.5.2](10-overload-resolution-and-inference.md#1052-call-signatures)), which supplies the Types aligned after any task slot; parameter Types are never inferred from the body or later uses. The result comes from that expectation or, once the parameters are fixed, from the body, with its result Origins and Loans ([§15.8.2](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies)). A body's result is never evidence for an enclosing call's slots: the anonymous function is a waiting argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)), and a completed Closure Type bound to a slot fills no other slot ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). A `try` failure supplies no result Type candidate ([§17.3](17-failure-handling.md#173-try-propagation)); success values are never wrapped.
 
 Creation evaluates only the captures. A call runs the body under its own Function Boundary, with no outer transfer targets and no inherited Unsafe permission.
 

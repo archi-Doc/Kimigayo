@@ -134,7 +134,8 @@ public sealed partial class Binding
             // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
             // environment from the path (ConstructionTargetType).
             var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
-            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+            type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
+                (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
         }
 
@@ -175,7 +176,7 @@ public sealed partial class Binding
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;
         if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid ||
-            (reference is MemberAccessKoto member && member.Left.BoundSymbol?.Kind != BindingSymbolKind.Type))
+            (reference is MemberAccessKoto member && this.MemberSideOf(member) != MemberSide.Type))
         {
             return this.Fail(use, BindingFailure.TypeMismatch);
         }
@@ -488,7 +489,7 @@ public sealed partial class Binding
         }
 
         // A selection's solve never fails (SolveOriginInference with `select`); the payload walk and the Type-formation check judge it.
-        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, solution.Call, select: true);
+        _ = this.SolveOriginInference(inference, solution.Origins, solution.Inputs, select: true);
     }
 
     // SPEC 10.5.1: whether the construction holds a slot that no evidence binds (`unsolved`) or an F that its waiting callable does not
@@ -563,18 +564,16 @@ public sealed partial class Binding
             }
 
             this.acquisitionFailure = null;
-            if (fit == CandidateApplicability.Error || (this.PropagateBound(source, type) ?? this.BindNode(source, scope, type)) is not { } completed ||
-                this.PartFailed(source) ||
+            var completed = fit == CandidateApplicability.Error ? null : this.PropagateBound(source, type) ?? this.BindNode(source, scope, type);
+
+            // SPEC 5.7, 23.1.2: the layers admit what the bound payload puts in them, a failed part being no evidence (NonNullAtLayers), so
+            // the payload's own failure does not hide another layer's record.
+            var refused = this.HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source);
+            if (completed is null || this.PartFailed(source) || refused ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
-                Complete(use, null); // The payload's own failure, on which the construction rests.
-                return false;
-            }
-
-            if (this.HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
-            {
-                Complete(use, null);
+                Complete(use, null); // The payload's own failure or its layers' refusal, on which the construction rests.
                 return false;
             }
 
