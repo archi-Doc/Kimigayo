@@ -8680,6 +8680,7 @@ resumed by R4-M86 (2026-10-20).
     by another argument) stays. This half is a failed argument that kept its Type; an unbound failed part is U1.6h's (FailedFit from
     the evidence walk, BU-77). (FailedFit and BU-77 superseded by BU-79, rule W; the row is rule W at the argument's top and still
     takes only a typed part.)
+  - Amended by BU-203 (PLAN G729): a call's typed position: evidence at its typed parts' adapted common Type, fit by the typed row.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; PLAN G264, its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side)) SPEC
   15.6.4 (the owner's sentence of 2026-10-26): a destruction retains as a call of each `drop` it runs, whose `self` is a `uniq/Self`
@@ -12120,6 +12121,7 @@ resumed by R4-M86 (2026-10-20).
     `FitComposite` class (`Literal` by value, `CrossSemanticsBorrow` for a borrowed temporary at `ref/U`), appended by `FitElement`
     after the nested literal's own positions. A fill's elements stay no position; the fill's own class is one." In "Representation",
     `FitElement` is the one writer for every element, a nested literal included.
+  - Amended by BU-203 (PLAN G729): `FitsPosition` is a second writer, one row per Typed position of a join formed part by part.
 - **BU-165 A literal nested in a literal argument fits its element position as an argument (PLAN G746)** (2026-11-11; Front,
   Binding; Major, an acceptance mover by D-367: invalid programs newly rejected (Q17 class 1), then class 3 at an interim (valid
   nested borrowed forms move from `NoApplicableOverload_Kd` to the located `Unsupported_Kd`); design review 2 ACCEPT, implementation
@@ -13110,6 +13112,65 @@ resumed by R4-M86 (2026-10-20).
     - one bool per walk: a key holds hidden and shown parts together (Wrap2's `value` and `q`);
     - one column with G692's per-layer retention records: another meaning and contract, the storage walk's (DECISIONS text: "one
       row, two contracts").
+
+- **BU-203 A join's typed position at a call is one control-flow argument: evidence, fit and one ranking class (PLAN G729)**
+  (2026-11-13; Front, Binding; Major, an acceptance mover: valid programs newly accepted (Q17 class 3), with a whitelist; design
+  reviews 1-3 (3 ACCEPT with conditions) and implementation reviews 1-3 (3 ACCEPT); the Middle's C-295 consent, T-214; F's rulings
+  7, 11, 13 and 14; the owner's O-244 (a), verbatim 「O-244 a O-245 a R7 の 3 案（A・B・C） ABC全て で決定します。」; amends BU-164 and BU-43) SPEC
+  10.5.1, 14.9.2 step 2, 10.2, 10.2.2, 10.4 step 1, 3.6.
+  - **Rule.** A position of several parts whose kind is Typed (`PositionKind`: the common Type `C` of its typed parts,
+    `TypedPositionPart`) is, at a candidate, one control-flow argument whose sources are those parts. Evidence: each typed part
+    adapts at the pattern under the fixed bindings (`AdaptPart`), and the adapted parts' common Type is evidence once (`InferFrom`),
+    its Origin the region covering every part's Loan. Fit: each typed part's own Type at the position's Type by the typed row
+    (`FitsTypedPart` -> `FitTyped`), as its evidence adapts it: a typed Tuple or array literal part is typed whole (BU-43), none of
+    its elements fitted or ranked. Ranking: one `positionClasses` row per Typed position with a common Type (a row iff that holds,
+    so the count stays syntax-determined): the class of a temporary of Type `C` at the position's Type `T` (10.2.2): Exact where `C`
+    has `T`'s structure; otherwise the class of a part whose own Type has `C`'s structure (every such part that fits takes that one
+    class, so it is order-free); with none (every part value-read into a read Type) the borrowed temporary's Cross class. Step 3 is
+    unchanged (U1.6g2: a waiting part takes the position's step-2 Type, with no call).
+  - **Owner of SPEC 14.9.2 step 2's literal sentence:** `BesideLiterals` (`Binding.ControlFlow`, beside `SelectCommonType`): beside
+    literal sources, a common Type ending in a read Type through safe reference layers gives that read Type. Its readers are a
+    join's own sources (`InferResultExpected`, whose copy is deleted) and a position's parts (`PositionType`), so a literal beside
+    `ref/i32` parts takes `i32` at step 3, at a call and at a let alike.
+  - **Readers kept unadapted:** `IndependentPositionType` (a bare slot binds the argument's Type), `ShapeEvidence.Position`
+    (structure), `CommonTypeByParts` and `PositionType` (formation; `PositionType` reads `BesideLiterals`).
+  - **Interim (a temporary structure): a call argument join's borrowed position value off a whitelist is `Unsupported_Kd`** (F's
+    rulings 11 and 13, the owner's O-244 (a); implementation reviews 2 and 3) SPEC 10.5.1 (last paragraph), 14.9.2 step 2, 10.2,
+    3.6. A typed position of a call's control-flow argument formed part by part is one control-flow argument with one value, a
+    temporary of the position's common Type `C` (`PositionType`). Each source's own adaptation (`AdaptAtPosition`) realizes that
+    value only where the value's operation needs nothing made at the join's position. The whitelist (`AdaptsPerSource`) reads the
+    operation from the common adaptation's own row for that temporary at the element Type (`ExpectedAdaptation`, `AdaptInput`), not
+    from a restated table. G729's verdict stands for a by-value element (a value read or a Copy per source). It also stands for a
+    borrowing element (`ref`, `uniq`, `objref`, `objuniq`) whose `C` is itself that reference (its Copy) or a reference whose row is
+    a Reborrow or one shared reference through layers, stored or explicit (uniq at uniq included). Every other row of a borrowed
+    value borrows a value made once at the join's position (3.6). That is a new borrow of it: an owner temporary at `ref/U` (10.2
+    row 2), or an owning `obj`, `rc` or `arc` handle at `objref/U` (row 5), whether from bare Places or from `@move`. A missing row
+    counts too. No representation carries such a value: the position has no node, HIR has one Adjust per node, and MIR's `Arm` ends
+    a source Body's temporaries. Decision: `BindStepThree`, the post-selection walk over every position, returns whether a Typed
+    position is off the whitelist. `BindWaitedSources` then records the located `Unsupported_Kd` at the join when it is a call's
+    recorded Join (an argument, or an element of a literal argument). The call rests on it, and a join gets one record.
+  - **The interim's removal condition:** R7-I2 d's position source, which plans the position's value at the join's position (HIR and
+    the MIR builder). When it lands, the record goes, together with the per-part borrows beneath it. Rejected for the interim: a
+    per-part value read plus a borrowed temporary (it dangles at the call and rejects the valid V2v); keeping the per-part borrows
+    (they accept the invalid T06i, T18i, T31i, U7i, T32i, H1i, J1i, HA1i, HA2i and HR2i); a test for one unsafe row restated from
+    SPEC (ruling 12's B2: row 5 fell through); a Language error (the class holds valid programs).
+  - **Amends BU-164:** in "Representation", "The one writer is the element row `FitElement` ..." (as amended by BU-165,
+    "`FitElement` is the one writer for every element") becomes: "The writers are the element row `FitElement` (every element of a
+    literal argument, a nested literal included) and `FitsPosition` (one row per Typed position of a join formed part by part, PLAN
+    G729)."
+  - **Amends BU-43** (its call paragraph and fix round 1, for a typed position of a call's join before selection): "a typed position
+    is evidence once, at its common Type" becomes "at its typed parts' common Type adapted at the pattern"; "It fits a candidate by
+    its late fit" and fix round 1's "the late fit fits each bound part that does not await as a Tuple argument's part
+    (`LateAdaptation`)" no longer apply to a typed position's typed parts, which fit by the typed row; the late fit keeps the other
+    parts.
+  - **Rejected:** a class per part (opposes in `fq(if c => (n, 1) else => (v, 2))`, G743's e17); `FitArgument` per part (fits a
+    typed literal part element by element against BU-43); the join as the adaptation source of a sub-position (revision 2's x2);
+    refusing a position with no supplying part (rejects `p2(if c => (n, 1) else => (nn, 2))`); binding a waiting part at the call's
+    Type at step 3 (supersedes U1.6g2: accepts its invalid c1/c2 forms); a located `Unsupported_Kd` for a literal beside a typed
+    part (the rule exists; the position lacked its reader).
+  - **Remainder (R7-I2 d's position source):** adapting the formed value once where no part supplies it, at a `ref/T` pattern (j15);
+    a bare slot's evidence beside a literal (q7: `T` bound from the typed part alone; bl10), j15's cause, since the evidence's
+    adapted common Type (`InferAdaptedParts`) does not read `BesideLiterals` (F's ruling 9); the interim above.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
