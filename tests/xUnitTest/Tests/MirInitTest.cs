@@ -582,6 +582,21 @@ public sealed class MirInitTest
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
+    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS M-G105; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
+    // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
+    // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
+    // reference's old referent are not (fail-before: the whole write was one Opaque naming its target as a use, so ReassignedLet_Kd was
+    // lost and UninitializedPlace_Kd or ComparisonLoanConflict_Kd reported).
+    [Theory]
+    [InlineData("func f()\n    let x: i32 = 1\n    x = \"a\"\n", "ReassignedLet_Kd x = \"a\" 1")]
+    [InlineData("func f()\n    let x: i32 = 1\n    x = (\"a\")\n", "ReassignedLet_Kd x = (\"a\") 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    x = \"a\"\n    return x\n", "")]
+    [InlineData("struct S\n    public let f: i32\n    public let n: string\n    public init()\n        self.f = \"a\"\n        self.n = \"x\"\n", "")]
+    [InlineData("struct S\n    public let f: i32\n    public init()\n        self.f = 1\n        self.f = \"a\"\n", "ReassignedLet_Kd self.f = \"a\" 1")]
+    [InlineData("func f() -> i32\n    var a = 1\n    var slot: ref/i32 = a@ref\n    slot = \"a\"\n    a = 3\n    return slot@follow\n", "")]
+    public void ARejectedWriteKeepsItsWrite(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
+
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);

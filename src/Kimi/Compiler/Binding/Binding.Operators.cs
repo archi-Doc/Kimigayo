@@ -14,6 +14,22 @@ public sealed partial class Binding
     private static bool NonNumericOperand(BoundType type)
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
 
+    // SPEC 13.7.1, 23.1.2 (DECISIONS M-G105): whether a plain write Binding rejected after BindBinary's one destination check admitted its
+    // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
+    // failure is then its value's fit (a Type mismatch, an Origin or Owned fit, a fit's limit), and the write still places a value derived
+    // from that failure. A write refused there, or whose target Binding did not type, is not one.
+    private static bool KeepsWrite(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
+        HirTables.PlanOf(node).Mode != 0;
+
+    // The one writer of KeepsWrite's verdict, a row only for a write that keeps its write; any other binary keeps its row.
+    private static void AdmitWrite(BinaryKoto binary, bool admitted)
+    {
+        if (binary.Akind == KotoKind.Equals)
+        {
+            HirTables.PlanFor(binary, admitted).Mode = admitted ? (byte)1 : (byte)0;
+        }
+    }
+
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { IsProofDecided: true } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
@@ -124,6 +140,7 @@ public sealed partial class Binding
         binary.ComparisonActive = false;
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        AdmitWrite(binary, admitted: false);
         if (this.TryArithmetic(binary, scope, out var arithmeticResult))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
@@ -184,17 +201,10 @@ public sealed partial class Binding
             decision = this.OperatorApplicabilityOf(binary, left, right, scope);
         }
 
-        if (decision.Failure != BindingFailure.None)
-        {
-            return this.FailOperator(binary, binary, decision);
-        }
-
-        if (left is null || right is null)
-        {
-            return Complete(binary, null);
-        }
-
-        return this.CompleteBinary(binary, left, right, scope, decision);
+        var result = decision.Failure != BindingFailure.None ? this.FailOperator(binary, binary, decision)
+            : left is null || right is null ? Complete(binary, null) : this.CompleteBinary(binary, left, right, scope, decision);
+        AdmitWrite(binary, admitted: left is not null && binary.BindingFailure != BindingFailure.None); // The destination admitted above.
+        return result;
     }
 
     // A literal may receive a Type from the known right operand only after that ordered operation is legal.

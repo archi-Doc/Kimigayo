@@ -239,7 +239,8 @@ internal struct HirTables
 /// <summary>
 /// The plan slots of one node (the planIndex column): its kind's retained plan, a second plan, its formatting plan, a folded
 /// constant (a conversion's, or a number literal's value, a ConstIndex position and a Tuple element's position, which
-/// <see cref="HirTables.Publish"/> writes), a mode and a flag (an explicit discard's: <see cref="HirTables.DestroysInPlace"/>). Each Koto
+/// <see cref="HirTables.Publish"/> writes), a mode (a plain write's: whether it keeps its write, <c>Binding.KeepsWrite</c>) and a flag (an
+/// explicit discard's: <see cref="HirTables.DestroysInPlace"/>). Each Koto
 /// class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
 /// </summary>
 internal struct PlanRow

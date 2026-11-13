@@ -32,10 +32,11 @@ public sealed partial class Binding
     // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
     private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
 
-    // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3), a failure, or a
-    // literal the lexer could not read, which keeps its Type and lacks only its value (its published absence, CharLiteralKoto.Value).
+    // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3), a failure, a
+    // literal the lexer could not read, which keeps its Type and lacks only its value (its published absence, CharLiteralKoto.Value), or
+    // the value of a write that keeps its write (KeepsWrite), whose fit Binding rejected: the write places a value derived from that failure.
     private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto or CharLiteralKoto { Value: null } ||
-        node.BindingFailure != BindingFailure.None;
+        node.BindingFailure != BindingFailure.None || (node.Parent is BinaryKoto write && ReferenceEquals(write.Right, node) && KeepsWrite(write));
 
     // Whether a parent covers a child, which it does not evaluate as a value: the callee of a selected call or construction (a value call's
     // callee is evaluated unless its receiver operation uses what the callee reaches), any child of a macro (its call shape), the name
@@ -70,8 +71,8 @@ public sealed partial class Binding
     };
 
     // A node's evaluated Op: a declaration's Body or Syntax; Syntax for a form nothing evaluates (a Type, a name it declares, an attribute,
-    // an Origin clause or effect bound); Error for a node the lexer, the parser or Binding rejected; else its form's Op, published only with
-    // the facts it guarantees (HasFacts).
+    // an Origin clause or effect bound); Error for a node the lexer, the parser or Binding rejected but a write that keeps its write
+    // (KeepsWrite, SPEC 13.7.1, 23.1.2: its value is the Error); else its form's Op, published only with the facts it guarantees (HasFacts).
     private HirOp OpOf(Koto node)
     {
         if (node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto)
@@ -85,7 +86,7 @@ public sealed partial class Binding
             return HirOp.Syntax;
         }
 
-        if (Rejected(node))
+        if (Rejected(node) && !KeepsWrite(node))
         {
             return HirOp.Error;
         }
