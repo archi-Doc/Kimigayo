@@ -303,7 +303,7 @@ public sealed partial class Binding
         }
 
         private readonly bool OriginFits(BoundOrigin a, BoundOrigin b, in CallableInstance instance, ulong condition = 0)
-            => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use, 0) :
+            => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use) :
                 this.binding is null ? OriginOutlives(a, b) : this.binding.FitOrigin(a, b, this.use!, instance, condition);
 
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits

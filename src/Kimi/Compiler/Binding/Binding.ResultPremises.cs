@@ -422,7 +422,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use, 0))
+                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use))
                 {
                     longer = longer.Operands[i];
                     break;
@@ -708,7 +708,7 @@ public sealed partial class Binding
             case WellFormedAction.Detect:
                 return false;
             case WellFormedAction.Instance:
-                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, 0))
+                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use))
                 {
                     return true;
                 }
@@ -765,8 +765,8 @@ public sealed partial class Binding
 
         if (visit.Action == WellFormedAction.Instance)
         {
-            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use, 0) &&
-                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use, 0)))
+            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use) &&
+                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use)))
             {
                 return true;
             }
