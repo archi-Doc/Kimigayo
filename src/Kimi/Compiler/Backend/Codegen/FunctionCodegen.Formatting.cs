@@ -4,14 +4,14 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The formatting rows of FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): Text.writer, the
-// ErasedWriter intrinsic's row (K package 4.5 row 6), calls P1d's TextWriter routine with the writer kind of its destination and the
-// dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the adapter's write and Console.writeLine
-// of a view are bodies (R8-W1a, W1b, W1c), so no compiler function's call is a formatting routine's.
+// Text.writer in FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): the ErasedWriter
+// intrinsic's row (K package 4.5 row 6) calls the kept runtime's TextWriter routine (RuntimeAbi.TextWriter) with the writer kind of its
+// destination and the dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the adapter's write
+// and Console.writeLine of a view are bodies (R8-W1a, W1b, W1c), so no other compiler function's call is a formatting routine's.
 internal sealed partial class FunctionCodegen
 {
     // SPEC 22.9.2, 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer's call, its Item's Value call and its adapter's entry:
-    // P1d's TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
+    // the TextWriter routine, given its two Context words: the formatting runtime's writer kind of its destination W, the call's Type
     // argument (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve the runtime runs
     // itself (the collector takes no target for them until WriterKind goes, InstanceCollector.Edges), else the function of W's reserve
     // witness, the call's Body target, whose signature is the runtime's dispatch call (Dispatch). Any other pairing is a broken contract:
@@ -26,7 +26,7 @@ internal sealed partial class FunctionCodegen
             return null; // Recorded.
         }
 
-        this.module.Request(LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Needs);
+        this.module.Request(HelperNeeds.FormattingRuntime);
         this.module.Request(ModuleCodegen.Needs.ErasedWriter);
         (this.slotless[0], this.slotless[1]) = (new('\0', kind), entry);
         given = this.slotless.AsSpan(0, 2);

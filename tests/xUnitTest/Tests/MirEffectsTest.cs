@@ -343,19 +343,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
 
     // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
-    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not. A fixed array's owning
+    // iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
-    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("i32", "Array<i32> = []", "")]
-    [InlineData("i32", "[1 of i32] = [1]", "")]
-    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "let it = a@move.intoIterator()", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "for _ in a@move => exit", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string entry, string expected)
     {
         _ = element;
         Assert.Equal(
             Expected(expected),
             Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
-                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        {entry}\n        return 0\n"));
     }
 
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
@@ -730,7 +731,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // (SPEC 8.7.4), so a generic's confined put may format its abstract T: through a formatting function's row or called directly, and
     // as an abstract Wrapping<T>, whose WrappingFormat body runs T's format under the bounds guaranteed for T; without formatting, or at
     // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2). The rows through write, an
-    // interpolation and toString compose format at the caller by IMPL 21.3.4's rows (PLAN G795); the direct call on T resolves through
+    // interpolation and toString compose format at the caller by SPEC 22.10.1's published effects; the direct call on T resolves through
     // member lookup's Position clause (PLAN G776).
     [Theory]
     [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", "")]
@@ -753,8 +754,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 8.11.3, 8.11.1, 4.6.1, 4.6.3 (PLAN G771): a requirement call of format on an abstract P takes the bound of the Contract its
     // premise proves: confined under Position or PositionRange, and none under Utf8Format, which declares no bound (any formatter may
     // bind P); each called directly and through a formatting function's row (write, an interpolation, toString), which composes format
-    // at the caller by IMPL 21.3.4's rows (PLAN G795). The bound covers format alone: a call of Plain's put, which bounds nothing, beside
-    // a bounded format keeps its unknown environment effect.
+    // at the caller by SPEC 22.10.1's published effects. The bound covers format alone: a call of Plain's put, which bounds nothing,
+    // beside a bounded format keeps its unknown environment effect.
     [Theory]
     [InlineData("Position", "        return writer.write(self.p)\n", "")]
     [InlineData("Position", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", "")]

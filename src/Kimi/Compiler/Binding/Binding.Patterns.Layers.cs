@@ -50,8 +50,8 @@ public sealed partial class Binding
                 return type;
             }
 
-            var admitted = this.FollowablePair(type, scope, out var target);
-            if (admitted == SemanticsMask.None)
+            // A layer admitting no case selects nothing (stopped: the pattern would have to rest; PLAN G750).
+            if (this.FollowablePair(type, scope, out var target) is not { } admitted || admitted == SemanticsMask.None)
             {
                 return type;
             }
