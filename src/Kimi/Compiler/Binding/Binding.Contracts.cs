@@ -366,9 +366,10 @@ public sealed partial class Binding
                 // is one of the Contract's clauses, inherited and checked as they are.
                 shape.ClauseStorage.Add(specification);
             }
-            else if (member is not EffectBoundKoto)
+            else if (member is not EffectBoundKoto && member is not FunctionKoto { Placement: not null })
             {
-                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
+                // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
@@ -436,11 +437,10 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations.
         var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
-        // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison conformances of
-        // its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat row, for an
-        // abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
+        // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
+        // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
+        // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
+        premise |= contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {

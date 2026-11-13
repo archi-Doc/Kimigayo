@@ -1,0 +1,60 @@
+func both(p: (ref/i32 during a, ref/i32 during a)) -> bool => true
+func nested(p: (ref/(i32, i32) during a, i32)) -> bool => true
+func show(p: (ref/(string, i32) during a, i32)) -> bool => true
+func letScalar() -> i32
+    let a: ref/i64 = 1
+    return 0
+func letElement() -> i32
+    let x: (ref/i32, i32) = (1, 2)
+    return 0
+func letJoin(c: bool, n: ref/i32) -> i32
+    let x: ref/i32 = if c => n else => 1
+    return 0
+func assignSource(n: ref/i32) -> i32
+    var x: ref/i32 = n
+    x = 1
+    return 0
+func callElement(n: ref/i32) -> bool => both((n, 1))
+func callNested() -> bool => nested(((1, 2), 3))
+func callDrop(s: string) -> bool => show(((s@move, 1), 2))
+func sum(p: (ref/[2 of i32] during a, i32)) -> bool => true
+func useOpt(o: Option<ref/i32 during a>) -> i32 => 0
+func useRaw(r: ref/(raw/i32)) -> i32 => 0
+func pick(p: (ref/i32 during a, ref/i32 during a)) -> ref/i32 during a => p.1
+func fill(p: ref/[2 of i32] during a, q: ref/i32 during a) -> ref/i32 during a => q
+func range(p: ref/Range<i32, i32> during a, q: ref/i32 during a) -> ref/i32 during a => q
+func valueElement(n: ref/i32) -> bool
+    let g = both
+    return g((n, 1))
+func valueFill(n: ref/i32) -> i32
+    let g = fill
+    let r = g([2 of 1], n)
+    return 0
+func valueRange(n: ref/i32, v: i32) -> i32
+    let g = range
+    let r = g(0..v, n)
+    return 0
+func letFill() -> i32
+    let x: [2 of ref/i32] = [2 of 1]
+    return 0
+func letArrayElement() -> i32
+    let x: (ref/[2 of i32], i32) = ([1, 2], 3)
+    return 0
+func callArrayElement() -> bool => sum(([1, 2], 3))
+func payloadArgument() -> i32
+    let q = useOpt(Option<ref/i32>.Some(1))
+    return q
+func matchSubject(n: ref/i32) -> i32
+    match pick((n, 1))
+        let x => return x
+func rawNull(c: bool) -> i32
+    let p: raw/i32 = null
+    let a: ref/(raw/i32) = if c => p else => null
+    return 0
+func rawPlace() -> i32
+    var p: raw/i32 = null
+    let a: ref/(raw/i32) = p
+    return useRaw(a)
+func closureElement() -> i32
+    let k = func (p: (ref/i32, i32)) -> i32 => p.0
+    return k((1, 2))

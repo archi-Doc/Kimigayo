@@ -13,9 +13,14 @@ func equivalent<T>(left: ref/T, right: ref/T) -> bool
     T is Equatable
     return left == right
 
+// The Contract's mapping through a Constraint: a built-in conformance adds no member (SPEC 13.4.1).
+func contractEqual<T>(left: ref/T, right: ref/T) -> bool
+    T is Equatable
+    return left == right
+
 // An explicit specialization must preserve the Contract's NaN-reflexive equality.
 specialize func equivalent<f64>(left: ref/f64, right: ref/f64) -> bool
-    return left.equals(right)
+    return contractEqual(left, right)
 
 func forwardEquality<T>(left: ref/T, right: ref/T) -> bool
     T is Equatable
