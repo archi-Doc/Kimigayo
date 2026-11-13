@@ -30,7 +30,7 @@ public sealed partial class Binding
     {
         if (!this.originInferences.TryGetValue((use, binder), out var inference))
         {
-            this.originInferences.Add((use, binder), inference = new(binder));
+            this.originInferences.Add((use, binder), inference = new(use, binder));
         }
 
         inference.Bounds.Clear();
@@ -105,9 +105,10 @@ public sealed partial class Binding
     // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
     // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
     // is never verified here.
-    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
+    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
+        var use = inference.Use;
         inference.Failure = default;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
@@ -387,8 +388,11 @@ public sealed partial class Binding
         return polarity == 2 ? lower ?? upper : upper ?? lower;
     }
 
-    private sealed class OriginInference(Koto binder)
+    private sealed class OriginInference(Koto use, Koto binder)
     {
+        // The use whose premises and pair binders the solve's proofs read (the first part of its key), its one source of the use.
+        internal Koto Use { get; } = use;
+
         internal Koto Binder { get; } = binder;
 
         // Each bound with its source (SPEC 15.6.1): the comparison's member whose position collected it (a parameter n + 1, the result
