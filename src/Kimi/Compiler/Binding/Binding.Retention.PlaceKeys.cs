@@ -26,6 +26,28 @@ internal readonly record struct PlaceKey(BoundType? Type, BoundType? Written, Bo
     internal static PlaceKey Root(BoundType type) => new(type, null, null, -1, null);
 }
 
+/// <summary>A raw Place directly within a raw Place (SPEC 5.2; TyCtxt.RawPlaces): its key, whether it is at the raw Place's own
+/// address where IMPL 21.1 fixes it there, and whether it is a fixed array's element (every index, a grid of its stride).</summary>
+/// <param name="Key">The part's key (Select's; Leading's for the element).</param>
+/// <param name="Lead">At the raw Place's own address (Leading's step): a C-layout first Field; an element row always (element 0 is
+/// there; whether a displaced Position stays on the element grid is the reader's step rule); false for a base's rows.</param>
+/// <param name="Element">A fixed array's element.</param>
+internal readonly record struct RawPlace(PlaceKey Key, bool Lead, bool Element);
+
+/// <summary>What <c>TyCtxt.RawPlaces</c> answers about the raw Places within a raw Place (SPEC 5.2; the owner's O-228 (a), O-231 (a)).</summary>
+internal enum RawPlacesAnswer : byte
+{
+    /// <summary>The rows are every raw Place within (a struct, Tuple or fixed array).</summary>
+    Listed,
+
+    /// <summary>Nothing within is a raw Place (an enum, a Closure, a form holding nothing inline); no row.</summary>
+    Empty,
+
+    /// <summary>Not known: the rows published (a struct, Tuple or fixed array at Binding's Limit or with an unbound part) may not be all,
+    /// and any other undecided form publishes none; the reader keeps its own reading there (O-231 (a)), never "nothing within".</summary>
+    Undecided,
+}
+
 public sealed partial class Binding
 {
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a

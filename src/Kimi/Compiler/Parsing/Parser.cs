@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -13,7 +14,7 @@ namespace Kimi.Compiler;
 // omission records in the CodeContext; Hover and documentation anchors.
 // Invariants: a source error is reported where it is read and the parse goes on, what was read kept as a recovery where a check could read it
 // (DIAGNOSTICS.md §4.3, §4.4); excluded syntax takes the same grammar and registers nothing (SPEC 19.4); the tables are filled once, by the
-// static constructor, and only read after it.
+// static constructor, and only read after it; the constructor itself reads each infix row it has just written, to fill IsComparisonKind.
 // Prohibitions: no name resolution or Type judgment, since Binding judges what the parser keeps; the exceptions are a directive's Condition,
 // evaluated for selection (SPEC 19, CompileTimeConditionEvaluator), and a body's Constraint prefix, which reads its function's parameter Names.
 // No message text at a reporting site.
@@ -42,6 +43,9 @@ public static partial class Parser
 
     private static readonly byte[] InfixRightBindingPower = new byte[TokenHelper.MaxTokens];
 
+    // The node kinds of Comparison's operators: IsComparisonOperator's tokens, each under KotoHelper.BinaryOperator.
+    private static readonly bool[] IsComparisonKind = new bool[Koto.MaxKind];
+
     private static readonly bool[] IsPrefixOperator = new bool[TokenHelper.MaxTokens];
 
     private static readonly bool[] IsPostfixOperator = new bool[TokenHelper.MaxTokens];
@@ -57,6 +61,10 @@ public static partial class Parser
             var (left, right) = GetInfixBindingPower((TokenKind)i);
             InfixLeftBindingPower[i] = (byte)left;
             InfixRightBindingPower[i] = (byte)right;
+            if (IsComparisonOperator((TokenKind)i))
+            {
+                IsComparisonKind[(int)KotoHelper.BinaryOperator((TokenKind)i)] = true;
+            }
         }
 
         Mark(
@@ -111,6 +119,11 @@ public static partial class Parser
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsExpressionBoundary(ref TokenReader reader)
         => !reader.CanRead || IsExpressionBoundaryKind[(byte)reader.CurrentTokenKind];
+
+    // The operators of SPEC F.9.1's Comparison, one non-associative level (F.9.2): GetInfixBindingPower's rows at ComparisonBindingPower
+    // are the one written set. `is` shares the level and is the production's other alternative, which takes a NamedCoreType.
+    private static bool IsComparisonOperator(TokenKind kind)
+        => InfixLeftBindingPower[(byte)kind] == ComparisonBindingPower && kind != TokenKind.Is;
 
     private static (int Left, int Right) GetInfixBindingPower(TokenKind kind)
         => kind switch

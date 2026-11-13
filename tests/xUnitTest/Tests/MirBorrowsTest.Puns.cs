@@ -1434,6 +1434,36 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
+    // SPEC 5.2 (PLAN G806; the owner's O-220 (a), O-231 (a)): a whole-value write writes the written Type's raw Places (TyCtxt.RawPlaces).
+    // A UniqSlice<T>'s stored Fields are raw Places, so a UniqSlice written over the raw pointer `q` holds writes `length`, a Scalar, there
+    // (uSliceBad4, rejected since G806; uSliceBad3 beside its own Origin record). A struct whose storage Binding cannot state whole, at
+    // Binding's Limit (Nest<u64>) or with an unbound Field (US), is undecided and keeps its published rows, so its Scalar Field still puns
+    // beside the other part's own record. Each Ok twin writes over a Tuple holding no raw pointer.
+    [Theory]
+    [InlineData("uSliceBad4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "uSliceBad4: kk = 2")]
+    [InlineData("uSliceOk4", "src: uniq/[4 of u8] during a", "UniqSlice<u8> during a", "", "")]
+    [InlineData("uSliceBad3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "uSliceBad3: kk = 2")]
+    [InlineData("uSliceOk3", "", "UniqSlice<u8> during static", "InvalidOriginBinding_Kd", "")]
+    [InlineData("nNestBad", "", "Nest<u64>", "", "nNestBad: kk = 2; nNestBad: viaW(q@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("nNestOk", "", "Nest<u64>", "", "nNestOk: viaW(w@raw@raw/(Nest<u64>)) OwnershipDepthLimit_Kd")]
+    [InlineData("bUnboundFieldBad", "", "US", "UnresolvedBinding_Kd", "bUnboundFieldBad: kk = 2")]
+    [InlineData("bUnboundFieldOk", "", "US", "UnresolvedBinding_Kd", "")]
+    public void AWholeWriteWritesTheWrittenTypesRawPlaces(string form, string parameters, string written, string bound, string expected)
+    {
+        var over = form.Contains("Bad", StringComparison.Ordinal) ? "q" : "w";
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] +
+            (written == "US" ? "struct US\n    public var n: u64\n    public var bad: NoSuchType\n" : string.Empty) +
+            $"func viaW(slot: raw/({written.Split(" during ")[0]})) => ()\nfunc {form}({parameters})\n    var kk: u8 = 1\n    let r = kk@uniq\n" +
+            "    var spare: raw/u8 = r@follow@raw\n    var other: raw/u8 = null\n    var q: raw/(raw/u8) = other@raw\n" +
+            (over == "w" ? "    var w: (u64, u64, u64) = (0, 0, 0)\n" : string.Empty) +
+            $"    viaW({over}@raw@raw/({written}))\n    stash(q, spare)\n    kk = 2\n");
+        Assert.Equal(bound, string.Join("; ", c.Binding.Issues.Select(static x => $"{x.Code}").Distinct().Order(StringComparer.Ordinal)));
+        var program = c.BuildMir();
+        new Stratum(c.Types).Run(program);
+        var problems = Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems.Order(StringComparer.Ordinal))}]");
+    }
+
     // PLAN G667c's named limit (a) on the stated-store forms (StatedForms; the Middle's Q13 rulings): a Scalar written at the whole
     // address of a struct or a Tuple that holds a raw pointer is undecided, IMPL 21.1.2 promising no offset there, so these invalid
     // forms, the conflict before G667c, are rejected by the located Unsupported_Kd at the conflict's two subjects, until Layout's byte

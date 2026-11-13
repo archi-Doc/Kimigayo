@@ -212,6 +212,9 @@ public sealed partial class Binding
                     }
                 }
 
+                // The first available premise naming the Type completes it, the choice dev's member substitution makes (SubstituteIdentity;
+                // R7-C2c2 replaces both); a Type in a final erroneous identity class stays as written (Binding.TypeIdentity).
+                BoundType? chosen = null;
                 for (var current = scope; current is not null; current = current.Parent)
                 {
                     if (current.Constraints is not { Invalid: false } environment)
@@ -228,11 +231,21 @@ public sealed partial class Binding
 
                         var available = this.AvailableConstraintFact(environment, fact, out var availability);
                         completion = Meet(completion, availability);
-                        if (available && required is not null)
+                        if (available && required is not null && chosen is null)
                         {
-                            var identity = this.ContractTypeAnswer(required, scope, self);
-                            return (identity.Image, null, Meet(completion, identity.Completion));
+                            chosen = required;
                         }
+                    }
+                }
+
+                if (chosen is not null)
+                {
+                    var failed = this.ProjectionClassFailed(result, scope, out var guard);
+                    completion = Meet(completion, guard);
+                    if (!failed)
+                    {
+                        var identity = this.ContractTypeAnswer(chosen, scope, self);
+                        return (identity.Image, null, Meet(completion, identity.Completion));
                     }
                 }
 
