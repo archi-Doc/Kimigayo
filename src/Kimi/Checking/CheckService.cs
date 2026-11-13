@@ -77,7 +77,9 @@ internal static class CheckService
             return Faulted(DiagnosticFault.Exception, failure.Message, location, result);
         }
 
-        // SPEC 23.2.2: the outcome follows from how the check ended; a front end that never ran leaves the check Blocked.
+        // SPEC 23.2.2: the outcome follows from how the check ended. Inputs that were never established leave no compilation and the
+        // check Blocked; a compilation is Completed, whether its front end ran or its preparation left it no module to analyze
+        // (Compilation.AnalyzesNoModule).
         if (context.Compilation is not { } compilation)
         {
             return new(CheckOutcome.Blocked, false, TestPresence.Unknown, result);
@@ -106,17 +108,20 @@ internal static class CheckService
         }
     }
 
-    // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
-    private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
-        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
-
-    // SPEC 23.2.1: a syntax-level scan of the project's own sources; semantic failures never hide a marker.
-    private static TestPresence ScanTestPresence(Compilation compilation)
+    // SPEC 23.2.1, 23.3: a syntax-level scan of the project's own sources; semantic failures never hide a marker. No is an answer only
+    // when every such source parsed without source errors, so a compilation that parsed none (AnalyzesNoModule) is Unknown.
+    internal static TestPresence ScanTestPresence(Compilation compilation)
     {
         var finder = new MarkerFinder();
         finder.Visit(compilation.Kotonoha.RootKoto);
-        return finder.Found ? TestPresence.Yes : compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown : TestPresence.No;
+        return finder.Found ? TestPresence.Yes
+            : compilation.AnalyzesNoModule || compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown
+            : TestPresence.No;
     }
+
+    // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
+    private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
+        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
 
     private sealed class MarkerFinder : KotoVisitor
     {
