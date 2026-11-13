@@ -52,10 +52,12 @@ public sealed partial class Binding
         }
 
         var results = new List<(DocumentationSource Source, DocumentationComment Comment)>();
-        foreach (var source in target.Kotonoha.DocumentationSources)
+        for (var i = 0; i < target.Kotonoha.DocumentationSources.Count; i++)
         {
-            foreach (var comment in source.Comments)
+            var source = target.Kotonoha.DocumentationSources[i];
+            for (var j = 0; j < source.Comments.Count; j++)
             {
+                var comment = source.Comments[j];
                 if (comment.IsSelected && comment.Declaration is { } candidate &&
                     (ReferenceEquals(candidate, target) || (target is GroupKoto or StructKoto && candidate is DeclarationContainerKoto && target.BoundSymbol is { } bound && ReferenceEquals(candidate.BoundSymbol, bound))))
                 {

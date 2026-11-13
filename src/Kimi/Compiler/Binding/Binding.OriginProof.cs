@@ -558,14 +558,7 @@ public sealed partial class Binding
         return true;
 
         BoundOrigin Substitute(BoundOrigin origin)
-        {
-            if (declaringType?.Symbol is { } owner)
-            {
-                origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-            }
-
-            return this.SubstituteStoredOrigin(origin, function, origins.AsSpan(0, function.BoundSymbol?.Schema?.Origins.Count ?? 0), inputs.AsSpan(0, InputOriginCount(function)));
-        }
+            => this.Substitute(origin, SubstitutionOf(function, declaringType, default, default, origins, inputs));
     }
 
     private void BindTypeOriginContracts()

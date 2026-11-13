@@ -215,9 +215,20 @@ public class ContainerNestingTest
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
+    // SPEC 18.1, 9.6, 9.7, 6.5.2 steps 1-2 (PLAN G745, G728): a top-level generic enum named by a member path (`Kimi.Option`) with its
+    // own list omitted is the same inferred construction target: its own slots from the payloads or the expected Type. The twins: no
+    // evidence leaves the slot unbound, and a written list of the wrong arity keeps its formation record at the qualifier.
+    [Theory]
+    [InlineData("func f()\n    let e = Kimi.Option.Some(1)\n", "")]
+    [InlineData("func f()\n    let e: Option<i64> = Kimi.Option.None\n", "")]
+    [InlineData("func f()\n    let e = Kimi.Option.None\n", "UnresolvedBinding_Kd Kimi.Option.None")]
+    [InlineData("func f()\n    let e = Kimi.Option<i32, i64>.Some(1)\n", "InvalidTypeFormation_Kd Kimi.Option<i32, i64>")]
+    public void ATopLevelEnumNamedByAMemberPathInfersItsOwnSlots(string source, string records) => this.ANestedEnumCaseInfersOnlyItsOwnSlots(source, records);
+
     // SPEC 9.7, 10.8.1 (PLAN G745): an inferred construction qualifier, a Case's as a structure's, names the constructed Type once the
     // construction is solved, never its open own parameters.
     [Theory]
+    [InlineData("func f()\n    let e = Kimi.Option.Some(1@i64)\n", "Kimi.Option")]
     [InlineData(NestedEnum + "func f(v: i32)\n    let e = Outer<i32>.E.A(v, 1@i64)\n", "Outer<i32>.E")]
     [InlineData("struct Outer<O>\n    public enum E<T>\n        A(O, T)\n    public func f(o: O)\n        let e = E.A(o@move, 1@i64)\n", "E")]
     [InlineData("struct Outer<O>\n    public struct S<U>\n        public let b: U\n        public init(b: U) => self.b = b@move\nfunc f()\n    let s = Outer<i32>.S.init(1@i64)\n", "Outer<i32>.S")]

@@ -97,7 +97,7 @@ public sealed partial class Binding
     {
         for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
         {
-            if (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
+            if (SharedLayer(type.Semantics))
             {
                 return true;
             }
@@ -181,14 +181,12 @@ public sealed partial class Binding
                     return authority;
             }
 
-            switch (layer)
+            if (SharedLayer(layer))
             {
-                case SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc:
-                    return SemanticsKind.Ref;
-                case SemanticsKind.Uniq or SemanticsKind.ObjUniq:
-                    authority = SemanticsKind.Uniq;
-                    break;
+                return SemanticsKind.Ref;
             }
+
+            authority = layer is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? SemanticsKind.Uniq : authority;
 
             source = KotoHelper.UnwrapParentheses(next);
         }
@@ -360,7 +358,7 @@ public sealed partial class Binding
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
             var layer = LayerStep(place, type!, assignment, out _);
-            if (layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
+            if (SharedLayer(layer))
             {
                 return SemanticsKind.Ref;
             }
@@ -370,6 +368,14 @@ public sealed partial class Binding
 
         return authority;
     }
+
+    // SPEC 3.4.3, 13.5.5, 15.6.2: whether the outer layer of a Place's own Type grants shared access only (a pair layer by its weakest
+    // case, LayerStep): the write and exclusive-use test of a receiver's own layer.
+    private static bool SharesOwnLayer(Koto place)
+        => KotoHelper.UnwrapParentheses(place).BoundType is { } type && BelowLayer(type) is not null && SharedLayer(LayerStep(place, type, [], out _));
+
+    // SPEC 3.4.3, 13.5.5: a layer step that grants shared access only: a shared reference, an objref view or an rc or arc handle.
+    private static bool SharedLayer(SemanticsKind? layer) => layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc;
 
     // SPEC 3.4.3, 13.5.5: the Type below one layer of a Type (a reference, handle or object view, raw pointer or pair layer); null
     // for a Type without one.

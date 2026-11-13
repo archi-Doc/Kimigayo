@@ -81,8 +81,8 @@ internal sealed partial class MirBuilder
             case HirAdaptation.ReferenceRead:
                 place = this.FollowTo(place, target);
                 break;
-            case HirAdaptation.PayloadProjection:
-                place = this.body.Project(place, MirProjectionKind.Deref, 0);
+            case HirAdaptation.PayloadProjection: // The handle's or view's own layer: a Deref, or a pair layer's PairLayer (TyCtxt.Layer).
+                place = this.FollowLayers(place, 1);
                 break;
         }
 
