@@ -4,7 +4,8 @@ namespace Kimi.Compiler;
 
 // A Place's key by its path, and the layers at a Place (SPEC 5.7 Origins, Reading a Field, Writing a Field; C-189; contract in
 // TyCtxt.Raw.cs). Responsibility: the one step of a Place's path (Select, TyCtxt.Base), from a root's key (PlaceKey.Root), and the parts
-// the value at a key holds at its own address with each raw layer's step at the Place (OwnLayers, over the storage walk's OwnParts).
+// the value at a key holds at its own address with each raw layer's step at the Place (OwnLayers, over OwnParts: the storage walk's
+// by-value criterion, ByValue).
 // Inputs: Holdings' entries and the stored parts Binding's instances keep (Instance, WrittenAt); a path's dereference is PathOrigin's one
 // rule (Dereferenced over Reached, Binding.PlaceAuthority.Raw.cs), a `during self` layer read as ReadHolder reads it (ReplaceHolder).
 // Outputs: a key per Place (Types only), and per key its layers with their steps and the key past each.
@@ -48,8 +49,17 @@ internal enum RawPlacesAnswer : byte
     Undecided,
 }
 
+/// <summary>A part a value holds at its own address (<see cref="Binding.OwnLayers"/>; SPEC 5.2.1, 5.7, 15.6.4): a raw layer
+/// (<see cref="Layer"/>) with its step at the Place (Holdings' under its holding instance; a `during self` layer's, where the path
+/// dereferences, the step of the Origin reading it gives), or, Layer null, another part that reaches storage with its step;
+/// <see cref="Past"/> the key of the Place past the step (a raw layer's pointee, a borrow's referent, an abstract part itself; Type null
+/// where no Type states it).</summary>
+internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceKey Past);
+
 public sealed partial class Binding
 {
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder)> ownSeen = new(); // OwnLayers' walked keys, reused.
+
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
     // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
     // BodyRun): a raw layer met there with its step at the Place (LayerStep), not gone past; any other part that reaches storage with no
@@ -119,6 +129,40 @@ public sealed partial class Binding
 
         this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
         return past;
+    }
+
+    // OwnLayers from a part (Type, Written, Holder), each key once per call; retentionHeld is read as a stack (each run removed).
+    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, in PlaceKey at, List<OwnLayer> into)
+    {
+        if (!this.ownSeen.Add((type, written, holder)))
+        {
+            return true;
+        }
+
+        var (start, sees) = (this.retentionHeld.Count, this.BodySees(type));
+        var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
+        var raw = start < this.retentionHeld.Count && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
+        if (raw && complete)
+        {
+            var layer = this.retentionHeld[start];
+            into.Add(new(type, this.LayerStep(layer.Step, at), new(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at))));
+        }
+
+        for (var i = start; !raw && complete && i < this.retentionHeld.Count; i++)
+        {
+            var entry = this.retentionHeld[i];
+            if (this.ByValue(type, entry) && entry.Part is { } part)
+            {
+                complete = this.OwnParts(part, entry.Written, entry.Holder, at, into);
+            }
+            else if (entry.Step != HoldStep.Loan || entry.Part is null)
+            {
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, this.PastThrough(type, entry, at))));
+            }
+        }
+
+        this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
+        return complete;
     }
 
     // SPEC 5.7 Reading a Field (C-189): the path's last dereferenced layer past a value of `prefix`, whose Holdings entry is `entry`. A
