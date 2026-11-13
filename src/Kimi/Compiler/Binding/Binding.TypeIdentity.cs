@@ -22,7 +22,9 @@ namespace Kimi.Compiler;
 //   Representative, or the Type over its components' keys; a constructed member keys to itself, its conformance being
 //   ResolveConformance's alone), which relates only what Proven relates (a class in state One with complete meets, whatever the
 //   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
-//   constructed member (CompleteMember, the same scan), which only ProveProposition's contradiction check reads (N9).
+//   constructed member (CompleteMember, the same scan), which only ProveProposition's contradiction check reads (N9); whether two
+//   Types not proven identical are left undecided by an unbound Type (IdentityOpen, SPEC 8.2.3's Refuted read from the other side),
+//   which the Contract judge's path and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
@@ -70,6 +72,38 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // IdentityOpen's comparison of two Types position by position, a complete member standing for its class's parameter or projection.
+    // 0: no difference found; 1: undecided by an unbound Type; 2: a known difference (heads, component counts, two Types without components).
+    private static int IdentityDifference(BoundType a, BoundType b, IdentityClasses? classes)
+    {
+        a = classes?.CompleteMember(a) ?? a;
+        b = classes?.CompleteMember(b) ?? b;
+        if (ReferenceEquals(a, b))
+        {
+            return 0;
+        }
+
+        if (a.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+            b.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation)
+        {
+            return 1;
+        }
+
+        var count = a.Components.Count;
+        if (a.Kind != b.Kind || a.Symbol != b.Symbol || a.Semantics != b.Semantics || count != b.Components.Count || count == 0)
+        {
+            return 2;
+        }
+
+        var result = 0;
+        for (var i = 0; i < count && result != 2; i++)
+        {
+            result = Math.Max(result, IdentityDifference(a.Components[i], b.Components[i], classes));
+        }
+
+        return result;
     }
 
     // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
@@ -162,6 +196,15 @@ public sealed partial class Binding
 
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or its classes make them one (Verdict's Proven); an
     // erroneous or provisional class proves nothing.
+    // SPEC 8.2.3 (Refuted), 8.3.2 ("Unbound Types ... are never negative results"): whether two Types that are not proven identical
+    // are left undecided by an unbound Type: at every corresponding position the heads agree or one side is unbound (a parameter or
+    // projection identical with no complete constructed Type in the view, a pair application), and at one position a side is. A
+    // judge that would refute their agreement by its closed world answers Unknown for such a pair (the Contract judge's path, the
+    // Callable judge's signature); a known difference at any position refutes whatever is unbound elsewhere. Completed projections
+    // are read first (ContractType), as the identity proposition reads them.
+    private bool IdentityOpen(BoundType a, BoundType b, BindingScope scope)
+        => IdentityDifference(this.ContractType(a, scope), this.ContractType(b, scope), HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null) == 1;
+
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
 

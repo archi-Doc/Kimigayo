@@ -215,7 +215,8 @@ public sealed partial class Binding
 
             if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
             {
-                return ConstraintProof.Refuted;
+                // SPEC 8.3.2: a signature differing from the required one only at an unbound Type is no negative result.
+                return this.IdentityOpen(proposition.RequiredType!, signature, scope) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
             }
 
             this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };

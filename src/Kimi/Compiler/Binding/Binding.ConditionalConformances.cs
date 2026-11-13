@@ -333,15 +333,23 @@ public sealed partial class Binding
         }
 
         var identity = this.ConformanceOf(symbol, contract);
+        var open = false; // a conformance whose reference an unbound Type leaves undecided: a path not ruled out (SPEC 8.3.2)
         if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {
-                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope))
+                if (candidate.Contract.Type is not { } formal)
+                {
+                    continue;
+                }
+
+                if (this.NamesReference(formal, type, contractReference, scope))
                 {
                     identity = candidate;
                     break;
                 }
+
+                open |= ReferenceEquals(formal.Symbol, contractReference.Symbol) && this.StoredType(formal, type) is { } instance && this.IdentityOpen(instance, contractReference, scope);
             }
         }
 
@@ -358,7 +366,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !open && !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
