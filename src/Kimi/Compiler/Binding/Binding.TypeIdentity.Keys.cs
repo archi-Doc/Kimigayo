@@ -61,8 +61,11 @@ public sealed partial class Binding
         return c != 0 ? c : ((int)a.Kind).CompareTo((int)b.Kind);
     }
 
-    // R7-C2c2: the key of `type` in a view's classes: its class's Representative, else the Type over its components' keys
-    // (congruence), whose class is asked again. A key names the class to the premise supply only; no reader sees it as a Type. Each
+    // R7-C2c2: the key of `type` in a view's classes: a parameter's or projection's class's Representative, else the Type over its
+    // components' keys (congruence), whose class is asked again. A constructed member (`i32`, a struct, `Option<U>`) keys to itself over
+    // its components' keys: its conformance is ResolveConformance's alone (SPEC 8.3.2's closed world), so no parameter's premise rows
+    // reach it, and a premise contradicting it stays the premise's error. A key names the class to the premise supply only; no reader
+    // sees it as a Type. Each
     // Type is keyed once per table (the table keeps it), so a request's keys cost the distinct Types it compares; a warm pass finds
     // the rebuilt Types interned and the table's capacity kept, and allocates nothing.
     private BoundType ClassKey(BoundType type, IdentityClasses classes)
@@ -125,10 +128,10 @@ public sealed partial class Binding
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
         // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A class's members are fixed after Close,
-        // so each class is scanned once per table, whatever the number of its members keyed.
+        // so each class is scanned once per table, whatever the number of its members keyed. A constructed Type receives no key (ClassKey).
         internal BoundType? Representative(BoundType type)
         {
-            if (!this.node.TryGetValue(type, out var n))
+            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
             {
                 return null;
             }

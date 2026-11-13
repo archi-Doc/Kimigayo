@@ -32,6 +32,8 @@ public sealed class RecursiveContractTest
 
     private const string Clauses = "    Self.(K).Y is M\n    Box<Self.(K).Y>.(C).X is Copy\nfunc needs<V>(v: ref/V)\n    V is D\n    ()\n";
 
+    private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
+
     // SPEC 8.3.3: each recursive Contract of the S5 proposal's 2.1, through the premise supply of `T is C` (SPEC 8.3.2): Tree; CopyTree,
     // which refines Tree and constrains its inherited Child; A and B, which supply each other's conformance; Rec, whose refinement
     // constrains Node's unconstrained Child (Node is not recursive); Seq, whose Next conforms to another bound reference of its declaration;
@@ -184,6 +186,23 @@ public sealed class RecursiveContractTest
     [InlineData("guard", "id4n-transitive", Copies + "func twice<T, U, W>(value: W.(Tree).Child) -> (W.(Tree).Child, W.(Tree).Child)\n    U is T\n    W is Tree\n    T is CopyTree\n    return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
     [InlineData("C2c2", "kc1-callable", "contract H\n    associate F\n    Self.(H).F is Callable<(i32) -> i32>\nfunc probe<T, U>(f: ref/U.(H).F) -> i32\n    U is T\n    T is H\n    return f(1)\n", "")]
     [InlineData("C2c2", "kc1n-callable", "contract H\n    associate F\nfunc probe<T, U>(f: ref/U.(H).F) -> i32\n    U is T\n    T is H\n    return f(1)\n", "NotCallable_Kd: return f(1)")]
+    // R7-C2c2 (RP17 review B1, ruling 15): a constructed member of a class (`i32`, a struct, `Option<U>`) is no key's: its conformance is
+    // ResolveConformance's alone (SPEC 8.3.2's closed world), so `T is Mark` never reaches `i32` or `Leaf`, and a premise that contradicts
+    // the closed world stays its declaration's error; the consistent twins (the conformance holds) stay accepted.
+    [InlineData("C2c2", "d09p-prim", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark<i32>(x)\n", "NoApplicableOverload_Kd: needMark<i32>(x)")]
+    [InlineData("C2c2", "d09q-priminf", Marks + "func f<T>(x: ref/i32)\n    T is i32\n    T is Mark\n    needMark(x)\n", "NoApplicableOverload_Kd: needMark(x)")]
+    [InlineData("C2c2", "d09t-paraminf", Marks + "func f<T>(y: ref/T)\n    T is i32\n    T is Mark\n    needMark(y)\n", "NoApplicableOverload_Kd: needMark(y)")]
+    [InlineData("C2c2", "d09z-prim2", Marks + "func f<T, U>(x: ref/i32)\n    U is T\n    T is i32\n    U is Mark\n    needMark<i32>(x)\n", "NoApplicableOverload_Kd: needMark<i32>(x)")]
+    [InlineData("C2c2", "d09r-struct", Marks + "struct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Leaf\n    T is Mark\n    needMark<Leaf>(x)\n", "NoApplicableOverload_Kd: needMark<Leaf>(x)")]
+    [InlineData("C2c2", "d09y-leafproj", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
+    [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
+    [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "UnprovenConstraint_Kd: needMark<Option<U>>(x)")]
+    [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "UnprovenConstraint_Kd: needMark(y)")]
+    [InlineData("guard", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "d09s-primcopy", "func f<T>(x: i32) -> (i32, i32)\n    T is i32\n    T is Copy\n    return (x, x)\n", "")]
+    [InlineData("guard", "d09r-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(x: ref/Leaf2)\n    T is Leaf2\n    T is Mark\n    needMark<Leaf2>(x)\n", "")]
+    [InlineData("guard", "d09t-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(y: ref/T)\n    T is Leaf2\n    T is Mark\n    needMark(y)\n", "")]
+    [InlineData("guard", "d09y-ok", Marks + "contract Holder\n    associate Item\nstruct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(x: ref/Leaf2)\n    T is Holder\n    T.(Holder).Item is Leaf2\n    T.(Holder).Item is Mark\n    needMark<Leaf2>(x)\n", "")]
 
     // SPEC 8.8, 8.3.2: `Self.(K).Y is M` supplies D to Box's condition whatever M's own state; its check ends today (ACheckOverAConditionalClauseEnds).
     [InlineData("C2e", "p27c-condrec", Conditions + "contract M: K, D\n" + Clauses + "func probe<T>(value: ref/T.(K).Y)\n    T is M\n    needs<T.(K).Y>(value)\n", "", Explicit = true)]
