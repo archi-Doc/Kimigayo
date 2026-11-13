@@ -64,16 +64,24 @@ public class NormalizedConstraintProofBindingTest
     // entry read across its serial, or one Kept with readings that were not kept, indexes fewer.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-    {
-        Assert.Equal(146, Work(Trees + Moved + Derived) - Work(Trees));
+        => Assert.Equal(146, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
-        static int Work(string source)
-        {
-            var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-            return c.Binding.ClosureIndexWork;
-        }
-    }
+    // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
+    // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
+    // associated normalization, an outermost request outside KeptRegion: it forms the entry again with its own readings. The condition
+    // holds by `U is C` (x1) or through the identity by `T is C` (x2); without it (x1n) `Box<U>` is not K.
+    [Theory]
+    [InlineData("x1", "    U is C\n", "")]
+    [InlineData("x2", "    T is C\n", "")]
+    [InlineData("x1n", "", "UnprovenConstraint_Kd: let y: Box<U>.(K).X = b")]
+    public void AKeptEntrysReadingsAreNotReadInsideANormalization(string form, string premise, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, Boxed(premise) + "public func main() => ()\n", records);
+
+    // The facts x1's entries index over the library's, exact: the request inside the normalization indexes the view again, so reading
+    // the Kept entry there, without IndexOf's rebuild branch, indexes 57.
+    [Fact]
+    public void ARequestInsideANormalizationIndexesItsViewAgain()
+        => Assert.Equal(81, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -226,6 +234,20 @@ public class NormalizedConstraintProofBindingTest
                 throw new InvalidOperationException("Normalized constraint proof failed.");
             }
         }));
+    }
+
+    private static string Boxed(string premise)
+        => "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ncontract C\n" +
+            "contract K\n    associate X\nstruct Box<T>\n    public let v: i32\n    Self is K when T is C\n        associate K.X is i32\n" +
+            "func f<T, U>(a: U.(Tree).Child, b: i32) -> (U.(Tree).Child, U.(Tree).Child)\n    T is U\n    T is CopyTree\n" + premise +
+            "    let p = (a, a)\n    let y: Box<U>.(K).X = b\n    return p\n";
+
+    // Closure(view)'s facts indexed by a compilation of `source` (the class's scaling measure).
+    private static int ClosureWork(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        return c.Binding.ClosureIndexWork;
     }
 
     private static void AssertProof(Compilation c, ConstraintProof expected)
