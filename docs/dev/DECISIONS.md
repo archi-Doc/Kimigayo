@@ -12689,6 +12689,36 @@ resumed by R4-M86 (2026-10-20).
     `OriginInheritance` (an override's result Type already holds the original's atom); holding the whole position when any operand
     of its longer end rests (it hides the other operands' independent conjuncts, R4-M118 site (1)); a row formed by `FitOrigin`
     itself (it runs in both walks of one fit); reading `Rests` in `ContractFact` (it forms the record and decides nothing).
+- **BU-195 G808: the nonnull Option is one named predicate; its Some payload is a leading step** (2026-11-13; Front, Binding's
+  `TyCtxt`; Major; PLAN G808, the owner's O-220 (a); F's G806 ruling 1, G808 rulings 1-4; amends R4-M198's Leading sentence) IMPL
+  21.1.3, 21.1.2; SPEC 5.2, 4.1.
+  - `TyCtxt.NonnullSome(type)` is the one statement of IMPL 21.1.3's R list: for `Option<R>`, R a `ref`, `uniq`, `obj`, `rc`, `arc`,
+    `objref` or `objuniq` layer, it answers the Some Case's ordinal; -1 for every other Type (`Option<raw/T>`, `Option<Weak<S>>`,
+    `Option<Option<R>>`, an Option of a Tuple, a Scalar, an abstract or a pair part, any other enum). The ordinal is taken from the
+    declaration, never assumed: `KimiLibrary.OptionSome`, the Case named Some (AdtDef numbers Cases in declaration order), -1 before
+    Binding prepared the library's Cases. The for statement's Some and None positions (Binding.Sequences) read `OptionSome` and its
+    sibling `KimiLibrary.OptionNone` (the Case named None), in place of their literals 0 and 1, so no reader depends on Core.kimi
+    declaring Some first or None second (review N3 and R1; the Middle's C-287 G808-5).
+  - PLAN U8's Backend `Layout` reads `NonnullSome` for the nonnull representation; it states no second copy of the R list.
+  - `TyCtxt.Leading(at, out element)` gains one row: a key whose Type `NonnullSome` answers answers the Some payload's key
+    (`Select(Select(at, some), 0)`: the Some Case, then its component 0, MIR's Downcast and Field), `element` false: the payload is
+    the Option's whole word, at its address. R4-M198's sentence "Type null for any other Type" reads "for any other Type than these
+    three rows".
+  - Readers: A5's pun chain (`MirBorrows.PunTypes`' `Lead`, `Leads`, `End`, `Step`): a store past a nonnull payload's own step at a
+    C struct's first Field is typed, no longer undecided; `End` through it is the payload, never a raw pointer. `TyCtxt.RawPlaces`
+    is unchanged (a payload is no raw Place). G562-c's `Remainder` reads the row for its None case; a closed lead step (`Element`,
+    `First`, `Whole`) in place of `element` lands with it, its first reader, replacing every reader in that unit (ruling 2).
+  - Class (review N1; C-287 G808-2): records and infrastructure. The moved rows (`optCastObjTyped`, `optMatchObjTyped`) are invalid
+    by SPEC 15.6 (`NodeO.init()`'s result part `next` is a raw layer tied to no argument): they lose the located `Unsupported_Kd`
+    and keep `ComparisonLoanConflict_Kd`, their right independent record (SPEC 23.1.2), which the `Unsupported_Kd` hid. Nothing is
+    newly accepted. Q17 class 3 rests only on G562-c's `enumInRefU`.
+  - Not decided here (review N4): MIR's step rule keeps judging a Downcast off (`Step(of, -1)`), while `Leading` places the Some
+    payload at the Option's address. Only a shared-mode in-place match on a raw Place reaches that path on dev, its bindings without
+    write authority (SPEC 15.1.6, 5.2.1 condition 3), so no valid program observes it. Condition for A5's revision 3 (the Middle;
+    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step.
+  - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
+    located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
+    facts).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
