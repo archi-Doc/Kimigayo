@@ -184,7 +184,8 @@ public class FunctionItemTest
     // of a function declared in a body, carries the instance it was formed in, and its inherited arguments are read through it: a
     // Field Closure and the Item it returns, read through `S<A>`, are judged with A (dev judged nothing; w4fieldItemTok and
     // w8innerUowned are valid, w7innerTowned shared `self.p()`'s Type), in S's own body with S's T; a captureless Closure in `h<T>`
-    // follows the same rule (k18clo, k19cloera, accepted on dev).
+    // follows the same rule (k18clo, k19cloera, accepted on dev). o8eraT is NestedItemsAreErasedUnderTheEnclosingFunctionsClauses' row
+    // without `T is Owned`, invalid by the owner's O-249 Q4 (a).
     [Theory]
     [InlineData("w2fieldItemT", ItemField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        let f = s.p()\n        return N.need(f)\n", "N.need(f)")]
     [InlineData("w4fieldItemTok", ItemField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        T is Owned\n        let f = s.p()\n        return N.need(f)\n", null)]
@@ -197,6 +198,7 @@ public class FunctionItemTest
     [InlineData("w9bselfT", ItemField + "    public func m(self: ref/Self) -> i32\n        return N.need(self.p())\n", "N.need(self.p())")]
     [InlineData("w10innererase", ItemField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        U is Owned\n        let e: () -> i32 = other.p()\n        return e()\n", null)]
     [InlineData("w10binnereraseU", ItemField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        T is Owned\n        let e: () -> i32 = other.p()\n        return e()\n", "other.p()\n        return e()")]
+    [InlineData("o8eraT", "func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0\n", "pk\n        return f(o)")]
     [InlineData("k18clo", GroupNeed + "func h<T>(t: T) -> i32\n    let c = func () -> i32 => 0\n    return N.need(c)\n", "N.need(c)")]
     [InlineData("k18clook", GroupNeed + "func h<T>(t: T) -> i32\n    T is Owned\n    let c = func () -> i32 => 0\n    return N.need(c)\n", null)]
     [InlineData("k19cloera", "func h<T>(t: T) -> i32\n    let c = func (v: i32) -> i32 => v\n    let e: (i32) -> i32 = c\n    return e(0)\n", "c\n    return e(0)")]
@@ -262,7 +264,7 @@ public class FunctionItemTest
     [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives c\n    origin c outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
     [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives a\n    origin a outlives c\n    if true\n        func pk(x: ref/u8 during a) -> ref/u8 during a => x\n        let f: (ref/u8 during b) -> ref/u8 during c = pk\n        let r = f(other)\n        return 0\n    return 0")]
     [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0")]
-    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0")]
+    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    T is Owned\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0")]
     [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk<U>(y: ref/U during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
     [InlineData("func fb(x: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    var f: (ref/u8 during b) -> i32 = fb\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        f = pk\n    return f(other)")]
     [InlineData("func both<T>(g: (T) -> i32, k: (T) -> i32, v: T) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return both(func (x: ref/u8) => 0, pk, other)\n    return 0")]

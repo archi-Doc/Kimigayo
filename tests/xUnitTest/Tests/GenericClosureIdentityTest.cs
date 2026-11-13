@@ -46,7 +46,7 @@ public class GenericClosureIdentityTest
         {
             "Generic",
             [
-                .. TaggedBox, "func through<U>(box: Box<U>) -> isize", "    U is Tag", "    let g = box.n", "    let e: () -> isize = box.n", "    return g() * 10 + e()",
+                .. TaggedBox, "func through<U>(box: Box<U>) -> isize", "    U is Tag and Owned", "    let g = box.n", "    let e: () -> isize = box.n", "    return g() * 10 + e()",
                 "require through(Box<A>.init()) == 11 and through(Box<B>.init()) == 22 else => $abort(\"through\")", "Console.writeLine(\"ok\")",
             ]
         },
@@ -76,7 +76,7 @@ public class GenericClosureIdentityTest
             "Projection",
             [
                 .. TaggedBox, "contract HasItem", "    associate Item", "struct SrcA", "    Self is HasItem", "    associate HasItem.Item is A", "    public init() => ()",
-                "func viaWrap<S>(s: S) -> isize", "    S is HasItem", "    S.(HasItem).Item is Tag", "    let e: () -> isize = Box<S.Item>.init().n",
+                "func viaWrap<S>(s: S) -> isize", "    S is HasItem", "    S.(HasItem).Item is Tag and Owned", "    let e: () -> isize = Box<S.Item>.init().n",
                 "    let f: () -> isize = Box<A>.init().n", "    let b = Box<S.Item>.init()", "    let g = b.n", "    return e() * 100 + f() * 10 + g()",
                 "require viaWrap(SrcA.init()) == 111 else => $abort(\"projection\")", "Console.writeLine(\"ok\")",
             ]
@@ -203,6 +203,18 @@ public class GenericClosureIdentityTest
     [MemberData(nameof(HeldCases))]
     public void AFieldInitializersClosureRunsInItsTypesInstance(string name, string[] lines)
         => ScalarEmissionTest.EmitFixture("GenericClosureHeld" + name, string.Join('\n', lines) + "\n", "ok\n");
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): a held Closure read through `Box<U>` holds U in its
+    // instantiation, so its erasure needs U Owned (HeldCases' "Generic" and "Projection" without the Owned premise, accepted until G856).
+    [Theory]
+    [InlineData("func through<U>(box: Box<U>) -> isize\n    U is Tag\n    let e: () -> isize = box.n\n    return e()\n", "box.n")]
+    [InlineData("contract HasItem\n    associate Item\nfunc viaWrap<S>(s: S) -> isize\n    S is HasItem\n    S.(HasItem).Item is Tag\n    let e: () -> isize = Box<S.Item>.init().n\n    let f: () -> isize = Box<A>.init().n\n    return e() + f()\n", "Box<S.Item>.init().n")]
+    public void AHeldClosuresErasureNeedsItsInstancesArgumentOwned(string use, string at)
+    {
+        var source = string.Join('\n', TaggedBox) + "\n" + use + Ok + "\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("UnprovenConstraint_Kd", at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]

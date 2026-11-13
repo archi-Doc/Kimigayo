@@ -83,8 +83,20 @@ public class CallableSignatureSelectionTest
     [Fact]
     public void TheSelectedSignatureSuppliesAnAnonymousArgumentsContextOnce()
     {
-        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => n, 1@i32)\n" + Main;
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    F is Owned\n    return f(func [] (n) => n, 1@i32)\n" + Main;
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): an anonymous argument erased in `both<F>` holds F in its
+    // instantiation, so without `F is Owned` its erasure is invalid, beside its body's own failure (the two rows around this one until
+    // G856, accepted then).
+    [Theory]
+    [InlineData("n", new[] { nameof(DiagnosticCode.UnprovenConstraint_Kd) })]
+    [InlineData("\"bad\"", new[] { nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.TypeMismatch_Kd) })]
+    public void AnAnonymousArgumentsErasureNeedsTheEnclosingParameterOwned(string body, string[] codes)
+    {
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => " + body + ", 1@i32)\n" + Main;
+        Assert.Equal(codes, DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code));
     }
 
     [Fact]
@@ -98,7 +110,7 @@ public class CallableSignatureSelectionTest
     [Fact]
     public void ASelectedAnonymousBodyFailureDoesNotRetryAnotherSignature()
     {
-        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => \"bad\", 1@i32)\n" + Main;
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    F is Owned\n    return f(func [] (n) => \"bad\", 1@i32)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal("\"bad\"", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));

@@ -112,10 +112,12 @@ public class ErasureAfterSelectionTest
 
     // SPEC 7.7.4, 3.5, 23.1.2 (G341, rule E, DECISIONS BU-83): Binding judges an erased source's bare acquisition once, at the source,
     // so a Non-Copy source's record stands beside an independent one (q_v_nc_berr, r_geninst_nc), inside a payload's failing argument
-    // (p_typemis) and at each use, with no Move of the source (r_twice_nc).
+    // (p_typemis) and at each use, with no Move of the source (r_twice_nc). Without `T is Owned` the erasure in `k<T>` is invalid first
+    // (the owner's O-249 Q4 (a); PLAN G856): r_geninst_nc_unowned, r_geninst_nc's program until then, has that record at the source.
     [Theory]
     [InlineData("q_v_nc_berr", ValueH + NonCopy + "    return h(f, 1)\nfunc z() -> i32\n    return \"x\"\n", "TransferRequired_Kd f; TypeMismatch_Kd \"x\"")]
-    [InlineData("r_geninst_nc", "func k<T>(h: ((i32) -> i32, i32) -> i32, t: T) -> i32\n" + NonCopy + "    return h(f, 1)\nfunc m(h: ((i32) -> i32, i32) -> i32) -> i32\n    return k(h, 1)\n", "TransferRequired_Kd f; TransferRequired_Kd h")]
+    [InlineData("r_geninst_nc", "func k<T>(h: ((i32) -> i32, i32) -> i32, t: T) -> i32\n    T is Owned\n" + NonCopy + "    return h(f, 1)\nfunc m(h: ((i32) -> i32, i32) -> i32) -> i32\n    return k(h, 1)\n", "TransferRequired_Kd f; TransferRequired_Kd h")]
+    [InlineData("r_geninst_nc_unowned", "func k<T>(h: ((i32) -> i32, i32) -> i32, t: T) -> i32\n" + NonCopy + "    return h(f, 1)\nfunc m(h: ((i32) -> i32, i32) -> i32) -> i32\n    return k(h, 1)\n", "UnprovenConstraint_Kd f; TransferRequired_Kd h")]
     [InlineData("p_typemis", "enum Act\n    Run((i32) -> i32)\nfunc k(h: ((i32) -> i32, i32) -> i32) -> Act\n" + NonCopy + "    return .Run(h(f, 1) + 0)\n", "TransferRequired_Kd f")]
     [InlineData("r_twice_nc", ValueH + NonCopy + "    return h(f, 1) + h(f, 2)\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
     public void ANonCopyErasedSourceIsBindingsRecordAtEachUse(string form, string source, string records)
