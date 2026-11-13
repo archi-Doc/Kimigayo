@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -27,6 +28,7 @@ public sealed partial class InstanceCollectorTest
     // method's) and a getter's; a constructor after a Field; a getter's body declaring a function; a closed struct's Field initializer with
     // a Closure.
     private const string FieldHead = "struct Box<T>\n    var v: isize = ";
+    private const string ItemBox = "struct Box<T>\n    public var p = func [] ()\n        func size() -> isize => " + Capacity + "\n        return size" + Init;
     private const string GroupStaticHead = "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = ";
     private const string GroupStaticCall = "\nlet n = Box<i32>.G.s()\n";
     private const string NestedHead = "struct Outer<T>\n    public struct Inner\n        var v: isize = ";
@@ -48,6 +50,8 @@ public sealed partial class InstanceCollectorTest
         { "naming no slot", $"{FieldHead}({Four})(){Init}{Built}", 2, string.Empty },
         { "function in the initializer", $"{FieldHead}({Sizer}\n    )(){Init}{Built}", 2, "Unsupported_Kd size()" },
         { "function in a getter", $"{GetterHead}{Make}{Read}", 0, "Unsupported_Kd make()" },
+        { "item of a function in the initializer", $"{ItemBox}let a = Box<i32>.init().p()\nlet b = Box<i64>.init().p()\nlet n = a() + b()\n", 2, string.Empty },
+        { "item of a function in the initializer, erased", $"{ItemBox}let e: () -> isize = Box<i32>.init().p()\nlet n = e()\n", 1, string.Empty },
         { "getter", $"{GetterHead} => ({Sized})()\n{Read}", 2, string.Empty },
         { "constructor", $"{Plain}({Sized})()\n{Built}", 2, string.Empty },
         { "method", $"{Plain}0\n    public func get(self: ref/Self) -> isize => ({Sized})()\n{Got}", 2, string.Empty },
@@ -133,6 +137,22 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), form));
 
         string Text(Koto node) => source.Substring(node.Span.Start, node.Span.Length);
+    }
+
+    // SPEC 3.2.1, 6.1.3, 8.13.3 (PLAN G846; DECISIONS R5-M157): the Item of a function declared in a Field initializer's Closure holds its
+    // Container's instance, which its substitution carries as its declaring Type (TyCtxt.SubstOfItem), so a call of the Item value
+    // admits one item of the function per instance (before: the EnclosingInstance gap at `return size`). A direct call of such a
+    // function is still that gap ("function in the initializer", PLAN G149).
+    [Fact]
+    public void AnItemOfAFieldInitializersFunctionHasOneItemPerInstance()
+    {
+        var c = MirBuildTest.Compile(ItemBox + "let a = Box<i32>.init().p()\nlet b = Box<i64>.init().p()\nlet n = a() + b()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var items = set.Items.ToArray().Where(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Key.Decl?.Declaration is FunctionKoto { IsAnonymous: false, Name: "size" }).ToArray();
+        Assert.Equal(["Box<i32>", "Box<i64>"], items.Select(static x => TyCtxt.Name(x.Representative!.Declaring!)).Order(StringComparer.Ordinal));
     }
 
     // DECISIONS BU-60 (PLAN G300's gate, the readers' view): whether an owner instance's erased form has an Origin position is one fact for every owner
