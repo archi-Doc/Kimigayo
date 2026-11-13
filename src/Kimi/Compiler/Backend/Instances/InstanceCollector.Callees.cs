@@ -31,7 +31,23 @@ internal sealed partial class InstanceCollector
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
         {
-            return this.Admit(item, subject, program[new(closure, MirBodyKind.Closure)]!, this.types.SubstOfClosure(callable));
+            var subst = this.types.SubstOfClosure(callable);
+            if (program[new(closure, MirBodyKind.Closure)] is { } body)
+            {
+                return this.Admit(item, subject, body, subst);
+            }
+
+            // The program has no body of a Closure whose literal Binding did not publish, one in a declaration it rejected (a static whose
+            // Type is not Owned): the validator names a Closure's body only where a read body creates it (MirValidator.Program), and
+            // this call reads its value from a failed access. Its request is checked as any other (Requested) and then rests on
+            // Binding's record, as a target with a finding does (DECISIONS R5-M183); with Binding complete no declaration was rejected,
+            // so the missing body is a broken contract.
+            if (this.Requested(subject, closure, subst, out _) && this.types.BindingComplete)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            }
+
+            return -1;
         }
 
         if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
