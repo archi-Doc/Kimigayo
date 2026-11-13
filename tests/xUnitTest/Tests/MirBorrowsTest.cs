@@ -2999,6 +2999,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal MirBorrows Borrows { get; }
 
+        internal MirOrigins Origins => this.origins;
+
+        internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run of the body covers every view.
+
         internal void Run(MirProgram program)
         {
             foreach (var body in program.Bodies)
