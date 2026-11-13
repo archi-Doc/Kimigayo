@@ -215,9 +215,20 @@ WORKFLOW "Sessions" owns this table where the two differ.
   2」): the Front at most four implementers and four designers and reviewers together; the Middle and the Back at most two
   implementers and two designers and reviewers together each (were three designers and reviewers each since revision 45 and three
   Front implementers since revision 50; R4-M119, R5-M113). Implementers' files disjoint, at most one unit changing a shared
-  representation at a time; the Front keeps one implementer and one designer seat on R7's core chain (C2a, then C3a and the chain of
-  §5.0) so open-issue work never stops it. The Coordinator: one implementer and one reviewer (R7-M4). Watchers wake only on rows
-  that need the session's answer, never on the session's own posts (revision 45).
+  representation at a time; the Front keeps two implementers and two designers and reviewers on R7's core chain (C2a, then C3a and
+  the chain of §5.0; was one and one, revision 69) so open-issue work never stops it. The Coordinator: one implementer and one
+  reviewer (R7-M4). Watchers wake only on rows that need the session's answer, never on the session's own posts (revision 45).
+- Open issues during R7 (revision 69, the owner 2026-11-13, verbatim 「O-244 a O-245 a R7 の 3 案（A・B・C） ABC全て で決定します。」): an open issue
+  is fixed at once only when it is an unsound acceptance (Q17 class 1), wrong generated code, or a blocker of an R7 unit or a
+  milestone. Any other open issue (an internal error, a valid program rejected, a record difference: classes 2 to 4) is closed by
+  the R7 unit that rewrites its component, which its PLAN row names in the Owner column (as §11's PLAN row asks for absorbed rows),
+  or waits for R7's exit where no R7 unit rewrites the component; STATUS's area row lists a deferred valid-program rejection as a
+  known limit. Each planning session re-sorts its open rows by this rule; a unit already in implementation or later, or one the
+  owner has ruled to resume (G729 by O-244 (a), G826 by O-245 (a)), continues. Small fixes in one component are bundled into one
+  unit (one design, review, Session, queue row and docs request), each fix its own commit with its regression test and expected
+  moves; a fix its review rejects leaves the bundle as a unit of its own, and a bundle stays within Q12's hour per phase. Reason: of
+  the Front's 29 queue rows since Q-340, two were R7 plan units, and open issues are found faster than fixed (G819 to G835 on 11-13
+  alone), many in components R7 rewrites.
 - Heavy runs at most three across the sessions (`artifacts/heavy-runs/*.run` stays the lock; the board lists the plan). A window holds
   one. Timing needs an empty registry and a booked quiet slot.
 - Every unit's design and implementation phases stay within one hour of agent working time (Q12); sizing before start; a stop writes
@@ -1002,3 +1013,4 @@ frozen.
 | 65 | 2026-11-13 | R8-S2d2's landing (the Back's D-518; DECISIONS R8-M30) | §5.2's S2 row: S2d2 done (the shim's removal); §5.2's L0 and S2 rows: `formatInteger128`'s runtime is `__kimi_format_integer128` (the reduced `__kimi_format_integer`) and `__kimi_decimal_div10` in `FormatInteger128Runtime.ll.in` since R8-S2b2, so both rows name them; the R8, S2 and W2 rows name `FormatKind` by S2d2's name, `StringFormatKind`. |
 | 66 | 2026-11-13 | The owner's approval of K's slot proposals (1) and (2) (K's session), verbatim 「(1) と (2)を適用して下さい」 | §3.2 and §3.3: the build gap between two quiet slots is 5 minutes (was 15), and none when both slots are one session's; a slot still starts only when quiet_guard reports FREE, so a build begun in the gap finishes first. Reason: 15 booked slots (T-172 to T-186) carried about 3.5 hours of 15-minute gaps, and on 11-13 about one slot closed per hour. |
 | 67 | 2026-11-13 | R9-F6 batch A's landing (the Middle's D-545) | §5.3: the F6 row (parser member limits; twelve units in four batches, batch A done). |
+| 69 | 2026-11-13 | The owner's adoption of K's three R7 proposals (K's session), verbatim 「O-244 a O-245 a R7 の 3 案（A・B・C） ABC全て で決定します。」 | §3.3: (A) the Front keeps two implementers and two designers and reviewers on R7's core chain (was one and one); (B) during R7 an open issue is fixed at once only for an unsound acceptance, wrong generated code or a blocker of an R7 unit or a milestone, any other goes to the R7 unit that rewrites its component or waits for R7's exit, units already in implementation or ruled by the owner continuing; (C) small fixes in one component are bundled into one unit, a fix per commit. Reason: two of the Front's 29 queue rows since Q-340 were R7 plan units. |
