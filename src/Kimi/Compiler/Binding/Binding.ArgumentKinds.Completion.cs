@@ -15,7 +15,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
-    // arguments against its Types, and the waiting callables of its Tuple and array literal arguments and of its control-flow
+    // arguments against its Types, and the waiting callables of its Tuple, array and Dictionary literal arguments and of its control-flow
     // arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone kept waiting then decided (DecideTaken; DECISIONS
     // BU-43). A body or capture failure never retries another candidate, and an inferred result never supplies outer signature
     // evidence. Every part is completed, a failed one being its own record (SPEC 23.1.2, PLAN G418); false when one fails.
@@ -168,9 +168,9 @@ public sealed partial class Binding
     // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
     // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are
     // reported once and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that
-    // would wait stay unbound, and the parts of a Tuple or array literal (AggregateParts), a contextual Case and a waiting nested call
-    // are completed
-    // alike, as is a Typed part no preparation reached (after a value call's or a construction's stop). The call was decided before and
+    // would wait stay unbound, and the parts of a Tuple, array or Dictionary literal (AggregateParts), a contextual Case and a waiting
+    // nested call are completed alike, a Dictionary of two or more entries whole (ChecksItsParts), as is a Typed part no preparation
+    // reached (after a value call's or a construction's stop). The call was decided before and
     // reads no result of these parts, so they are bound with its consultation suspended: none is its prerequisite, and its own record
     // (a failed callee's) stays direct. A control-flow part already bound in this pass is not bound again. Anonymous functions stay
     // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
@@ -232,6 +232,12 @@ public sealed partial class Binding
         }
 
         var aggregate = new AggregateParts(node);
+        if (aggregate.ChecksItsParts)
+        {
+            this.BindNode(node, scope); // SPEC 12.4.3, 23.1.2: its own rule over its keys is an independent record (AggregateParts).
+            return;
+        }
+
         for (var i = 0; i < aggregate.Count; i++)
         {
             this.CompleteUnselectedPart(aggregate[i], scope);

@@ -12,6 +12,17 @@ namespace XunitTest;
 
 public class DictionaryLiteralTest
 {
+    private const string ArgumentDeclarations =
+        "func size(map: Dictionary<i32, i32>) -> i32 => 0\nfunc size(map: Dictionary<i64, i32>) -> i32 => 1\n" +
+        "func wide(map: Dictionary<i64, i32>) -> i32 => 0\nfunc label(map: Dictionary<string, i32>) -> i32 => 0\n" +
+        "func label(map: Dictionary<bool, i32>) -> i32 => 1\nfunc identity<T>(value: T) -> T => value@move\n" +
+        "func pair(p: (Dictionary<i64, i32>, i32)) -> i32 => p.1\nfunc pairs(p: (Dictionary<i32, i32>, i32)) -> i32 => 0\n" +
+        "func pairs(p: (Dictionary<i64, i32>, i32)) -> i32 => 1\nfunc maybe(x: Option<Dictionary<i64, i32>>) -> i32 => 0\n" +
+        "func nested(d: Dictionary<i64, Dictionary<i64, i32>>) -> i32 => 0\nfunc borrowed(d: ref/Dictionary<i64, i32>) -> i32 => 0\n" +
+        "func valueAt<V>(d: Dictionary<i64, V>) -> i32 => 0\nfunc callables<T>(d: Dictionary<string, T>) -> i32 => 0\n" +
+        "func both<T>(x: (T, T)) -> i32 => 0\nfunc borrowedFill(a: ref/[2 of Dictionary<i64, i32>]) -> i32 => 0\n" +
+        "let c = true\nlet v: i32 = 2\nlet b: i64 = 3\n";
+
     [Theory]
     [InlineData("let entries = [1: true, 2: false]", "i32", "bool")]
     [InlineData("let key: u8 = 2\nlet value: i64 = 3\nlet entries = [1: 2, key: value]", "u8", "i64")]
@@ -94,6 +105,60 @@ public class DictionaryLiteralTest
     {
         var c = MinimalEmissionTest.Analyze("let key: u8 = 2\nlet entries = [1: [1: true], key: [2: false]]");
         Assert.True(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 10.5.1, 10.4 step 1, 12.3.1 (the owner's O-250 u; PLAN G267): a Dictionary literal argument is classified key by key and value
+    // by value, as a Tuple or array literal argument is: a Literal key or value fits per candidate, is no evidence and takes its default
+    // after selection (identity, valueAt), a typed one is evidence (label, size([b: 2])), a waiting one is completed at its position
+    // (callables), and at ref/U the literal is the borrowed temporary. It took its defaults before selection, so size([1: 2]) and
+    // pairs(([1: 2], v)) selected the i32 candidate and wide([1: 2]) had none. A call that selects nothing still reports the literal's
+    // own duplicate keys (SPEC 12.4.3, 23.1.2); a fill at ref/U is no temporary of U (12.3.1, 4.3.3); at a bare slot a whole literal is
+    // one piece of evidence that agrees or conflicts in every order (SPEC 10.8; PLAN G378, G725), its Literal parts defaulting after
+    // selection (identity), and it is typed exactly as its own binder types it, a nested literal adopting the typed one's Type (the
+    // Tuple and array twins: ApplicabilityChainRegressionTest's o21 to o33).
+    [Theory]
+    [InlineData("size([1: 2])", "AmbiguousBinding_Kd")]
+    [InlineData("pairs(([1: 2], v))", "AmbiguousBinding_Kd")]
+    [InlineData("pairs(if c => ([1: 2], v) else => ([3: 4], 5))", "AmbiguousBinding_Kd")]
+    [InlineData("size([:])", "AmbiguousBinding_Kd")]
+    [InlineData("wide([1: true])", "NoApplicableOverload_Kd")]
+    [InlineData("wide([1: 2])", null)]
+    [InlineData("wide(if c => [1: 2] else => [3: 4])", null)]
+    [InlineData("wide([:])", null)]
+    [InlineData("pair(([1: 2], v))", null)]
+    [InlineData("maybe(Option.Some([1: 2]))", null)]
+    [InlineData("nested([1: [2: 3]])", null)]
+    [InlineData("borrowed([1: 2])", null)]
+    [InlineData("label([\"k\": 2])", null)]
+    [InlineData("size([b: 2])", null)]
+    [InlineData("pairs(if c => ([b: 2], v) else => ([b: 4], 5))", null)]
+    [InlineData("valueAt([1: 2])", null)]
+    [InlineData("size([1: 2, 1: 3])", "AmbiguousBinding_Kd,DuplicateDictionaryKey_Kd")]
+    [InlineData("borrowedFill([2 of [1: 2]])", "NoApplicableOverload_Kd")]
+    [InlineData("both(([b: v], [b: v@ref]))", "NoApplicableOverload_Kd")]
+    [InlineData("both(([b: v@ref], [b: v]))", "NoApplicableOverload_Kd")]
+    [InlineData("both(([b: v], [1: 2]))", null)]
+    [InlineData("identity([1: 2])", null)]
+    [InlineData("identity([[b: v], [1: 2]])", null)]
+    [InlineData("identity([[1: 2], [b: v]])", null)]
+    [InlineData("callables([\"k\": func [] (x: i64) -> i64 => x])", null)]
+    public void ADictionaryLiteralArgumentIsClassifiedByKeyAndValue(string use, string? code)
+    {
+        var c = MinimalEmissionTest.Analyze(ArgumentDeclarations + "let r = " + use + "\n");
+        Assert.Equal(code?.Split(',') ?? [], c.Binding.Issues.Select(static x => x.Code.ToString()).Order());
+    }
+
+    // AggregateParts is a view over the literal's own entries: a warm rebind of Dictionary literal arguments, a waiting anonymous function
+    // among their values included, allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmDictionaryArgumentsAllocateNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(ArgumentDeclarations +
+            "let w = wide([1: 2])\nlet p = pair(([1: 2], v))\nlet l = label([\"k\": 2])\nlet n = nested([1: [2: 3]])\n" +
+            "let f = callables([\"k\": func [] (x: i64) -> i64 => x])\nlet j = wide(if c => [1: 2] else => [3: 4])\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

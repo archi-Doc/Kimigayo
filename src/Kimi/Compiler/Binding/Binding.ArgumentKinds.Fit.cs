@@ -55,8 +55,9 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each
-    // element as an argument at its position (FitElement), so a nested literal fits a ref/(...) position as a borrowed temporary.
+    // SPEC 4.3, 4.6.2, 10.5.1: a Tuple, array or Dictionary literal or a mixed range fits a candidate's Type by its shape and parts, read
+    // only: each element, key or value as an argument at its position (FitElement; the owner's O-250 u), so a nested literal fits a
+    // ref/(...) position as a borrowed temporary.
     private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -71,7 +72,7 @@ public sealed partial class Binding
             var first = this.positionClasses.Count;
             for (var i = 0; i < parts.Count; i++)
             {
-                var result = this.FitElement(parts[i], ChildPattern(source, i, expected)!, scope);
+                var result = this.FitElement(parts[i], ChildPattern(source, parts.Position(i), expected)!, scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -105,11 +106,11 @@ public sealed partial class Binding
             return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, expected.Components[1], this.EndType, scope);
         }
 
-        throw new InvalidOperationException("A composite argument is a Tuple or array literal, a join or a mixed range (InternalInvariant).");
+        throw new InvalidOperationException("A composite argument is a Tuple, array or Dictionary literal, a join or a mixed range (InternalInvariant).");
     }
 
-    // SPEC 3.8, 4.3, 10.5.1: whether an aggregate literal argument (AggregateParts) has the candidate's shape: a Tuple of its length
-    // (TupleShapeAt); the owned fixed array of exactly its length or its owned Array, a fill only a fixed array of its count.
+    // SPEC 3.8, 4.3, 10.5.1: whether an aggregate literal argument has the candidate's shape: a Tuple of its length (TupleShapeAt); the
+    // owned fixed array of exactly its length or its owned Array, a fill only a fixed array of its count; an owned Dictionary.
     private bool AggregateShapeAt(Koto source, BoundType expected) => source switch
     {
         TupleLiteralKoto tuple => TupleShapeAt(tuple, expected),
@@ -119,11 +120,12 @@ public sealed partial class Binding
                 array.FillCount is { } count && (count.IsConstant
                     ? expected.LengthExpression is null && expected.Length == count.Value
                     : ReferenceEquals(expected.LengthExpression, count)))),
-        _ => throw new InvalidOperationException("An aggregate literal argument is a Tuple or array literal (InternalInvariant)."),
+        _ => expected is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Components.Count: 2 },
     };
 
-    // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
-    // adaptation class appended to the positions the candidate is ranked by (positionClasses) after a nested literal's own positions:
+    // SPEC 10.5.1, 10.4 step 1: a Tuple, array or Dictionary literal argument's part at its position, fitted as an argument
+    // (FitArgument), its adaptation class appended to the positions the candidate is ranked by (positionClasses) after a nested
+    // literal's own positions:
     // a nested literal's own class is its own fit's (FitComposite), Literal by value or a borrowed temporary at ref/(...). A waiting one
     // is checked by the selected candidate (Applicable here).
     private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
@@ -189,7 +191,7 @@ public sealed partial class Binding
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
                     this.FitsTypedPart(part, own, type, common, ref positionClass),
-                _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
+                _ => this.LateFits(part, type), // A Dictionary part whole (BU-43) until PLAN G729 (staged, G267fd).
             };
             if (!fits)
             {
@@ -242,8 +244,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.4 step 1, 10.5.1: a Tuple or array literal argument is ranked by its own fit (Literal by value, as where its slot stays open,
-    // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively, a nested literal's own
+    // SPEC 10.4 step 1, 10.5.1: a Tuple, array or Dictionary literal argument is ranked by its own fit (Literal by value, as where its
+    // slot stays open, or a borrowed temporary) and by each position its fit visits (Positions, FitElement), recursively, a nested
+    // literal's own
     // fit among them; a fill's element is no position (it stays one argument). A join formed part by part records one class per typed
     // position, as one control-flow argument (FitsPosition; SPEC 10.5.1, PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
@@ -275,8 +278,9 @@ public sealed partial class Binding
 
     // SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3 (PLAN G585; the owner's O-201 (1) (a), (2) (a)): the Type U of the owner temporary that a
     // source at `ref/U` is, materialized once and shared-borrowed, the one rule of every position (an argument's fit, BindAndAdaptNode
-    // at any expected Type, the evidence walk, a value call's solve): a Tuple or array literal (a fill is none, 4.3.3), an untyped literal
-    // or a literal-only expression (12.3; a mixed range is none, 4.6.2), or an unbound selection, `do` or `loop` with such a source,
+    // at any expected Type, the evidence walk, a value call's solve): a Tuple, array or Dictionary literal (a fill is none, 4.3.3; the
+    // owner's O-250 u for a Dictionary), an untyped literal or a literal-only expression (12.3; a mixed range is none, 4.6.2), or an
+    // unbound selection, `do` or `loop` with such a source,
     // directly or nested (its survey), whose value is the one temporary at its position. The source is fitted to U as at an expected U,
     // so a misfit is its own record at U; a call's fit tests it (FitLiteral). A form that delivers its operand (a label, an expression
     // body) passes the position to it; null at any other Type or part.
@@ -288,7 +292,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return core is TupleLiteralKoto { Elements.Count: > 0 } or ArrayLiteralKoto { FillLength: null } || IsUnfittedLiteral(core) ||
+        return core is TupleLiteralKoto { Elements.Count: > 0 } or ArrayLiteralKoto { FillLength: null } or DictionaryLiteralKoto || IsUnfittedLiteral(core) ||
             (core.BoundType is null && ControlFlowExpression(core) is { } join && this.SurveyResult(join, scope).Literal) ? target : null;
     }
 
@@ -314,7 +318,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < parts.Count; i++)
         {
-            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(parts[i], element, scope))
+            if (ChildPattern(core, parts.Position(i), type) is not { } element || !this.HasTypeWithoutExpectation(parts[i], element, scope))
             {
                 return false;
             }

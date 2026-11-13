@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // occupy, which the evidence walk (SlotSolution.InferPosition), the defaults (SlotSolution.DefaultPosition) and the whole Type at a bare
 // slot (IndependentPositionType) recurse into.
 // - Responsibility: a position is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
-//   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
+//   payload; each element of a Tuple or array literal part and each key and value of a Dictionary literal part (AggregateParts), which
+//   SPEC 10.5.1 classifies one by one at its component, element, key or value Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
 //   child positions are its aggregate parts' by index (SPEC 10.5.1: an array result's too, at every number of sources, each index
@@ -32,14 +33,16 @@ public sealed partial class Binding
 {
     private readonly List<Koto> positionParts = new();
 
-    // SPEC 10.5.1, 10.4 step 1 (DECISIONS BU-43): the parts of a Tuple or array literal, the one representation every walk over an
-    // aggregate literal's parts reads: preparation (PrepareComposite), the fit (ProbeAggregateArgument), the type without an expectation
-    // (HasTypeWithoutExpectation), an unselected call's completion (CompleteUnselectedPart), the waiting walk (TakeWaiting, PartHolder,
-    // BoundSince) and the position walks (ChildPositions, AddChildPosition, PartChildPattern). Element i is part i at child position i.
-    // A view over the literal's own list: it allocates nothing. Unit `()` and every other form have no parts (Exist).
+    // SPEC 10.5.1, 10.4 step 1 (the owner's O-250 u; DECISIONS BU-43): the parts of a Tuple, array or Dictionary literal at their child
+    // positions, the one representation every aggregate walk reads: preparation (PrepareComposite), the fit (ProbeAggregateArgument), the
+    // type without an expectation (HasTypeWithoutExpectation), an unselected call's completion (CompleteUnselectedPart), the waiting walk
+    // (TakeWaiting, PartHolder, BoundSince) and the position walks (ChildPositions, AddChildPosition, AddIndexedChild). A Tuple's or
+    // array's element i is part i at child position i; a Dictionary's entry j gives part 2j, its key, at child position 0 and part 2j + 1,
+    // its value, at 1. A view over the literal's own lists: it allocates nothing. Unit `()` and every other form have no parts (Exist).
     private readonly struct AggregateParts
     {
         private readonly List<Koto>? elements;
+        private readonly List<DictionaryLiteralEntry>? entries;
 
         public AggregateParts(Koto node)
         {
@@ -49,13 +52,31 @@ public sealed partial class Binding
                 ArrayLiteralKoto array => array.Elements,
                 _ => null,
             };
+            this.entries = (node as DictionaryLiteralKoto)?.Entries;
         }
 
-        public bool Exist => this.elements is not null;
+        public bool Exist => this.elements is not null || this.entries is not null;
 
-        public int Count => this.elements?.Count ?? 0;
+        public int Count => this.elements?.Count ?? (2 * this.entries?.Count) ?? 0;
 
-        public Koto this[int index] => this.elements![index];
+        // The child positions by index (SPEC 10.5.1; the owner, 2026-10-31): a Tuple's or array's elements, a Dictionary's key and value.
+        public int Children => this.elements?.Count ?? (this.entries is null ? 0 : 2);
+
+        // From part `index`, at child position `index`, the step to the next part at that position.
+        public int Stride => this.elements?.Count ?? 2;
+
+        // SPEC 12.4.1, 12.4.3, 23.1.2: the literal's own rule over its parts together, beyond each part's position: the entries of a
+        // Dictionary of two or more share one key and one value Type, and its literal keys are compared by value. A call that selects no
+        // candidate binds such a literal as with no expected Type, so the rule runs; one entry or none has no such rule. An array's one
+        // element Type (4.3.1) is not bound so: binding an unselected array whole gave eight records dev does not give, Unsupported_Kd
+        // among them (G267fd revision 3), so its parts are completed one by one as on dev.
+        public bool ChecksItsParts => this.entries is { Count: > 1 };
+
+        public Koto this[int index]
+            => this.elements?[index] ?? (index % 2 == 0 ? this.entries![index / 2].Key : this.entries![index / 2].Value);
+
+        // The child position of part `index` (ChildPattern): an element's own index, a key's 0 and a value's 1.
+        public int Position(int index) => this.elements is null ? index % 2 : index;
     }
 
     // SPEC 3.8, 10.5.1: whether a Tuple literal has the Type's shape, a Tuple of its length: the one Tuple shape rule of the walks, the
@@ -71,19 +92,9 @@ public sealed partial class Binding
     };
 
     // The parameter Type at child position `index` of one part `core` whose position's is `pattern`: an aggregate literal part's
-    // (AggregateParts, ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
+    // (ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
     private static BoundType? PartChildPattern(Koto core, int index, BoundType? pattern)
         => new AggregateParts(core).Exist ? ChildPattern(core, index, pattern) : pattern;
-
-    // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
-    // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
-    private static int IndexedChildren(Koto part) => part switch
-    {
-        TupleLiteralKoto tuple => tuple.Elements.Count,
-        ArrayLiteralKoto array => array.Elements.Count,
-        DictionaryLiteralKoto => 2,
-        _ => throw new InvalidOperationException("An aggregate part is a Tuple, array or Dictionary literal."),
-    };
 
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
     private int OpenPosition(Koto part)
@@ -95,9 +106,10 @@ public sealed partial class Binding
 
     private void ClosePosition(int start) => this.positionParts.RemoveRange(start, this.positionParts.Count - start);
 
-    // The child positions of [start, end), by index (SPEC 10.5.1; the owner, 2026-10-31): of one part, its Tuple or array literal's
+    // The child positions of [start, end), by index (SPEC 10.5.1; the owner, 2026-10-31): of one part, its aggregate literal's
     // elements (bound or not: the late evidence walks a bound one's), or the one position of a join's results its call classifies; of
-    // several parts, a join's, those of its aggregate parts (IndexedChildren), so that arrays of unequal length have the longest one's.
+    // several parts, a join's, those of its aggregate parts (AggregateParts.Children), so that arrays of unequal length have the longest
+    // one's.
     private int ChildPositions(int start, int end)
     {
         if (end - start != 1)
@@ -107,7 +119,7 @@ public sealed partial class Binding
             {
                 if (this.IsAggregatePart(this.positionParts[i]))
                 {
-                    count = Math.Max(count, IndexedChildren(this.positionParts[i]));
+                    count = Math.Max(count, new AggregateParts(this.positionParts[i]).Children);
                 }
             }
 
@@ -117,12 +129,12 @@ public sealed partial class Binding
         return this.ChildPositions(this.positionParts[start]);
     }
 
-    // The child positions of one part: its Tuple or array literal's elements, or the one position of a join's results.
+    // The child positions of one part: its aggregate literal's child positions, or the one position of a join's results.
     private int ChildPositions(Koto part)
     {
         part = KotoHelper.UnwrapParentheses(part);
         var parts = new AggregateParts(part);
-        return parts.Exist ? parts.Count : this.ComposedJoin(part) is null ? 0 : 1;
+        return parts.Exist ? parts.Children : this.ComposedJoin(part) is null ? 0 : 1;
     }
 
     // Appends the parts of child position `index` of [start, end), each part's there (AddIndexedChild), and gives the parameter Type at
@@ -156,25 +168,14 @@ public sealed partial class Binding
         return PartChildPattern(part, index, pattern);
     }
 
-    // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for a Tuple or array without
-    // one (Tuple results of other lengths wait under U1.6g (a) and fail their shape per candidate), a Dictionary's keys or values.
+    // Appends a part's child `index` (AggregateParts), formed by AddResultPart: its element there, none for a Tuple or array without one
+    // (Tuple results of other lengths wait under U1.6g (a) and fail their shape per candidate), a Dictionary's keys or values.
     private void AddIndexedChild(Koto part, int index)
     {
-        switch (part)
+        var parts = new AggregateParts(part);
+        for (var i = index; i < parts.Count; i += parts.Stride)
         {
-            case TupleLiteralKoto tuple when index < tuple.Elements.Count:
-                this.AddResultPart(tuple.Elements[index]);
-                break;
-            case ArrayLiteralKoto array when index < array.Elements.Count:
-                this.AddResultPart(array.Elements[index]);
-                break;
-            case DictionaryLiteralKoto dictionary:
-                foreach (var entry in dictionary.Entries)
-                {
-                    this.AddResultPart(index == 0 ? entry.Key : entry.Value);
-                }
-
-                break;
+            this.AddResultPart(parts[i]);
         }
     }
 

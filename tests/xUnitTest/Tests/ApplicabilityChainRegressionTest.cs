@@ -154,7 +154,8 @@ public partial class ApplicabilityChainRegressionTest
     // is a literal, Never supplying nothing at any position, and its default applies after selection; a join of Tuple or array results
     // that supplies no candidate is classified position by position, as a Tuple argument's elements are: a typed position is evidence at
     // its common Type, a literal one takes its default after selection, one Never in every source is none, and the selected candidate's
-    // Type completes it. A join of Dictionary results is typed as a whole, as a Dictionary literal argument is.
+    // Type completes it. A join of Dictionary results is classified by its keys and values, as a Dictionary literal argument is (the
+    // owner's O-250 u): `takeDictI`'s literal value fits i64 at the selected candidate.
     [Theory]
     [InlineData("keep(if c => (x, stop()) else => (stop(), x))", "(i64, i64)")]
     [InlineData("keep(if c => (x, stop()) else => (stop(), 5))", "(i64, i32)")]
@@ -180,6 +181,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("keep(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
     [InlineData("takeDict(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
     [InlineData("keep(if c => [\"k\": 5] else => [\"k\": stop()])", "Dictionary<string, i32>")]
+    [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", "Dictionary<string, i64>")]
     public void AControlFlowArgumentsResultsAreClassifiedByPosition(string use, string type)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
@@ -191,8 +193,8 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
     // completes it as it completes a waiting argument at its position: at F it binds F, else it is checked against the selected
     // candidate's Type. A source holding it beside typed parts, also through a nested selection, waits with it and then takes the Type
-    // its join forms part by part (SPEC 14.9.2 steps 2-3), a value read included. In a Dictionary literal, which is typed as a whole,
-    // it does not wait, as in a Dictionary literal argument (DR3 C1).
+    // its join forms part by part (SPEC 14.9.2 steps 2-3), a value read included. In a Dictionary literal it waits at its key or value
+    // position, as in a Tuple or array literal (the owner's O-250 u).
     [Theory]
     [InlineData("applyArg(if c => (func [] (v) => v, stop()) else => (stop(), x))")]
     [InlineData("applyOne(if c => func [] (v) => v else => stop())")]
@@ -214,7 +216,6 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     [InlineData("takeD(if c => [\"k\": func [] (v: i64) -> i64 => v] else => stop())")]
     [InlineData("takeD([\"k\": func [] (v: i64) -> i64 => v])")]
-    [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     [InlineData("takeA(if c => [func [] (v: i64) -> i64 => v] else => stop())")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), 5)) else => (stop(), 5))")]
     public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
@@ -226,7 +227,9 @@ public partial class ApplicabilityChainRegressionTest
 
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
     // Literal fits a candidate only when every source does. Its results classified by position (the owner, 2026-10-26), a join ranks as
-    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole.
+    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole. A
+    // slot that takes a whole array or Dictionary literal holding a waiting anonymous function stays unbound (SPEC 10.5.1: such an
+    // element, key or value is no evidence; the owner's O-250 u), the Dictionary rows as their array twins.
     [Theory]
     [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
     [InlineData("h(if c => 100 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 100 else => stop())")]
@@ -235,7 +238,6 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("tuples(if c => (stop(), 5) else => (6, stop()))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "tuples(if c => (stop(), 5) else => (6, stop()))")]
     [InlineData("keep(if c => (x, stop()) else => (x, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (x, stop()) else => (x, stop()))")]
     [InlineData("keep(if c => (5, stop()) else => (6, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (5, stop()) else => (6, stop()))")]
-    [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
     [InlineData("applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))")]
     [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
     [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
@@ -259,8 +261,12 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("first(if c => ((if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w), x) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w")]
     [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
-    [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
-    [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
+    [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(([\"k\": func [] (v) => v], x))")]
+    [InlineData("applyArg(([func [] (v) => v], x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(([func [] (v) => v], x))")]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
+    [InlineData("applyArg(if c => ([func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => ([func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
+    [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
+    [InlineData("first(if c => ([func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "first(if c => ([func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";
@@ -281,15 +287,15 @@ public partial class ApplicabilityChainRegressionTest
             DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the
-    // closure's own record (`v`) the call reports F unbound, a dependent record SPEC 23.1.2 allows. The Dictionary held in the join's
-    // Tuple no longer rests F on its failed part (U1.6h-3' fix (b), superseded).
+    // SPEC 23.1.2 (DECISIONS BU-79, rule W, Q13; the owner, 2026-11-02): the call reports F unbound. Since the owner's O-250 u the Dictionary
+    // literal is classified by its keys and values, so its anonymous function waits at its value position, whose Type rests on F, and
+    // has no record of its own, as in its array twin `applyArg(if c => ([func [] (v) => v], x) else => (stop(), x))`.
     [Fact]
-    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported()
+    public void AWaitingFunctionInADictionaryValueRestsOnItsSlot()
     {
         var source = ControlFlowDeclarations + "applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))\n";
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
-        Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
+        Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))"], shown);
     }
 
     // SPEC 23.1.2, 10.4 (U1.6h-3'): a join of Tuple results fits `take(i64)` whatever its failed part is, so the call's

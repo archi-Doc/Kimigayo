@@ -7,9 +7,11 @@ namespace Kimi.Compiler;
 
 // Argument kinds (SPEC 10.5.1; DECISIONS BU-2, BU-43): what each argument part is to the candidates of a call.
 // - Responsibility: the kind of every argument part: a call argument and, recursively, an element of a Tuple or array literal
-//   argument, a written boundary of a mixed range and a payload of a Case construction, as one closed PartKind. Literal: an unfitted
+//   argument or a key or value of a Dictionary literal argument (AggregateParts), a written boundary of a mixed range and a payload
+//   of a Case construction, as one closed PartKind. Literal: an unfitted
 //   literal (SPEC 12.3), or control flow whose result sources other than Never are all such, at least one (SPEC 14.9.1). Aggregate: a
-//   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
+//   Tuple, array or Dictionary literal (its keys and values; the owner's O-250 u) or a mixed range, whose parts are classified
+//   instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
 //   (Binding.ArgumentKinds.Positions.cs), one whose typed parts have no common Type (ConflictWaits, U1.6g), and a typed one that holds
@@ -99,9 +101,9 @@ public sealed partial class Binding
     private static bool Awaits(Koto core, ArgumentPart record)
         => (record.Relation & CallRelation.Awaits) != 0 && core.BoundType is null && core.BindingFailure == BindingFailure.None;
 
-    // SPEC 10.5.1: the kind a part's form gives it: an unfitted literal, a Tuple or array literal or mixed range, an anonymous function, a
-    // contextual Case, or Typed. A Join, a Call, a Reference and a Literal control-flow part are their producers' records instead
-    // (RecordPart; KindOf combines the two).
+    // SPEC 10.5.1: the kind a part's form gives it: an unfitted literal, a Tuple, array or Dictionary literal or mixed range, an
+    // anonymous function, a contextual Case, or Typed. A Join, a Call, a Reference and a Literal control-flow part are their
+    // producers' records instead (RecordPart; KindOf combines the two).
     private static PartKind ClassifyPart(Koto part) => part switch
     {
         _ when IsUnfittedLiteral(part) => PartKind.Literal,
@@ -725,9 +727,9 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
-    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each element of a Tuple or array literal (AggregateParts) is prepared as an argument at
-    // its position (a function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written
-    // boundaries of a mixed range on their own, since a boundary is never waiting.
+    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each part of a Tuple, array or Dictionary literal (AggregateParts) is prepared as an
+    // argument at its position (a function reference among them waits when it needs S), the payloads of a contextual Case likewise, and
+    // the written boundaries of a mixed range on their own, since a boundary is never waiting.
     private bool PrepareComposite(Koto part, BindingScope scope)
     {
         var source = KotoHelper.UnwrapParentheses(part);
