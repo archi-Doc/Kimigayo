@@ -5,7 +5,7 @@ namespace Kimi.Compiler;
 // SPEC 4.6.1, 8.7, 22.1: Position and PositionRange are closed Contracts; every integer Type's Position is a row of the library
 // witness table (Binding.LibraryWitnesses), and integers gain no members. SPEC 8.7.4: PrimitiveIntegerSupplies is its list of the
 // Contracts a PrimitiveInteger premise proves; the Copy and Owned it also supplies are its refinement parents (its row of the
-// intrinsic table, KimiLibraryKinds), which Enumerate's ancestor rows give at every projection, the arithmetic Contracts in
+// intrinsic table, KimiLibraryKinds), which Enumerate's ancestor rows give at every projection; the arithmetic Contracts are in
 // Binding.ArithmeticContracts and Binding.BuiltinArithmetic, and member lookup's Position clause in Binding.ContractCalls
 // (temporary, PLAN G776).
 public sealed partial class Binding

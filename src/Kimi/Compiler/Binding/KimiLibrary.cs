@@ -532,13 +532,16 @@ public sealed partial class KimiLibrary
                 foreach (var parent in IntrinsicContract.Of(entry.Intrinsic).Parents ?? [])
                 {
                     // SPEC 8.7.4: the shape's ancestors are its row's parents, which the catalog registers before it.
-                    foreach (var registered in this.registeredSymbols)
+                    BindingSymbol? registered = null;
+                    foreach (var candidate in this.registeredSymbols)
                     {
-                        if (registered.Intrinsic == parent)
+                        if (candidate.Intrinsic == parent)
                         {
-                            symbol.Contract.AncestorStorage.Add(registered);
+                            registered = candidate;
                         }
                     }
+
+                    symbol.Contract.AncestorStorage.Add(registered ?? throw new InvalidOperationException($"The parent {parent} of {entry.Id} is not registered before it (InternalInvariant; R7-C2b)."));
                 }
             }
 
