@@ -8,6 +8,13 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row).
+    private static void AddInputBound(OriginInference inference, BoundOrigin parameter, BoundOrigin value)
+    {
+        inference.Discover(parameter, 1);
+        inference.Add(value, parameter, false, true);
+    }
+
     // The failure of a solve's bound under its source (OriginInference.Bounds): a declared clause, else a member's position, else a result
     // premise.
     private static ComparisonFailure BoundFailure(
@@ -86,6 +93,12 @@ public sealed partial class Binding
             if (known is not null && QuantifiedBy(value, known))
             {
                 return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
+            }
+
+            if (sign > 0 && !result)
+            {
+                AddInputBound(inference, parameter, value); // The covariant input row, one copy (a borrowed temporary's too).
+                return;
             }
 
             inference.Discover(parameter, sign == 0 ? 3 : sign > 0 ? 1 : 2);
@@ -225,7 +238,8 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison))
+            if (longer is null || shorter is null || (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison) &&
+                !this.HoldsResting(longer, shorter, 0, new ProofLeaf(this, use, inference.Comparison))))
             {
                 inference.Failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
@@ -253,9 +267,9 @@ public sealed partial class Binding
                 return Get(expression) is null ? expression : null;
             }
 
-            foreach (var operand in expression.Operands)
+            for (var i = 0; i < expression.Operands.Count; i++)
             {
-                if (Unsolved(operand) is { } variable)
+                if (Unsolved(expression.Operands[i]) is { } variable)
                 {
                     return variable;
                 }

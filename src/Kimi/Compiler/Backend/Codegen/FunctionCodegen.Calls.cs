@@ -170,9 +170,10 @@ internal sealed partial class FunctionCodegen
     // adaptation's in that form (FunctionCodegen.Objects' Creation, without a callee or a target), of which it reads the Place, the
     // operands' Start and the Source only: each parameter's argument (Argument), the destination's address as the result slot, the call's
     // location for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92, R5-M93), a parameter without an operand (Given: a
-    // runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the next of the given values. The
-    // operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a
-    // pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
+    // runtime routine's stride or reason, Text.writer's kind and dispatch word, a Closure's environment and context) the next of the
+    // given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
+    // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a
+    // record.
     private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
         var parameters = signature.Parameters;

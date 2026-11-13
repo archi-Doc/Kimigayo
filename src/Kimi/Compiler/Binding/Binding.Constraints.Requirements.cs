@@ -58,13 +58,17 @@ public sealed partial class Binding
                             break;
                         }
 
-                        target = this.BindContractReference(node, target, scope);
-                        if (target is null)
+                        var bound = this.BindContractReference(node, target, scope);
+                        if (bound is null && !this.PendingReference(node, target, scope))
                         {
-                            return this.InternConstraint(new(ConstraintKind.Error));
+                            return this.InternConstraint(new(ConstraintKind.Error)); // The reference's located failure is the record.
                         }
 
-                        result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
+                        // A reference that formed nothing for a missing name, a Type argument's (`C<M>`, SPEC 8.6.1, 9.7.1), is pending
+                        // (PendingReference) as a complete Type's is below.
+                        result = bound is null ? this.InternConstraint(new(ConstraintKind.Unresolved))
+                            : bound.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error))
+                            : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: bound));
                     }
                     else
                     {

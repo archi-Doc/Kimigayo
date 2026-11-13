@@ -8,16 +8,16 @@ namespace Kimi.Compiler.Backend;
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
 // zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the formatting runtime, the erased
-// writer's kept runtime, the float formatting part and the Dictionary helpers, the storage byte primitives, the buffered definitions, the
-// entry, the object runtime and the footer. The external declarations, the imports a definition calls (Import, DECISIONS R5-M89), the
-// zero-sized symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the formatting runtime (DECISIONS
-// R5-M128), the erased writer's kept runtime (R8-W1b), the float formatting part (R8-S2c), the storage byte primitives (the nullable
-// Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime (DECISIONS R5-M110) are written only when a definition
-// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the
-// Dictionary helpers (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through FunctionCodegen's one
-// call writer (PD3): an Application's its startup root, a test build's each test root in catalog order inside the test runtime's entry
-// (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's test variant followed by the test runtime's routines
-// (TestRuntime.Text, with the memory declarations it calls).
+// writer's kept runtime, the float formatting part, the 128-bit integer formatting part (R8-S2b2) and the Dictionary helpers, the storage
+// byte primitives, the buffered definitions, the entry, the object runtime and the footer. The external declarations, the imports a
+// definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory
+// declarations, the formatting runtime (DECISIONS R5-M128), the erased writer's kept runtime (R8-W1b), the float formatting part (R8-S2c),
+// the 128-bit integer formatting part (R8-S2b2), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92,
+// R5-M145) and the object runtime (DECISIONS R5-M110) are written only when a definition requested them (Request; package C 3.2's requests,
+// DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through
+// FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each test root in catalog order inside the
+// test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's test variant followed by the test
+// runtime's routines (TestRuntime.Text, with the memory declarations it calls).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -33,7 +33,7 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
     [Flags]
-    internal enum Needs : byte
+    internal enum Needs : ushort
     {
         /// <summary>None.</summary>
         None = 0,
@@ -52,7 +52,7 @@ internal sealed partial class ModuleCodegen
         Objects = 8,
 
         /// <summary>The float formatting part (LlvmModuleText.FormatFloatRuntime: the FormatFloat routine and Ryu), for a FormatFloat call
-        /// (its row's Requests; R8-S2c). With it every bit of the byte is taken, so the next part widens the enum.</summary>
+        /// (its row's Requests; R8-S2c).</summary>
         FormatFloat = 16,
 
         /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: Text.writer's adapter and the reserve through
@@ -60,22 +60,27 @@ internal sealed partial class ModuleCodegen
         /// whose reservation calls it and which calls its llvm.memset declaration, until R8-W2.</summary>
         ErasedWriter = 32,
 
-        /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
+        /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for Text.writer and an owning interpolation's steps
+        /// (HelperNeeds.FormattingRuntime; DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
 
         /// <summary>The 128-bit overflow intrinsics' declarations (LlvmModuleText.WideOverflowDeclarations), for a checked 128-bit operation
         /// (DECISIONS R5-M143).</summary>
         WideOverflow = 128,
+
+        /// <summary>The 128-bit integer formatting part (LlvmModuleText.FormatInteger128Runtime: the FormatInteger128 routine and its
+        /// division by ten), for a FormatInteger128 call (its row's Requests; R8-S2b2).</summary>
+        FormatInteger128 = 256,
     }
 
     /// <summary>Requests a module part for the module being written.</summary>
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the formatting runtime with the memory declarations and, until R8-W2, the erased writer's kept
+    /// <summary>Requests the module parts for the legacy runtime text a caller requests (X4; DECISIONS R5-M46, R5-M128), the one map from
+    /// HelperNeeds to the frame's parts: the formatting runtime with the memory declarations and, until R8-W2, the erased writer's kept
     /// runtime, which the formatting runtime calls.</summary>
-    /// <param name="needs">The row's needs.</param>
+    /// <param name="needs">The legacy runtime text the caller requests.</param>
     internal void Request(HelperNeeds needs)
     {
         if ((needs & HelperNeeds.FormattingRuntime) != 0)
@@ -120,6 +125,11 @@ internal sealed partial class ModuleCodegen
         if ((this.needs & Needs.FormatFloat) != 0)
         {
             output.Write(LlvmModuleText.FormatFloatRuntime);
+        }
+
+        if ((this.needs & Needs.FormatInteger128) != 0)
+        {
+            output.Write(LlvmModuleText.FormatInteger128Runtime);
         }
 
         output.Write(this.helperText.GetStringBuilder());

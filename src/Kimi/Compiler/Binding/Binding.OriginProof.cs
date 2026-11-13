@@ -434,8 +434,6 @@ public sealed partial class Binding
     // into it would lose its Loans: such a fit is never collected here.
     private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
         if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
         {
             this.BoundInitializerOrigin(pending, shorter, longer, use, condition);
@@ -450,8 +448,6 @@ public sealed partial class Binding
     // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
     private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
         if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializer(shorter, use) is { } local)
         {
             if (this.collectingFits)
@@ -467,8 +463,32 @@ public sealed partial class Binding
 
     // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
-    // fit is part of, whose premises its proof assumes.
+    // fit is part of, whose premises its proof assumes. Both ends are resolved here, once (OriginAtUse).
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): a conjunct one of whose ends rests on a failed part holds and gives no evidence
+    // (HoldsResting, after the ordinary answer). A recording fit that held so publishes it (fitRested): its entry leaves the fit's
+    // positions as rows of its body (CheckTypeUse), which A5 judges with the atom Dependent (a chain through it between its ends;
+    // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows). The walks entered through IsSubtypeAt (a callable
+    // contract) and CallableSignatureFits set it too and form no row: no entry reads it there, and the next fit's entry clears it.
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+    {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        if (this.FitConjunct(longer, shorter, use, comparison, condition))
+        {
+            return true;
+        }
+
+        if (!this.HoldsResting(longer, shorter, condition, new FitLeaf(this, use, comparison)))
+        {
+            return false;
+        }
+
+        this.fitRested |= !this.collectingFits && this.candidateTrials == 0;
+        return true;
+    }
+
+    // The ordinary answer of one conjunct, its ends resolved at the use: pure in a candidate trial or a collected fit, recording otherwise.
+    private bool FitConjunct(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
         => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, comparison, condition) :
             this.FitOriginOutlives(longer, shorter, use, comparison, condition);
 
@@ -558,14 +578,7 @@ public sealed partial class Binding
         return true;
 
         BoundOrigin Substitute(BoundOrigin origin)
-        {
-            if (declaringType?.Symbol is { } owner)
-            {
-                origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-            }
-
-            return this.SubstituteStoredOrigin(origin, function, origins.AsSpan(0, function.BoundSymbol?.Schema?.Origins.Count ?? 0), inputs.AsSpan(0, InputOriginCount(function)));
-        }
+            => this.Substitute(origin, SubstitutionOf(function, declaringType, default, default, origins, inputs));
     }
 
     private void BindTypeOriginContracts()
@@ -591,5 +604,20 @@ public sealed partial class Binding
                 this.CompleteOriginDeclaration(associatedOrigins);
             }
         }
+    }
+
+    // The fit's leaf of HoldsResting: one conjunct's ordinary answer at the fit's use (FitConjunct).
+    private readonly struct FitLeaf(Binding binding, Koto use, CallableInstance comparison) : IOriginConjunct
+    {
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.FitConjunct(longer, shorter, use, comparison, condition);
+    }
+
+    // The proof's leaf of HoldsResting: one conjunct's proof at `use` in `comparison` (ProvesOriginOutlives), for the Origin inference's
+    // bounds (SolveOriginInference) and an implementation's claims (ClaimHolds).
+    private readonly struct ProofLeaf(Binding binding, Koto use, CallableInstance comparison) : IOriginConjunct
+    {
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
     }
 }

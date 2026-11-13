@@ -239,6 +239,39 @@ public sealed partial class Binding
             return fixedExpectation || this.AcquiresBare(source, source.BoundType ?? erased, erased, pattern, deferAcquisition);
         }
 
+        if (pattern.IsObjectBorrow && TryPairLayer(actual, out var whole, out _) && this.ObjectCases(actual, scope, out _) is var layerCases && layerCases != SemanticsMask.None)
+        {
+            // SPEC 10.2, 8.14, 8.15.2: an object pair layer is adapted to a fixed object borrow by this rule in each of its cases, on the
+            // case's complete Type: a case that does not adapt fails the layer, and a case that needs a spelling records it
+            // (RequireAcquisition), as its concrete twin does. Where every case adapts, the adaptation differs by case (objref Copies,
+            // objuniq Reborrows, a handle lends), which no plan forms yet (PLAN G762): the located limit, the call's one obstacle as an
+            // acquisition's; a case's spelling, then an earlier input's record, take precedence. Its Type is a case's, for the fit.
+            var before = this.acquisitionFailure;
+            this.acquisitionFailure = null;
+            foreach (var mode in SemanticsOrder)
+            {
+                if (layerCases.Contains(mode))
+                {
+                    ReadOnlySpan<PairCase> selected = [new(whole.Symbol!, mode)];
+                    if (!this.AdaptInput(source, fixedPattern, this.CaseType(actual, selected), scope, path, declaringType, out adapted, out _, out _, explicitBorrow, receiver, fixedExpectation, false, deferAcquisition) ||
+                        !this.FitsStructuralPartAt(adapted, pattern, source))
+                    {
+                        this.acquisitionFailure ??= before;
+                        return false;
+                    }
+                }
+            }
+
+            if (fixedExpectation)
+            {
+                this.acquisitionFailure ??= before;
+                return false;
+            }
+
+            this.acquisitionFailure ??= before ?? new(source, BindingFailure.Unsupported, true);
+            return deferAcquisition;
+        }
+
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
             ((pattern.Kind == BoundTypeKind.Semantics && !ReferenceTypes.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
         {
@@ -321,9 +354,9 @@ public sealed partial class Binding
         // A shared receiver can inspect an open payload or its selected base without granting replacement authority.
         // The selected implementation still supplies the per-operation proof before the call is accepted.
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
-            IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && ReferenceEquals(pattern.Components[0], declaringType) &&
-            (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
-            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.LendsHandle(source, scope, false, out _)))
+            this.ObjectCases(actual, scope, out var view) is var objects && objects != SemanticsMask.None && ReferenceEquals(pattern.Components[0], declaringType) &&
+            (projected || ReferenceEquals(view, declaringType)) &&
+            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, scope, false, out _)))
         {
             adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -399,7 +432,7 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && TryAdaptationSelector(actual, out _)))
+        else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Raw || (explicitBorrow && TryAdaptationSelector(actual, out _)))
         {
             // SPEC 13.5.6: an explicit borrow of a slot storing a pair layer, an application or an adaptation family (SPEC 13.5.5,
             // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
@@ -423,7 +456,8 @@ public sealed partial class Binding
                 return false;
             }
 
-            // SPEC 10.2: an owner temporary, including a defaulted literal, may be shared-borrowed; its
+            // SPEC 10.2: an owner temporary, including a defaulted literal and a raw/U value (raw is no reference or handle slot; PLAN
+            // G585, K's K4: `null` at ref/(raw/U)), may be shared-borrowed; its
             // exclusive borrow is explicit or implicit for a receiver (SPEC 3.6, 7.3). A getter result
             // is a MemberAccessKoto with a Symbol and is never exclusively acquired (SPEC 11.5).
             referent = actual;

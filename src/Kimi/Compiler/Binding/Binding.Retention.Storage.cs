@@ -245,8 +245,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var argument in at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [])
+            var arguments = at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [];
+            for (var j = 0; j < arguments.Count; j++)
             {
+                var argument = arguments[j];
                 var node = this.PremiseNode(environment, argument);
                 this.storagePositions.AddRange([(at.Storage, node, null), (AbstractStorage, node, null)]);
                 this.storageTargets.AddRange([(at.Storage, node), (AbstractStorage, node)]);
@@ -426,8 +428,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type.Components)
+        for (var i = 0; i < type.Components.Count; i++)
         {
+            var part = type.Components[i];
             this.AbstractPositions(environment, part, position);
         }
     }
@@ -462,8 +465,9 @@ public sealed partial class Binding
             nodes.Add(this.PremiseNode(environment, origin));
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
+            var argument = type.OriginArguments[i];
             nodes.Add(this.PremiseNode(environment, argument));
         }
 
@@ -509,8 +513,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type!.Components)
+        for (var i = 0; i < type!.Components.Count; i++)
         {
+            var part = type!.Components[i];
             this.Occurrences(environment, part, nodes, callable);
         }
     }
@@ -540,8 +545,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var part in type!.Components)
+        for (var i = 0; i < type!.Components.Count; i++)
         {
+            var part = type!.Components[i];
             this.OwnOccurrences(environment, part, nodes, callable);
         }
     }
@@ -568,8 +574,9 @@ public sealed partial class Binding
             nodes.Add(this.PremiseNode(environment, origin));
         }
 
-        foreach (var argument in type.OriginArguments)
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
+            var argument = type.OriginArguments[i];
             nodes.Add(this.PremiseNode(environment, argument));
         }
 
@@ -593,15 +600,15 @@ public sealed partial class Binding
 
     // What a run's layer refers to, through which a borrow of it is formed (SPEC 15.6.3; a raw layer stating an Origin retains as the borrow
     // that Origin belongs to would, SPEC 5.7), and whether it is exclusive (invariant in its referent, SPEC 15.3.5: a pair layer by any
-    // admitted case); null for any other.
-    private BoundType? Referent(HeldRange run, out bool exclusive)
+    // admitted case); null for any other. The entry, which Holds reads as its question.
+    private Hold? Referent(HeldRange run, out bool exclusive)
     {
-        BoundType? referent = null;
+        Hold? referent = null;
         var invariant = false;
         for (var i = run.Start; i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
-            referent ??= Dereference(entry) ? entry.Part : null;
+            referent ??= Dereference(entry) && entry.Part is not null ? entry : null;
             invariant |= entry.Step == HoldStep.Exclusive || (entry.Flags & HoldFlags.Raw) != 0 || entry is { Step: HoldStep.Own, Flags: HoldFlags.None };
         }
 
