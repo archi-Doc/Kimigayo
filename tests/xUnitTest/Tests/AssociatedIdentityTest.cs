@@ -353,9 +353,9 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     // and bound by a Pattern, a Field written, and `T.(HasItem).Item is i32`'s premise, also as a conditional constructor's `self.x`
     // (SPEC 7.5: written, read, under the identity premise); closed instances read as before. Before, each was TypeMismatch_Kd ("found
     // T.Output", "expected S.Output"). Read without the premise (`T is Addable<T>`), or a read, write, payload, Pattern binding or
-    // constructor write as bool, stays TypeMismatch_Kd. Since the MIR decides acceptance (R6-check H5), the constructor whose `self.x`
-    // write Binding rejects also has A1's UninitializedPlace_Kd at that write and at the constructor, since the rejected write initializes
-    // nothing (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // constructor write as bool, stays TypeMismatch_Kd. The constructor's `self.x` write Binding rejects for its value still places a
+    // value derived from that failure (DECISIONS R5-M195), so A1 records nothing there (Q13: the two dependent UninitializedPlace_Kd at that
+    // write and at the constructor, PLAN G105's, went).
     [Theory]
     [InlineData("func f<T>(a: T) -> T\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "")]
     [InlineData("func f<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HAd<Wrapping<T>>.init(x: a + a)\n    return h.x\n", "let v = f(3@Wrapping<i32>)", "")]
@@ -375,7 +375,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     [InlineData("func f<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = true\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "h.x = true")]
     [InlineData("func f<T>(a: T) -> EW<T>\n    T is PrimitiveInteger\n    return EW<T>.A(true)\n", "let v = f(3@i32)", "EW<T>.A(true)")]
     [InlineData("func f<T>(e: EW<T>, a: T) -> bool\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => true\n", "let v = f(EW<i32>.A(3), 1)", "match e@move")]
-    [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true", "UninitializedPlace_Kd self.x = true", "UninitializedPlace_Kd public init(a: S)")]
+    [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true")]
     public void AStoredPartIsReadInItsUseScope(string declarations, string use, string mismatch, params string[] problems)
     {
         const string Holders = """
