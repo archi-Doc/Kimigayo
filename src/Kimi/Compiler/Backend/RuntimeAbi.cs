@@ -25,8 +25,8 @@ internal static class RuntimeAbi
     internal const int StaticReleaseKind = 0;
 
     /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
-    /// takes its kind as `zext i1 %heap to i8` (the formatting runtime's __kimi_buffer_into_string and __kimi_format_take_string), so
-    /// Heap is 1 and Static 0 (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
+    /// takes its kind as the library's HeapBuffer.intoString writes it, 1 for an allocation and 0 for none, so Heap is 1 and Static 0
+    /// (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
     internal const int HeapReleaseKind = 1;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every

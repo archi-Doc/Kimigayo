@@ -453,7 +453,8 @@ public sealed partial class FunctionCodegenTest
     }
 
     // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module whose Text.writer or owning interpolation's
-    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote.
+    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote; a module without formatting defines
+    // none of its routines (FormatSegment's hint routine's definition the marker).
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {
@@ -463,7 +464,9 @@ public sealed partial class FunctionCodegenTest
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
-        Assert.DoesNotContain("@" + LegacyRuntimeHelpers.FormatFixed.Name + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+        var hint = "define internal void @" + LegacyRuntimeHelpers.FormatHint.Name + "(";
+        Assert.Contains(hint, runtime.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(hint, Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
     // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
