@@ -39,6 +39,8 @@ public partial class KimiLibraryShapeTest
         (WitnessMembers.BoolFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/bool, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.CharFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/char, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.UnitFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.Utf8SliceFormat, KimiDeclarationId.Utf8Format,
+            "func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F32Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f32, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F64Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f64, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.String, KimiDeclarationId.Utf8Format, "func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
@@ -197,7 +199,7 @@ public partial class KimiLibraryShapeTest
         var path = entry.Owner ?? entry.Container switch
         {
             KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer or KimiLibraryContainer.Utf8Slice => "Text." + entry.Container,
+            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
             KimiLibraryContainer.FixedArray => "Storage.FixedArray",
             _ => entry.Container.ToString(),
         };
