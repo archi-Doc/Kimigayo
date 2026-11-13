@@ -112,7 +112,8 @@ public sealed partial class TyCtxtTest
     private const string ParameterKeysSource =
         "struct Wrap<T>\n    internal let value: T\n" +
         "struct Wrap2<T>\n    internal let value: T\n    internal let q: raw/u8\n" +
-        "struct Box<T>\n    internal let b: T\n    public func put(self: uniq/Self, p: raw/T) => ()\n    public func put2<U>(self: uniq/Self, p: raw/T, u: raw/U) => ()\n" +
+        "struct Box<T>\n    internal let b: T\n    public func put(self: uniq/Self, p: raw/T) => ()\n" +
+        "    public func put2<U>(self: uniq/Self, p: raw/T, u: raw/U) => ()\n" +
         "struct Box3<T>\n    internal let b: T\n    public func put3<U>(self: uniq/Self, p: raw/U) -> ()\n        U is T\n        return ()\n" +
         "contract HasItem\n    associate Item\n" +
         "contract RawItem: HasItem\n    Self.(HasItem).Item is raw/u8\n" +
