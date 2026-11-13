@@ -19848,9 +19848,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Temporary 5, S2d2.** It now reads: "`StringFormatKind`, `__kimi_format_builtin`'s one arm (16; a plain define in
     `Utf8FormatRuntime.ll.in` since R8-S2d2, byte-identical to the deleted row's expansion) and `{{writer_write_builtin}}` for
     SegmentText and FormatLiteral: removed at W2".
-  - **`IsBuiltin`, S2d2.** It no longer states or proves the conformance (the table does); it remains `RequirementMember`'s domain
-    (`Binding.ContractCalls.cs:17, :36`) until G776, whose unit deletes it with those reads (whichever of S2d2 and G776-a lands
-    second deletes it; F records it in G776-a's conditions, C-265 (2)).
+  - **`IsBuiltin`, S2d2.** It no longer states or proves the conformance (the table does). `FormattingTypes.IsBuiltin` is deleted by
+    R8-S2d2 (14a76d141), landing after G776-a removed `RequirementMember`'s two reads; its last readers, `Utf8FormatBindingTest`'s
+    two rows, take SPEC 22.10.2's explicit set of built-in conformances (`BoundType.Primitives` and the wrapping scalars).
   - **The formatting row family is gone, S2d2** (0a62ff4ce): `FormattingHelperRow`, `FormattingRows`, `FormattingRow`,
     `CreateFormattingRows`, `LlvmModuleText.ErasedWriterDefinitions`; Text.writer's routine ABI is `RuntimeAbi.TextWriter`, beside
     `ErasedReserve` (the same kept runtime); `IntrinsicRows`' ErasedWriter row no longer reads a legacy formatting row (it still
