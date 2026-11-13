@@ -71,13 +71,19 @@ public sealed partial class Binding
     private static BoundType? Selector(SlotFrame frame, int slot)
         => slot < frame.Types.Length ? frame.Types[slot] ?? frame.Selectors[slot] : null;
 
-    // SPEC 8.1.2: whether a formed pair layer (an application or an original, FormedApplication) is a layer of the same pair as the actual,
-    // whose direct target it gives. InferLayer and MatchInputOrigins read it.
-    private static bool SamePairLayer(BoundType layer, BoundType actual, out BoundType target)
-    {
-        target = null!;
-        return TryPairLayer(layer, out var whole, out _) && TryPairLayer(actual, out var supplied, out target) && ReferenceEquals(whole, supplied);
-    }
+    // SPEC 8.1.2: whether a formed pattern is a layer over the callee's `target` (a pair's application or original, a Semantics layer),
+    // matched by LayerTarget, rather than a Type matched as it is (an owner binding's target, a family, case by case).
+    private static bool IsFormedLayer(BoundType formed, BoundType target)
+        => !ReferenceEquals(formed, target) && formed.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.Parameter or BoundTypeKind.Semantics;
+
+    // SPEC 8.1.2: what a formed layer meets in the actual: the direct target below the actual's layer of the same Semantics or the same
+    // pair (an application, an original or an annotated occurrence), or null when the actual has no such layer. The outer slot is Origin
+    // evidence, never compared here. Infer and MatchInputOrigins read it.
+    private static BoundType? LayerTarget(BoundType layer, BoundType actual)
+        => layer.Kind == BoundTypeKind.Semantics
+            ? actual is { Kind: BoundTypeKind.Semantics, Components: [var component] } && actual.Semantics == layer.Semantics ? component : null
+            : TryPairLayer(layer, out var whole, out _) && TryPairLayer(actual, out var supplied, out var target) && ReferenceEquals(whole, supplied)
+                ? target : null;
 
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
@@ -220,19 +226,52 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 8.1.2: a formed pair layer (ApplySemantics: in the caller's terms) over the callee's `target` meets the actual's layer of the
-    // same pair or Semantics, and the target its direct target; the outer slot is Origin evidence, never compared here.
-    private bool InferLayer(BoundType layer, BoundType target, BoundType actual, Koto function, SlotFrame frame, bool inferOrigins, bool lengths, bool commonOrigins, bool structural, SignatureEvidence? evidence, bool relateLater, bool invariant)
+    // SPEC 8.1.2, 10.8: the Type an application pattern forms against `actual`: under its callee binder's binding or, while that is
+    // unbound, its selector evidence, which this actual becomes when there is none ("An unbound s is inferred from the source's outer
+    // Semantics", the owner's reading, O-243: an application is a source; every later source must agree, the original's binding and the
+    // expected result included); the pattern itself for a pair the callee does not bind (an enclosing declaration's, a fixed layer).
+    // Null: Never with no evidence, which supplies none.
+    private BoundType? SourcedLayer(BoundType pattern, BoundType actual, Koto function, SlotFrame frame)
     {
-        var below = invariant || IsInvariantLayer(layer, this);
-        return layer.Kind switch
+        if (pattern.Symbol is not { } selector || ContainerSlot(function, selector) is not (>= 0 and var slot) || slot >= frame.Types.Length)
         {
-            BoundTypeKind.SemanticsApplication or BoundTypeKind.Parameter => SamePairLayer(layer, actual, out var actualTarget) &&
-                this.Infer(target, actualTarget, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below),
-            BoundTypeKind.Semantics => actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && actual.Semantics == layer.Semantics &&
-                this.Infer(target, actual.Components[0], function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below),
-            _ => this.Infer(layer, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant), // a family, case by case
-        };
+            return pattern;
+        }
+
+        if (Selector(frame, slot) is not { } whole)
+        {
+            if (ReferenceEquals(actual, BoundType.Never))
+            {
+                return null;
+            }
+
+            frame.SetSelector(slot, actual);
+            whole = actual;
+        }
+
+        return this.ApplySemantics(whole, pattern.Components[0], pattern.Origin);
+    }
+
+    // SPEC 10.8, 8.1.2: the actual an occurrence of a pair's original binds its slot with: null when it disagrees with the selector
+    // evidence (both form one layer over the pair's target), the candidate then inapplicable and an expected result filling nothing; an
+    // annotated occurrence's (`s/T during b`) with its outer Origin replaced by the solve's open region for the slot (keyed by the frame's
+    // node), since the annotation binds only the occurrence's slot and other evidence fills the region, in either order. Any other slot
+    // pattern's actual is itself.
+    private BoundType? OccurrenceActual(BoundType pattern, BoundType actual, SlotFrame frame, int slot)
+    {
+        if (pattern.Symbol is not { Kind: BindingSymbolKind.SemanticsTarget, Type: { } target })
+        {
+            return actual;
+        }
+
+        if (frame.Selectors[slot] is { } selected && !ReferenceEquals(actual, BoundType.Never) &&
+            !ReferenceEquals(this.ApplySemantics(selected, target, null), this.ApplySemantics(actual, target, null)))
+        {
+            return null;
+        }
+
+        return pattern.Origin is not null && actual.Origin is not null
+            ? this.WithOrigins(actual, this.AnnotatedOuterRegion(frame.Node, slot), (BoundOrigin[])actual.OriginArguments) : actual;
     }
 
     // With `evidence`, the actual is a known call signature (SPEC 10.5, 10.8): an argument's, or the parts an anonymous header writes.
@@ -261,34 +300,25 @@ public sealed partial class Binding
                 this.Infer(this.DirectTarget(whole), actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
         }
 
-        if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
-            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
-        {
-            // SPEC 10.8 ("An unbound s is inferred from the source's outer Semantics", the owner's reading, O-243: an application is a
-            // source): with s still unknown, this actual fixes it as the selector evidence; every later source must agree, the original's
-            // binding and the expected result included. Never supplies no evidence.
-            if (Selector(frame, selectorSlot) is not { } whole)
-            {
-                if (ReferenceEquals(actual, BoundType.Never))
-                {
-                    return true;
-                }
-
-                frame.SetSelector(selectorSlot, actual);
-                whole = actual;
-            }
-
-            // SPEC 8.1.2: matched as the Type it forms: an owner binding's target in the callee's terms, else a layer matched here.
-            var formed = this.ApplySemantics(whole, pattern.Components[0], pattern.Origin);
-            return ReferenceEquals(formed, pattern.Components[0])
-                ? this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant)
-                : this.InferLayer(formed, pattern.Components[0], actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
-        }
-
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
         {
-            // An application of a pair the callee does not bind (an enclosing declaration's) is a fixed layer.
-            return this.InferLayer(pattern, pattern.Components[0], actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            // SPEC 8.1.2: matched as the Type it forms (SourcedLayer): a layer, in the caller's terms, by its target against the actual's
+            // part below the same layer; an owner binding's target, in the callee's terms, or a family as the Type it is.
+            var target = pattern.Components[0];
+            return this.SourcedLayer(pattern, actual, function, frame) is not { } formed || (IsFormedLayer(formed, target)
+                ? LayerTarget(formed, actual) is { } below && this.Infer(
+                    target,
+                    below,
+                    function,
+                    frame,
+                    inferOrigins,
+                    lengths,
+                    commonOrigins,
+                    structural,
+                    evidence,
+                    relateLater,
+                    invariant || IsInvariantLayer(formed, this))
+                : this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
@@ -300,28 +330,12 @@ public sealed partial class Binding
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
         {
-            if ((uint)slot >= (uint)arguments.Length)
+            if ((uint)slot >= (uint)arguments.Length || this.OccurrenceActual(pattern, actual, frame, slot) is not { } occurrence)
             {
                 return false;
             }
 
-            if (pattern.Symbol!.Kind == BindingSymbolKind.SemanticsTarget)
-            {
-                // SPEC 10.8: an original agrees with the selector evidence (both form one layer over the pair's target), or the
-                // candidate is inapplicable; an expected result that disagrees fills nothing.
-                if (frame.Selectors[slot] is { } selected && !ReferenceEquals(actual, BoundType.Never) && !ReferenceEquals(this.ApplySemantics(selected, pattern.Symbol.Type!, null), this.ApplySemantics(actual, pattern.Symbol.Type!, null)))
-                {
-                    return false;
-                }
-
-                // SPEC 8.1.2: an annotated occurrence (`s/T during b`) binds only that occurrence's outer-Origin slot, so its actual's outer
-                // Origin is no evidence for the binding's own: it is the solve's open region for the slot (keyed by the frame's node),
-                // which other evidence fills, in either order; its other parts are evidence as at any occurrence.
-                if (pattern.Origin is not null && actual.Origin is not null)
-                {
-                    actual = this.WithOrigins(actual, this.AnnotatedOuterRegion(frame.Node, slot), (BoundOrigin[])actual.OriginArguments);
-                }
-            }
+            actual = occurrence;
 
             if (HasArrayLengthHole(actual))
             {

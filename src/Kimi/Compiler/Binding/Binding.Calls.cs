@@ -383,7 +383,9 @@ public sealed partial class Binding
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
-                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)), allSelectors.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
+                solveFrame.CopyTypes(
+                    allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)),
+                    allSelectors.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);

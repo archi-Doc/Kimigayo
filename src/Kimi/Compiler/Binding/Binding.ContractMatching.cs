@@ -630,9 +630,9 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only formed (FormedApplication forms every
             // application whose s is known, at every depth, and an input still holding an open one is not matched yet). A formed
-            // application, of a caller's or another fixed pair, meets the actual's layer of that pair (SamePairLayer, as InferLayer),
-            // whose outer slot and target it matches; it binds nothing otherwise.
-            if (SamePairLayer(pattern, actual, out var target))
+            // application, of a caller's or another fixed pair, meets the actual's layer of that pair (LayerTarget, as Infer), whose
+            // outer slot and target it matches; it binds nothing otherwise.
+            if (LayerTarget(pattern, actual) is { } target)
             {
                 if (pattern.Origin is { } slot && actual.Origin is { } supplied)
                 {
