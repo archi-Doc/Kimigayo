@@ -256,8 +256,9 @@ public sealed partial class Binding
                         subject = subject.Components[0];
                     }
 
+                    // A pending subject (BindConstraint) is judged by its root, the base its projection chain published.
                     valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) &&
-                        subject?.Symbol is { } parameter && ContainerSlot(container, parameter) >= 0;
+                        (subject?.Symbol ?? SubjectBase(condition.Left).BoundSymbol) is { } parameter && ContainerSlot(container, parameter) >= 0;
                 }
 
                 this.ExpandScopeContractPremises(scope);
@@ -288,11 +289,6 @@ public sealed partial class Binding
         }
 
         if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
-        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }

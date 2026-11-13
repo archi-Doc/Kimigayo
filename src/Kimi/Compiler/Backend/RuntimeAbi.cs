@@ -104,6 +104,19 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
+    // SPEC 22.9.2, 22.9.4: Text.writer's adapter over its destination, given the destination's writer kind and the dispatch word of its
+    // reserve witness (FunctionCodegen.Writer): the ErasedWriter intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
+    internal static readonly FunctionAbi TextWriter = new(
+        "__kimi_text_writer",
+        Unit.ComputationType,
+        [
+            new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "kind", AbiParameterKind.Context),
+            new("ptr", "dispatch", AbiParameterKind.Context),
+        ])
+    {
+        ResultSlot = true,
+    };
+
     // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
     // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
     internal static readonly FunctionAbi ErasedReserve = new(
@@ -120,6 +133,13 @@ internal static class RuntimeAbi
         "__kimi_format_float",
         "i64",
         [new("i64", "bits", AbiParameterKind.Value, 0), new("i1", "narrow", AbiParameterKind.Value, 1), new("ptr", "destination", AbiParameterKind.Value, 2)]);
+
+    // SPEC 22.10.2: a u128's ASCII decimal digits at the end of a 40-byte destination, their count returned: the FormatInteger128
+    // intrinsic's routine (Storage.formatInteger128, R8-S2b2), defined by its module part (LlvmModuleText.FormatInteger128).
+    internal static readonly FunctionAbi FormatInteger128 = new(
+        "__kimi_format_integer128",
+        "i64",
+        [new("i128", "value", AbiParameterKind.Value, 0), new("ptr", "destination", AbiParameterKind.Value, 1)]);
 
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 

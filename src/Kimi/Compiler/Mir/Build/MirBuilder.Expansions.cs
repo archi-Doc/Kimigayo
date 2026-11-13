@@ -92,7 +92,7 @@ internal sealed partial class MirBuilder
     private void Iteration(ForKoto loop, BoundMatch? plan, int start, MirPlace position)
     {
         var outer = this.scope;
-        this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(loop));
+        this.scope = this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(loop));
         var bindings = this.OpenScope(block: true);
         if (plan is not null)
         {

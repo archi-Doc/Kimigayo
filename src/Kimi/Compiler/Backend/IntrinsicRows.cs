@@ -102,7 +102,7 @@ internal static class IntrinsicRows
             IntrinsicTarget.Witness,
             LayoutNeed.None,
             IntrinsicWriter.Writer,
-            LegacyRuntimeHelpers.FormattingRow(CompilerFunctionKind.TextWriter)!.Abi),
+            RuntimeAbi.TextWriter),
         new(
             IntrinsicId.ErasedReserve,
             IntrinsicTarget.None,
@@ -110,7 +110,13 @@ internal static class IntrinsicRows
             IntrinsicWriter.Requested,
             RuntimeAbi.ErasedReserve,
             ModuleCodegen.Needs.ErasedWriter),
-        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
+        new(
+            IntrinsicId.FormatInteger128,
+            IntrinsicTarget.None,
+            LayoutNeed.None,
+            IntrinsicWriter.Requested,
+            RuntimeAbi.FormatInteger128,
+            ModuleCodegen.Needs.FormatInteger128), // Storage.formatInteger128 (R8-S2b2).
         new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LayoutNeed.None, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LayoutNeed.None, IntrinsicWriter.Create, null),
         new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LayoutNeed.None, IntrinsicWriter.Create, null),

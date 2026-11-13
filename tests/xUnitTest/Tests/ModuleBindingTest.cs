@@ -9,6 +9,19 @@ namespace XunitTest;
 
 public partial class ModuleBindingTest
 {
+    private const string HolderLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Holder\n        associate Item\n    protected struct Token\n";
+    private const string MakerLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Maker\n        func tag() -> i32\n    protected func tag() -> i32 => 1\n";
+    private const string HolderMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Holder\n    associate Lib.Base.Holder.Item is ";
+    private const string MakerMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Maker\n";
+    private const string HolderOuter = "public open struct Outer: Lib.Base\n    public init(): base() => ()\n";
+    private const string HolderNested = " struct Mine\n        Self is Lib.Base.Holder\n        associate Lib.Base.Holder.Item is ";
+    private const string ReaderLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Reader\n        property size: i32 has get\n    protected var size: i32 = 1\n";
+    private const string ReaderMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Reader\n";
+    private const string ChildBase = "public open struct Base2\n    public init() => ()\n    protected struct Token2\n";
+    private const string ChildHolder = ChildBase + "    protected internal contract Holder2\n        associate Item\n";
+    private const string DerivedBase = "public open struct Base: Child.Base2\n    public init(): base() => ()\n";
+    private const string Holder2Mine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Child.Base2.Holder2\n    associate Child.Base2.Holder2.Item is ";
+
     [Theory]
     [InlineData("public func main() => Lib.Api.value()", true)]
     [InlineData("alias Lib.Api\npublic func main() => value()", true)]
@@ -421,6 +434,36 @@ public partial class ModuleBindingTest
         }
     }
 
+    // SPEC 9.4.2, 9.4.6: Access(Mine) ∩ Access(Contract) over two Kotonoha (KA, KL). An intersection that holds a Kotonoha or Body atom
+    // of each is empty; Derived(Base) is of neither (PLAN G610). The Contract is a protected internal member of Lib's open Base
+    // (KL ∪ Body(Base) ∪ Derived(Base)); the binding or the implementation is a protected member (Body(Base) ∪ Derived(Base)).
+    // A third Kotonoha (KC, Child; App names it too): the member or the Contract belongs to Child's open Base2, which Lib's Base derives from.
+    [Theory]
+    [InlineData(HolderMine + "Lib.Base.Token\n", HolderLibrary, null, null)] // KA∩KL, KA∩Body(Base) are empty; Derived(Base) is in U
+    [InlineData("public " + HolderMine + "Lib.Base.Token\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // a public Mine: KL alone is not empty
+    [InlineData(HolderMine + "Own\n    private struct Own\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // KA∩Derived(Base) is not empty, U is Body(Mine)
+    [InlineData(MakerMine, MakerLibrary, null, null)] // the inherited protected tag implements the requirement
+    [InlineData("public " + MakerMine, MakerLibrary, null, DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData(ReaderMine, ReaderLibrary, null, null)] // the inherited protected Field implements the Property requirement
+    [InlineData("public " + ReaderMine, ReaderLibrary, null, DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData(HolderOuter + "    protected internal" + HolderNested + "Lib.Base.Token\n", HolderLibrary, null, null)] // each chain's Derived atom is in U
+    [InlineData(HolderOuter + "    private struct Own\n    protected" + HolderNested + "Own\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // Derived(Outer)∩KL is not empty
+    [InlineData(HolderOuter + "    protected struct Own2\n    protected internal" + HolderNested + "Own2\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // KA∩Derived(Base) is not empty
+    [InlineData("", HolderLibrary + "struct Mine: Base\n    public init(): base() => ()\n    Self is Base.Holder\n    associate Base.Holder.Item is Base.Token\n", null, DiagnosticCode.InaccessibleBinding_Kd)] // one Kotonoha: K∩K is not empty
+    [InlineData(HolderMine + "Child.Base2.Token2\n", DerivedBase + "    protected internal contract Holder\n        associate Item\n", ChildBase, null)] // U is Body(Base2) ∪ Derived(Base2): Derived(Base) is in it
+    [InlineData("public open struct Outer: Child.Base2\n    public init(): base() => ()\n    protected internal struct Mine: Lib.Base\n        public init(): base() => ()\n        Self is Lib.Base.Holder\n        associate Lib.Base.Holder.Item is Child.Base2.Token2\n", HolderLibrary, ChildBase, DiagnosticCode.InaccessibleBinding_Kd)] // Base does not derive from Base2: KA∩Derived(Base) is not empty
+    [InlineData(Holder2Mine + "Child.Base2.Token2\n", DerivedBase, ChildHolder, null)] // KA∩KC, KA∩Body(Base2) are empty; Derived(Base2) is in U
+    [InlineData(Holder2Mine + "Lib.Base.TokL\n", DerivedBase + "    protected struct TokL\n", ChildHolder, DiagnosticCode.InaccessibleBinding_Kd)] // Derived(Base2) is not in Derived(Base)
+    public void ConformanceDomainsOverTwoKotonohaReadEmptyIntersections(string root, string library, string? child, DiagnosticCode? rejected)
+    {
+        var c = Create(root, library, child, rootReferencesChild: child is not null);
+        Assert.Equal(rejected is null, c.Bind().IsComplete);
+        if (rejected is { } code)
+        {
+            Assert.Equal(code, Assert.Single(c.Binding.Issues).Code);
+        }
+    }
+
     [Theory]
     [InlineData(false, "i32", true)]
     [InlineData(true, "i32", true)]
@@ -638,7 +681,7 @@ public partial class ModuleBindingTest
         return compilation;
     }
 
-    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
+    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null, bool rootReferencesChild = false)
     {
         var compilation = Compilation.CreateForTest();
         var project = compilation.Project;
@@ -652,6 +695,12 @@ public partial class ModuleBindingTest
         {
             var child = new DependencyNode("child@1", new("child.kimiproj", new() { OutputKind = OutputKind.Library }, [], []), 1, "Child");
             library.Edges.Add("Child", child.Key);
+            if (rootReferencesChild)
+            {
+                project.ProjectFile.Dependencies.Add("Child", new() { PackageId = "child", PackageVersion = "1", Project = "child.kimiproj" });
+                root.Edges.Add("Child", child.Key);
+            }
+
             nodes = [root, library, child];
         }
 
