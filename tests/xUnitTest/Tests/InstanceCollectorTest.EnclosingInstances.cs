@@ -166,7 +166,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("struct Box<T>\n    var f: () -> isize = " + Sized + Init + Built, "UnprovenConstraint_Kd " + Sized)]
     [InlineData(GroupStaticHead + Four + GroupStaticCall, "UnprovenConstraint_Kd let s = " + Four + "; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()")]
     [InlineData(GroupStaticHead + Sized + GroupStaticCall, "UnprovenConstraint_Kd let s = " + Sized + "; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()")]
-    [InlineData(GroupStaticHead + "(Array<T>.init(capacity: 4), " + Four + ")\nlet n = Box<i32>.G.s.1()\n", "UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), " + Four + "); Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s.1()")]
+    [InlineData(GroupStaticHead + "(Array<T>.init(capacity: 4), " + Four + ")\nlet n = Box<i32>.G.s.1()\n", "UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), " + Four + "); Unsupported_Kd Box<i32>.G.s.1; Unsupported_Kd Box<i32>.G.s.1()")]
     public void ADefinitionOutsideABodyNeedsItsContainersParametersOwned(string source, string records)
         => Assert.Equal(records, CheckRecords(source));
 
