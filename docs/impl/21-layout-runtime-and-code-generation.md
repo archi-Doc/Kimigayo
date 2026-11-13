@@ -151,7 +151,7 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 
 | Attribute | Identifies |
 | --- | --- |
-| `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1, an operation with a published row ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)), or an internal declaration the compiler calls, lays out or links; each Name is declared once |
+| `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1, an operation with a published row or effect ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)), or an internal declaration the compiler calls, lays out or links; each Name is declared once |
 | `#Intrinsic("Name")`, `#Intrinsic("Fail", "Code")` | a function whose definition the compiler generates; a `Fail` intrinsic Aborts with the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) |
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
