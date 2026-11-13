@@ -349,7 +349,15 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (part, _, _) in new CapabilityParts(type, this.types))
+        // A nested definition's inherited arguments are parts (InheritedArguments); a withheld instance is the located limit at the
+        // stored Type.
+        if (this.InheritedArguments(type) is not { } inherited)
+        {
+            this.AddSite(summary, stored);
+            return;
+        }
+
+        foreach (var (part, _, _) in new CapabilityParts(type, inherited))
         {
             if (part is not null)
             {

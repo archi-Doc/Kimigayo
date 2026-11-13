@@ -490,7 +490,7 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type, this.types))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type, BoundType.Unit))
             {
                 owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
@@ -505,7 +505,19 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type, this.types);
+        // A nested definition's inherited arguments are OwnedOrigins' parts (SPEC 15.2.3), so Owned reads them; Copy reads a Closure's
+        // captures only (SPEC 3.2.1). An unreadable instance (InheritedArguments) answers BU-22's limit with the definition as the site.
+        var inherited = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.InheritedArguments(work.Type) : BoundType.Unit;
+        if (inherited is null)
+        {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = work.Type.Symbol!.Declaration }, null);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+        }
+
+        var parts = new CapabilityParts(work.Type, inherited ?? BoundType.Unit);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;
@@ -726,34 +738,127 @@ public sealed partial class Binding
         return positive && negative ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
 
+    // SPEC 6.1.3, 15.2.3, 3.2.1 (PLAN G846, G856; the owner's O-249 Q4 (a) and O-258 (a)): a nested definition's inherited arguments, the
+    // arguments that the instance it was formed in binds to the parameters of the declarations enclosing it, used or not, as one
+    // environment Tuple (EnvironmentTuple). For a Closure Type or the Item of a function declared in a body: each generic slot (a length
+    // slot adds no Owned part) of every declaration on the chain TyCtxt.EnclosingDeclaration publishes (a named function, an accessor's
+    // function; never a call's callee or an anonymous function), up to the nearest Container, whose identity (SelfType) holds its outer
+    // Containers' slots and its Origin slots (a function has no Origin parameter list, SPEC 15.3), each read through the Type's held
+    // instance as its readers see it (TyCtxt.ClosureInstance): the slot itself in that declaration's identity (no context), else its image.
+    // Unit for any other Type, whose bound arguments are its whole dependence; null where the instance is withheld (an Origin position,
+    // PLAN G300) or an image does not complete, which the reader answers with BU-22's limit.
+    private BoundType? InheritedArguments(BoundType type)
+    {
+        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || type.Symbol is not { } definition ||
+            this.types.EnclosingDeclaration(definition) is not { } enclosing)
+        {
+            return BoundType.Unit;
+        }
+
+        var instance = TyCtxt.ClosureInstance(type);
+        if (instance is null && type.ClosureContext is not null)
+        {
+            return null;
+        }
+
+        var typeCount = 0;
+        var originCount = 0;
+        for (var declaration = enclosing; declaration is not null; declaration = this.NextEnclosing(declaration))
+        {
+            typeCount += declaration.Schema?.GenericSlots.Count ?? 0;
+            originCount += declaration.Declaration is DeclarationContainerKoto ? declaration.Schema?.Origins.Count ?? 0 : 0;
+        }
+
+        if (typeCount + originCount == 0)
+        {
+            return BoundType.Unit;
+        }
+
+        var types = this.RentTypes(typeCount);
+        var origins = this.originScratch.Rent(originCount);
+        try
+        {
+            var t = 0;
+            var o = 0;
+            for (var declaration = enclosing; declaration is not null; declaration = this.NextEnclosing(declaration))
+            {
+                if (declaration.Schema is not { } schema || schema.GenericSlots.Count + schema.Origins.Count == 0)
+                {
+                    continue;
+                }
+
+                if (declaration.Declaration is DeclarationContainerKoto)
+                {
+                    // The Container's identity under the instance: its arguments are its slots' images.
+                    if ((instance is null ? this.SelfType(declaration) : this.types.Apply(this.SelfType(declaration), instance)) is not { } self)
+                    {
+                        return null;
+                    }
+
+                    for (var i = 0; i < self.Components.Count; i++)
+                    {
+                        types[t++] = self.Components[i];
+                    }
+
+                    for (var i = 0; i < self.OriginArguments.Count; i++)
+                    {
+                        origins[o++] = self.OriginArguments[i];
+                    }
+
+                    continue;
+                }
+
+                for (var i = 0; i < schema.GenericSlots.Count; i++)
+                {
+                    if (schema.GenericSlots[i] is { Kind: not GenericSlotKind.Length, Symbol.WholeType: { } whole })
+                    {
+                        if ((instance is null ? whole : this.types.Apply(whole, instance)) is not { } image)
+                        {
+                            return null;
+                        }
+
+                        types[t++] = image;
+                    }
+                }
+            }
+
+            return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+        }
+        finally
+        {
+            this.typeScratch.Return(types, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+        }
+    }
+
+    // The next declaration on a nested definition's chain of enclosing declarations: none above a Container, whose identity holds its outer
+    // Containers' slots.
+    private BindingSymbol? NextEnclosing(BindingSymbol declaration)
+        => declaration.Declaration is DeclarationContainerKoto ? null : this.types.EnclosingDeclaration(declaration.Scope);
+
     // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
-    // Item's Contract reference replaced by that reference's Type arguments (Argument), and, for an Item of a function nested in a body, its
-    // inherited parameters' Types (SPEC 6.1.3, "even an unused one"; the owner's O-249 Q4 (a)); then its Origin parts: that reference's
-    // Origin arguments (a Contract's inherited Origins), or an environment Tuple's (EnvironmentTuple), and the nested function's inherited
-    // Origin slots. An environment's parts have this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's
-    // capture index). StructuralCapability, ErasureSubject and the component summaries' walk read this one enumeration.
-    private ref struct CapabilityParts(BoundType type, TyCtxt types)
+    // Item's Contract reference replaced by that reference's Type arguments (Argument), then a nested definition's inherited Type
+    // arguments (InheritedArguments' Tuple, which the caller passes: Unit for a judgment that reads none); then its Origin parts: that
+    // reference's Origin arguments (a Contract's inherited Origins), or an environment Tuple's (EnvironmentTuple), then the inherited
+    // Origin arguments. An environment's parts have this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a
+    // Closure's capture index). StructuralCapability, ErasureSubject and the component summaries' walk read this one enumeration.
+    private ref struct CapabilityParts(BoundType type, BoundType inherited)
     {
         private readonly BoundType type = type;
-        private readonly TyCtxt types = types;
+        private readonly BoundType inherited = inherited;
         private readonly BoundType? reference = RequirementReference(type);
-
-        // The declaration whose instance an Item's instance holds (TyCtxt.EnclosingDeclaration, SPEC 6.1.3): its function's enclosing
-        // declaration, null for a member or a top-level declaration, whose bound arguments are its whole dependence.
-        private readonly BindingSymbol? enclosing = type is { Kind: BoundTypeKind.FunctionItem, Symbol: { } function } ? types.EnclosingDeclaration(function) : null;
         private int index = -1;
         private int argument = -1;
         private int origin = -1;
-        private int phase; // 0 components, 1 inherited Types, 2 Origin parts, 3 inherited Origin slots
-        private BindingSymbol? declaration;
         private int slot = -1;
+        private int phase; // 0 components, 1 inherited Type arguments, 2 Origin parts, 3 inherited Origin arguments
 
         // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
         public (BoundType? Part, BoundOrigin? Origin, bool Argument) Current { readonly get; private set; }
 
         // The current part's member: its component's index; a requirement reference's Type and Origin arguments are member 1; an
-        // environment Tuple's Origin part follows its components; an inherited parameter is the Item's member Components.Count, beside
-        // what its signature names (CallSignature).
+        // environment Tuple's Origin part follows its components; an inherited argument is member Components.Count, beside the call
+        // signature (CallSignature).
         public readonly int Member => this.phase is 1 or 3 ? this.type.Components.Count
             : this.argument >= 0 || (this.phase == 2 && this.reference is not null) ? 1
             : this.phase == 2 ? this.type.Components.Count + this.origin : this.index;
@@ -763,9 +868,9 @@ public sealed partial class Binding
         private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
 
         // The part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject), with its member here.
-        public static (BoundType? Part, BoundOrigin? Origin, int Member) At(BoundType type, int ordinal, TyCtxt types)
+        public static (BoundType? Part, BoundOrigin? Origin, int Member) At(BoundType type, BoundType inherited, int ordinal)
         {
-            var parts = new CapabilityParts(type, types);
+            var parts = new CapabilityParts(type, inherited);
             for (var i = 0; parts.MoveNext(); i++)
             {
                 if (i == ordinal)
@@ -788,17 +893,18 @@ public sealed partial class Binding
                     return true;
                 }
 
-                (this.phase, this.declaration) = (1, this.enclosing);
+                this.phase = 1;
             }
 
             if (this.phase == 1)
             {
-                if (this.NextInheritedType())
+                if (++this.slot < this.inherited.Components.Count)
                 {
+                    this.Current = (this.inherited.Components[this.slot], null, false);
                     return true;
                 }
 
-                this.phase = 2;
+                (this.phase, this.slot) = (2, -1);
             }
 
             if (this.phase == 2)
@@ -809,52 +915,13 @@ public sealed partial class Binding
                     return true;
                 }
 
-                (this.phase, this.declaration, this.slot) = (3, this.enclosing, -1);
+                this.phase = 3;
             }
 
-            return this.NextInheritedOrigin();
-        }
-
-        // SPEC 6.1.3: an inherited parameter's Type: each generic slot of every declaration enclosing the function, upward through the
-        // declaration chain TyCtxt.EnclosingDeclaration publishes (a named function, an accessor's function, a Container; never a call's
-        // callee or an anonymous function), to the nearest Container, whose Schema holds its outer Containers' slots; a length slot adds no
-        // Owned part (SPEC 15.2.3).
-        private bool NextInheritedType()
-        {
-            for (; this.declaration is not null; this.declaration = this.declaration.Declaration is DeclarationContainerKoto ? null : this.types.EnclosingDeclaration(this.declaration.Scope), this.slot = -1)
+            if (++this.slot < this.inherited.OriginArguments.Count)
             {
-                var slots = this.declaration.Schema?.GenericSlots ?? [];
-                while (++this.slot < slots.Count)
-                {
-                    if (slots[this.slot] is { Kind: not GenericSlotKind.Length, Symbol.WholeType: { } whole })
-                    {
-                        this.Current = (whole, null, false);
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        // SPEC 6.1.3, 15.3: an inherited Origin slot, the nearest enclosing Container's (with its outer Containers'); a function has no
-        // Origin parameter list, so an enclosing function's Origin is a name its signature may use (InheritedEnvironment).
-        private bool NextInheritedOrigin()
-        {
-            for (; this.declaration is not null; this.declaration = this.types.EnclosingDeclaration(this.declaration.Scope), this.slot = -1)
-            {
-                if (this.declaration.Declaration is DeclarationContainerKoto)
-                {
-                    var slots = this.declaration.Schema?.Origins ?? [];
-                    if (++this.slot < slots.Count)
-                    {
-                        this.Current = (null, slots[this.slot].Origin, false);
-                        return true;
-                    }
-
-                    this.declaration = null;
-                    return false;
-                }
+                this.Current = (null, this.inherited.OriginArguments[this.slot], false);
+                return true;
             }
 
             return false;
