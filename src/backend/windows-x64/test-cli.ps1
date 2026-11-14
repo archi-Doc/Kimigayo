@@ -88,7 +88,7 @@ foreach ($level in @('O0', 'O2')) {
     if (-not $output.Contains("Hello, world!")) { throw 'Run did not forward stdout' }
     if ((Get-Item $recordPath).LastWriteTimeUtc -ne $before) { throw 'Run --no-build rewrote build metadata' }
     $output = Invoke-Kimi @('run', $exe)
-    if (-not (Test-KimiExpectedOutput $utf8.GetBytes("Hello, world!`n") $childStdout) -or -not (Test-KimiExpectedOutput @() $childStderr)) {
+    if (-not (Test-KimiExpectedOutput $utf8.GetBytes("Hello, world!`n") $childStdout) -or -not (Test-KimiExpectedOutput ([byte[]]@()) $childStderr)) {
         throw 'Direct binary execution stdout mismatch'
     }
     '::Kimi.Console.writeLine("Updated source")' | Set-Content -LiteralPath $source -Encoding utf8
@@ -205,9 +205,9 @@ $abortStdout = $utf8.GetBytes("before abort`n")
 $abortStderr = $utf8.GetBytes("Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n")
 # A source or project run may print build lines first, so its stdout ends with the child's.
 $output = Invoke-Kimi @('run', $abortSource) 1
-if (-not (Test-KimiExpectedOutput $abortStdout $childStdout[-$abortStdout.Length..-1]) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Source run lost child output/error: $output" }
+if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Source run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
-if (-not (Test-KimiExpectedOutput $abortStdout $childStdout[-$abortStdout.Length..-1]) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Project run lost child output/error: $output" }
+if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Project run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1
 if (-not (Test-KimiExpectedOutput $abortStdout $childStdout) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Executable run lost child output/error: $output" }
 # A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.4, 22.6).

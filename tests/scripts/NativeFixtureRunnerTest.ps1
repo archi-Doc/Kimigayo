@@ -180,6 +180,13 @@ foreach ($workers in @(1, 4)) {
 # Real sleeping native processes exercise scheduling delay without adding imports to the production profile.
 . (Join-Path $repo 'src/backend/windows-x64/toolchain.ps1')
 . (Join-Path $repo 'src/backend/windows-x64/test-scalar-process.ps1')
+# The output owner takes byte[] only: a numeric string, an object[] of bytes or $null is rejected, never converted.
+foreach ($argument in @('65', [object[]]@(65), $null)) {
+    $rejected = $false
+    try { $null = Test-KimiExpectedOutput $argument ([byte[]]@(65)) }
+    catch [ArgumentException] { $rejected = $true }
+    if (-not $rejected) { throw "Test-KimiExpectedOutput converted a non-byte[] argument: $argument" }
+}
 $tools = Resolve-KimiToolchainRoot $ToolchainRoot
 $missing = Invoke-KimiFixtureProcess (Join-Path $work 'missing') @{
     stdout = [byte[]]@(); stderr = [byte[]]@(); exit = 0; observationMilliseconds = 0

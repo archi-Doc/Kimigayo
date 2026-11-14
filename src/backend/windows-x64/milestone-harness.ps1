@@ -86,7 +86,7 @@ try {
         [IO.File]::WriteAllBytes((Join-Path $directory 'run.stderr'), $actual.stderr)
         $hex = [Convert]::ToHexString($actual.stdout)
         $errorHex = [Convert]::ToHexString($actual.stderr)
-        if (-not (Test-KimiExpectedOutput $utf8.GetBytes($Expected) $actual.stdout) -or -not (Test-KimiExpectedOutput @() $actual.stderr)) {
+        if (-not (Test-KimiExpectedOutput $utf8.GetBytes($Expected) $actual.stdout) -or -not (Test-KimiExpectedOutput ([byte[]]@()) $actual.stderr)) {
             throw "Output mismatch: $name.$level; stdout=$hex; stderr=$errorHex"
         }
         $results.Add(@{ name = "$name.$level"; optimization = $level; execution = 'native'; stdoutHex = $hex; stderrHex = $errorHex; exitCode = $actual.exitCode

@@ -126,7 +126,7 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
 
 function Invoke-Checked([string] $Exe, [string] $Kernel) {
     $run = Invoke-Timed $Exe
-    if ($run.exitCode -ne 0 -or -not (Test-KimiExpectedOutput @() $run.stderr) -or -not (Test-KimiExpectedOutput $utf8.GetBytes("$($expected[$Kernel])`n") $run.stdout)) {
+    if ($run.exitCode -ne 0 -or -not (Test-KimiExpectedOutput ([byte[]]@()) $run.stderr) -or -not (Test-KimiExpectedOutput $utf8.GetBytes("$($expected[$Kernel])`n") $run.stdout)) {
         throw "Wrong result: $Exe (exit $($run.exitCode)): stdout=$([Convert]::ToHexString($run.stdout)) stderr=$([Convert]::ToHexString($run.stderr))"
     }
     return $run

@@ -71,7 +71,7 @@ function Execute([string] $exe, [byte[]] $stdout) {
     $null = $errorCopy.GetAwaiter().GetResult()
     $actual = $output.ToArray()
     $stderr = $errorOutput.ToArray()
-    if ($p.ExitCode -ne 0 -or -not (Test-KimiExpectedOutput @() $stderr) -or -not (Test-KimiExpectedOutput $stdout $actual)) {
+    if ($p.ExitCode -ne 0 -or -not (Test-KimiExpectedOutput ([byte[]]@()) $stderr) -or -not (Test-KimiExpectedOutput $stdout $actual)) {
         throw "Execution failed: $exe, exit=$($p.ExitCode), stderr=$([Convert]::ToHexString($stderr)), stdout=$([Convert]::ToHexString($actual))"
     }
     $p.Dispose()

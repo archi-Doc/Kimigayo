@@ -88,7 +88,7 @@ Dependencies={Lib={PackageId="library" PackageVersion="1" Project="../Library/Li
         $expected = $utf8.GetBytes("module`nmodule`n")
         # A project run may print build lines first, so its stdout ends with the program's.
         $output = Invoke-Kimi "$level-run" @('run', $project, '--no-build')
-        if (-not (Test-KimiExpectedOutput $expected $output[-$expected.Length..-1])) { throw "Project module output mismatch: $($utf8.GetString($output))" }
+        if (-not (Test-KimiExpectedOutput $expected ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($output, $expected.Length))))) { throw "Project module output mismatch: $($utf8.GetString($output))" }
         $output = Invoke-Kimi "$level-executable" @('run', (Join-Path $work "App/bin/x86_64-pc-windows-msvc/App.$level.exe"))
         if (-not (Test-KimiExpectedOutput $expected $output)) { throw "Module output mismatch: $($utf8.GetString($output))" }
         $output = Invoke-Kimi "$level-tests" @('test', $project, '--format', 'json')
