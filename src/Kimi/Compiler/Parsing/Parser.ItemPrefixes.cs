@@ -80,7 +80,7 @@ public static partial class Parser
         {
             var next = attribute.AttributeChain;
             attribute.AttributeChain = null;
-            if (attribute.Kind is not (AttributeKind.Lang or AttributeKind.Intrinsic or AttributeKind.CallerLocation or AttributeKind.Unsupported))
+            if (!attribute.IsImplementation)
             {
                 reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
             }

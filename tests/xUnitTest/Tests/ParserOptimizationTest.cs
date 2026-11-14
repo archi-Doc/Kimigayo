@@ -227,6 +227,24 @@ public class ParserOptimizationTest
         Assert.Equal(misplaced, TestDiagnostics.Of(c).Length);
     }
 
+    // SPEC 6.7, 22.1 (R8-G1 row L6): the library's own constructors with Attributes are Array's two linked ones (SPEC 4.9.5; IMPL
+    // 21.3.4), each carrying its `#Lang` alone, and the library parses without a record.
+    [Fact]
+    public void TheLibrarysLinkedConstructorsCarryLang()
+    {
+        var c = Compilation.CreateForTest();
+        var array = Assert.Single(c.Library.Kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Array" });
+        var constructors = array.Members.OfType<FunctionKoto>().Where(static x => x.IsConstructor && !x.IsImplicitConstructor).ToArray();
+        Assert.Equal(2, constructors.Length);
+        Assert.All(constructors, static x =>
+        {
+            Assert.Equal(AttributeKind.Lang, Assert.IsType<AttributeKoto>(x.AttributeChain).Kind);
+            Assert.Null(x.AttributeChain!.AttributeChain);
+            ParseTestHelper.VerifyParents(x);
+        });
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     // The re-classification after an edit (Koto.ReplaceChild) reads the same mark: the node's own Kotonoha.
     [Fact]
     public void AReplacedNameIsClassifiedByItsKotonoha()

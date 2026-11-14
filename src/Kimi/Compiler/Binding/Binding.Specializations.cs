@@ -320,7 +320,9 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            if (definition.AttributeChain is not null || HasParameterAttributes(definition))
+            // SPEC 8.13.2: the original's Attributes are inherited. The implementation Attributes (IMPL 21.3.4) are the original's own
+            // facts, which the library's registration gives the function and so each specialization of it; any other is not inherited yet.
+            if (HasInheritedAttributes(definition) || HasParameterAttributes(definition))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -504,6 +506,19 @@ public sealed partial class Binding
 
             return origin is { Kind: OriginKind.Input, Binder: { } binder } &&
                 (ReferenceEquals(binder, function) ? origin.Occurrence is { } at && IsWithin(at, argument) : IsWithin(binder, argument));
+        }
+
+        static bool HasInheritedAttributes(FunctionKoto function)
+        {
+            for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                if (!attribute.IsImplementation)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         static bool HasParameterAttributes(FunctionKoto function)

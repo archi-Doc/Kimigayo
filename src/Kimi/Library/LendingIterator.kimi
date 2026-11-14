@@ -1,4 +1,5 @@
 /// Advances an iterator while preserving each returned item's actual Loan dependencies.
+#Lang("LendingIterator")
 public contract LendingIterator
     /// The complete item Type for a receiver borrow that lives during step.
     associate LentItem(step) for uniq/Self during step

@@ -314,6 +314,20 @@ public sealed partial class Binding
                 return;
             }
 
+            if (node is AttributeKoto { IsImplementation: true } implementation)
+            {
+                // IMPL 21.3.4: an implementation Attribute states a fact about its declaration, which the Kimi library's registration
+                // owns; its operand is a Name or a code, never an expression to bind. The kinds exist only in the library's sources.
+                implementation.BoundType = BoundType.Unit;
+                implementation.BindingState = BindingState.Resolved;
+                if (implementation.AttributeChain is { } precedingImplementation)
+                {
+                    this.Visit(precedingImplementation);
+                }
+
+                return;
+            }
+
             if (node is AttributeKoto selectedAttribute)
             {
                 // Handled attributes returned above. Other selected attributes still bind their own lookup failure.

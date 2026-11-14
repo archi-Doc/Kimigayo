@@ -1,4 +1,5 @@
 /// Starts an enumeration through a shared borrow of the source.
+#Lang("Iterable")
 public contract Iterable
     /// The iterator retains the source borrow and yields its own declared item Type.
     associate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source

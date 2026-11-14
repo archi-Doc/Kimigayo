@@ -234,8 +234,12 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // A bodiless function outside a Contract is a cataloged compiler function or a foreign import, and the signature-only
-    // groups hold only registered compiler functions.
+    // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
+    // cataloged compiler function carrying `#Intrinsic` exactly when the intrinsic table serves it by an intrinsic, or a `#Lang`
+    // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
+    // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. One compiler function has neither
+    // form until R8-W2 d gives it its body: Console.writeLine(text), which the backend still serves from a legacy runtime helper (a
+    // Body disposition, plan 5.8). The signature-only groups hold only registered compiler functions.
     [Fact]
     public void BodilessFunctionsAreCompilerFunctions()
     {
@@ -245,19 +249,35 @@ public partial class KimiLibraryShapeTest
             Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
         }
 
+        var legacy = new List<KimiDeclarationId>();
         Visit(c.Library.Kotonoha.RootKoto);
+        Assert.Equal([KimiDeclarationId.WriteLine], legacy);
+        Assert.Empty(LibraryAttributes(AttributeKind.Unsupported));
 
         void Visit(DeclarationContainerKoto container)
         {
             for (var i = 0; container is not ContractKoto && i < container.Members.Count; i++)
             {
-                if (container.Members[i] is FunctionKoto { IsRequirement: false, AttributeChain: null } function && !HasBody(function))
+                if (container.Members[i] is not FunctionKoto { IsRequirement: false } function)
                 {
-                    var symbol = function.SymbolOf();
-                    Assert.True(
-                        symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) &&
-                        (symbol.CompilerFunction != CompilerFunctionKind.None || KimiLibraryCatalog.ImplementationOf(id) is not null),
-                        Line(function));
+                    continue;
+                }
+
+                var intrinsic = function.FindAttribute(AttributeKind.Intrinsic) is not null;
+                if (HasBody(function) || function.FindAttribute(AttributeKind.LibraryImport) is not null)
+                {
+                    Assert.False(intrinsic, Line(function));
+                    continue;
+                }
+
+                var symbol = function.SymbolOf();
+                Assert.True(symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
+                var served = IntrinsicDisposition.Of(symbol!.CompilerFunction).Kind == DispositionKind.Intrinsic;
+                var linked = function.IsConstructor && symbol.CompilerFunction == CompilerFunctionKind.None && KimiLibraryCatalog.ImplementationOf(symbol.LibraryDeclaration!.Value) is not null;
+                Assert.True(intrinsic == served && (served || linked || symbol.CompilerFunction != CompilerFunctionKind.None), Line(function));
+                if (!served && !linked)
+                {
+                    legacy.Add(symbol.LibraryDeclaration!.Value);
                 }
             }
 

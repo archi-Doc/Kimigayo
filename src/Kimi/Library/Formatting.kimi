@@ -1,17 +1,21 @@
 // UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation
 // (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine of a view are bodies here, each
 // raw Field's storage where its Origin states (SPEC 5.7).
+#Lang("BufferFull")
 public struct BufferFull
     Self is Copy
     public init() => ()
 
+#Lang("BufferWriter")
 public contract BufferWriter
     func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
         effect confined
 
+#Lang("Utf8Format")
 public contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
 
+#Lang("WriteWindow")
 public struct WriteWindow {source}
     Self is not ObjectPayload
     let state: raw/u8 during source
@@ -52,6 +56,8 @@ public struct WriteWindow {source}
     /// The window with capacity `min(capacity, maximum)` (SPEC 22.9.4).
     ///
     /// - abort: `maximum` is below `written`.
+    #Lang("WindowLimit")
+    #CallerLocation
     public func limit(self: owner/Self, maximum: isize) -> Self{r}
         origin r.source == self.source
         if maximum < self.written => Storage.argumentOutOfRange()
@@ -89,6 +95,7 @@ public struct WriteWindow {source}
     func next(self: ref/Self) -> raw/u8
         unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.end()
 
+#Lang("Utf8Writer")
 public struct Utf8Writer {target}
     Self is not ObjectPayload
     // `destination` and `dispatch` are the adapter's first two words, which the kept runtime's `__kimi_erased_reserve`
@@ -113,6 +120,8 @@ public struct Utf8Writer {target}
     ///
     /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
     ///   (SPEC 22.5.1).
+    #Lang("WriterWrite")
+    #CallerLocation
     public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
         T is Utf8Format
         try self.status()
@@ -125,12 +134,15 @@ public struct Utf8Writer {target}
         return .Err(BufferFull.init())
 
     /// The recorded failure (SPEC 22.10.1).
+    #Lang("WriterStatus")
     public func status(self: ref/Self) -> Result<(), BufferFull>
         if self.failed => return .Err(BufferFull.init())
         return .Ok(())
 
     /// Writes `text` with one exact reservation, none when it is empty, and records a failed reservation
     /// (SPEC 22.10.1). It has no failure test of its own: a non-empty text reaches the guard (`status`) via `reserve`.
+    #Lang("WriterWriteUtf8")
+    #CallerLocation
     internal func writeUtf8(self: uniq/Self, text: Text.Utf8Slice) -> Result<(), BufferFull>
         let bytes = text.bytes()
         if bytes.length == 0 => return .Ok(())
@@ -146,6 +158,8 @@ public struct Utf8Writer {target}
     /// interpolation is the only caller.
     ///
     /// - abort: the write of `text` after a held literal exceeds the maximum object size or cannot allocate.
+    #Lang("WriterDeferLiteral")
+    #CallerLocation
     internal func deferLiteral(self: uniq/Self, text: ref/string) -> Result<(), BufferFull>
         if self.pendingLength != 0 => return self.writeUtf8(Text.utf8(text))
         let repr = text@follow@raw@raw/Storage.StringRepr
@@ -160,6 +174,8 @@ public struct Utf8Writer {target}
     /// tail (`settled`) and committed. The compiler's owning interpolation is the only caller.
     ///
     /// - abort: the deferred literal exceeds the maximum object size or cannot allocate.
+    #Lang("WriterFinish")
+    #CallerLocation
     internal func finish(self: uniq/Self) -> Result<(), BufferFull>
         if self.pendingLength == 0 => return self.status()
         let window = try self.reserve(0)
@@ -174,6 +190,8 @@ public struct Utf8Writer {target}
     /// this adapter, since the window's Origin is the destination's, not this borrow's.
     ///
     /// - abort: `amount` and the deferred literal exceed the maximum object size.
+    #Lang("WriterReserve")
+    #CallerLocation
     internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
         try self.status()
         let largest: isize = 9223372036854775807
@@ -219,10 +237,12 @@ public struct Utf8Writer {target}
                 return .Err(BufferFull.init())
 
 public group Text
+    #Lang("InvalidUtf8")
     public struct InvalidUtf8
         Self is Copy
         public init() => ()
 
+    #Lang("FixedBuffer")
     public struct FixedBuffer {source}
         Self is BufferWriter
         Self is not ObjectPayload
@@ -248,6 +268,7 @@ public group Text
             unsafe => return Raw.slice(self.data, self.length)
 
         /// Validates the unvalidated suffix and views the committed bytes; records nothing (SPEC 22.9.3).
+        #Lang("FixedBufferText")
         public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
             unsafe
                 if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
@@ -268,6 +289,8 @@ public group Text
         /// A window over the unused capacity, `BufferFull` exactly when it is below `minimum` (SPEC 22.9.4).
         ///
         /// - abort: `minimum` is negative.
+        #Lang("FixedBufferReserve")
+        #CallerLocation
         public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
             if minimum < 0 => Storage.argumentOutOfRange()
             // The buffer keeps `0 <= length <= capacity`, which bounds the difference.
@@ -282,6 +305,7 @@ public group Text
                 if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
                 return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
 
+    #Lang("HeapBuffer")
     public struct HeapBuffer
         Self is BufferWriter
         var data: raw/u8 during self
@@ -328,6 +352,8 @@ public group Text
         /// size, and copies the committed bytes.
         ///
         /// - abort: `minimum` is negative, or `length + minimum` exceeds the maximum object size.
+        #Lang("HeapBufferReserve")
+        #CallerLocation
         public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
             if minimum < 0 => Storage.argumentOutOfRange()
             let length = self.length
@@ -356,6 +382,8 @@ public group Text
         /// Validates the unvalidated suffix and transfers the allocation to the string without copying; on failure it
         /// releases the allocation (SPEC 22.9.3). An allocated empty buffer keeps its pointer and the Heap release
         /// kind.
+        #Lang("HeapBufferIntoString")
+        #CallerLocation
         public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>
             // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers
             // (SPEC 5.2.3).
@@ -372,6 +400,7 @@ public group Text
             var text = Storage.InlineStorage<Storage.StringRepr>.init(Storage.StringRepr.init(data, length, kind))
             unsafe => return .Ok((*(text@raw@raw/string))@move)
 
+    #Lang("Utf8Slice")
     public struct Utf8Slice {source}
         Self is Copy
         let value: Slice<u8> during source
@@ -384,12 +413,15 @@ public group Text
             return self.value
 
     /// A buffer over the initialized array: length zero, capacity `N` (SPEC 22.9.2).
+    #Lang("TextFixed")
     public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
         return Text.FixedBuffer.init(destination@follow@raw@raw/u8, destination.length)
 
     /// A buffer of length zero and capacity `capacity`; zero allocates nothing (SPEC 22.9.2).
     ///
     /// - abort: `capacity` is negative, or the allocation fails.
+    #Lang("TextHeap")
+    #CallerLocation
     public func heap(capacity: isize) -> HeapBuffer
         if capacity < 0 => Storage.argumentOutOfRange()
         var buffer = Text.HeapBuffer.init()
@@ -406,6 +438,8 @@ public group Text
     /// whose adapter calls `format` once and whose buffer SPEC 22.10.5 bounds.
     ///
     /// - abort: the write returns `BufferFull` (`KIMI_E_FORMAT`), or the allocation fails.
+    #Lang("TextToString")
+    #CallerLocation
     public func toString<T>(value: ref/T) -> string
         T is Utf8Format
         return "\(value)"
@@ -414,6 +448,8 @@ public group Text
     /// hold partial bytes.
     ///
     /// - return: The formatted text, a view of the array that keeps `destination`'s exclusive loan while it is used.
+    #Lang("TextTryFormat")
+    #CallerLocation
     public func tryFormat<T, length N>(
         value: ref/T, destination: uniq/[N of u8]
     ) -> Result<Utf8Slice during destination, BufferFull>
@@ -483,6 +519,8 @@ public group Console
     /// Writes the view's bytes and one LF to standard output (SPEC 22.7).
     ///
     /// - abort: the host does not accept the bytes (`KIMI_E_STDOUT`); the output may be partial.
+    #Lang("WriteLineUtf8")
+    #CallerLocation
     public func writeLine(text: Text.Utf8Slice)
         let bytes = text.bytes()
         var feed: u8 = 10
@@ -497,12 +535,16 @@ public group Console
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
 // catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
 internal group BoolFormat
+    #Lang("BoolFormatFormat")
+    #CallerLocation
     func format(self: ref/bool, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         if self@follow => return writer.writeUtf8(Text.utf8("true"))
         return writer.writeUtf8(Text.utf8("false"))
 
 internal group CharFormat
     /// Writes the scalar's UTF-8 encoding: one to four bytes, encoded into a local array.
+    #Lang("CharFormatFormat")
+    #CallerLocation
     func format(self: ref/char, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         var scalar: u32 = 0
         unsafe
@@ -531,16 +573,22 @@ internal group CharFormat
         return writer.writeUtf8(Text.Utf8Slice.init(bytes.slice(..count)))
 
 internal group UnitFormat
+    #Lang("UnitFormatFormat")
+    #CallerLocation
     func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.writeUtf8(Text.utf8("()"))
 
 internal group Utf8SliceFormat
     /// Writes the view's bytes: one exact reservation, none when empty.
+    #Lang("Utf8SliceFormatFormat")
+    #CallerLocation
     func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return writer.writeUtf8(self@follow)
 
 internal group F32Format
     /// Writes the shortest round-trip text of the binary32 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)
     /// into a local array.
+    #Lang("F32FormatFormat")
+    #CallerLocation
     func format(self: ref/f32, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         var bytes = [24 of 0@u8]
         let count = Storage.formatFloat((self@follow@bits<u32>)@u64, narrow: true, destination: bytes@uniq)
@@ -549,6 +597,8 @@ internal group F32Format
 internal group F64Format
     /// Writes the shortest round-trip text of the binary64 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)
     /// into a local array.
+    #Lang("F64FormatFormat")
+    #CallerLocation
     func format(self: ref/f64, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         var bytes = [24 of 0@u8]
         let count = Storage.formatFloat(self@follow@bits<u64>, narrow: false, destination: bytes@uniq)
@@ -557,6 +607,8 @@ internal group F64Format
 internal group WrappingFormat
     /// Writes the wrapping integer as its argument (SPEC 3.1.1): its bits read as `I` (SPEC 13.5.4), written as that
     /// integer, as FromEnd writes its offset.
+    #Lang("WrappingFormatFormat")
+    #CallerLocation
     func format<I>(self: ref/Wrapping<I>, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         I is PrimitiveInteger
         let value = self@follow@I
@@ -567,6 +619,8 @@ internal group IntegerFormat
     /// local array from the end, then written once at their exact length (SPEC 22.10.5). The comparison and conversions
     /// on `I` are built-in operators (SPEC 8.7.4), no requirement calls, so the body's effects are the same at every
     /// instance. i128 and u128 run the specializations below, which this declaration's effects include (SPEC 15.6.4).
+    #Lang("IntegerFormatFormat")
+    #CallerLocation
     func format<I>(self: ref/I, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         I is PrimitiveInteger
         let value = self@follow

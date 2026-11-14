@@ -1,4 +1,5 @@
 /// Starts an enumeration through an exclusive borrow of the source.
+#Lang("UniqIterable")
 public contract UniqIterable
     /// Exclusive source access does not prescribe the iterator's item capability.
     associate IteratorType(source) is ::Kimi.LendingIterator for uniq/Self during source

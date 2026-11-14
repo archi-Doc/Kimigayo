@@ -142,6 +142,10 @@ public sealed class AttributeKoto : UnaryKoto
     /// <summary>Gets the kind of this attribute's Name; the compiler reads this, never the Name.</summary>
     public AttributeKind Kind { get; private set; }
 
+    /// <summary>Gets a value indicating whether this is an implementation Attribute (IMPL 21.3.4): a fact about its declaration that the
+    /// Kimi library states to the compiler, never an expression. The kinds from <see cref="AttributeKind.Lang"/> on.</summary>
+    public bool IsImplementation => this.Kind >= AttributeKind.Lang;
+
     /// <summary>Gets the attribute identifier.</summary>
     public Koto IdentifierKoto
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } ? identifier : this.Operand;
