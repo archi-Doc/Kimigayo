@@ -32,7 +32,21 @@ public sealed class RecursiveContractTest
 
     private const string Clauses = "    Self.(K).Y is M\n    Box<Self.(K).Y>.(C).X is Copy\nfunc needs<V>(v: ref/V)\n    V is D\n    ()\n";
 
+    private const string IntTrees = "contract Tree\n    associate Child is Tree\n    associate Value\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\n    Self.(Tree).Value is PrimitiveInteger\n";
+
+    private const string IntTwice = "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        T is IntTree\n        return (value, value)\n";
+
     private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
+
+    // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
+    // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
+    private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
+
+    private const string OrdersHead = "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other is Tree\n    associate Free\n" +
+        "contract AT3: Tree, Copy\n    Self.(Tree).Child is AT3\n";
+
+    private const string OrdersTail = "contract AT2: Tree, Copy\n" +
+        "    Self.(Tree).Child is AT3\nfunc needsTree<V>(v: ref/V)\n    V is Tree\n    ()\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\n";
 
     // SPEC 8.3.3: each recursive Contract of the S5 proposal's 2.1, through the premise supply of `T is C` (SPEC 8.3.2): Tree; CopyTree,
     // which refines Tree and constrains its inherited Child; A and B, which supply each other's conformance; Rec, whose refinement
@@ -175,6 +189,46 @@ public sealed class RecursiveContractTest
     [InlineData("C2c2", "nf1-nonfinal", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ncontract K\n    associate X\n    Self.(K).X is i32\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n    U is T\n    T is CopyTree\n    T is K\n    return (value, value)\n", "")]
     [InlineData("guard", "nf2-nonfinal", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ncontract K\n    associate X\n    Self.(K).X is i32\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n    T is U\n    T is CopyTree\n    T is K\n    return (value, value)\n", "")]
     [InlineData("C2c2", "nf3-nonfinal", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\n    associate Other\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ncontract K\n    associate X\n    Self.(K).X is i32\nfunc twice<T>(value: T.(Tree).Alias.(Tree).Alias) -> (T.(Tree).Alias.(Tree).Alias, T.(Tree).Alias.(Tree).Alias)\n    T is CopyTree\n    T is K\n    T.(Tree).Child is T.(Tree).Alias.(Tree).Alias\n    return (value, value)\n", "")]
+    // R7-C2c2 c2-2 (SPEC 8.2.3 grounds: the identity Constraints `T is MT` supplies apply at every depth): `T.(Tree).Child is MT`
+    // supplies `T.(Tree).Child.(Tree).Alias is T.(Tree).Child.(Tree).Child`; the walk's identity rows join the request's classes.
+    [InlineData("C2c22", "idd1-depth2", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MT: Tree, Copy\n    Self.(Tree).Child is MT\n    Self.(Tree).Alias is Self.(Tree).Child\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias)\n        T is MT\n        return (value, value)\n", "")]
+    [InlineData("C2c22", "idd2-depth3", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MT: Tree, Copy\n    Self.(Tree).Child is MT\n    Self.(Tree).Alias is Self.(Tree).Child\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Child.(Tree).Alias)\n        T is MT\n        return (value, value)\n", "")]
+    [InlineData("guard", "idd1n-depth2", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MT: Tree, Copy\n    Self.(Tree).Child is MT\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias)\n        T is MT\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("guard", "idd2n-depth3", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MT: Tree, Copy\n    Self.(Tree).Child is MT\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Child.(Tree).Alias)\n        T is MT\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    // SPEC 8.3.3: one answer whichever demand asks first (ord1, ord2), and the same record in both orders without the clause.
+    [InlineData("C2c22", "ord1-aliasfirst", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\nfunc probe<T>(a: ref/T.(Tree).Child.(Tree).Alias, c: ref/T.(Tree).Child.(Tree).Child)\n    T is MTI\n    needsCopy<T.(Tree).Child.(Tree).Alias>(a)\n    needsCopy<T.(Tree).Child.(Tree).Child>(c)\n", "")]
+    [InlineData("C2c22", "ord2-childfirst", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\nfunc probe<T>(a: ref/T.(Tree).Child.(Tree).Alias, c: ref/T.(Tree).Child.(Tree).Child)\n    T is MTI\n    needsCopy<T.(Tree).Child.(Tree).Child>(c)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(a)\n", "")]
+    [InlineData("guard", "ord1n-aliasfirst", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\nfunc probe<T>(a: ref/T.(Tree).Child.(Tree).Alias, c: ref/T.(Tree).Child.(Tree).Child)\n    T is MTI\n    needsCopy<T.(Tree).Child.(Tree).Alias>(a)\n    needsCopy<T.(Tree).Child.(Tree).Child>(c)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(a)")]
+    [InlineData("guard", "ord2n-childfirst", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\nfunc needsCopy<V>(v: ref/V)\n    V is Copy\n    ()\nfunc probe<T>(a: ref/T.(Tree).Child.(Tree).Alias, c: ref/T.(Tree).Child.(Tree).Child)\n    T is MTI\n    needsCopy<T.(Tree).Child.(Tree).Child>(c)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(a)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(a)")]
+    // R7-C2c2 c2-2 (the Middle's C-313 B1; SPEC 8.3.3: the order of checks never changes the result): a kept row answers only where it
+    // decides, so a request the rows do not refine and whose walk recorded an identity row extends as if nothing were kept. o1, o3, o4,
+    // o8 and o10 ask the subject (or its link) first for a Contract its walk proves without extending; o2, o5 and o7 are the other order.
+    [InlineData("C2c22", "o1-tree-copy", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o2-copy-tree", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o3-tree-dup", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    let d = (value, value)\n", "")]
+    [InlineData("C2c22", "o4-dup-tree", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    let d = (value, value)\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o5-copy", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o7-sig", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, s: ref/T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is AT2\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o8-deeper-first", Orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, s: ref/T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias.(Tree).Child>(s)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    [InlineData("C2c22", "o10-final", Orders + "func probe<T, U>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    U is T\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "")]
+    // Without AT3's identity clause the subject is only Tree (SPEC 8.3.1: a required Constraint succeeds only when Proven): the kept
+    // Tree row never answers Copy (o1's invalid twin).
+    [InlineData("C2c22", "o1-tree-copyn", OrdersHead + OrdersTail + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(r)")]
+    // The group review's twins (q1, q2 are idd1, idd2): premise order under `U is T`, mutual Contracts, demand order, a clause
+    // joining a deeper Type to a shallower one (q6, eager at depth 1).
+    [InlineData("C2c22", "q3a-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    U is T\n    T is MTI\n    return (value, value)\n", "")]
+    [InlineData("C2c22", "q3b-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    T is MTI\n    U is T\n    return (value, value)\n", "")]
+    [InlineData("guard", "q3an-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    U is T\n    T is MTI\n    return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("guard", "q3bn-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    T is MTI\n    U is T\n    return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("C2c22", "q4-mutual", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract A: Tree, Copy\n    Self.(Tree).Child is B\ncontract B: Tree, Copy\n    Self.(Tree).Child is A\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc twice<T>(value: T.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias)\n    T is A\n    return (value, value)\n", "")]
+    [InlineData("guard", "q4n-mutual", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract A: Tree, Copy\n    Self.(Tree).Child is B\ncontract B: Tree, Copy\n    Self.(Tree).Child is A\nfunc twice<T>(value: T.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias)\n    T is A\n    return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("C2c22", "q5a-demands", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc both<T>(a: T.(Tree).Child.(Tree).Alias, b: T.(Tree).Child) -> (T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias, T.(Tree).Child, T.(Tree).Child)\n    T is MTI\n    return (a, a, b, b)\n", "")]
+    [InlineData("C2c22", "q5b-demands", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc both<T>(a: T.(Tree).Child, b: T.(Tree).Child.(Tree).Alias) -> (T.(Tree).Child, T.(Tree).Child, T.(Tree).Child.(Tree).Alias, T.(Tree).Child.(Tree).Alias)\n    T is MTI\n    return (a, a, b, b)\n", "")]
+    [InlineData("guard", "q6-shorter", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract M3: Tree, Copy\n    Self.(Tree).Child is M3\n    Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child\nfunc twice<T>(value: T.(Tree).Child.(Tree).Alias.(Tree).Child) -> (T.(Tree).Child.(Tree).Alias.(Tree).Child, T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is M3\n    return (value, value)\n", "")]
+    [InlineData("guard", "q6n-shorter", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract M3: Tree, Copy\n    Self.(Tree).Child is M3\nfunc twice<T>(value: T.(Tree).Child.(Tree).Alias.(Tree).Child) -> (T.(Tree).Child.(Tree).Alias.(Tree).Child, T.(Tree).Child.(Tree).Alias.(Tree).Child)\n    T is M3\n    return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    // The library Iterator states `LendingIterator.LentItem(step) is Item`: a view with an Iterator premise records identity rows.
+    [InlineData("guard", "it1-iterator", "func twice<I>(source: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n    I.Item is Copy\n    let first = source.next()\n    return (first, first)\n", "")]
+    [InlineData("guard", "it1n-iterator", "func twice<I>(source: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n    let first = source.next()\n    return (first, first)\n", "TransferRequired_Kd: return (first, first)")]
 
     // R7-C2c2 (review 1, the rule's wider instances): a parameter identical to a supplied projection, a conformance call, a transitive
     // identity and a Callable's projection; each invalid twin keeps its independent record, and the dependent ones went with their cause.
@@ -214,6 +268,32 @@ public sealed class RecursiveContractTest
     // projection two links up under `T is U` (the structural supply at depth and the boundary's reading); without the parent, unproven.
     [InlineData("C2a1", "tP1-intparent", "contract Tree\n    associate Child is Tree\ncontract IntTree: Tree, PrimitiveInteger\n    Self.(Tree).Child is IntTree\ncontract Tag\nfunc needs<V>(v: ref/V)\n    V is Tag\n    ()\nfunc needsPI<V>(v: ref/V)\n    V is PrimitiveInteger\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is IntTree\n    T is U\n    needsPI<U.(Tree).Child.(Tree).Child>(value)\n", "")]
     [InlineData("C2a1", "tP1n-intparent", "contract Tree\n    associate Child is Tree\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\ncontract Tag\nfunc needs<V>(v: ref/V)\n    V is Tag\n    ()\nfunc needsPI<V>(v: ref/V)\n    V is PrimitiveInteger\n    ()\nfunc probe<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is IntTree\n    T is U\n    needsPI<U.(Tree).Child.(Tree).Child>(value)\n", "UnprovenConstraint_Kd: needsPI<U.(Tree).Child.(Tree).Child>(value)")]
+
+    // SPEC 8.3.2, 8.7.4 (R7-C2b b1): Copy and Owned are PrimitiveInteger's refinement parents, so a PrimitiveInteger that refinement
+    // supplies at any projection supplies both there: IntTree's Value one, two and three links up, under an enclosing struct's premise
+    // (b1-r5), while IntTree waits for its closed clause's round (b1-r1), and PrimitiveInteger as a parent two links up (b1v6). The
+    // invalid twins keep their records: a Value of a parentless Contract, Sealed (never supplied, 8.7.2), both polarities of Copy,
+    // PTree without the parent, IntTree failed by a refuted closed clause (b1-r2), a struct conforming to a child of PrimitiveInteger
+    // (b1-r12). A formation under a PrimitiveInteger premise reads its Copy (b1-r22). The supply also gives a value read at depth its
+    // copy (b1-valueread, InternalInvariant_Kd before) and makes `not Copy` there contradictory evidence (b1-notcopy, accepted before).
+    [InlineData("guard", "b1v0-depth1", IntTrees + "group H\n    public func twice<T>(value: T.(Tree).Value) -> (T.(Tree).Value, T.(Tree).Value)\n        T is IntTree\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1v1-depth2", IntTrees + IntTwice, "")]
+    [InlineData("C2b", "b1v2-depth3", IntTrees + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Child.(Tree).Value)\n        T is IntTree\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1v3-owned", IntTrees + "func needsOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc probe<T>(value: ref/T.(Tree).Child.(Tree).Value)\n    T is IntTree\n    needsOwned<T.(Tree).Child.(Tree).Value>(value)\n", "")]
+    [InlineData("guard", "b1v4-direct", "group H\n    public func twice<T>(value: T) -> (T, T)\n        T is PrimitiveInteger\n        return (value, value)\n", "")]
+    [InlineData("guard", "b1v5-identity", "group H\n    public func twice<T, U>(value: U) -> (U, U)\n        T is PrimitiveInteger\n        U is T\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1v6-intparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree, PrimitiveInteger\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1-r1-pending", IntTrees + "    i32 is PrimitiveInteger\n" + IntTwice, "")]
+    [InlineData("C2b", "b1-r5-enclosing", IntTrees + "struct Holder<T>\n    T is IntTree\n    public var tag: i32 = 0\n    public func twice(self: ref/Self, value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        return (value, value)\n", "")]
+    [InlineData("C2b", "b1-valueread-d2", IntTrees + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Value) -> T.(Tree).Child.(Tree).Value\n    T is IntTree\n    return r\n", "")]
+    [InlineData("C2b", "b1-notcopy-d2", IntTrees + "func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32\n    T is IntTree\n    T.(Tree).Child.(Tree).Value is not Copy\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(value: T.(Tree).Child.(Tree).Value) -> i32 | InvalidConstraint_Kd: T.(Tree).Child.(Tree).Value is not Copy")]
+    [InlineData("guard", "b1-r22-formation", "struct Pair<X>\n    X is Copy\n    public var first: X\nfunc g<T, U>(u: ref/U)\n    T is PrimitiveInteger\n    U is Pair<T>\n    ()\n", "")]
+    [InlineData("guard", "b1n1-marker", "contract Tree\n    associate Child is Tree\n    associate Value\ncontract Marker\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\n    Self.(Tree).Value is Marker\n" + IntTwice, "TransferRequired_Kd: return (value, value)")]
+    [InlineData("guard", "b1n2-sealed", IntTrees + "func needsSealed<V>(v: ref/V)\n    V is Sealed\n    ()\nfunc probe<T>(value: ref/T.(Tree).Child.(Tree).Value)\n    T is IntTree\n    needsSealed<T.(Tree).Child.(Tree).Value>(value)\n", "UnprovenConstraint_Kd: needsSealed<T.(Tree).Child.(Tree).Value>(value)")]
+    [InlineData("guard", "b1n3-notcopy", "group H\n    public func twice<T>(value: T) -> (T, T)\n        T is PrimitiveInteger\n        T is not Copy\n        return (value, value)\n", "InvalidConstraint_Kd: public func twice<T>(value: T) -> (T, T)")]
+    [InlineData("guard", "b1n4-noparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("guard", "b1-r2-failed", IntTrees + "    bool is PrimitiveInteger\n" + IntTwice, "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | UnprovenConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")]
+    [InlineData("guard", "b1-r12-userchild", "contract IntP: PrimitiveInteger\nstruct S\n    Self is IntP\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is IntP")]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
@@ -278,6 +358,18 @@ public sealed class RecursiveContractTest
         var c = Bind(Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\n" +
             "func probe<T>(value: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    needs<T.(Tree).Child.(Tree).Child.(Tree).Child>(value)\n" +
             "func both<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    T is U\n    needs<U.(Tree).Child.(Tree).Child>(value)\n");
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // R7-C2b b1: PrimitiveInteger's parents are rows of the walk, not tables: a warm rebind that copies IntTree's Value three links up
+    // (b1v2) and proves it Owned there allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfASuppliedIntegerAllocatesNothing()
+    {
+        var c = Bind(IntTrees + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Child.(Tree).Value)\n        T is IntTree\n        return (value, value)\n" +
+            "func needsOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc probe<T>(value: ref/T.(Tree).Child.(Tree).Child.(Tree).Value)\n    T is IntTree\n    needsOwned<T.(Tree).Child.(Tree).Child.(Tree).Value>(value)\n");
         Assert.Empty(CompilationTestHelper.BindingErrors(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
