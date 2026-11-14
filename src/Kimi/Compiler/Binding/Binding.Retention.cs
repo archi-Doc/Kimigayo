@@ -310,7 +310,7 @@ public sealed partial class Binding
     // its solved Origins hold, each part once (retentionParts).
     private void Instantiation(BoundType? type)
     {
-        if (type is null || !(type.CarriesOrigin || type.CarriesRawOrigin) || !this.retentionParts.Add(type))
+        if (type is null || !(type.CarriesOrigin || type.CarriesRawOrigin) || !this.retentionParts.TryAdd(type, 0))
         {
             return;
         }
