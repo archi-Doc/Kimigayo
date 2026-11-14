@@ -1370,6 +1370,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 74 (2026-11-13, plan §14; the owner's O-248 (b) in K's session, verbatim 「O-248 b」, with the Front's D-573): §4.2 and §5.0's C2 row: R7-C2 c1' withdrawn, its row (2) fix in c2-2 and its six lookups in c2-3. Nothing frozen.
 - Revision 75 (2026-11-13, plan §14; the owner's adoption of the Middle's combined oracle in the Middle's session, verbatim "Yes, adopt it", the Middle's D-584): §3.3's RP17 bullet and §7.1's Acceptance row: one A5 oracle per window for the units landing together. Nothing frozen.
 - Revision 76 (2026-11-14, plan §14; the Front's D-619, with R7-C2c2 c2-2): §5.0's e2 entry: e2-3 extends only depth-1 requests (c2-2), restating c2's design review note B. Nothing frozen.
+- Revision 77 (2026-11-14, plan §14; the Front's D-635, with R7-C2e2 e2-1 and the owner's O-281 (a)): §5.0's e2 entry in six parts with e2-1's lifetime; §4.2's e2-1 order. Nothing frozen.
+- Revision 78 (2026-11-14, plan §14; the Middle's D-638, with R9-F6 batch B): §5.3's F6 row marks batch B done. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
