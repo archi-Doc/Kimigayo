@@ -21313,6 +21313,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     Binding's partition (it widens R5-M151's stated cost and still leaves A4's Limit to `Bodyless`).
   - Follow-up (the Front's C-334 N1): one owner of a definition's failure, Binding's declaration state carrying the recorded missing
     body, would let `Bodyless` keep one arm.
+- **R8-M43 Program output equality: `Test-KimiExpectedOutput` compares bytes ordinally (PLAN G894)** (Back, 2026-11-14; D-654;
+  verification tooling; review ACCEPT WITH NOTES, notes folded).
+  - The owner. `Test-KimiExpectedOutput` (`src/backend/windows-x64/expected-output.ps1`) owns the rule "a program's output equals
+    its expectation": it compares two `byte[]` values ordinally and rejects any other argument. Its scope: equality of a whole
+    captured stdout/stderr stream, of a stream's suffix (the last N captured bytes, after the build lines a `kimi run` prints), and
+    of a written file with its expected bytes (an unchanged record, a normalization's idempotence, a fixture file of two runs in
+    `compare-fixtures`). Presence checks in output mixed with build lines (ordinal `Contains`, `-match`) are a different rule and
+    stay ordinal containment.
+  - Representation. Output is captured as bytes (`BaseStream.CopyToAsync`), sidecars read with `ReadAllBytes`; the native runner's
+    expectation carries `byte[]` streams and its output violations record `expectedHex`/`actualHex` (formerly the decoded
+    `expected`/`actual`); the milestone report records `stderrHex` beside `stdoutHex` (formerly the decoded `stderr`); the native
+    reuse environment key includes `expected-output.ps1`, so an owner change re-executes every fixture.
+  - Reason. PowerShell string equality is culture-sensitive (a NUL, ignorable code points and normalization forms compare equal) and
+    text reads drop BOMs or replace bytes.
+  - Rejected: `[string]::Equals(..., Ordinal)` on decoded text (keeps the lossy decoding), hex strings with `-ceq` (correct only by
+    argument, a second rule), `[byte[]]`-typed parameters (PowerShell converts a numeric string).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
