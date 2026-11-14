@@ -1,8 +1,10 @@
 # Native fixture execution owns launch, CPU observation, bounded recovery and captured output.
-# Inputs: executable stem, stdout/stderr/exit/CPU oracle and a launch-to-stop wall deadline.
+# Inputs: executable stem, stdout/stderr bytes, exit and CPU oracle and a launch-to-stop wall deadline.
 # Output: one final passed/failed/incomplete result with observed facts, violations and operational problems.
-# Byte capture completes before strict UTF-8 decoding. Incomplete recovery/capture dominates a known violation.
+# Byte capture completes before strict UTF-8 decoding; captured bytes meet the expected bytes in Test-KimiExpectedOutput.
+# Incomplete recovery/capture dominates a known violation.
 # Recovery has one 5000 ms budget shared by kill, wait and both streams; unavailable measurements stay null.
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 function Add-KimiFixtureProblem($Result, [string] $Operation, [Exception] $Exception) {
     $cause = $Exception.GetBaseException()
     $Result.problems.Add([pscustomobject]@{ operation = $Operation; type = $cause.GetType().FullName; message = $cause.Message })
@@ -14,7 +16,7 @@ function Start-KimiFixtureCapture(
     foreach ($name in @('stdout', 'stderr')) {
         $stream = if ($name -ceq 'stdout') { $Process.StandardOutput.BaseStream } else { $Process.StandardError.BaseStream }
         $buffer = [IO.MemoryStream]::new()
-        $capture = [pscustomobject]@{ name = $name; stream = $stream; buffer = $buffer; task = $null }
+        $capture = [pscustomobject]@{ name = $name; stream = $stream; buffer = $buffer; task = $null; bytes = $null }
         $Captures.Add($capture)
         $capture.task = $stream.CopyToAsync($buffer, 81920, $Cancellation)
     }
@@ -43,7 +45,7 @@ function Read-KimiFixtureOutput($Capture, $Result, [Diagnostics.Stopwatch] $Reco
     try {
         $remaining = [Math]::Max(0, $Result.recoveryBudgetMilliseconds - [int]$Recovery.ElapsedMilliseconds)
         $null = $Capture.task.WaitAsync([TimeSpan]::FromMilliseconds($remaining)).GetAwaiter().GetResult()
-        $bytes = $Capture.buffer.ToArray()
+        $bytes = $Capture.bytes = $Capture.buffer.ToArray()
         try { $Result[$Capture.name] = [Text.UTF8Encoding]::new($false, $true).GetString($bytes) }
         catch [Text.DecoderFallbackException] {
             $Result.violations.Add([pscustomobject]@{
@@ -92,7 +94,7 @@ function Complete-KimiFixtureProcess(
     }
 }
 
-function Get-KimiFixtureProcessStatus($Result, [hashtable] $Expectation) {
+function Get-KimiFixtureProcessStatus($Result, [hashtable] $Expectation, [object[]] $Captures) {
     if ($Result.termination -ceq 'exited') {
         if ($Result.observationMilliseconds -gt 0) {
             $Result.violations.Add([pscustomobject]@{ kind = 'unexpectedExit'; actual = $Result.exitCode })
@@ -105,9 +107,13 @@ function Get-KimiFixtureProcessStatus($Result, [hashtable] $Expectation) {
         $Result.violations.Add([pscustomobject]@{ kind = 'completionDeadline'; deadlineMilliseconds = $Result.deadlineMilliseconds })
     }
     if ($Result.termination -cin @('exited', 'observed')) {
-        foreach ($name in @('stdout', 'stderr')) {
-            if ($null -ne $Result[$name] -and $Result[$name] -cne $Expectation[$name]) {
-                $Result.violations.Add([pscustomobject]@{ kind = 'output'; stream = $name; expected = $Expectation[$name]; actual = $Result[$name] })
+        foreach ($capture in $Captures) {
+            $expected = $Expectation[$capture.name]
+            if ($null -ne $Result[$capture.name] -and -not (Test-KimiExpectedOutput $expected $capture.bytes)) {
+                $Result.violations.Add([pscustomobject]@{
+                    kind = 'output'; stream = $capture.name
+                    expectedHex = [Convert]::ToHexString($expected); actualHex = [Convert]::ToHexString($capture.bytes)
+                })
             }
         }
     }
@@ -152,6 +158,6 @@ function Invoke-KimiFixtureProcess(
     if ($null -ne $process) { Complete-KimiFixtureProcess $process $captures $result $cancellation }
     try { $cancellation.Dispose() }
     catch { Add-KimiFixtureProblem $result 'capture.dispose' $_.Exception }
-    $result.status = Get-KimiFixtureProcessStatus $result $Expectation
+    $result.status = Get-KimiFixtureProcessStatus $result $Expectation $captures
     [pscustomobject]$result
 }

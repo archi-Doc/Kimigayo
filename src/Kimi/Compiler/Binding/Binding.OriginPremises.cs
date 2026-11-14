@@ -440,7 +440,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.WellFormedLayer(type, environment.Use) is { Target.StoresOrigin: true } layer)
+        if (this.WellFormedLayer(type, environment.Use, environment.Comparison) is { Target.StoresOrigin: true } layer)
         {
             this.AddStoredPremises(environment, layer.Target, this.PremiseNode(environment, layer.Outer), rule, false, layer.Condition);
         }
@@ -494,7 +494,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
+        if (this.StoredSlot(type, environment.Use, out var slot, environment.Comparison) is { } origin)
         {
             AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
