@@ -12591,6 +12591,18 @@ resumed by R4-M86 (2026-10-20).
     at the call, BU-61's open gap, and change when it is fixed (PLAN G724). 9.7.3 is not judged for a conditional conformance's
     associated Type named only in a signature or a header, where every proof is Unknown before the conformances are validated (y04x,
     y17: accepted as on dev; PLAN G728).
+    - Amended by plan revision 69's bundle 2 (Q-413) (PLAN G728): the 9.7.3 judgment's evidence is complete at
+      `contractHeadersReady` (declared, conditional and inherited conformances registered; proofs answer). A judgment that finds
+      none before that notes itself in `earlyProjections`, each note carrying the judgment its producer made (`End`: `Selected` for
+      `AlsoAssociated`, `Projection` for `NoteEarlyProjection`), so the verification reads no published lookup (the lookup is
+      published on the outer `::` or generic node, which dropped x01 under `::` and of a generic nested Type unjudged).
+      `VerifyEarlyProjections` also runs after `ValidateConformances(mode, false)`; a nested Type that resolves both ways records
+      the timely `AmbiguousBinding_Kd` (an invalid program; this entry's `Unsupported_Kd` for x01, x02, y08 named only the shared
+      verification), a projection keeps G621's `Unsupported_Kd`. One ambiguity record per noted use, besides dependent records (the
+      nested Type's users stay bound on it, so a body's check against it keeps its own record, Q13). y04x and y17 are rejected.
+      Temporary with G621's list (removed at R7-D2 d3). Rejected: a second list for pending proofs or for nested Types; proving the
+      condition on demand before the conformances are validated (R7-D2 d3 itself); stripping the `::` and generic nodes in the
+      verification (a consumer repeating its producer's syntax walk).
   - Removes: `BindNamedType`'s projection fallback, `RequirementGroup.TypeAccess`, `CallReceiver`'s symbol-kind list and
     `BindEnumConstruction`'s own qualifier-kind test.
   - Rejected: a projection fallback gated on the left's published end (still a try-then-fallback, a case per form); the walk
@@ -18882,6 +18894,12 @@ R8-M* and R9-M* by the stage of the recording unit.
   - `AdtDef.Base` is null on an inline cycle: an error at the container stands, and no walk reads past it (`c26`, `rx8c`).
   - Removes `memberLookupVisiting`, `qualificationVisiting`, two depth-bounded loops, two recursions, the read's four copies, `DeclStates`.
   - Rejected: a Type in the query's output (binds clauses before associated specifications); a per-declaration array (N² entries); a three-valued `Accessible`; binding by demand now (R7-D2 d3); a clause read that consulted a clause not ready waiting too (`nt42`); `Unsupported_Kd` on a first difference (`rx1`, `j4`); no query state (Chain300 25-27 ms against 19.5 ms); a seed refilled by each Bind's first run (its records alternated, `nt46`); dropping the seed at each Bind (a warm Bind of a second-run program runs twice: +20-34% in design review 2).
+  - Amended by plan revision 69's bundle 2 (Q-413) (PLAN G578 rx4): a value name's lookup is an early read too. `EarlyRead` carries
+    the name of a value read (`Name`; null for a Type name, read again by syntax), `Lookup` notes as `NamePath` does, and
+    `VerifyEarlyReads` reads a note again as it was read (`ReadAgain`, Binding.ResolvePath.cs: `ProbePath(name, ...)` for a value
+    name); `ArchitectureRulesTest`'s census of Binding.ResolvePath.cs's own entries moves 17 -> 19 (not an exception list).
+    Rejected: reading it again by syntax (a capture's source spells no name; `Self`'s row differs); a second list; a key per row (a
+    not-ready clause only ends the chain, so an early 'no length' answer cannot become a length).
 - **R7-M10 Access inclusion is decided on SPEC 9.4.2's atoms** (2026-11-08; R7-N3a; Major; no design review, F's ruling 3) SPEC 9.4.1,
   9.4.2, 9.4.4, 9.4.6, 6.2.2.
   - Rule: `AccessCovers(member, a, b)` (`Access(a) ∩ Access(b) ⊆ Access(member)`) reads each level of a chain as a union of `Body(C)`,
