@@ -693,6 +693,27 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     public void AConfinedLeafWriteReportsNothing(string buffer, string value)
         => Assert.Empty(Problems(Sink + Loud + Witness + buffer + $"        var writer = Text.writer(buffer@uniq)\n        _ = writer.write({value})\n        return .Ok(())\n"));
 
+    // SPEC 8.11.2, 8.11.3, 22.9.1 (R8-W2 b2-1; the Middle's C-330 note N2, its twin ef2): a user Writer's reserve, confined by
+    // BufferWriter.reserve's bound, that makes a local adapter over a local user Writer and writes through it runs Text.writer's generic
+    // body, whose Storage.reserveDispatch call is classed by its family, Inputs (AnErasedReserveCallIsClassedByItsStorageFamily), and
+    // the write's erased reserve is checked against Inner's own confined bound, so Outer reports nothing (the rows above reach only the
+    // two specializations). The counterpart, Inner's reserve writing to the console, is Inner's record at its clause and the only one:
+    // Outer's erased call still meets the bound it is checked against. Rows labelled from SPEC before running.
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("        Console.writeLine(\"reserve\")\n", "IncompatibleContractImplementation_Kd Self is BufferWriter 1")]
+    public void AConfinedReservesAdapterOverAUserWriterReportsNothingOfItsOwn(string noise, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(
+                "struct Inner\n    Self is BufferWriter\n    public var count: i32 = 0\n    public init() => ()\n" +
+                "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" + noise +
+                "        return .Err(BufferFull.init())\nstruct Outer\n    Self is BufferWriter\n    public var calls: i32 = 0\n    public init() => ()\n" +
+                "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        var inner = Inner.init()\n" +
+                "        var writer = Text.writer(inner@uniq)\n        _ = (writer@uniq).write(1)\n        self.calls += inner.count\n" +
+                "        return .Err(BufferFull.init())\nfunc run() -> i32\n    var outer = Outer.init()\n    var writer = Text.writer(outer@uniq)\n" +
+                "    _ = (writer@uniq).write(5)\n    return outer.calls\n"));
+
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers
     // (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is the same
     // at every instance; R8-S2b2: the summary also holds the i128 and u128 specializations, SPEC 15.6.4, whose Storage.formatInteger128
