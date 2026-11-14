@@ -298,7 +298,7 @@ public sealed class HirColumnsTest
             var expansion = ExpansionPlan.Of(node);
             var written = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
             var updated = written is null ? null : KotoHelper.UnwrapParentheses(written); // The Property Binding designates.
-            if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.Range or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
+            if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
                 (op == HirOp.Range && CallPlan.Of(node) is not null) ||
                 (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null))) ||
                 (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && expansion?.Second is null))
