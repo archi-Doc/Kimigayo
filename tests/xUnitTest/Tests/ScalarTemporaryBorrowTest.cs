@@ -27,6 +27,10 @@ public class ScalarTemporaryBorrowTest
 
     private const string Fills = FillCallees + FillCaller;
 
+    private const string FillElements = "func kq(x: (i64, ref/[2 of i64] during a)) -> i32 => 0\nfunc kq32(x: (i64, ref/[2 of i32] during a)) -> i32 => 0\n" +
+        "func ka(x: [2 of ref/[2 of i64] during a]) -> i32 => 0\nfunc ka32(x: [2 of ref/[2 of i32] during a]) -> i32 => 0\n" +
+        "enum E {s}\n    P(ref/[2 of i64] during s)\n    P32(ref/[2 of i32] during s)\n" + Fills;
+
     private const string Inspect = "func inspect<T>(value: ref/T) -> () => ()\nfunc makeValue() -> i64 => 1\n";
 
     // SPEC 10.2: an owner scalar temporary is materialized once and shared-borrowed for a ref/T argument.
@@ -141,7 +145,9 @@ public class ScalarTemporaryBorrowTest
     // instantiated call, at any depth and in either declaration order. Its misfit is the fill's own record, the only one; a later use
     // of the failed variable evaluates its call again, and what that reports beside it is dependent (join-call-use: `...`). A waiting
     // part is no evidence for a Type argument (10.8); a fill inside a Tuple literal argument is at the Tuple's element Type; a function
-    // value's call and a mixed range's waiting boundary are decided before the call is selected.
+    // value's call and a mixed range's waiting boundary are decided before the call is selected. A fill at a `ref/U` element of a
+    // Tuple or array literal argument, and a fill as a Case payload at `ref/U` (10.5.1), is completed at `ref/U` by the enclosing
+    // literal's and the payload's own completion (the element and payload rows: the same rule, unchanged by PLAN G585's residue).
     [Theory]
     [InlineData("wait-call", Fills + "    let r = kf([2 of idf(1)])\n", "TypeMismatch_Kd: let r = kf([2 of idf(1)])")]
     [InlineData("wait-let", Fills + "    let x: ref/[2 of i64] = [2 of idf(1)]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of idf(1)]")]
@@ -169,6 +175,14 @@ public class ScalarTemporaryBorrowTest
     [InlineData("rread32-call", Fills + "    let r = kr32(wr..3)\n", "NoApplicableOverload_Kd: let r = kr32(wr..3)")]
     [InlineData("typed-gen", Fills + "    let r = kg([2 of w])\n", "")]
     [InlineData("typed-meth", Fills + "    let r = s.kf([2 of w])\n", "")]
+    [InlineData("element-tuple-call", FillElements + "    let r = kq((1, [2 of idf(1)]))\n", "TypeMismatch_Kd: let r = kq((1, [2 of idf(1)]))")]
+    [InlineData("element-tuple-let", FillElements + "    let x: (i64, ref/[2 of i64]) = (1, [2 of idf(1)])\n", "TypeMismatch_Kd: let x: (i64, ref/[2 of i64]) = (1, [2 of idf(1)])")]
+    [InlineData("element-tuple32-call", FillElements + "    let r = kq32((1, [2 of idf(1)]))\n", "")]
+    [InlineData("element-array-call", FillElements + "    let r = ka([[2 of idf(1)], [2 of idf(2)]])\n", "TypeMismatch_Kd: let r = ka([[2 of idf(1)], [2 of idf(2)]])")]
+    [InlineData("element-array32-call", FillElements + "    let r = ka32([[2 of idf(1)], [2 of idf(2)]])\n", "")]
+    [InlineData("element-typed-call", FillElements + "    let r = kq((1, [2 of w]))\n", "")]
+    [InlineData("payload-call", FillElements + "    let e = E.P([2 of idf(1)])\n", "TypeMismatch_Kd: let e = E.P([2 of idf(1)])")]
+    [InlineData("payload32-call", FillElements + "    let e = E.P32([2 of idf(1)])\n", "")]
     public void CompletesAFillAtTheReferentItself(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "    return 0\n()", records);
 
