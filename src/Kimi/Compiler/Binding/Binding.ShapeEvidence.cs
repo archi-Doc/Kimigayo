@@ -347,7 +347,9 @@ public sealed partial class Binding
                 bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
                 // Collects the open slots' evidence (CollectTypes skips a fixed slot, whose mode FixCallSlots gives); the argument is
-                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings, as in its trial.
+                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings (FixedPattern).
+                // Its trial's AdaptationPattern also forms the structured applications whose binder a source fixed; here no source has
+                // fixed one and CollectTypes enters no application (CollectionEnters), so a formed application is no evidence either way.
                 void CollectArgument(BoundType pattern, Koto source, in FixedSlots candidateSlots)
                 {
                     source = KotoHelper.UnwrapParentheses(source);

@@ -25,9 +25,12 @@ namespace Kimi.Compiler;
 //   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
 //   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
 //   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
-//   completed or slot-free Type, stated at the call), so the build names every reader of the adaptation entry. Completeness under the
-//   fixed bindings is read from the solution's frame before any evidence, where an open slot is unbound (a Case's settled payloads):
-//   substituting FixedSlots leaves an open slot's own parameter, which looks complete.
+//   completed or slot-free Type, stated at the call), so the build names every reader of the adaptation entry. A candidate's part
+//   adapts, and its Function signature is read, at one pattern (SlotSolution.AdaptationPattern): Of over FittedPattern's, each
+//   structured application among its outer layers formed under the binder its sources fixed and an exact source unformed (the owner's
+//   O-283 (a)); the call-shape collection (CheckCallShapeContracts) adapts at Of alone, since no source has fixed a binder there and
+//   it enters no application. Completeness under the fixed bindings is read from the solution's frame before any evidence, where an
+//   open slot is unbound (a Case's settled payloads): substituting FixedSlots leaves an open slot's own parameter, which looks complete.
 // - Prohibitions: no Origin relation is judged and no applicability decided here (SPEC 15.6.1): the callers judge the solution; no
 //   reader adapts at a pattern whose fixed slots are left open, and no FixedPattern is made but by Of or Open.
 public sealed partial class Binding
