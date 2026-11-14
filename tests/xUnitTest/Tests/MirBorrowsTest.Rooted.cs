@@ -932,37 +932,22 @@ public sealed partial class MirBorrowsTest
 
     // Each body of the program's own module with its stand-ins rooted at their statics, validated: a stand-in is a Var or Temp local a call of
     // group Root initializes, standing for the static that function names, which a body of the program accesses, and of its Type up to
-    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call into the
-    // static's staticEnsure (into a Unit temp of its own, the builder's form, which MirValidator requires of a static's Places, G191) and
-    // the stand-in's Drop into a Goto to its target, and roots each of its Places at the static (so its projections are the static's);
-    // every other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a
-    // stand-in is a Borrow of its static after the static's staticEnsure, as P42's source form has it. A4's summaries are the built
-    // program's, so a twin function's lacks its stand-ins' static accesses; no witness composes one (copies are inlined).
+    // Origins (MirTypes.Agree, MIR's Type agreement). The copy (Copied) roots each of the stand-in's Places at the static (so its
+    // projections are the static's), so a Borrow of a stand-in is a Borrow of its static after the static's staticEnsure, as P42's source
+    // form has it. A4's summaries are the built program's, so a twin function's lacks its stand-ins' static accesses; no witness composes
+    // one (copies are inlined).
     private static MirBody[] Rooted(Compilation c, MirProgram program)
     {
         var statics = program.Bodies.ToArray().SelectMany(static x => x.Statics.ToArray()).DistinctBy(static x => x.Symbol).ToArray();
-        return [.. program.Bodies.ToArray().Where(static x => x.Source.Module == 0).Select(built => Validated(c, Copy(built)))];
+        return [.. program.Bodies.ToArray().Where(static x => x.Source.Module == 0).Select(built => Validated(c, Copied(built, body => Roots(built, body))))];
 
-        MirBody Copy(MirBody built)
+        // The copy's Place map: each local rooted at itself, a stand-in at its static (added to the copy).
+        Func<MirPlace, MirPlace> Roots(MirBody built, MirBody body)
         {
-            var body = new MirBody();
-            body.Reset(built.Key, built.Source);
-            body.Ordinal = built.Ordinal;
-            body.Binders.AddRange(built.Binders);
-            foreach (var scope in built.Scopes[1..])
-            {
-                body.AddScope(scope.Outer, scope.Kind, scope.Source);
-            }
-
-            foreach (var entry in built.Statics)
-            {
-                body.Static(entry);
-            }
-
-            var roots = new int[built.Locals.Length]; // Each local's root in the copy: itself, or a stand-in's static.
+            var roots = new int[built.Locals.Length];
             for (var i = 0; i < roots.Length; i++)
             {
-                roots[i] = body.AddLocal(built.Locals[i]);
+                roots[i] = i;
             }
 
             foreach (var block in built.Blocks)
@@ -976,7 +961,10 @@ public sealed partial class MirBorrowsTest
                 }
             }
 
-            bool StandIn(MirPlace place) => place is { Root: >= 0, Projection: 0 } && roots[place.Root] < 0;
+            // Copied reads a stand-in's initializing call from its destination: every call writing a stand-in is its marker's.
+            Assert.DoesNotContain(built.Blocks.ToArray(), x => x.Terminator is { Kind: MirTerminatorKind.Call, Place: { Root: >= 0, Projection: 0 } at } &&
+                roots[at.Root] < 0 && Marker(x.Terminator) is null);
+
             int Chain(int root, int id)
             {
                 if (id == 0)
@@ -988,81 +976,111 @@ public sealed partial class MirBorrowsTest
                 return body.Project(new(root, Chain(root, step.Prefix)), step.Kind, step.Arg).Projection;
             }
 
-            MirPlace Map(MirPlace place)
+            return place =>
             {
                 var root = place.Root >= 0 ? roots[place.Root] : place.Root;
                 return new(root, Chain(root, place.Projection));
-            }
-
-            foreach (var constant in built.Consts)
-            {
-                body.Const(constant);
-            }
-
-            foreach (var operand in built.Operands)
-            {
-                body.AddOperand(operand with { Place = Map(operand.Place) });
-            }
-
-            foreach (var item in built.Cases)
-            {
-                body.AddCase(item.Value, item.Target);
-            }
-
-            foreach (var site in built.OpaqueSites)
-            {
-                body.AddOpaque(site.Source, [.. built.OpaqueRoots.Slice(site.Start, site.Count).ToArray().Select(x => x >= 0 ? roots[x] : x)]);
-            }
-
-            foreach (var end in built.MustNotComplete)
-            {
-                var start = body.GuessedSites.Length; // The copy's sites, re-based into this body's (R5-M186).
-                foreach (var site in built.GuessedSites.Slice(end.Start, end.Count))
-                {
-                    body.AddGuessedSite(site);
-                }
-
-                body.AddMustNotComplete(end with { Start = start });
-            }
-
-            foreach (var block in built.Blocks)
-            {
-                _ = body.AddBlock();
-            }
-
-            for (var b = 0; b < built.Blocks.Length; b++)
-            {
-                var (block, terminator) = (built.Blocks[b], built.Blocks[b].Terminator);
-                foreach (var statement in built.Statements.Slice(block.Start, block.Count))
-                {
-                    if (!(StandIn(statement.Place) && statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead))
-                    {
-                        body.Push(b, statement with { Place = Map(statement.Place), Rvalue = statement.Rvalue with { Place = Map(statement.Rvalue.Place) } });
-                    }
-                }
-
-                MirTerminator copied;
-                if (Marker(terminator) is not null)
-                {
-                    var slot = body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, ~roots[terminator.Place.Root]))));
-                    var unit = new MirPlace(body.AddLocal(new(BoundType.Unit, MirLocalKind.Temp, terminator.Source)));
-                    copied = MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), slot, 1, unit, terminator.Target, terminator.Source);
-                }
-                else
-                {
-                    copied = terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place)
-                        ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
-                        : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
-                }
-
-                body.Terminate(b, copied);
-            }
-
-            return body;
+            };
         }
 
         // The static a stand-in's initializing call names: a call of group Root's function of that name.
         static string? Marker(in MirTerminator terminator) => terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol: var function } &&
             function?.Declaration.Parent is GroupKoto { Name: "Root" } ? function.Name : null;
+    }
+
+    // A copy of a built body row by row (its scopes, statics, locals, consts, operands, cases, opaque and must-not-complete sites, blocks,
+    // statements and terminators), each Place through the copy's Place map, which `places` makes once the copy holds the built body's
+    // statics and locals; every row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. Where
+    // the map roots a whole local at a static (Rooted's stand-in), the copy leaves out the local's storage statements, turns the call
+    // initializing it into the static's staticEnsure (into a Unit temp of its own, the builder's form, which MirValidator requires of a
+    // static's Places, G191) and its Drop into a Goto to its target.
+    private static MirBody Copied(MirBody built, Func<MirBody, Func<MirPlace, MirPlace>> places)
+    {
+        var body = new MirBody();
+        body.Reset(built.Key, built.Source);
+        body.Ordinal = built.Ordinal;
+        body.Binders.AddRange(built.Binders);
+        foreach (var scope in built.Scopes[1..])
+        {
+            body.AddScope(scope.Outer, scope.Kind, scope.Source);
+        }
+
+        foreach (var entry in built.Statics)
+        {
+            body.Static(entry);
+        }
+
+        foreach (var local in built.Locals)
+        {
+            body.AddLocal(local);
+        }
+
+        var map = places(body);
+        bool StandIn(MirPlace place) => place is { Root: >= 0, Projection: 0 } && map(place).Root < 0;
+        foreach (var constant in built.Consts)
+        {
+            body.Const(constant);
+        }
+
+        foreach (var operand in built.Operands)
+        {
+            body.AddOperand(operand with { Place = map(operand.Place) });
+        }
+
+        foreach (var item in built.Cases)
+        {
+            body.AddCase(item.Value, item.Target);
+        }
+
+        foreach (var site in built.OpaqueSites)
+        {
+            body.AddOpaque(site.Source, [.. built.OpaqueRoots.Slice(site.Start, site.Count).ToArray().Select(x => x >= 0 ? map(new(x)).Root : x)]);
+        }
+
+        foreach (var end in built.MustNotComplete)
+        {
+            var start = body.GuessedSites.Length; // The copy's sites, re-based into this body's (R5-M186).
+            foreach (var site in built.GuessedSites.Slice(end.Start, end.Count))
+            {
+                body.AddGuessedSite(site);
+            }
+
+            body.AddMustNotComplete(end with { Start = start });
+        }
+
+        foreach (var block in built.Blocks)
+        {
+            _ = body.AddBlock();
+        }
+
+        for (var b = 0; b < built.Blocks.Length; b++)
+        {
+            var (block, terminator) = (built.Blocks[b], built.Blocks[b].Terminator);
+            foreach (var statement in built.Statements.Slice(block.Start, block.Count))
+            {
+                if (!(StandIn(statement.Place) && statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead))
+                {
+                    body.Push(b, statement with { Place = map(statement.Place), Rvalue = statement.Rvalue with { Place = map(statement.Rvalue.Place) } });
+                }
+            }
+
+            MirTerminator copied;
+            if (terminator.Kind == MirTerminatorKind.Call && StandIn(terminator.Place))
+            {
+                var slot = body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, ~map(terminator.Place).Root))));
+                var unit = new MirPlace(body.AddLocal(new(BoundType.Unit, MirLocalKind.Temp, terminator.Source)));
+                copied = MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), slot, 1, unit, terminator.Target, terminator.Source);
+            }
+            else
+            {
+                copied = terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place)
+                    ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
+                    : terminator with { Place = map(terminator.Place), Operand = terminator.Operand with { Place = map(terminator.Operand.Place) } };
+            }
+
+            body.Terminate(b, copied);
+        }
+
+        return body;
     }
 }
