@@ -289,7 +289,7 @@ public sealed partial class Binding
                 return this.SubstituteFamilyArgument(type, substitution, slot, selection);
             }
 
-            if (!IsAbstractBinding(selection))
+            if (!this.IsAbstractBinding(selection))
             {
                 return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, substitution, query) : null;
             }

@@ -213,7 +213,7 @@ public sealed partial class Binding
         if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
             ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
         {
-            return this.ApplySemantics(whole, this.FormedApplication(target, function, frame), pattern.Origin);
+            return this.ApplySemantics(whole, this.FormedApplication(target, function, frame), pattern.Origin) ?? pattern;
         }
 
         var components = this.RentTypes(count);
@@ -246,7 +246,7 @@ public sealed partial class Binding
         if (!evidence && pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
             ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null && frame.Selectors[own] is { } fixedBy)
         {
-            return this.ApplySemantics(fixedBy, original, pattern.Origin);
+            return this.ApplySemantics(fixedBy, original, pattern.Origin) ?? pattern;
         }
 
         if (pattern is not { Kind: BoundTypeKind.SemanticsApplication or BoundTypeKind.Semantics, HasAbstractPart: true, Components: [var target] })
@@ -256,9 +256,10 @@ public sealed partial class Binding
 
         var fitted = this.FittedPattern(target, function, frame, evidence);
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && (!evidence || !IsExactSource(pattern, function)) &&
-            ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot && Selector(frame, slot) is { } whole)
+            ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot && Selector(frame, slot) is { } whole &&
+            this.ApplySemantics(whole, fitted, pattern.Origin) is { } formed)
         {
-            return this.ApplySemantics(whole, fitted, pattern.Origin);
+            return formed;
         }
 
         return ReferenceEquals(fitted, target) ? pattern : this.types.Rebuild(pattern, [fitted], pattern.Origin, (BoundOrigin[])pattern.OriginArguments);
@@ -297,7 +298,7 @@ public sealed partial class Binding
     // application of a bare slot (IsExactSource), the expected result included. Each gives its outer Semantics: the first exact source
     // of a slot nothing has fixed becomes the slot's selector evidence, and every other one must agree with it, whichever comes first:
     // both form the same layer over one `target` (ApplySemantics; an owner source forms the target itself, so owner evidence is
-    // compared as any other is). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a
+    // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a
     // construction's fixed slots): its binder is not inferred, so nothing is compared. Never supplies no evidence.
     private bool IsSource(SlotFrame frame, int slot, BoundType actual, BoundType target)
     {
@@ -317,7 +318,7 @@ public sealed partial class Binding
         }
 
         return ReferenceEquals(evidence, actual) ||
-            ReferenceEquals(this.ApplySemantics(evidence, target, null), this.ApplySemantics(actual, target, null));
+            (this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null)));
     }
 
     // SPEC 8.1.2, 10.8: the Type an application pattern forms against `actual`, in two phases whatever the order of the sources: an

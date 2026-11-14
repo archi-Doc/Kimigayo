@@ -129,15 +129,23 @@ public sealed partial class Binding
         return (mask & bit) == 0 ? null : family.Components[BitOperations.PopCount(mask & (bit - 1))];
     }
 
-    // SPEC 8.1.2: whether a pair slot's binding is abstract, the Semantics not yet known: a pair's original or occurrence (Parameter,
-    // whose Semantics is the constructor default) or an application (Semantics Parameter). ApplySemantics, the substitution of a family
-    // and HasOuterSlot read it.
-    private static bool IsAbstractBinding(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
+    // SPEC 8.1.2: whether an abstract binding is its own selector, the symbol its applications and families over other targets name: a
+    // pair's original or application names its pair, a Type parameter itself. A pair target alone or an unresolved projection has none, so
+    // no Type over another target is formed under it (ApplySemantics, SubstituteFamily; PLAN G886: its representation is the remainder).
+    private static bool HasOwnSelector(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
+
+    // SPEC 8.1.2, 8.2.3, 8.7.3: whether a pair slot's binding is abstract, its outer Semantics not yet known: a pair's original or
+    // occurrence, an application (Semantics Parameter), or an abstract Type (a Type parameter, a pair target alone, an unresolved
+    // projection: its Semantics field is the constructor default, never an outer Semantics) unless a premise of its declaration proves it
+    // owner (ResultSemantics), when it binds as an owner Type. ApplySemantics, the substitution of a family and HasOuterSlot read it.
+    private bool IsAbstractBinding(BoundType binding) => binding.IsAbstractType
+        ? this.ResultSemantics(binding, binding.Symbol!.Scope) != SemanticsMask.Owner
+        : HasOwnSelector(binding);
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none.
-    private static bool HasOuterSlot(BoundType binding)
-        => IsBorrow(binding.Semantics) || IsAbstractBinding(binding) || binding.Kind == BoundTypeKind.SemanticsAdaptation;
+    private bool HasOuterSlot(BoundType binding)
+        => IsBorrow(binding.Semantics) || this.IsAbstractBinding(binding) || binding.Kind == BoundTypeKind.SemanticsAdaptation;
 
     // Short adaptations select the output mode with the input case; a fixed mode maps every input case. The cases are the binder's
     // admitted set at the adaptation (SPEC 8.3.4, 8.15.2: a conditional member's or block's premises included), not at its declaration,
@@ -267,7 +275,10 @@ public sealed partial class Binding
                     {
                         FamilyTransform.Target => this.DirectTarget(child),
                         FamilyTransform.Origin => IsBorrow(child.Semantics) || child.IsAbstract ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
-                        _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin),
+                        // A case's outer Semantics is its mode: the owner case forms the target itself, whatever the child's own layer.
+                        _ when mode == SemanticsKind.Owner => this.CaseType(target!, cases.AsSpan(0, 1)),
+                        _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin) ??
+                            throw new InvalidOperationException($"The {mode} case `{child}` of a family is no layer (InternalInvariant)."),
                     };
                 }
             }
@@ -284,11 +295,11 @@ public sealed partial class Binding
     // SPEC 8.1.2: `s/U`, a pair binder's binding `whole` applied to `target`: a family case by case, an abstract binding's application, and
     // a layer the binding's Semantics forms over the target, read through TyCtxt.PairBinding (DECISIONS BU-46): never its Origin, but a
     // borrow states `origin`, the annotation's, and a raw layer what the binding states (none, or a declaration's Unstated); an owner
-    // binding gives the target.
-    private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
+    // binding gives the target. An abstract binding without a selector of its own (HasOwnSelector) forms none (null).
+    private BoundType? ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
     {
         { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),
-        _ when IsAbstractBinding(whole) => this.PairApplication(whole.Symbol!, target, origin),
+        _ when this.IsAbstractBinding(whole) => HasOwnSelector(whole) ? this.PairApplication(whole.Symbol!, target, origin) : null,
         { Kind: BoundTypeKind.Semantics } => this.types.Rebuild(this.types.PairBinding(whole), [target], IsBorrow(whole.Semantics) ? origin : null, []),
         _ => this.Form(whole.Semantics, target, origin),
     };
@@ -304,7 +315,7 @@ public sealed partial class Binding
     // SPEC 8.1.2: an occurrence of a pair's original under its binding, annotated with `origin` (`s/T during b`): the binding with that
     // outer-Origin slot where it keeps one (HasOuterSlot); a value binding keeps none. Substitution and PairApplication read it.
     private BoundType AnnotatedOriginal(BoundType binding, BoundOrigin? origin)
-        => origin is not null && HasOuterSlot(binding) ? this.WithOrigins(binding, origin, (BoundOrigin[])binding.OriginArguments) : binding;
+        => origin is not null && this.HasOuterSlot(binding) ? this.WithOrigins(binding, origin, (BoundOrigin[])binding.OriginArguments) : binding;
 
     private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
@@ -348,9 +359,9 @@ public sealed partial class Binding
 
     private BoundType? SubstituteFamily(BoundType family, BoundType whole)
     {
-        if (IsAbstractBinding(whole))
+        if (this.IsAbstractBinding(whole))
         {
-            if (whole.Symbol is not { } selector)
+            if (!HasOwnSelector(whole) || whole.Symbol is not { } selector)
             {
                 return null;
             }
