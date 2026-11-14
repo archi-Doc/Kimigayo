@@ -1442,6 +1442,23 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd let u: (ref/((ref/i32 during x) -> i32), ref/i32 during x) = t@move"
         },
+        // rq2av (invalid, re-review): rq2a through a var local (G492-a (i)'s implementation review).
+        {
+            "rq2av",
+            """
+            struct R<T>
+                public let call: (T) -> i32
+                public init(call: (T) -> i32) => self.call = call@move
+
+            func g(q: ref/i32, r: R<uniq/((ref/i32) -> i32) during q>) -> i32 => 0
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during b) -> i32) during p>) -> i32
+                origin q outlives p
+                var r1 = r0@move
+                return g(q, r1@move)
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r1@move"
+        },
     };
 
     [Theory]
