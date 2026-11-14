@@ -39,7 +39,7 @@ public class RefinementNameBindingTest
     [InlineData("::Api.Origin<>")]
     [InlineData("::ref/Origin")] // SPEC F.5: only a TypeSegment follows '::'.
     [InlineData("::(Origin)")]
-    [InlineData("ref/Origin")] // SPEC F.6.2, F.5: a Contract parent is a NamedReference.
+    [InlineData("ref/Origin")] // SPEC F.6.2: a Contract parent is an InheritanceReference.
     [InlineData("ref/::Origin")]
     [InlineData("(Origin)")]
     public void ParentsOutsideTheGrammarAreSyntaxErrors(string parent)

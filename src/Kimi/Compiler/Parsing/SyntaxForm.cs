@@ -120,9 +120,9 @@ public enum SyntaxForm : ushort
     /// <summary>The base list of a struct with other than one base.</summary>
     BaseList,
 
-    /// <summary>The NamedReference of a base clause or a Contract parent (SPEC F.5, F.6.1, F.6.2): a Container path and at most a binding
-    /// set.</summary>
-    NamedReference,
+    /// <summary>The InheritanceReference of a base clause or a Contract parent (SPEC F.6.1, F.6.2, F.5): a Container path and at most a
+    /// binding set or a BorrowOrigin.</summary>
+    InheritanceReference,
 
     /// <summary>An extension declaration, which the language does not introduce.</summary>
     ExtensionDeclaration,

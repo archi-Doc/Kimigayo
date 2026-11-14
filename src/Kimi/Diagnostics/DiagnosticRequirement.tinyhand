@@ -150,9 +150,9 @@
     Description="the struct names one base"
     Phrase="base list with other than one base"
 
-  + Name="Syntax.NamedReference"
-    Description="a base and a Contract parent are named references: a Container path with at most a binding set"
-    Phrase="named reference"
+  + Name="Syntax.InheritanceReference"
+    Description="a base and a Contract parent are inheritance references: a Container path with at most a binding set or a during binding"
+    Phrase="inheritance reference"
 
   + Name="Syntax.ExtensionDeclaration"
     Description="no extension declaration is written"

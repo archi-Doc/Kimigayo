@@ -1082,6 +1082,6 @@
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "AdaptationQualifier", "At": "(S during z)" } ] },
   { "Name": "conversion-operation-target-suffix", "Source": "func t(x: i32) -> i32\n    #if false\n        let y = x@wrap<u8>.foo\n    return 0\npublic func main() => ()\n", "Intended": "wrap and bits directly before '<' are keywords after '@' (SPEC F.3.2) and the open target ends at its Type arguments (SPEC F.9.4): a '.' after it is a postfix suffix, never a Type path, in excluded syntax too (SPEC 19.4, PLAN G857)",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "OpenTargetSuffix", "At": ".foo", "Length": 1 } ] },
-  { "Name": "base-clause-grouped-type", "Source": "open struct B\n    var b: i32 = 0\n#if false\n    struct D : (B)\n        var d: i32 = 0\npublic func main() => ()\n", "Intended": "a base clause and a Contract parent write a NamedReference (SPEC F.6.1, F.6.2, F.5): a grouped Type there is no base, a grammar error in excluded syntax too (SPEC 19.4)",
-    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "NamedReference", "At": "(B)", "Length": 3, "Found": "(B)" } ] }
+  { "Name": "base-clause-grouped-type", "Source": "open struct B\n    var b: i32 = 0\n#if false\n    struct D : (B)\n        var d: i32 = 0\npublic func main() => ()\n", "Intended": "a base clause and a Contract parent write an InheritanceReference (SPEC F.6.1, F.6.2, F.5): a grouped Type there is no base, a grammar error in excluded syntax too (SPEC 19.4)",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "InheritanceReference", "At": "(B)", "Length": 3, "Found": "(B)" } ] }
 ]
