@@ -6387,6 +6387,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a second gather to place the record (the replay's entries at E already name the operation); the site record only where
     no store exists (B7: it loses the result's failure); the result's fact by the closure from the result's holder (it finds what a
     store put in storage the body does not own: twoLoansBad); a requirement `DefaultArgumentStore` (N22).
+- **R4-M204 A5's step rule reads a nonnull Option's Some payload as Leading's one step** (2026-11-14; the A5 value redesign's unit
+  U2; the owner's O-209; G808 design review N4; Middle, A5; Major, 0 moves; implementation review ACCEPT WITH NOTES). IMPL 21.1.2,
+  21.1.3; SPEC 4.1, 5.3; BU-195, R4-M198.
+  - `MirBorrows.Step`, the one step rule, keeps a Position at component 0 of the part `TyCtxt.Leading` places at a Type's address: a
+    C-layout struct's first Field (MIR's Field 0) and, since G808, a nonnull Option's Some payload, which MIR reaches by a Downcast
+    and a Field.
+  - One reading of a walk step (`MirBorrows.Puns.Selected`, for a seen store's steps and an address formed past a raw Deref) judges
+    the Downcast with the Field after it, from the enum, and gives that Field no step of its own; a Downcast with no Field after it
+    (the payload Tuple alone) keeps none, IMPL placing no payload Tuple by itself. The pair is not tested against the Some ordinal:
+    the nonnull Option's one Case with a component is Some, so a Field after its Downcast is Some's, as G808's design states the
+    step (`Step(enum, 0)`).
+  - Correction to BU-195's N4 bullet: no source form reaches the pair past a raw Deref, the shared-mode in-place match included: a
+    match binding borrows through its Subject Place's Deref (`&((*_s) as case k).j`), so the rule moves no program on dev and is
+    shown by a MIR-level row (a body whose binding borrows the payload in place).
+  - Rejected: the Downcast's own step reading Leading (a pending Position at the payload Tuple would hold for an enum Leading places
+    nothing in); an A5 test of the Case ordinal (TyCtxt.Leading's fact; BU-195's unnamed-fact rule).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12870,7 +12886,7 @@ resumed by R4-M86 (2026-10-20).
   - Not decided here (review N4): MIR's step rule keeps judging a Downcast off (`Step(of, -1)`), while `Leading` places the Some
     payload at the Option's address. Only a shared-mode in-place match on a raw Place reaches that path on dev, its bindings without
     write authority (SPEC 15.1.6, 5.2.1 condition 3), so no valid program observes it. Condition for A5's revision 3 (the Middle;
-    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step.
+    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step. Decided by R4-M204.
   - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
     located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
     facts).
@@ -13319,6 +13335,23 @@ resumed by R4-M86 (2026-10-20).
     (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
     BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
     recovered Type, and a Binding change.
+- **BU-208 A specialization's Type argument is an input position of its header (PLAN G863)** (2026-11-14; Front, designed and
+  implemented at the Back's seat for R8-W2 b2-1; Q17 class 3; the Front's ruling C-319 and review; the Middle's consent C-331). SPEC
+  8.1.1, 8.13.1-8.13.3, 15.4.2.
+  - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
+    universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
+    `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+    `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
+  - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
+    restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
+    over the universal Origins. The key is unchanged.
+  - Rejected: fixing the slot to `static` (narrows; `uniq` has none); a fresh body Origin per argument (a binding no caller
+    supplies); completing the argument from the first restated input that mentions `T` (a written restated slot would become the
+    argument's and hide its restriction); a second pass binding the arguments after the target (a mode); checking the inherited
+    Constraint as an obligation at the universal Origin (a premise turned into an unprovable obligation).
+  - Coverage: the Back's `spec-origin\spec-origin-design.md` §7 table (its rows are `SpecializationBindingTest` rows named by table
+    id).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
