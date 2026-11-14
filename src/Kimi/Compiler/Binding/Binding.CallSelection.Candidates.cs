@@ -465,20 +465,13 @@ public sealed partial class Binding
                     {
                         return applicability;
                     }
-
-                    // SPEC 10.2: a borrowed literal temporary's Place Origin binds the parameter's input Origin like any other borrowed temporary.
-                    if (operation is { Kind: ArgumentOperationKind.Borrow, AdaptedType: not null } && argument.BoundType is null &&
-                        !solution.InferInput(pattern, operation.SourceType!, argument))
-                    {
-                        return CandidateApplicability.Inapplicable;
-                    }
                 }
             }
 
             // Fitted literals can add Origin evidence after the first contextual pass.
             // Publish only the final substituted parameter Types, never preliminary binders.
             if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
+                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -646,7 +639,7 @@ public sealed partial class Binding
                 }
             }
 
-            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
         }
         finally
         {

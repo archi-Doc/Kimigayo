@@ -291,7 +291,7 @@ public sealed partial class Binding
 
                 var a = this.BindOrigin(clause.Left, scope);
                 var b = this.BindOrigin(clause.Right, scope);
-                if (a is null || b is null || !this.ProvesOriginOutlives(a, b, function) || (clause.IsEquality && !this.ProvesOriginOutlives(b, a, function)))
+                if (a is null || b is null || !this.ClaimHolds(a, b, function) || (clause.IsEquality && !this.ClaimHolds(b, a, function)))
                 {
                     if (a is not null && b is not null)
                     {
@@ -403,4 +403,9 @@ public sealed partial class Binding
             visitor.Snapshots.RemoveRange(start, visitor.Snapshots.Count - start);
         }
     }
+
+    // SPEC 15.3.7, 23.1.2 (DECISIONS Q13 rule W; PLAN G739): an implementation's claim is proven from the original's environment, or
+    // holds by an end that rests on a failed part of the original (HoldsResting), which gives no evidence against it.
+    private bool ClaimHolds(BoundOrigin longer, BoundOrigin shorter, FunctionKoto function)
+        => this.ProvesOriginOutlives(longer, shorter, function) || this.HoldsResting(longer, shorter, 0, new ProofLeaf(this, function, default));
 }

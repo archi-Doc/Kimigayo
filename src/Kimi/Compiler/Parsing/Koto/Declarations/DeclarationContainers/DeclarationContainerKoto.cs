@@ -674,9 +674,10 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected bool TryParsePropertyOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
     {
         var token = reader.CurrentToken;
-        if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
+        if (Parser.IsSpecializationStart(ref reader))
         {
-            var specialized = Parser.ParseSpecialization(ref reader);
+            // A Contract item is no specialization (SPEC F.6.2 ContractItem, 8.13.1).
+            var specialized = this is ContractKoto ? Parser.ParseMisplacedSpecialization(ref reader) : Parser.ParseSpecialization(ref reader);
             if (specialized is not null)
             {
                 this.AddLast(specialized);

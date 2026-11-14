@@ -15,14 +15,15 @@ namespace Kimi.Compiler;
 // Input: a reader after the function keyword with the item's prefix pending; the production of the caller's position as a FunctionForm.
 // Output: a FunctionKoto without its body, which takes the prefix, or null when nothing of the header can be kept.
 // Invariants: a declaration whose header failed is omitted with its body; a function expression leaves the rest to its expression. A
-// specialization publishes no modifier: each it wrote is reported here. The form selects what these readers judge: the attribute
-// prefix, the captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver shorthand,
-// what follows the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a Function
-// into 6.4.1's override header. Judged elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a
-// SpecializationParameter's attribute and default (Binding.Specializations, SPEC 8.13.2); an override's own Type parameters, `!`,
-// defaults and parameter attributes (Binding.VirtualDeclarations, 6.4.1). PLAN G557's parameter part makes the requirement's rules,
-// the specialization's default and every parameter attribute row tests here; the override's other rules become Override row tests in
-// the later Front unit after the owner's O-222 (b), which gives the override header an F.6.3 production of its own.
+// specialization publishes no modifier: each it wrote is reported here. An override's header elements F.6.3 omits are one
+// OverrideHeader record, and the override rests on it. The form selects what these readers judge: the attribute prefix, the
+// captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver shorthand, what follows
+// the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a Function into F.6.3's
+// OverrideDeclaration and selects the override's rules (no Access, OverrideHeader) for every header under it that is no
+// Constructor, Specialization or Expression, so for a Requirement under `override` too (PLAN G557: F.6.2 admits none). Judged
+// elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a SpecializationParameter's attribute and
+// default (Binding.Specializations, SPEC 8.13.2). PLAN G557's parameter part makes the requirement's rules, the specialization's
+// default and every parameter attribute row tests here.
 // Prohibitions: a body's items belong to Parser.Blocks, the clauses after a header to Parser.Syntax.
 public static partial class Parser
 {
@@ -34,9 +35,9 @@ public static partial class Parser
         /// ParameterList&lt;Parameter&gt;.</summary>
         Function,
 
-        /// <summary>6.4.1's override header: in Appendix F a FunctionHeader under <c>override</c>, an F.6.3 production of its own by the
-        /// owner's O-222 (b). The header reads a Function under the prefix's modifier as this row; it takes no attribute prefix (DECISIONS
-        /// R9-M4).</summary>
+        /// <summary>OverrideDeclaration (F.6.3, 6.4.1; the owner's O-222 (b)): read as a FunctionHeader, whose elements the production
+        /// omits are one OverrideHeader record. The header reads a Function under the prefix's modifier as this row; it takes no attribute
+        /// prefix (DECISIONS R9-M4).</summary>
         Override,
 
         /// <summary>FunctionRequirement (F.6.2): ParameterList&lt;RequirementParameter&gt;, whose defaults and attributes
@@ -66,18 +67,26 @@ public static partial class Parser
     /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
     internal static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, FunctionForm form)
     {
-        // The header reads the prefix's override once: a Function under it is 6.4.1's override header (O-222 (b): its own F.6.3 production).
-        if (form == FunctionForm.Function && (reader.ModifierKind & ModifierKind.Override) != 0)
+        // The header reads the prefix's override once: a Function under it is F.6.3's OverrideDeclaration (6.4.1), and the override's
+        // rules (no Access, OverrideHeader) judge every header under it that is no Constructor, Specialization or Expression.
+        var overrides = form is not (FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Expression) &&
+            (reader.ModifierKind & ModifierKind.Override) != 0;
+        if (form == FunctionForm.Function && overrides)
         {
             form = FunctionForm.Override;
         }
 
         // A constructor, a specialization and an override take no attributes (SPEC 6.3, 8.13.2, 6.4.1): the prefix's are reported
         // and attach to nothing. A requirement's were reported by its Contract, as every Contract item's are; a function expression
-        // is never read under a pending override.
+        // is never read under a pending override. An OverrideDeclaration has no Access either (F.6.3).
         if (form is FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Override)
         {
             ReportPendingAttributes(ref reader);
+        }
+
+        if (overrides)
+        {
+            RejectAccessWord(ref reader);
         }
 
         var context = reader.TakeContext();
@@ -168,6 +177,23 @@ public static partial class Parser
             {
                 reader.CodeContext.RecordRecovery(functionKoto, cause);
             }
+        }
+
+        // F.3.3: a FunctionHeader and an OverrideDeclaration write at most one of unsafe, virtual and override (a constructor's and a
+        // specialization's header rows judge each modifier they take none of). The record is at the second word, as the prefix's other
+        // modifier records are; the function's declaration checks rest on it.
+        if (form is not (FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Expression) && context.SecondModifierSpan != default)
+        {
+            reader.CodeContext.RecordRecovery(functionKoto, reader.Unexpected(SyntaxForm.SecondModifier, context.SecondModifierSpan));
+        }
+
+        if (overrides && (genericArguments is not null || list.NameBoundary >= 0 ||
+            list.Parameters?.Exists(static x => x.DefaultValue is not null || x.AttributeChain is not null) == true) &&
+            functionKoto.Unexpected(SyntaxForm.OverrideHeader) is { } overrideCause)
+        {
+            // F.6.3's OverrideDeclaration takes no Type parameters, no "!" boundary and no parameter default or attribute: the override
+            // inherits them (SPEC 6.4.1). Its slot matching and declaration checks rest on this Error.
+            reader.CodeContext.RecordRecovery(functionKoto, overrideCause);
         }
 
         // A declaration's header ends its line, since the declaration may be bodyless. A function expression's required body judges its
@@ -448,9 +474,9 @@ public static partial class Parser
         }
 
         // An AnonymousParameter has no internal Name, default or attribute. A requirement's default and attribute are judged after its
-        // header (ParseRequirementBody); a specialization's and an override's restated ones are Binding's requirement (SPEC 8.13.2,
-        // 6.4.1), and the parser keeps them (PLAN G557's parameter part). A misplaced attribute already reported before the list is
-        // kept here for the tree, not written on the parameter.
+        // header (ParseRequirementBody); a specialization's restated ones are Binding's requirement (SPEC 8.13.2) and an override's
+        // are its header's OverrideHeader (F.6.3); the parser keeps them (PLAN G557's parameter part). A misplaced attribute already
+        // reported before the list is kept here for the tree, not written on the parameter.
         if (form == FunctionForm.Expression && (internalName != externalName || defaultValue is not null || attribute is not null))
         {
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);

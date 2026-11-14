@@ -142,7 +142,7 @@ This table is exhaustive.
 | `associate` `when` `specialize` | In associated-Type declarations and specifications, in a ConditionalConformance, and immediately before `func`. |
 | `Callable` | At the start of a RequirementAtom or ConformanceAtom when followed by `<`. |
 | `effect` `confined` | `effect` when it starts an item and is followed on the same line by `confined`, or, in a Contract item, by a ContractSelector; `confined` only after `effect`. Effect items are valid in a requirement's Constraint region, a Contract `EffectSpecification`, a Callable effect list and the leading region of an original virtual function body ([§8.11.1](../08-generics-constraints-and-contracts.md#8111-declarations)). |
-| `during` `outlives` `static` | `during` after the body and `?` suffixes of an AnnotatedType; `outlives` inside an OriginRelation; `static` as an OriginAtom. |
+| `during` `outlives` `static` | `during` after the body and `?` suffixes of an AnnotatedType and after the ContainerPath of a BoundContainerQualifier or InheritanceReference; `outlives` inside an OriginRelation; `static` as an OriginAtom. |
 | `origin` | When it starts an item in a position that admits an OriginRelation: an attached clause list; a struct or enum body (ContainerItem, EnumItem); a requirement Constraint region; or the leading region of a function, constructor or accessor body ([§7.5](../07-functions-and-callable-values.md#75-function-constraints)). There the item is always an OriginRelation, including `origin (...) == ...`. |
 | `owner` `ref` `uniq` `obj` `rc` `arc` `objref` `objuniq` `raw` | In Semantics positions: Types, requirements, CallableReceiver, Capture operations and adaptation targets. Elsewhere they are Names, such as a Field `raw`. |
 | `value` `valueborrow` `object` `objectborrow` `borrow` `owning` `reference` | As a SemanticsCategory in a requirement. |
@@ -169,8 +169,8 @@ A declaration header writes, in this order: Attributes, an access specification,
 
 ```kimi
 public open struct Shape
-    public virtual func area(self) -> f64 => 0.0
-    virtual public func size(self) -> i32 => 0   // Error: the access word comes first
+    public virtual func area(self: objref/Self) -> f64 => 0.0
+    virtual public func size(self: objref/Self) -> i32 => 0   // Error: the access word comes first
 ```
 
 ## F.4. Layout
@@ -317,7 +317,7 @@ GenericParameter   := Name | Name "/" Name | "length" Name
 - `Name "/" Name` declares a pair parameter: its pair binder and pair target ([§8.1.1](../08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)). `length Name` declares a function length slot ([§4.4](../04-arrays-indexing-and-slices.md#44-function-length-parameters)). A GenericArgument that is a Name or grouped expression is classified by the declared slot kind, never by its uses ([§4.4](../04-arrays-indexing-and-slices.md#44-function-length-parameters)).
 - `_` as an ArrayLength or ArrayElementType is valid only in an initialized local annotation ([§4.3.1](../04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)).
 - Where a borrow annotation attaches is defined in [§3.3.2](../03-types-and-values.md#332-nested-semantics-and-origin-annotations). A `ContainerPath` may name a Contract or associated Type in the positions that [§9.7.1](../09-names-signatures-and-access.md#971-bound-container-paths) and [§8.5](../08-generics-constraints-and-contracts.md#85-associated-types) allow; a named target may denote a runtime Contract View ([§8.12](../08-generics-constraints-and-contracts.md#812-runtime-contracts)).
-- A BoundContainerQualifier is a Type-side form only; it is unavailable in adaptation targets. Its BorrowOrigin form is the single-slot binding in a qualifier ([§15.3.1](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)): `(S during y).Item` means `(S{v}).Item` with `origin v.s == y`. That form is valid only on the Type side, through a NamedReference, BaseClause, ContractReference, ContractSelector or TypeQualifier; in an expression, the BoundContainerQualifier of a ConstructionExpression or BoundContainerExpression, and one that begins a ConstructionExpression's PlainNamedType, takes only an OriginBindingSet, while a Type argument there is a Type.
+- A BoundContainerQualifier is a Type-side form only; it is unavailable in adaptation targets. Its BorrowOrigin form, like an InheritanceReference's ([§F.6.1](#f61-source-units-containers-and-attributes)), is the single-slot binding of [§15.3.1](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets), which judges the slot count: `(S during y).Item` means `(S{v}).Item` with `origin v.s == y`, and `struct Derived {b}: Base during b` binds the one slot of `Base` to `b`. The qualifier's BorrowOrigin form is valid only on the Type side, through a NamedReference, InheritanceReference, ContractReference, ContractSelector or TypeQualifier; in an expression, the BoundContainerQualifier of a ConstructionExpression or BoundContainerExpression, and one that begins a ConstructionExpression's PlainNamedType, takes only an OriginBindingSet, while a Type argument there is a Type.
 - A PathQualifier other than a BoundContainerQualifier is a Core without a path as the base of an associated-Type projection ([§8.5.2](../08-generics-constraints-and-contracts.md#852-projections)), as in `(i32, u8).(C).Item` and `[4 of u8].Element`; a Function Type base is grouped, as in `((i32) -> i32).(C).Item`. No other grouped Type is a PathQualifier, so `(S).Item`, `(S?).(C).Item` and `(ref/S).(C).Item` are invalid. It is a Type-side form: the ContainerPath of a PlainNamedType, of a NamedCoreType and of an expression's BoundContainerQualifier has no other PathQualifier as its head, and an adaptation target groups such a projection, as in `x@((i32, u8).(C).Item)` ([§F.9.4](#f94-adaptation-targets)).
 - OriginApplication, OriginBindingSet and BorrowOrigin are defined in [§F.8](#f8-origins).
 
@@ -338,7 +338,7 @@ let byte: [4 of u8].(Indexable<isize>).Element = 7   // u8: a fixed array is a p
 ```ebnf
 SourceUnit           := ItemList<SourceItem>?
 SourceItem           := AliasDeclaration | Declaration | ExecutableItem | Directive<SourceItem>
-Declaration          := AttributePrefix? UnattributedDeclaration
+Declaration          := AttributePrefix? UnattributedDeclaration | OverrideDeclaration
 UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration | StructureDeclaration
                       | EnumDeclaration | ContractDeclaration | FunctionDefinition
                       | BodilessFunctionDeclaration | SpecializationDeclaration
@@ -355,7 +355,8 @@ GroupDeclaration     := Access? "group" Name ContainerBody
 RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
 StructureDeclaration := Access? "open"? "struct" Name GenericParameters? OriginHeader?
                         BaseClause? ContainerBody
-BaseClause           := ":" NamedReference
+BaseClause           := ":" InheritanceReference
+InheritanceReference := NamedReference | ContainerPath BorrowOrigin
 ContainerBody        := IndentedList<ContainerItem>?
 ContainerItem        := Declaration | ConstraintClause | OriginRelation
                       | AssociatedTypeSpecification | ConditionalConformance
@@ -386,7 +387,7 @@ rootgroup App.Tools
 ```ebnf
 ContractDeclaration  := Access? "contract" Name GenericParameters? ContractParentList?
                         IndentedList<ContractItem>?
-ContractParentList   := ":" ContractReference ("," ContractReference)*
+ContractParentList   := ":" InheritanceReference ("," InheritanceReference)*
 ContractReference    := ContainerReference
 ContainerReference   := NamedReference
 ContractSelector     := ContainerPath | "(" ContractReference ")"
@@ -417,7 +418,7 @@ ConformanceCondition := ConstraintSubject "is" ConformanceRequirement
 ConformanceRequirement := ConformanceAtom ("and" ConformanceAtom)*
 ConformanceAtom      := CallableRequirement | Type | Semantics | SemanticsCategory
                       | "(" ConformanceRequirement ")"
-ConditionalImplementationItem := AttributedFunctionDefinition
+ConditionalImplementationItem := AttributedFunctionDefinition | OverrideDeclaration
                       | AttributePrefix? ComputedDeclaration
                       | AssociatedTypeSpecification
                       | Directive<ConditionalImplementationItem>
@@ -456,7 +457,7 @@ func apply<F>(f: ref/F, x: i32) -> i32
 ```ebnf
 FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
                         ParameterList<Parameter> ("->" Type)?
-FunctionModifier     := "unsafe" | "virtual" | "override"
+FunctionModifier     := "unsafe" | "virtual"
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
 BodilessFunctionDeclaration := FunctionHeader   // an import, [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports), or a Kimi declaration without a definition, [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)
@@ -468,6 +469,9 @@ SpecializationDeclaration := "specialize" "func" Name TypeArguments
                              "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
                              ("->" Type)? ExecutableBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
+OverrideDeclaration  := "override" "func" Name
+                        "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
+                        ("->" Type)? FunctionBody
 ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody?   // no Body only where [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) allows
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
 DropDeclaration      := "drop" ExecutableBody
@@ -485,6 +489,7 @@ Initializer          := "noinit" | Expression
 - `ReceiverShorthand` is valid only where [§7.3](../07-functions-and-callable-values.md#73-receivers) allows a receiver; the `!` boundary is defined in [§7.2.1](../07-functions-and-callable-values.md#721-argument-name-boundary).
 - Which lists admit the task slot is defined in [§24.2.1](../24-suspension-and-asynchronous-tasks.md#2421-form).
 - A BodilessFunctionDeclaration has no body and appears only where [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports) (an import) or [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) (a Kimi declaration without a definition) allows; a Body that holds only a leading region is a FunctionBody. Explicit specializations follow [§8.13](../08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization), constructors [§6.3](../06-declarations-and-containers.md#63-constructors), and `drop` [§16.3](../16-scope-exit-and-destruction.md#163-destruction-declarations).
+- An OverrideDeclaration is valid only as a member of a derived struct, directly or in a conditional-conformance Block ([§6.4.3](../06-declarations-and-containers.md#643-calls-and-conditional-slots)), and its leading region holds no ConstraintClause or EffectClause ([§6.4.1](../06-declarations-and-containers.md#641-declarations)).
 - After `func`, a Name starts a function definition and `(` or `[` starts a FunctionExpression ([§F.9.1](#f91-productions)).
 
 ```kimi

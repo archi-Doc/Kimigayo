@@ -499,7 +499,7 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(declared, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 if (operations[i].AdaptedType is null)
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, IsUnfittedLiteral(call.ArgumentNodes[i]), operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
                 else
                 {
@@ -620,7 +620,6 @@ public sealed partial class Binding
         {
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
-            var literal = IsUnfittedLiteral(source);
             if (!this.PrepareArgument(source, scope, null, callableContext: true))
             {
                 formed = false;
@@ -635,30 +634,30 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, literal, operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
             }
         }
     }
 
     // SPEC 15.6.4, 15.1.5: a prepared argument of a value call completed at `parameter` (CompleteValueCallPart) and adapted to it: its
-    // operation and the Type it acquires, which the call's substitution then instantiates; `literal` tells whether it was an unfitted
-    // literal before its preparation. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits
-    // structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept.
-    // A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the part is taken and
-    // acquired.
+    // operation and the Type it acquires, which the call's substitution then instantiates; an unfitted literal, which waits for the
+    // solve (WaitsForValueCallSolve), adapts as a Literal. An acquisition is deferred, as a payload's is (CompletePayloads): where the
+    // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it
+    // supplies kept. A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the
+    // part is taken and acquired.
     private void AcquireValueCallPart(
         InvocationKoto call,
         int i,
         BoundType parameter,
         BindingScope scope,
-        bool literal,
         Span<BoundArgumentOperation> operations,
         Span<BoundType> instantiated,
         ref bool formed)
     {
         var source = call.ArgumentNodes[i];
         operations[i] = default;
+        var literal = IsUnfittedLiteral(source);
         var actual = this.CompleteValueCallPart(source, parameter, scope);
         if (actual is null || source.BindingState != BindingState.Resolved)
         {

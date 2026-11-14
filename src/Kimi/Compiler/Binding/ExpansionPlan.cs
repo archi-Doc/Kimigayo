@@ -58,9 +58,10 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
 }
 
 /// <summary>The expansions the MIR builder desugars (plan 5.3); each names its calls in <see cref="CallPlan.Of"/>'s order. A step without
-/// a call is served as the rows of <see cref="IntrinsicDisposition"/> are (plan 5.8): an interpolation's buffer, steps and end are the
-/// temporary intrinsics FormatBuffer, FormatSegment (a step per write position, a literal segment's text its operand, no write) and
-/// FormatFinish over the estimates its instance computes (SPEC 22.10.5, 22.7), and a failed write a Fail of KIMI_E_FORMAT; a dictionary
+/// a call is served as the rows of <see cref="IntrinsicDisposition"/> are (plan 5.8): an interpolation's steps are the temporary intrinsic
+/// FormatSegment (a step per write position, the hint of the later writes over the estimate its instance computes; SPEC 22.10.5, 22.7),
+/// its literal texts and its end library calls the builder names (Utf8Writer.deferLiteral or string's format; Utf8Writer.finish and
+/// HeapBuffer.intoString), and a failed write a Fail of KIMI_E_FORMAT; a dictionary
 /// literal's duplicate key (found by its findEntry call) a Fail of KIMI_E_DUPLICATE_KEY and its insertion the placeEntry body; a `^x` key
 /// the receiver's MIR length minus x.</summary>
 internal enum ExpansionKind : byte

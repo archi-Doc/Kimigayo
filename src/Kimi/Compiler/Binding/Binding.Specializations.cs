@@ -221,6 +221,18 @@ public sealed partial class Binding
                 continue;
             }
 
+            // A misplaced specialization (SPEC 8.13.1, F.6) has no declaration scope: it is matched to no target, and its failure
+            // rests on its placement Error (a part prerequisite, IsDerived). The checks above read the written header only, so they
+            // stay direct. Everything below needs the declaration scope or a target: the selection key's arguments and their
+            // closedness (8.13.1 "outer generic parameter"), the target search and the target's checks. The arguments' Names are
+            // still resolved with the declaration's other Types, so their own records stay.
+            if (function.Placement is { } placement)
+            {
+                this.partPrerequisites[function] = placement;
+                this.Fail(function, BindingFailure.Unsupported, true);
+                continue;
+            }
+
             if (!this.specializationStorage.TryGetValue(function, out var entry) || entry.Arguments.Length != function.GenericArguments.Count)
             {
                 this.specializationStorage[function] = entry = new(new BoundType?[function.GenericArguments.Count], new BoundLength?[function.GenericArguments.Count]);

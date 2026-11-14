@@ -216,7 +216,8 @@ public sealed partial class Binding
     // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
     // a failure explained by the Origin rule, or any other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
-    // declaration context of a Property (AddPrerequisite), is a consequence of that part.
+    // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
+    // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses).
     private bool IsDerived(Koto node)
         => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
@@ -228,7 +229,9 @@ public sealed partial class Binding
             (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
             (specification.BindingFailure != BindingFailure.None || specification.BindingState == BindingState.Invalid)) ||
             (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
-            this.formationCauses?.ContainsKey(read) == true);
+            this.formationCauses?.ContainsKey(read) == true) ||
+            (node.BindingFailure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
+            this.KeepsPremiseErrorContext(premise));
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any

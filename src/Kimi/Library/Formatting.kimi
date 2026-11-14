@@ -22,9 +22,9 @@ public struct WriteWindow {source}
         private set
     let loan: Loan<uniq/u8 during source>
 
-    /// A window of `remaining` bytes after the `start` committed bytes of the buffer at `state`. The caller's obligations,
-    /// which the signature cannot state: `state` addresses a `Text.FixedBuffer` or a `Text.HeapBuffer` in what `source`
-    /// covers, with write authority, whose capacity holds `start + remaining` bytes (SPEC 5.2.1, 22.9.4).
+    /// A window of `remaining` bytes after the `start` committed bytes of the buffer at `state`. The caller's
+    /// obligations, which the signature cannot state: `state` addresses a `Text.FixedBuffer` or a `Text.HeapBuffer` in
+    /// what `source` covers, with write authority, whose capacity holds `start + remaining` bytes (SPEC 5.2.1, 22.9.4).
     internal init(state: raw/u8 during source, start: isize, remaining: isize)
         self.state = state
         self.start = start
@@ -103,19 +103,19 @@ public struct Utf8Writer {target}
     // An owning interpolation's growth hint: its later literal bytes and values (SPEC 22.10.5); 0 elsewhere.
     let hint: isize
     // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
-    let pending: raw/u8 during static
+    var pending: raw/u8 during static
     var pendingLength: isize
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
-    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
-    /// nested write recorded being recorded and returned (SPEC 22.10.1).
+    /// The recorded failure (`status`) without formatting; otherwise `value`'s `format` once, the first failure it
+    /// returns or a nested write recorded being recorded and returned (SPEC 22.10.1).
     ///
     /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
     ///   (SPEC 22.5.1).
     public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
         T is Utf8Format
-        if self.failed => return .Err(BufferFull.init())
+        try self.status()
         var healthy = false
         match value.format(self)@move
             .Ok(_) => healthy = not self.failed
@@ -130,7 +130,7 @@ public struct Utf8Writer {target}
         return .Ok(())
 
     /// Writes `text` with one exact reservation, none when it is empty, and records a failed reservation
-    /// (SPEC 22.10.1). It has no failure test of its own: only the adapter `write` has that guard.
+    /// (SPEC 22.10.1). It has no failure test of its own: a non-empty text reaches the guard (`status`) via `reserve`.
     internal func writeUtf8(self: uniq/Self, text: Text.Utf8Slice) -> Result<(), BufferFull>
         let bytes = text.bytes()
         if bytes.length == 0 => return .Ok(())
@@ -139,7 +139,34 @@ public struct Utf8Writer {target}
         (window@move).commitUtf8()
         return .Ok(())
 
-    /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): `BufferFull` when a failure is recorded;
+    /// Defers a literal's text before a value (SPEC 22.10.5): the adapter keeps its bytes, and the next reservation
+    /// writes them first (`settled`), so a first unbounded value needs one allocation. While a deferred literal is
+    /// held, `text` is written at once, after it. The caller's obligation, which the signature cannot state: `text`
+    /// is a string literal's record, whose bytes are static storage (SPEC 3.1.2); the compiler's owning
+    /// interpolation is the only caller.
+    ///
+    /// - abort: the write of `text` after a held literal exceeds the maximum object size or cannot allocate.
+    internal func deferLiteral(self: uniq/Self, text: ref/string) -> Result<(), BufferFull>
+        if self.pendingLength != 0 => return self.writeUtf8(Text.utf8(text))
+        let repr = text@follow@raw@raw/Storage.StringRepr
+        unsafe
+            // A claim: the caller's obligation makes the bytes static storage (SPEC 5.7).
+            self.pending = (*repr).data@(raw/u8 during static)
+            self.pendingLength = (*repr).length
+        return .Ok(())
+
+    /// Ends an owning interpolation's writes (SPEC 22.10.3): the recorded failure (`status`); else a deferred literal
+    /// still held, which no reservation wrote because the values after it wrote no bytes, written through the shared
+    /// tail (`settled`) and committed. The compiler's owning interpolation is the only caller.
+    ///
+    /// - abort: the deferred literal exceeds the maximum object size or cannot allocate.
+    internal func finish(self: uniq/Self) -> Result<(), BufferFull>
+        if self.pendingLength == 0 => return self.status()
+        let window = try self.reserve(0)
+        (window@move).commitUtf8()
+        return .Ok(())
+
+    /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): the recorded failure (`status`);
     /// else the destination's window for `amount` and the deferred literal, which it writes first, or a recorded
     /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the kind-1 arm reads
     /// the hint, which a buffer that must grow adds unless the sum exceeds the maximum object size. The caller's
@@ -148,7 +175,7 @@ public struct Utf8Writer {target}
     ///
     /// - abort: `amount` and the deferred literal exceed the maximum object size.
     internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
-        if self.failed => return .Err(BufferFull.init())
+        try self.status()
         let largest: isize = 9223372036854775807
         // The adapter keeps `0 <= pendingLength`, which bounds the difference; the guard `amount <= available`
         // bounds the sum.
@@ -248,7 +275,8 @@ public group Text
             if minimum > remaining => return .Err(BufferFull.init())
             return .Ok(WriteWindow.init(self@follow@raw@raw/u8, self.length, remaining))
 
-        /// Validates the unvalidated suffix and views the committed bytes under the array's exclusive Loan (SPEC 22.9.3).
+        /// Validates the unvalidated suffix and views the committed bytes under the array's exclusive Loan
+        /// (SPEC 22.9.3).
         public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>
             unsafe
                 if not Text.validSuffix(self.data, self.validated, self.length) => return .Err(Text.InvalidUtf8.init())
@@ -296,8 +324,8 @@ public group Text
             self.validated = 0
 
         /// A window over at least `minimum` unused bytes; never `BufferFull` (SPEC 22.9.4). Growth reaches
-        /// `max(length + minimum, 2 * capacity)`, or `length + minimum` when the double exceeds the maximum object size, and
-        /// copies the committed bytes.
+        /// `max(length + minimum, 2 * capacity)`, or `length + minimum` when the double exceeds the maximum object
+        /// size, and copies the committed bytes.
         ///
         /// - abort: `minimum` is negative, or `length + minimum` exceeds the maximum object size.
         public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
@@ -325,10 +353,12 @@ public group Text
             let remaining = (self.capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
             return .Ok(WriteWindow.init(self@follow@raw@raw/u8, length, remaining))
 
-        /// Validates the unvalidated suffix and transfers the allocation to the string without copying; on failure it releases
-        /// the allocation (SPEC 22.9.3). An allocated empty buffer keeps its pointer and the Heap release kind.
+        /// Validates the unvalidated suffix and transfers the allocation to the string without copying; on failure it
+        /// releases the allocation (SPEC 22.9.3). An allocated empty buffer keeps its pointer and the Heap release
+        /// kind.
         public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>
-            // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers (SPEC 5.2.3).
+            // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers
+            // (SPEC 5.2.3).
             var held = Storage.InlineStorage<Text.HeapBuffer>.init(self@move)
             let data = held.value.data
             let length = held.value.length
@@ -344,7 +374,6 @@ public group Text
 
     public struct Utf8Slice {source}
         Self is Copy
-        Self is Utf8Format
         let value: Slice<u8> during source
 
         /// Views `value`, bytes the caller guarantees are valid UTF-8 (SPEC 22.9.3); nothing checks them.
@@ -353,11 +382,6 @@ public group Text
             get() -> isize => self.value.length
         public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value
-
-        /// Writes the view's bytes once through the writer's leaf (SPEC 22.10.2): one exact reservation, none when
-        /// empty. Its catalog row's CallerLocation passes the user's location to the leaf (SPEC 22.5.1, until G1).
-        public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
-            return writer.writeUtf8(self@follow)
 
     /// A buffer over the initialized array: length zero, capacity `N` (SPEC 22.9.2).
     public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
@@ -466,10 +490,10 @@ public group Console
             Console.writeStdout((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length)
             Console.writeStdout(feed@raw, 1)
 
-// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, f32's, f64's, Wrapping<T>'s and the integers' built-in
-// conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, F32Format, F64Format,
-// WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is StringWitness's (Core.kimi), the view's
-// its own member (above).
+// SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, the view's, f32's, f64's, Wrapping<T>'s and the integers'
+// built-in conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, Utf8SliceFormat,
+// F32Format, F64Format, WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is
+// StringWitness's (Core.kimi).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
 // catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
 internal group BoolFormat
@@ -509,6 +533,11 @@ internal group CharFormat
 internal group UnitFormat
     func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.writeUtf8(Text.utf8("()"))
 
+internal group Utf8SliceFormat
+    /// Writes the view's bytes: one exact reservation, none when empty.
+    func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return writer.writeUtf8(self@follow)
+
 internal group F32Format
     /// Writes the shortest round-trip text of the binary32 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)
     /// into a local array.
@@ -541,7 +570,8 @@ internal group IntegerFormat
     func format<I>(self: ref/I, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         I is PrimitiveInteger
         let value = self@follow
-        // A negative value of at most 64 bits has `-(value + 1) <= 2^63 - 1`, so its magnitude fits u64 without overflow.
+        // A negative value of at most 64 bits has `-(value + 1) <= 2^63 - 1`, so its magnitude fits u64 without
+        // overflow.
         var magnitude: u64 = 0
         if value < 0
             magnitude = (-(value@i64 + 1))@u64 + 1
