@@ -98,7 +98,8 @@ public class IntegerRangeTest
     // R8-W3's coverage table (labels from SPEC 14.6.1, 14.6.2, 4.6.2-4.6.4, 15.1.5 and 15.1.6, written before any run), by table id: a
     // ResolvedRange `for` in each Subject mode, place, producer and transfer, and its Range twin (suffix r) on the same Iterable path, with
     // the same output. Not here: v9x (the parser's), v10y and v10v (the parser's ForBinding, PLAN F1), v14 and its twins (PLAN G416,
-    // AResolvedRangeThroughAGenericIterableIsRefusedPendingG416) and r7 (resolve's abort code, PLAN F2).
+    // AResolvedRangeThroughAGenericIterableIsRefusedPendingG416) and r7 (resolve's abort code, PLAN F2). b4 and b4r are the Middle's
+    // consent rows (C-338): the valid neighbours of the rejected b2x.
     public static TheoryData<string, string, string> CoverageRows => new()
     {
         { "v1", "let values: [5 of i32] = [10, 20, 30, 40, 50]\nvar total: isize = 0\nvar weighted: i32 = 0\nfor i in values.indices\n    total += i\n    weighted += values[i]\nConsole.writeLine(\"\\(total) \\(weighted)\")\n", "10 150\n" }, // valid 14.6.2 ByValue temporary
@@ -133,9 +134,15 @@ public class IntegerRangeTest
         { "r5", "let values: [5 of i32] = [1, 2, 3, 4, 5]\nvar a: isize = 0\nfor i in (1..=3).resolve(5) => a += i\nmatch (1..3).tryResolve(5)\n    .Some(let r)\n        for i in r => a += i * 10\n    .None => $abort(\"none\")\nlet o = (0..2).tryResolve(5)\nmatch o\n    .Some(let r)\n        for i in r => a += i * 100\n    .None => $abort(\"none\")\nlet rr = (0..2).resolve(2)\nfor i in rr.resolve(5) => a += i * 1000\nfor i in values[2..].indices => a += i * 10000\nConsole.writeLine(\"\\(a)\")\n", "31136\n" }, // valid 4.6.2/4.6.3 each producer; 15.1.6 a ref/ResolvedRange match binding
         { "r6", "var arr: [3 of i32] = [1, 2, 3]\nvar us = arr.sliceUniq()\nfor i in us.indices\n    us[i] = us[i] * 2\nConsole.writeLine(\"\\(arr[0]) \\(arr[2])\")\n", "2 6\n" }, // valid 15.1.6 UniqSlice's computed indices (library producer)
         { "r6r", "var arr: [3 of i32] = [1, 2, 3]\nvar us = arr.sliceUniq()\nfor i in 0..us.length\n    us[i] = us[i] * 2\nConsole.writeLine(\"\\(arr[0]) \\(arr[2])\")\n", "2 6\n" }, // valid Range twin of r6
+        { "b4", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    let e = s.end\n    var a: isize = 0\n    for i in u => a += i + u.start\n    return a + e\nvar r = (1..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "8\n" }, // valid 15.1.6/15.6 b2x's neighbour: the shared Reborrow dead before the Exclusive loop; the body reads u (4.6.4 no Loan)
+        { "b4r", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    let e = s.end\n    var a: isize = 0\n    for i in u => a += i + u.start\n    return a + e\nvar r: Range<isize, isize> = 1..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "8\n" }, // valid Range twin of b4
     };
 
-    // The invalid rows of the same table and their Range twins: each record's code and position.
+    // The invalid rows of the same table and their Range twins: each record's code and position. The Middle's consent rows (C-338; labels
+    // from SPEC 15.1.6 and 15.6): a3x, an explicit `r@uniq` Subject while a shared Loan of `r` is live, reports as its Range twin does, at
+    // the `for` (on the counted loop: ComparisonLoanConflict_Kd at the `@uniq`); b2x, b5x and b6x, a Subject storing uniq/ResolvedRange
+    // (Exclusive: its entry acquires the referent) while a shared Reborrow of the referent stays live across the loop, which the counted
+    // loop's referent read accepted.
     public static TheoryData<string, string, string> RejectedCoverageRows => new()
     {
         { "v3x", "let r = (0..3).resolve(3)\nfor i in r@uniq => ()\n", "InvalidAssignment_Kd 2:10" }, // invalid 15.1.5 @uniq of a let Subject
@@ -148,6 +155,14 @@ public class IntegerRangeTest
         { "rx12", "let q: Range<isize, isize> = 0..2\nfor i in q\n    let x: i32 = i\n", "TypeMismatch_Kd 3:18" }, // invalid Range twin of v12x (isize item into i32)
         { "rx13", "var r = (0..3).resolve(3)\nlet u = r@uniq\nfor i in u@uniq => ()\n", "InvalidAssignment_Kd 3:10" }, // invalid 15.1.6 @uniq of a let slot storing uniq/ResolvedRange
         { "rx13r", "var q: Range<isize, isize> = 0..3\nlet u = q@uniq\nfor i in u@uniq => ()\n", "InvalidAssignment_Kd 3:10" }, // invalid Range twin of rx13
+        { "a3x", "var r = (0..3).resolve(3)\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid 15.6 r@uniq while h's shared Loan is live
+        { "a3xr", "var r: Range<isize, isize> = 0..3\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid Range twin of a3x
+        { "b2x", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r = (0..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid 15.1.6/15.6 a uniq/ResolvedRange parameter iterated while s, a shared Reborrow of its referent, is live
+        { "b2xr", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r: Range<isize, isize> = 0..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid Range twin of b2x
+        { "b5x", "var r = (0..3).resolve(3)\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid 15.1.6/15.6 b2x at top level: a let slot storing uniq/ResolvedRange
+        { "b5xr", "var r: Range<isize, isize> = 0..3\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid Range twin of b5x
+        { "b6x", "var r = (0..3).resolve(3)\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid 15.1.6/15.6 b2x in a var Closure capturing the uniq/ResolvedRange (7.7.3)
+        { "b6xr", "var r: Range<isize, isize> = 0..3\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid Range twin of b6x
     };
 
     [Theory]
