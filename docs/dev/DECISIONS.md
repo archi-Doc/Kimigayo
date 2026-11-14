@@ -19475,7 +19475,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     premises supply the opposite direction for one operand pair (SPEC 13.3.4), which SPEC 8.2.3 makes a question up to identity, so
     it reads the rows keyed by identity class in R7-C2c2 c2-3's arithmetic part, not the written facts a validator's read holds.
     `ProjectionUseOf` was deleted with G721 (BU-184).
-  - **The merge with R7-C2c2 c2-1.** The class-key copies are the Contract row's alone. The TypeIdentity and Semantics rows hold
+  - **The merge with R7-C2c2 c2-1.** The class-key copies are the row kinds' alone (Contract and, from R7-C2c2 c2-3b, Callable).
+    The TypeIdentity and Semantics rows hold
     each fact as written under its written subject key, with no class key and no reading, so a reader that pairs by bucket pairs
     facts of one written subject key only (the agreement's former `Symbol`/receiver equality is the key's).
   - **Readers.** A request (`PremiseRefines`, `FirstRows`) and a closure validator's read (`BeginClosureRead` .. `EndClosureRead`),
@@ -19483,8 +19484,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `PremiseRefines` entered from a walk or from a validator's read is InternalInvariant, so a validator takes what it needs before
     it judges (the agreement copies its pairs; `DisjointConformanceFacts` calls only `AvailableConstraintFact`, `DependentType`,
     `SameCompleteType`).
-  - **Lifetime of an entry a validator's read forms** (F's ruling 20). It is the read's: formed outside a request, its Contract row
-    has no class keys and no readings, so no request may read it; it goes back to the pool when the read ends. A Kept entry serves a
+  - **Lifetime of an entry a validator's read forms** (F's ruling 20). It is the read's: formed outside a request, its row-kind
+    rows have no class keys and its Contract row no readings, so no request may read it; it goes back to the pool when the read ends. A Kept entry serves a
     read as it is. This replaces the prototype's lifetime (owned until the next outermost request returns, then prepared by that
     request), which is not sound on c2-1's keys: a request reusing the entry would miss its view's class-key pairs.
   - **One owner of SPEC 8.2.3's premise error.** `ValidateContractDeclarations`' identity comparison and `associatedIdentityChecks`
@@ -19497,8 +19498,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     all invalid on both builds; no acceptance moves (the review's q1n, q1r, q2n, q3n, q4n move the same way).
   - **Deleted.** `associatedIdentityChecks`, `associatedOverlapChecks`, the agreement's pairwise filter, `DisjointConformanceFacts`'
     facts-by-facts loop (O(n·m) per scope pair, now O(n) lookups).
-  - **Measure.** `ClosureIndexWork` counts every pair an entry indexes: each row's written facts, the Contract row's class-key
-    copies and readings; the validators' entries are counted. RP8 T-247 (RecursiveContract's cold minimum B/A' 1.032, every other
+  - **Measure.** `ClosureIndexWork` counts every pair an entry indexes: each row's written facts, the row kinds' class-key
+    copies and the Contract row's readings; the validators' entries are counted. RP8 T-247 (RecursiveContract's cold minimum B/A' 1.032, every other
     row inside, warm 0 B) accepted by the owner's O-278 (b).
   - **Rejected.** A case per validator in the index (a second representation); keeping the comparison and making C3a skip it (two
     owners of one rule); a per-validator cache of the scope's facts by subject (the side table the index already is); indexing every
